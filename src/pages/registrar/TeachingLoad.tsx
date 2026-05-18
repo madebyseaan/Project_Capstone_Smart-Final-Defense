@@ -74,8 +74,11 @@ export default function TeachingLoad() {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Teaching Load</h1>
-          <p className="text-gray-600 mt-1">
+          <p className="text-gray-600 mt-1 flex items-center gap-2">
             Faculty teaching assignments and subject coverage — read-only from ATLAS.
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-100 font-medium">
+              AY 2026-2027
+            </Badge>
           </p>
         </div>
         <Button onClick={() => void loadAll()} variant="outline" className="rounded-xl">
@@ -170,54 +173,86 @@ export default function TeachingLoad() {
                   <TableRow className="bg-gray-50/80">
                     <TableHead className="font-bold text-gray-700">Faculty Name</TableHead>
                     <TableHead className="font-bold text-gray-700 text-center">Subjects</TableHead>
-                    <TableHead className="font-bold text-gray-700">Weekly Hours</TableHead>
+                    <TableHead className="font-bold text-gray-700">Weekly Load</TableHead>
+                    <TableHead className="font-bold text-gray-700 text-center">Load %</TableHead>
                     <TableHead className="font-bold text-gray-700">Assigned Subjects</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-12 text-gray-500">
+                      <TableCell colSpan={5} className="text-center py-12 text-gray-500">
                         No faculty found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filtered.map((f: any, i: number) => (
-                      <TableRow key={f.facultyId ?? i}>
-                        <TableCell className="font-medium text-gray-900">
-                          {f.firstName && f.lastName
-                            ? `${f.lastName}, ${f.firstName}`
-                            : f.name ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge
-                            className={
-                              (f.assignedSubjects?.length ?? f.subjectCount ?? 0) > 0
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-gray-100 text-gray-500"
-                            }
-                          >
-                            {f.subjectCount ?? f.assignedSubjects?.length ?? 0}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {f.subjectHours != null
-                            ? minutesToHours(f.subjectHours)
-                            : f.totalMinutesPerWeek != null
-                            ? minutesToHours(f.totalMinutesPerWeek)
-                            : f.weeklyHours != null
-                            ? `${f.weeklyHours}h`
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-600 max-w-xs">
-                          {Array.isArray(f.assignments)
-                            ? f.assignments.map((a: any) => a.subject?.name ?? a.subject?.code ?? a.subjectCode ?? "").filter(Boolean).join(", ") || "—"
-                            : Array.isArray(f.assignedSubjects)
-                            ? f.assignedSubjects.map((s: any) => s.name ?? s.code ?? s).join(", ")
-                            : f.subjects ?? "—"}
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    filtered.map((f: any, i: number) => {
+                      // Pure teaching load percentage = ((Total Subject Hours - Advisory Equivalent) / Max Hours) * 100
+                      const rawSubjectHours = f.subjectHours ?? f.weeklyHours ?? 0;
+                      const advHours = f.isClassAdviser ? (f.advisoryEquivalentHours ?? 0) : 0;
+                      const pureTeachingHours = Math.max(0, rawSubjectHours - advHours);
+                      
+                      const loadPct = f.maxHoursPerWeek 
+                        ? Math.round((pureTeachingHours / f.maxHoursPerWeek) * 100) 
+                        : (f.loadPercentage ?? 0);
+                      
+                      return (
+                        <TableRow key={f.facultyId ?? i}>
+                          <TableCell className="font-medium text-gray-900">
+                            {f.firstName && f.lastName
+                              ? `${f.lastName}, ${f.firstName}`
+                              : f.name ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              className={
+                                (f.assignedSubjects?.length ?? f.subjectCount ?? 0) > 0
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-gray-100 text-gray-500"
+                              }
+                            >
+                              {f.subjectCount ?? f.assignedSubjects?.length ?? 0}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-gray-900">
+                                {f.subjectHours != null
+                                  ? `${f.subjectHours}h`
+                                  : f.totalMinutesPerWeek != null
+                                  ? minutesToHours(f.totalMinutesPerWeek)
+                                  : f.weeklyHours != null
+                                  ? `${f.weeklyHours}h`
+                                  : "—"}
+                              </span>
+                              {f.maxHoursPerWeek != null && (
+                                <span className="text-[10px] text-gray-400">Max: {f.maxHoursPerWeek}h</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-sm font-bold ${loadPct > 100 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {loadPct}%
+                              </span>
+                              <div className="w-16 h-1 bg-gray-100 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full ${loadPct > 100 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                  style={{ width: `${Math.min(loadPct, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-600 max-w-xs">
+                            {Array.isArray(f.assignments)
+                              ? f.assignments.map((a: any) => a.subject?.name ?? a.subject?.code ?? a.subjectCode ?? "").filter(Boolean).join(", ") || "—"
+                              : Array.isArray(f.assignedSubjects)
+                              ? f.assignedSubjects.map((s: any) => s.name ?? s.code ?? s).join(", ")
+                              : f.subjects ?? "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>

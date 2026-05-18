@@ -514,20 +514,20 @@ export default function StudentRecords() {
               <div className="hidden md:block overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/80">
-                    <TableHead className="font-bold text-gray-700">LRN</TableHead>
-                    <TableHead className="font-bold text-gray-700">Student Name</TableHead>
-                    <TableHead className="font-bold text-gray-700">Gender</TableHead>
-                    <TableHead className="font-bold text-gray-700">Grade Level</TableHead>
-                    <TableHead className="font-bold text-gray-700">Section</TableHead>
-                    <TableHead className="font-bold text-gray-700">Status</TableHead>
-                    <TableHead className="font-bold text-gray-700 text-right">Actions</TableHead>
+                  <TableRow className="bg-white border-b border-slate-100 hover:bg-white">
+                    <TableHead className="font-bold text-slate-800 py-4">LRN</TableHead>
+                    <TableHead className="font-bold text-slate-800 py-4">Student Name</TableHead>
+                    <TableHead className="font-bold text-slate-800 py-4">Gender</TableHead>
+                    <TableHead className="font-bold text-slate-800 py-4">Grade Level</TableHead>
+                    <TableHead className="font-bold text-slate-800 py-4">Section</TableHead>
+                    <TableHead className="font-bold text-slate-800 py-4">Status</TableHead>
+                    <TableHead className="font-bold text-slate-800 py-4 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-12">
+                      <TableCell colSpan={7} className="text-center py-20">
                         <Users className="w-12 h-12 mx-auto text-gray-300 mb-3" />
                         <p className="text-gray-500 font-medium">No students found</p>
                         <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
@@ -537,50 +537,55 @@ export default function StudentRecords() {
                   paginatedStudents.map((student) => {
                     const normalizedGrade = (student.gradeLevel || "").replace("GRADE_", "");
                     return (
-                      <TableRow key={student.id} className="transition-colors" onMouseEnter={(e) => e.currentTarget.style.backgroundColor = `${colors.primary}08`} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
-                        <TableCell className="font-mono text-sm text-gray-600">{student.lrn}</TableCell>
-                        <TableCell>
+                      <TableRow key={student.id} className="transition-colors border-b border-slate-50 hover:bg-slate-50/50">
+                        <TableCell className="font-mono text-sm text-slate-500 py-4">{student.lrn}</TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-3">
                             <div 
-                              className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-semibold text-sm"
+                              className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-semibold text-sm shadow-sm"
                               style={{ backgroundColor: colors.primary }}
                             >
                               {student.lastName.charAt(0)}
                             </div>
                             <div>
-                              <p className="font-semibold text-gray-900">
+                              <p className="font-bold text-slate-900">
                                 {student.lastName}, {student.firstName} {student.middleName || ""} {student.suffix || ""}
                               </p>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <Badge className={student.gender?.toUpperCase() === "MALE" ? "bg-blue-100 text-blue-700" : "bg-pink-100 text-pink-700"}>
+                        <TableCell className="py-4">
+                          <Badge className={student.gender?.toUpperCase() === "MALE" || student.gender?.toUpperCase() === "M" ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-pink-50 text-pink-700 border-pink-100"} variant="outline">
                             {student.gender}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <Badge style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}>
+                        <TableCell className="py-4">
+                          <Badge style={{ backgroundColor: `${colors.primary}10`, color: colors.primary, borderColor: `${colors.primary}20` }} variant="outline">
                             {gradeLevelLabels[student.gradeLevel || ""] || `Grade ${normalizedGrade}`}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-medium text-gray-700">{student.sectionName || "-"}</TableCell>
-                        <TableCell>
-                          <Badge style={student.status === "ENROLLED" ? { backgroundColor: `${colors.primary}15`, color: colors.primary } : undefined} className={student.status !== "ENROLLED" ? "bg-gray-100 text-gray-600" : ""}>
+                        <TableCell className="font-medium text-slate-600 py-4">{student.sectionName || "-"}</TableCell>
+                        <TableCell className="py-4">
+                          <Badge 
+                            variant="outline"
+                            className={student.status === "ENROLLED" 
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
+                              : "bg-slate-50 text-slate-600 border-slate-100"
+                            }
+                          >
                             {student.status || "N/A"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right py-4">
                           <div className="flex items-center justify-end gap-2">
                             <Button 
                               variant="ghost" 
                               size="sm" 
                               onClick={() => handleViewStudent(student)}
-                              className="h-8 rounded-lg"
-                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = `${colors.primary}10`; e.currentTarget.style.color = colors.primary; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; }}
+                              className="h-9 px-4 rounded-xl font-medium transition-all hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-100"
+                              style={{ ['--hover-text' as any]: colors.primary }}
                             >
-                              <Eye className="w-4 h-4 mr-1" />
+                              <Eye className="w-4 h-4 mr-2" />
                               View
                             </Button>
                           </div>

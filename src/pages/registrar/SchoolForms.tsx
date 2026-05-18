@@ -9,6 +9,11 @@ import {
   Users,
   ArrowLeft,
   ChevronRight,
+  Clock,
+  CheckCircle2,
+  FileCheck,
+  Loader2,
+  AlertCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,32 +57,99 @@ interface SchoolForm {
   description: string;
   icon: React.ElementType;
   color: string;
+  status: "active" | "dev";
 }
 
 const schoolForms: SchoolForm[] = [
   {
+    id: "SF1",
+    name: "School Register",
+    fullName: "School Form 1 - School Register",
+    description: "Master list of enrolled students.",
+    icon: Users,
+    color: "blue",
+    status: "active",
+  },
+  {
+    id: "SF2",
+    name: "Daily Attendance",
+    fullName: "School Form 2 - Daily Attendance Report",
+    description: "Daily attendance tracking.",
+    icon: Clock,
+    color: "amber",
+    status: "active",
+  },
+  {
+    id: "SF3",
+    name: "Books Issued",
+    fullName: "School Form 3 - Books Issued and Returned",
+    description: "Textbook and material tracking.",
+    icon: BookOpen,
+    color: "gray",
+    status: "dev",
+  },
+  {
+    id: "SF4",
+    name: "Monthly Movement",
+    fullName: "School Form 4 - Monthly Learner's Movement and Attendance",
+    description: "Enrollment and dropout summary.",
+    icon: FileText,
+    color: "gray",
+    status: "dev",
+  },
+  {
+    id: "SF5",
+    name: "Promotion Report",
+    fullName: "School Form 5 - Report on Promotion",
+    description: "Final academic performance.",
+    icon: CheckCircle2,
+    color: "gray",
+    status: "dev",
+  },
+  {
+    id: "SF6",
+    name: "Promotion Summary",
+    fullName: "School Form 6 - Summarized Report on Promotion",
+    description: "Consolidated promotion summary.",
+    icon: FileCheck,
+    color: "gray",
+    status: "dev",
+  },
+  {
+    id: "SF7",
+    name: "Personnel List",
+    fullName: "School Form 7 - School Personnel Assignment List",
+    description: "Staff and teaching assignments.",
+    icon: Users,
+    color: "gray",
+    status: "dev",
+  },
+  {
     id: "SF8",
-    name: "Health & Nutrition",
-    fullName: "School Form 8 - School Health and Nutrition Form",
-    description: "Records student health information, immunizations, medical history, and nutritional status.",
+    name: "Health Profile",
+    fullName: "School Form 8 - Learner's Basic Health Profile",
+    description: "BMI and nutritional status.",
     icon: BookOpen,
     color: "rose",
+    status: "dev",
   },
   {
     id: "SF9",
     name: "Report Card",
     fullName: "School Form 9 - Learner's Progress Report Card",
-    description: "Individual learner's quarterly grades and progress report to be given to parents/guardians.",
+    description: "Quarterly issued report card.",
     icon: FileText,
     color: "blue",
+    status: "active",
   },
   {
     id: "SF10",
     name: "Permanent Record",
     fullName: "School Form 10 - Learner's Permanent Academic Record",
-    description: "Cumulative record of learner's academic history including grades from all school years.",
+    description: "Official cumulative record.",
     icon: FolderOpen,
     color: "green",
+    status: "active",
   },
 ];
 
@@ -324,49 +396,70 @@ export default function SchoolForms() {
         </Card>
 
         {/* Forms Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {schoolForms.map((form, formIndex) => {
-            // Use different opacity shades of the theme primary for each form
-            const opacityLevels = [0.12, 0.18, 0.25];
-            const bgOpacity = opacityLevels[formIndex] || 0.12;
+            const isDev = form.status === "dev";
 
             return (
               <Card 
                 key={form.id} 
-                className="group border-0 shadow-lg shadow-gray-200/50 hover:shadow-xl transition-all duration-300 bg-white overflow-hidden rounded-2xl p-0"
+                className={`group border-0 shadow-lg shadow-gray-200/50 transition-all duration-300 bg-white overflow-hidden rounded-2xl p-0 ${isDev ? 'opacity-75 grayscale-[0.3]' : 'hover:shadow-xl'}`}
               >
-                <CardHeader className="border-b border-gray-100 px-6 py-4" style={{ background: `linear-gradient(to right, ${themeColors.primary}${Math.round(bgOpacity * 255).toString(16).padStart(2, '0')}, transparent)` }}>
+                <CardHeader className="border-b border-gray-100 px-6 py-4" style={{ backgroundColor: isDev ? '#f8fafc' : `${themeColors.primary}08` }}>
                   <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl text-white shadow-lg group-hover:scale-110 transition-transform" style={{ backgroundColor: themeColors.primary }}>
+                    <div className={`p-2.5 rounded-xl text-white shadow-sm ${!isDev ? 'group-hover:scale-110 transition-transform shadow-lg' : ''}`} style={{ backgroundColor: isDev ? '#94a3b8' : themeColors.primary }}>
                       <form.icon className="w-5 h-5" />
                     </div>
-                    <div>
-                      <Badge className="font-bold text-sm" style={{ backgroundColor: `${themeColors.primary}20`, color: themeColors.primary }}>
-                        {form.id}
-                      </Badge>
-                      <CardTitle className="text-base font-bold text-gray-900 mt-1">{form.name}</CardTitle>
+                    <div className="flex flex-col flex-1">
+                      <div className="flex items-center justify-between">
+                        <Badge className="font-bold text-sm border border-transparent" style={{ backgroundColor: isDev ? '#f1f5f9' : `${themeColors.primary}15`, color: isDev ? '#64748b' : themeColors.primary }}>
+                          {form.id}
+                        </Badge>
+                        {isDev && (
+                          <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-500 border-slate-200 uppercase tracking-wider py-0 px-1.5 h-4">
+                            In Dev
+                          </Badge>
+                        )}
+                      </div>
+                      <CardTitle className={`text-base font-bold mt-1 ${isDev ? 'text-slate-700' : 'text-gray-900'}`}>
+                        {form.name}
+                      </CardTitle>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-sm text-gray-600 mb-6">{form.description}</p>
+                <CardContent className="p-6 flex flex-col h-full">
+                  <p className={`text-sm mb-6 flex-1 ${isDev ? 'text-slate-500' : 'text-gray-600'}`}>
+                    {form.description}
+                  </p>
                   
-                  <div className="flex justify-end">
+                  <div className="flex justify-end mt-auto">
                     <Button
                       onClick={() => {
                         if (form.id === "SF8") handleViewSF8();
                         else if (form.id === "SF9") handleViewSF9();
                         else if (form.id === "SF10") handleViewSF10();
+                        // SF1 and SF2 will be implemented later
                       }}
                       disabled={
+                        isDev ||
                         (form.id === "SF8" && !selectedSection) ||
                         ((form.id === "SF9" || form.id === "SF10") && !selectedStudent)
                       }
-                      className="rounded-xl text-white"
-                      style={{ backgroundColor: themeColors.primary }}
+                      className="rounded-xl w-full"
+                      variant={isDev ? "outline" : "default"}
+                      style={!isDev ? { backgroundColor: themeColors.primary, color: 'white' } : {}}
                     >
-                      <Eye className="w-4 h-4 mr-2" />
-                      View Form
+                      {isDev ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin-slow opacity-50" />
+                          Under Development
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-4 h-4 mr-2" />
+                          View Form
+                        </>
+                      )}
                     </Button>
                   </div>
                 </CardContent>

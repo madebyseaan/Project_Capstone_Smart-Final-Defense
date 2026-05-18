@@ -3,8 +3,8 @@
 Welcome to the comprehensive API reference for the **SMART (Student Monitoring and Reporting Tool)** system. This document provides technical details for all endpoints, including authentication, external system integrations, and core school operations.
 
 ## General Information
-- **Base URL:** `http://<host>:5001/api`
-- **Tailscale Host:** `100.88.55.125`
+- **Base URL:** `http://<host>:5003/api`
+- **Tailscale Host:** `100.93.66.120` (laptop-pfvh73qk)
 - **Content-Type:** `application/json`
 - **Auth:** All protected endpoints require an `Authorization: Bearer <token>` header.
 
@@ -28,7 +28,6 @@ Authenticate and receive a JWT token. SMART supports multi-provider login (Local
   "password": "yourpassword"
 }
 ```
-> Note: `email` can also be an Employee ID or Username.
 
 **Response:**
 ```json
@@ -54,86 +53,39 @@ Return the authenticated user's profile.
 | **Auth** | Required |
 | **Success** | `200 OK` |
 
-**Response:**
-```json
-{
-  "id": "user-uuid",
-  "username": "TEACHER001",
-  "role": "TEACHER",
-  "createdAt": "2026-05-11T09:14:31.000Z"
-}
-```
-
-### `POST /auth/logout`
-Invalidate the current session (client-side) and log the audit event.
-
-| | |
-|---|---|
-| **Auth** | Required |
-| **Success** | `200 OK` |
-
 ---
 
-## 2. Integration
-Connectivity status and proxy data from EnrollPro, ATLAS, and AIMS.
+## 2. Integration & System Health
+Connectivity status and proxy data from external systems.
 
 ### `GET /integration/status`
-Check the health and connectivity status of external systems.
+Check the health and connectivity status of external systems (EnrollPro, ATLAS, AIMS).
 
 | | |
 |---|---|
 | **Auth** | Required |
 | **Success** | `200 OK` |
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "enrollpro": { "online": true },
-    "atlas": { "online": true },
-    "aims": { "online": true },
-    "checkedAt": "2026-05-14T10:00:00.000Z"
-  }
-}
-```
-
-### `POST /integration/enrollpro-webhook`
-Webhook for EnrollPro to notify SMART of data changes. Triggers background sync.
+### `GET /admin/system/health`
+Get a detailed snapshot of system health, database status, and API latencies.
 
 | | |
 |---|---|
-| **Auth** | `x-api-key` header required |
+| **Auth** | Required — `ADMIN` only |
 | **Success** | `200 OK` |
 
-### `GET /integration/enrollpro/my-advisory`
-Get the teacher's advisory section and students directly from EnrollPro.
+### `GET /admin/system/sync-history`
+Get the history of data synchronizations from EnrollPro and ATLAS.
 
 | | |
 |---|---|
-| **Auth** | Required — `TEACHER` only |
-| **Success** | `200 OK` |
-
-### `GET /integration/atlas/my-teaching-load`
-Get the teacher's teaching load synced from ATLAS.
-
-| | |
-|---|---|
-| **Auth** | Required — `TEACHER` only |
-| **Success** | `200 OK` |
-
-### `POST /integration/aims/auth`
-Authenticate with AIMS using the teacher's AIMS password.
-
-| | |
-|---|---|
-| **Auth** | Required — `TEACHER` only |
+| **Auth** | Required — `ADMIN` only |
 | **Success** | `200 OK` |
 
 ---
 
-## 3. Advisory
-Teacher advisory sections, student grade profiles, and rankings.
+## 3. Advisory & Student Records
+Teacher advisory sections and detailed student grade profiles.
 
 ### `GET /advisory/my-advisory`
 Get details about the teacher's advisory section and student subjects.
@@ -144,35 +96,41 @@ Get details about the teacher's advisory section and student subjects.
 | **Success** | `200 OK` |
 
 ### `GET /advisory/student/:studentId/grades`
-Get the complete grade profile for a specific student across all subjects.
+Get the complete grade profile for a specific student across all subjects and quarters.
 
 | | |
 |---|---|
 | **Auth** | Required — Adviser or Teacher |
 | **Success** | `200 OK` |
 
-### `GET /advisory/summary`
-Get a summary of the advisory section's performance and rankings.
-
-| | |
-|---|---|
-| **Auth** | Required — `TEACHER` only |
-| **Success** | `200 OK` |
-
-### `POST /advisory/sync`
-Manually trigger a re-sync of advisory data from EnrollPro.
+**Response:**
+```json
+{
+  "student": { "id": "stud-uuid", "lrn": "123456789012", "firstName": "Juan" },
+  "grades": [
+    { 
+      "subject": "Mathematics",
+      "q1": 88, 
+      "q2": 90, 
+      "q3": null, 
+      "q4": null,
+      "final": 89
+    }
+  ]
+}
+```
 
 ---
 
 ## 4. Attendance
-Daily attendance tracking, section summaries, and SF2 exports.
+Daily attendance tracking and DepEd SF2 exports.
 
 ### `GET /attendance/section/:sectionId?date=YYYY-MM-DD`
-Get the attendance status for all students in a section.
+Get the attendance status for all students in a section on a specific date.
 
 | | |
 |---|---|
-| **Auth** | Required — `TEACHER/ADMIN/REGISTRAR` |
+| **Auth** | Required |
 | **Success** | `200 OK` |
 
 ### `POST /attendance/bulk`
@@ -183,27 +141,13 @@ Save or update attendance records for multiple students.
 | **Auth** | Required — `TEACHER/ADMIN` |
 | **Success** | `200 OK` |
 
-**Request body:**
-```json
-{
-  "sectionId": "sec-uuid",
-  "date": "2026-05-14",
-  "attendance": [
-    { "studentId": "stud-uuid", "status": "ABSENT", "remarks": "Sick" }
-  ]
-}
-```
-
-### `GET /attendance/export/:sectionId`
-Export attendance to a DepEd SF2 (School Form 2) format Excel file.
-
 ---
 
-## 5. Grades
-Class records, quarterly grades, ECR imports, and analytics.
+## 5. Grades & Class Records
+Class records, quarterly grades, and ECR imports.
 
 ### `GET /grades/my-classes`
-List all class assignments for the authenticated teacher.
+List all class assignments for the authenticated teacher in the current school year.
 
 | | |
 |---|---|
@@ -218,73 +162,53 @@ Get the full class record (students and grades) for a specific assignment.
 | **Auth** | Required — `TEACHER` only |
 | **Success** | `200 OK` |
 
-### `POST /grades/grade`
-Create or update a student's grade for a specific quarter.
+---
+
+## 6. Admin & School Calendar
+System settings, audit logs, and academic calendar.
+
+### `GET /admin/settings`
+**Fetch School Information and Academic Calendar.** This endpoint provides the official school year, current quarter, and start/end dates for each quarter.
 
 | | |
 |---|---|
-| **Auth** | Required — `TEACHER` only |
+| **Auth** | Required — All Roles |
 | **Success** | `200 OK` |
 
-**Request body:**
+**Response:**
 ```json
 {
-  "studentId": "stud-uuid",
-  "classAssignmentId": "ca-uuid",
-  "quarter": "Q1",
-  "writtenWorkScores": [{ "name": "WW1", "score": 15, "maxScore": 20 }],
-  "perfTaskScores": [{ "name": "PT1", "score": 25, "maxScore": 30 }],
-  "quarterlyAssessScore": 40,
-  "quarterlyAssessMax": 50
+  "settings": {
+    "schoolName": "Example National High School",
+    "currentSchoolYear": "2026-2027",
+    "currentQuarter": "Q1",
+    "q1StartDate": "2026-06-01T00:00:00.000Z",
+    "q1EndDate": "2026-08-15T23:59:59.000Z",
+    "q2StartDate": "2026-08-16T00:00:00.000Z",
+    "q2EndDate": "2026-10-30T23:59:59.000Z",
+    "q3StartDate": "2026-11-01T00:00:00.000Z",
+    "q3EndDate": "2027-01-20T23:59:59.000Z",
+    "q4StartDate": "2027-01-21T00:00:00.000Z",
+    "q4EndDate": "2027-04-05T23:59:59.000Z",
+    "autoAdvanceQuarter": true
+  }
 }
 ```
 
-### `POST /grades/ecr/import`
-Import grades from a DepEd ECR Excel file into the SMART database.
-
----
-
-## 6. Admin
-User management, system settings, audit logs, and sync triggers.
-
-### `GET /admin/dashboard`
-Get system-wide statistics for the administrator dashboard.
-
-| | |
-|---|---|
-| **Auth** | Required — `ADMIN` |
-| **Success** | `200 OK` |
-
-### `POST /admin/users`
-Create a new user account (Admin, Registrar, or Teacher).
-
-| | |
-|---|---|
-| **Auth** | Required — `ADMIN` |
-| **Success** | `201 Created` |
-
 ### `PUT /admin/settings`
-Update school profile, current school year/quarter, and colors.
-
-| | |
-|---|---|
-| **Auth** | Required — `ADMIN` |
-| **Success** | `200 OK` |
-
-### `GET /admin/logs/export`
-Download the full audit trail in CSV format.
+Update school profile and calendar dates. (Admin only)
 
 ---
 
-## 7. Registrar
-Student master list, SF9/SF10 generation, and SF1 exports.
+## 7. Registrar & Forms
+Student master list and DepEd School Form generation.
 
 ### `GET /registrar/students`
-List all enrolled students with optional filtering.
+List all enrolled students with optional filtering (LRN, name, status).
 
 | | |
 |---|---|
-| **Auth** | Required — `REGISTRAR` |
+| **Auth** | Required — `REGISTRAR/ADMIN` |
 | **Success** | `200 OK` |
 
 ### `GET /registrar/forms/sf9/:studentId`
@@ -292,11 +216,8 @@ Generate data for **School Form 9 (Progress Report Card)**.
 
 | | |
 |---|---|
-| **Auth** | Required — `REGISTRAR` |
+| **Auth** | Required — `REGISTRAR/TEACHER` |
 | **Success** | `200 OK` |
-
-### `GET /registrar/export/sf1/:sectionId`
-Export **School Form 1 (School Register)** for an entire section to Excel.
 
 ---
 

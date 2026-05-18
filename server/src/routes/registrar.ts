@@ -1366,13 +1366,31 @@ router.get("/section-roster/:sectionId", authenticateToken, async (req: AuthRequ
 // Phase 2 – EOSY
 // ============================================================
 
+// GET /registrar/eosy/school-years — list school years from EnrollPro
+router.get("/eosy/school-years", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
+  try {
+    const { getEnrollProSchoolYears } = require("../lib/enrollproClient");
+    const data = await getEnrollProSchoolYears();
+    res.json(data);
+  } catch (err: any) {
+    console.error("[registrar/eosy/school-years]", err.message);
+    res.status(502).json({ message: "Failed to fetch school years from EnrollPro", error: err.message });
+  }
+});
+
 // GET /registrar/eosy/sections — sections available for EOSY
 router.get("/eosy/sections", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
   try {
-    const sy = await resolveEnrollProSchoolYear();
-    const data = await getEnrollProEosySections(sy.id);
+    let schoolYearId = parseInt(String(req.query.schoolYearId), 10);
+    if (isNaN(schoolYearId)) {
+      const sy = await resolveEnrollProSchoolYear();
+      schoolYearId = sy.id;
+    }
+    const data = await getEnrollProEosySections(schoolYearId);
     res.json(data);
   } catch (err: any) {
     console.error("[registrar/eosy/sections]", err.message);
@@ -1415,8 +1433,12 @@ router.get("/eosy/sf6", authenticateToken, async (req: AuthRequest, res: Respons
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
   try {
-    const sy = await resolveEnrollProSchoolYear();
-    const data = await getEnrollProEosySF6(sy.id);
+    let schoolYearId = parseInt(String(req.query.schoolYearId), 10);
+    if (isNaN(schoolYearId)) {
+      const sy = await resolveEnrollProSchoolYear();
+      schoolYearId = sy.id;
+    }
+    const data = await getEnrollProEosySF6(schoolYearId);
     res.json(data);
   } catch (err: any) {
     console.error("[registrar/eosy/sf6]", err.message);

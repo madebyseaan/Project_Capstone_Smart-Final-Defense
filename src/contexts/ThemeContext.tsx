@@ -65,22 +65,35 @@ function adjustColor(hexColor: string, amount: number): string {
 function applyThemeToDocument(colors: ThemeColors) {
   const root = document.documentElement;
   
-  // Set CSS variables
+  // Set primary theme variables (SMART specific)
   root.style.setProperty("--theme-primary", colors.primary);
   root.style.setProperty("--theme-secondary", colors.secondary);
   root.style.setProperty("--theme-accent", colors.accent);
+  
+  // Set EnrollPro compatible variables
+  root.style.setProperty("--primary-color", colors.primary);
+  root.style.setProperty("--secondary-color", colors.secondary);
+  root.style.setProperty("--accent-color", colors.accent);
+  root.style.setProperty("--text-color", isLightColor(colors.primary) ? "#1f2937" : "#ffffff");
+  root.style.setProperty("--bg-color", "#f8fafc");
   
   // Generate color variations
   root.style.setProperty("--theme-primary-light", adjustColor(colors.primary, 40));
   root.style.setProperty("--theme-primary-dark", adjustColor(colors.primary, -40));
   root.style.setProperty("--theme-secondary-light", adjustColor(colors.secondary, 40));
   root.style.setProperty("--theme-secondary-dark", adjustColor(colors.secondary, -40));
+  root.style.setProperty("--primary-light", adjustColor(colors.primary, 40));
+  root.style.setProperty("--primary-dark", adjustColor(colors.primary, -40));
   
   // Text color for buttons (white or black based on background)
   const primaryTextColor = isLightColor(colors.primary) ? "#1f2937" : "#ffffff";
   const secondaryTextColor = isLightColor(colors.secondary) ? "#1f2937" : "#ffffff";
   root.style.setProperty("--theme-primary-text", primaryTextColor);
   root.style.setProperty("--theme-secondary-text", secondaryTextColor);
+  root.style.setProperty("--text-primary", primaryTextColor);
+  root.style.setProperty("--text-secondary", secondaryTextColor);
+  root.style.setProperty("--on-primary", primaryTextColor);
+  root.style.setProperty("--on-secondary", secondaryTextColor);
   
   // RGB values for gradient/opacity uses
   const hexToRgb = (hex: string) => {
@@ -90,6 +103,31 @@ function applyThemeToDocument(colors: ThemeColors) {
   root.style.setProperty("--theme-primary-rgb", hexToRgb(colors.primary));
   root.style.setProperty("--theme-secondary-rgb", hexToRgb(colors.secondary));
   root.style.setProperty("--theme-accent-rgb", hexToRgb(colors.accent));
+  root.style.setProperty("--primary-rgb", hexToRgb(colors.primary));
+}
+
+function updateBrowserMetadata(schoolName: string, logoUrl: string | null) {
+  // Update document title with SMART suffix
+  if (schoolName && schoolName !== "School Management System") {
+    document.title = `${schoolName} | SMART`;
+  } else {
+    document.title = "SMART - Academic Grading System";
+  }
+
+  // Update favicon if logo exists
+  if (logoUrl) {
+    const fullLogoUrl = logoUrl.startsWith("http") ? logoUrl : `${window.location.origin}${logoUrl}`;
+    
+    // Find or create favicon link
+    let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.getElementsByTagName('head')[0].appendChild(link);
+    }
+    link.href = fullLogoUrl;
+    link.type = "image/x-icon"; // Standard for favicons
+  }
 }
 
 interface ThemeProviderProps {
@@ -126,6 +164,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   useEffect(() => {
     const cached = loadCachedTheme();
     applyThemeToDocument(cached?.colors ?? defaultColors);
+    updateBrowserMetadata(cached?.schoolName ?? schoolName, cached?.logoUrl ?? logoUrl);
   }, []);
 
   const refreshTheme = async () => {
@@ -161,10 +200,12 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
       // Apply to document
       applyThemeToDocument(newColors);
+      updateBrowserMetadata(newSchoolName, newLogoUrl);
     } catch (error) {
       console.error("Failed to fetch theme settings:", error);
       // Keep using current state (cached or default), just apply to document
       applyThemeToDocument(colors);
+      updateBrowserMetadata(schoolName, logoUrl);
     } finally {
       setLoading(false);
     }
@@ -197,6 +238,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
     // Apply to document
     applyThemeToDocument(newColors);
+    updateBrowserMetadata(newSchoolName, newLogoUrl);
   };
 
   useEffect(() => {

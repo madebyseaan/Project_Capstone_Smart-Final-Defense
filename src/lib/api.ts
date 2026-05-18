@@ -706,8 +706,11 @@ export const registrarApi = {
     api.get(`/registrar/section-roster/${sectionId}`),
 
   // EOSY (Phase 2)
-  getEosySections: () =>
-    api.get("/registrar/eosy/sections"),
+  getEosySchoolYears: () =>
+    api.get("/registrar/eosy/school-years"),
+
+  getEosySections: (schoolYearId?: number) =>
+    api.get("/registrar/eosy/sections", { params: schoolYearId ? { schoolYearId } : {} }),
 
   getEosySectionRecords: (sectionId: number) =>
     api.get(`/registrar/eosy/sections/${sectionId}/records`),
