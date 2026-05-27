@@ -61,8 +61,8 @@ export default function ClassRecordView() {
     source: "subject" | "generic-fallback";
     hasExactEcrTemplate: boolean;
   } | null>(null);
-  const [selectedQuarter, setSelectedQuarter] = useState<string>("Q1");
-  const [quarterInitialized, setQuarterInitialized] = useState(false);
+  const [selectedTerm, setSelectedTerm] = useState<string>("T1");
+  const [termInitialized, setTermInitialized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -94,20 +94,20 @@ export default function ClassRecordView() {
   const wwCount = useMemo(() => {
     let max = 1;
     classRecord.forEach(r => {
-      const grade = r.grades.find(g => g.quarter === selectedQuarter);
+      const grade = r.grades.find(g => g.term === selectedTerm);
       if (grade?.writtenWorkScores) max = Math.max(max, (grade.writtenWorkScores as any[]).length);
     });
     return max;
-  }, [classRecord, selectedQuarter]);
+  }, [classRecord, selectedTerm]);
 
   const ptCount = useMemo(() => {
     let max = 1;
     classRecord.forEach(r => {
-      const grade = r.grades.find(g => g.quarter === selectedQuarter);
+      const grade = r.grades.find(g => g.term === selectedTerm);
       if (grade?.perfTaskScores) max = Math.max(max, (grade.perfTaskScores as any[]).length);
     });
     return max;
-  }, [classRecord, selectedQuarter]);
+  }, [classRecord, selectedTerm]);
 
   const hpsData = useMemo(() => {
     const wwScores: ScoreItem[] = Array.from({ length: wwCount }, (_, i) => ({
@@ -124,7 +124,7 @@ export default function ClassRecordView() {
     let qaMax = 0;
 
     classRecord.forEach((record) => {
-      const grade = record.grades.find((g) => g.quarter === selectedQuarter);
+      const grade = record.grades.find((g) => g.term === selectedTerm);
       if (!grade) return;
 
       const ww = (grade.writtenWorkScores || []) as ScoreItem[];
@@ -150,11 +150,11 @@ export default function ClassRecordView() {
       ptScores,
       qaMax: qaMax || 100,
     };
-  }, [classRecord, selectedQuarter, wwCount, ptCount]);
+  }, [classRecord, selectedTerm, wwCount, ptCount]);
 
   useEffect(() => {
     const gradeSamples = classRecord
-      .map((record) => record.grades.find((g) => g.quarter === selectedQuarter))
+      .map((record) => record.grades.find((g) => g.term === selectedTerm))
       .filter(Boolean) as Array<any>;
 
     const wwSample = gradeSamples.find((g) => Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0);
@@ -184,7 +184,7 @@ export default function ClassRecordView() {
         date: qaSample?.qaDate || prev.date || '',
       };
     });
-  }, [classRecord, selectedQuarter, wwCount, ptCount]);
+  }, [classRecord, selectedTerm, wwCount, ptCount]);
 
   const applyMetaToScores = (
     scores: ScoreItem[],
@@ -235,7 +235,7 @@ export default function ClassRecordView() {
       return;
     }
     setMetaEditorDraft({
-      description: qaMeta.description || 'Quarterly Assessment',
+      description: qaMeta.description || 'Term Assessment',
       date: qaMeta.date || '',
     });
   };
@@ -276,14 +276,14 @@ export default function ClassRecordView() {
     setSavingMeta(true);
     try {
       const updatePromises = classRecord.map((record) => {
-        const grade = record.grades.find((g) => g.quarter === selectedQuarter);
+        const grade = record.grades.find((g) => g.term === selectedTerm);
         const wwScores = applyMetaToScores([...(grade?.writtenWorkScores || []) as ScoreItem[]], 'WW', wwCount, nextWwMeta);
         const ptScores = applyMetaToScores([...(grade?.perfTaskScores || []) as ScoreItem[]], 'PT', ptCount, nextPtMeta);
 
         return gradesApi.saveGrade({
           studentId: record.student.id,
           classAssignmentId,
-          quarter: selectedQuarter,
+          term: selectedTerm,
           writtenWorkScores: wwScores,
           perfTaskScores: ptScores,
           qaDescription: nextQaMeta.description || undefined,
@@ -343,14 +343,14 @@ export default function ClassRecordView() {
 
     try {
       const updatePromises = classRecord.map((record) => {
-        const grade = record.grades.find((g) => g.quarter === selectedQuarter);
+        const grade = record.grades.find((g) => g.term === selectedTerm);
         const wwScores = applyMetaToScores([...(grade?.writtenWorkScores || []) as ScoreItem[]], 'WW', wwCount, nextWwMeta);
         const ptScores = applyMetaToScores([...(grade?.perfTaskScores || []) as ScoreItem[]], 'PT', ptCount, nextPtMeta);
 
         return gradesApi.saveGrade({
           studentId: record.student.id,
           classAssignmentId,
-          quarter: selectedQuarter,
+          term: selectedTerm,
           writtenWorkScores: wwScores,
           perfTaskScores: ptScores,
           qaDescription: nextQaMeta.description || undefined,
@@ -403,7 +403,7 @@ export default function ClassRecordView() {
 
   useEffect(() => {
     fetchClassRecord();
-  }, [classAssignmentId, selectedQuarter]);
+  }, [classAssignmentId, selectedTerm]);
 
   useEffect(() => {
     if (classAssignmentId && !isHGClass) {
@@ -491,13 +491,13 @@ export default function ClassRecordView() {
     if (!classAssignmentId) return;
     try {
       if (!silent) setLoading(true);
-      const response = await gradesApi.getClassRecord(classAssignmentId, selectedQuarter);
+      const response = await gradesApi.getClassRecord(classAssignmentId, selectedTerm);
 
-      // Align initial quarter to system current quarter to avoid saving/viewing grades in the wrong quarter.
-      if (!quarterInitialized && response.data.currentQuarter) {
-        setQuarterInitialized(true);
-        if (response.data.currentQuarter !== selectedQuarter) {
-          setSelectedQuarter(response.data.currentQuarter);
+      // Align initial term to system current term to avoid saving/viewing grades in the wrong term.
+      if (!termInitialized && response.data.currentTerm) {
+        setTermInitialized(true);
+        if (response.data.currentTerm !== selectedTerm) {
+          setSelectedTerm(response.data.currentTerm);
           return;
         }
       }
@@ -550,7 +550,7 @@ export default function ClassRecordView() {
     await executeScoreUpdate({
       classAssignmentId,
       classRecord,
-      selectedQuarter,
+      selectedTerm,
       studentId,
       category,
       index,
@@ -574,7 +574,7 @@ export default function ClassRecordView() {
     await executeHpsUpdate({
       classAssignmentId,
       classRecord,
-      selectedQuarter,
+      selectedTerm,
       category,
       index,
       newMax,
@@ -593,7 +593,7 @@ export default function ClassRecordView() {
       await gradesApi.saveGrade({
         studentId,
         classAssignmentId,
-        quarter: selectedQuarter,
+        term: selectedTerm,
         qualitativeDescriptor: descriptor,
       });
       setSuccess('Descriptor saved');
@@ -619,7 +619,7 @@ export default function ClassRecordView() {
     await executeRemoveTask({
       classAssignmentId,
       classRecord,
-      selectedQuarter,
+      selectedTerm,
       category,
       wwCount,
       ptCount,
@@ -637,7 +637,7 @@ export default function ClassRecordView() {
   const stats = useMemo(() => {
     if (classRecord.length === 0) return null;
     const grades = classRecord
-      .map((r) => r.grades.find((g) => g.quarter === selectedQuarter)?.quarterlyGrade)
+      .map((r) => r.grades.find((g) => g.term === selectedTerm)?.quarterlyGrade)
       .filter((g): g is number => g !== undefined && g !== null);
     if (grades.length === 0) return { avg: 0, passed: 0, highest: 0, lowest: 0 };
     return {
@@ -646,7 +646,7 @@ export default function ClassRecordView() {
       highest: Math.max(...grades),
       lowest: Math.min(...grades),
     };
-  }, [classRecord, selectedQuarter]);
+  }, [classRecord, selectedTerm]);
 
   const sortedRecords = useMemo(
     () =>
@@ -663,14 +663,14 @@ export default function ClassRecordView() {
 
     try {
       const updatePromises = classRecord.map((record) => {
-        const grade = record.grades.find((g) => g.quarter === selectedQuarter);
+        const grade = record.grades.find((g) => g.term === selectedTerm);
         const wwScores = applyMetaToScores([...(grade?.writtenWorkScores || []) as ScoreItem[]], 'WW', wwCount);
         const ptScores = applyMetaToScores([...(grade?.perfTaskScores || []) as ScoreItem[]], 'PT', ptCount);
 
         return gradesApi.saveGrade({
           studentId: record.student.id,
           classAssignmentId,
-          quarter: selectedQuarter,
+          term: selectedTerm,
           writtenWorkScores: wwScores,
           perfTaskScores: ptScores,
           qaDescription: qaMeta.description || undefined,
@@ -696,8 +696,8 @@ export default function ClassRecordView() {
     if (!classAssignmentId) return;
     try {
       setLoading(true);
-      await gradesApi.clearScores(classAssignmentId, selectedQuarter);
-      setSuccess("Successfully cleared all scores for the current quarter.");
+      await gradesApi.clearScores(classAssignmentId, selectedTerm);
+      setSuccess("Successfully cleared all scores for the current term.");
       await fetchClassRecord();
     } catch (err: any) {
       console.error("Failed to clear scores:", err);
@@ -718,7 +718,7 @@ export default function ClassRecordView() {
   }), [effectiveWeights, classAssignment?.subject?.writtenWorkWeight, classAssignment?.subject?.perfTaskWeight, classAssignment?.subject?.quarterlyAssessWeight]);
 
   const getDisplayFinalGrade = (record: ClassRecord): number | null =>
-    computeDisplayFinalGrade(record, selectedQuarter, activeWeights);
+    computeDisplayFinalGrade(record, selectedTerm, activeWeights);
 
   const openMobileEditor = (studentId: string) => {
     setMobileEditorStudentId(studentId);
@@ -768,7 +768,7 @@ export default function ClassRecordView() {
     index: number,
   ) => {
     const key = getMobileDraftKey(record.student.id, category, index);
-    const value = mobileScoreDraft[key] ?? computeScoreFromGrade(record, selectedQuarter, category, index);
+    const value = mobileScoreDraft[key] ?? computeScoreFromGrade(record, selectedTerm, category, index);
     const normalized = value.trim() === '' ? 0 : Number(value);
     const maxAllowed = getMaxForCell(category, index);
 
@@ -800,7 +800,7 @@ export default function ClassRecordView() {
       const response = await fetch(`${SERVER_URL}/api/ecr-templates/generate/${classAssignment.id}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quarter: selectedQuarter }),
+        body: JSON.stringify({ term: selectedTerm }),
       });
 
       if (!response.ok) throw new Error('Failed to generate ECR');
@@ -881,17 +881,17 @@ export default function ClassRecordView() {
         <>
           <ClassRecordMobileList
             records={sortedRecords}
-            selectedQuarter={selectedQuarter}
+            selectedTerm={selectedTerm}
             isHGClass
-            onQuarterChange={setSelectedQuarter}
+            onTermChange={setSelectedTerm}
             onOpenEditor={openMobileEditor}
             getDisplayFinalGrade={getDisplayFinalGrade}
             getGradeColor={getGradeColor}
           />
           <HGDescriptorPanel
             records={sortedRecords}
-            selectedQuarter={selectedQuarter}
-            onQuarterChange={setSelectedQuarter}
+            selectedTerm={selectedTerm}
+            onTermChange={setSelectedTerm}
             savingDescriptorStudentId={savingDescriptorStudentId}
             descriptors={HG_DESCRIPTORS}
             onDescriptorUpdate={handleDescriptorUpdate}
@@ -914,9 +914,9 @@ export default function ClassRecordView() {
         <>
           <ClassRecordMobileList
             records={sortedRecords}
-            selectedQuarter={selectedQuarter}
+            selectedTerm={selectedTerm}
             isHGClass={false}
-            onQuarterChange={setSelectedQuarter}
+            onTermChange={setSelectedTerm}
             onOpenEditor={openMobileEditor}
             getDisplayFinalGrade={getDisplayFinalGrade}
             getGradeColor={getGradeColor}
@@ -925,8 +925,8 @@ export default function ClassRecordView() {
           <ClassRecordTable
             classAssignment={classAssignment}
             effectiveWeights={effectiveWeights}
-            selectedQuarter={selectedQuarter}
-            onQuarterChange={setSelectedQuarter}
+            selectedTerm={selectedTerm}
+            onTermChange={setSelectedTerm}
             separateByGender={separateByGender}
             onSeparateByGenderChange={setSeparateByGender}
             showAssessmentDetails={showAssessmentDetails}
@@ -951,8 +951,6 @@ export default function ClassRecordView() {
             assessmentHeaderNode={
               <AssessmentHeader
                 showAssessmentDetails={showAssessmentDetails}
-                metaEditorTop={metaEditorTop}
-                assessmentDetailsTop={assessmentDetailsTop}
                 assessmentDetailsRef={assessmentDetailsRef}
                 metaEditorRef={metaEditorRef}
                 wwCount={wwCount}
@@ -987,7 +985,7 @@ export default function ClassRecordView() {
         }}
         selectedRecord={selectedMobileRecord}
         isHGClass={isHGClass}
-        selectedQuarter={selectedQuarter}
+        selectedTerm={selectedTerm}
         hgDescriptors={HG_DESCRIPTORS}
         mobileEditorTab={mobileEditorTab}
         onTabChange={setMobileEditorTab}
@@ -1000,7 +998,7 @@ export default function ClassRecordView() {
         invalidCells={invalidCells}
         getCellKey={getCellKey}
         getMobileDraftKey={getMobileDraftKey}
-        getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedQuarter, category, index)}
+        getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)}
         getMaxForCell={getMaxForCell}
         onMobileScoreDraftChange={handleMobileDraftChange}
         onMobileScoreCommit={commitMobileScore}

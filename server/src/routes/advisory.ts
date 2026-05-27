@@ -369,8 +369,8 @@ router.get(
 
       // Format grades by subject
       const subjectGrades = dedupedAssignments.map((ca) => {
-        const quarters = ["Q1", "Q2", "Q3", "Q4"] as const;
-        const gradesByQuarter: Record<string, {
+        const terms = ["T1", "T2", "T3"] as const;
+        const gradesByTerm: Record<string, {
           writtenWorkPS: number | null;
           perfTaskPS: number | null;
           quarterlyAssessPS: number | null;
@@ -379,9 +379,9 @@ router.get(
           qualitativeDescriptor: string | null;
         } | null> = {};
         
-        quarters.forEach((q) => {
-          const grade = ca.grades.find((g: Grade) => g.quarter === q);
-          gradesByQuarter[q] = grade ? {
+        terms.forEach((q) => {
+          const grade = ca.grades.find((g: Grade) => g.term === q);
+          gradesByTerm[q] = grade ? {
             writtenWorkPS: grade.writtenWorkPS,
             perfTaskPS: grade.perfTaskPS,
             quarterlyAssessPS: grade.quarterlyAssessPS,
@@ -391,13 +391,13 @@ router.get(
           } : null;
         });
 
-        // Calculate final grade (average of available quarterly grades)
-        const quarterlyGrades = Object.values(gradesByQuarter)
+        // Calculate final grade (average of available term grades)
+        const termGrades = Object.values(gradesByTerm)
           .filter((g): g is NonNullable<typeof g> => g?.quarterlyGrade !== null && g?.quarterlyGrade !== undefined)
           .map((g) => g.quarterlyGrade as number);
         
-        const finalGrade = quarterlyGrades.length > 0 
-          ? Math.round(quarterlyGrades.reduce((a, b) => a + b, 0) / quarterlyGrades.length)
+        const finalGrade = termGrades.length > 0 
+          ? Math.round(termGrades.reduce((a, b) => a + b, 0) / termGrades.length)
           : null;
 
         return {
@@ -406,7 +406,7 @@ router.get(
           subjectName: ca.subject.name,
           subjectType: ca.subject.type,
           teacher: `${toDisplayName(ca.teacher.user.firstName)} ${toDisplayName(ca.teacher.user.lastName)}`,
-          grades: gradesByQuarter,
+          grades: gradesByTerm,
           finalGrade,
           remarks: finalGrade ? (finalGrade >= 75 ? "PASSED" : "FAILED") : null,
         };
@@ -534,7 +534,7 @@ router.get(
         include: {
           subject: { select: { code: true } },
           grades: {
-            where: { quarter: "Q1" }, // Current quarter
+            where: { term: "T1" }, // Current term
           },
         },
       }) as (ClassAssignment & { subject: { code: string }; grades: Grade[] })[];

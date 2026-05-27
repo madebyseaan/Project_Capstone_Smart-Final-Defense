@@ -839,10 +839,9 @@ export default function StudentRecords() {
                           <TableHeader>
                             <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100">
                               <TableHead className="font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base">Subject</TableHead>
-                              <TableHead className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base w-14 sm:w-20">Q1</TableHead>
-                              <TableHead className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base w-14 sm:w-20">Q2</TableHead>
-                              <TableHead className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base w-14 sm:w-20">Q3</TableHead>
-                              <TableHead className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base w-14 sm:w-20">Q4</TableHead>
+                              <TableHead className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base w-14 sm:w-20">T1</TableHead>
+                              <TableHead className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base w-14 sm:w-20">T2</TableHead>
+                              <TableHead className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base w-14 sm:w-20">T3</TableHead>
                               <TableHead className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base w-14 sm:w-20">Final</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -850,10 +849,9 @@ export default function StudentRecords() {
                             {sf9Data.subjectGrades.map((sg: any) => (
                               <TableRow key={sg.subjectCode} className="border-b border-gray-200">
                                 <TableCell className="font-semibold text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.subjectName}</TableCell>
-                                <TableCell className="text-center text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.Q1 ?? "-"}</TableCell>
-                                <TableCell className="text-center text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.Q2 ?? "-"}</TableCell>
-                                <TableCell className="text-center text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.Q3 ?? "-"}</TableCell>
-                                <TableCell className="text-center text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.Q4 ?? "-"}</TableCell>
+                                <TableCell className="text-center text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.T1 ?? "-"}</TableCell>
+                                <TableCell className="text-center text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.T2 ?? "-"}</TableCell>
+                                <TableCell className="text-center text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.T3 ?? "-"}</TableCell>
                                 <TableCell className="text-center font-bold text-gray-900 py-3 sm:py-4 text-sm sm:text-base">{sg.final ?? "-"}</TableCell>
                               </TableRow>
                             ))}

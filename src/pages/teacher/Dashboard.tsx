@@ -60,7 +60,7 @@ interface DashboardData {
   };
   classAssignments: ClassAssignment[];
   archivedClassesCount?: number;
-  currentQuarter: string;
+  currentTerm: string;
 }
 
 interface ClassStats {
@@ -123,7 +123,7 @@ export default function TeacherDashboard() {
   const [advisoryHonors, setAdvisoryHonors] = useState<AdvisoryHonorsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedHonorsQuarter, setSelectedHonorsQuarter] = useState<string>("all");
+  const [selectedHonorsTerm, setSelectedHonorsTerm] = useState<string>("all");
   const [selectedGradeLevel, setSelectedGradeLevel] = useState<string>("all");
   const [selectedSection, setSelectedSection] = useState<string>("all");
 
@@ -153,7 +153,7 @@ export default function TeacherDashboard() {
         setStats(statsRes.data);
         setMasteryData(masteryRes.data);
         setAdvisoryHonors(advisoryHonorsRes.data);
-        setSelectedHonorsQuarter(dashboardRes.data.currentQuarter);
+        setSelectedHonorsTerm(dashboardRes.data.currentTerm);
       } catch (err) {
         setError("Failed to load dashboard data");
         console.error(err);
@@ -172,12 +172,12 @@ export default function TeacherDashboard() {
     }
   }, [selectedGradeLevel, selectedSection]);
 
-  // Update honors data when quarter changes
+  // Update honors data when term changes
   useEffect(() => {
-    if (!loading && selectedHonorsQuarter && selectedHonorsQuarter !== "all") {
+    if (!loading && selectedHonorsTerm && selectedHonorsTerm !== "all") {
       const fetchHonors = async () => {
         try {
-          const res = await gradesApi.getAdvisoryHonors(selectedHonorsQuarter);
+          const res = await gradesApi.getAdvisoryHonors(selectedHonorsTerm);
           setAdvisoryHonors(res.data);
         } catch (err) {
           console.error("Error fetching honors:", err);
@@ -185,7 +185,7 @@ export default function TeacherDashboard() {
       };
       fetchHonors();
     }
-  }, [selectedHonorsQuarter]);
+  }, [selectedHonorsTerm]);
 
   // Get filtered sections based on selected grade level
   const filteredSections = selectedGradeLevel === "all"
@@ -284,10 +284,9 @@ export default function TeacherDashboard() {
               <Badge variant="secondary" className="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border"
                 style={{ backgroundColor: `${colors.primary}15`, color: colors.primary, borderColor: `${colors.primary}30` }}>
                 <Target className="w-3 h-3 mr-2" />
-                {data.currentQuarter === 'Q1' ? '1st Quarter' : 
-                 data.currentQuarter === 'Q2' ? '2nd Quarter' : 
-                 data.currentQuarter === 'Q3' ? '3rd Quarter' : 
-                 data.currentQuarter === 'Q4' ? '4th Quarter' : 
+                {data.currentTerm === 'T1' ? 'Term 1' : 
+                 data.currentTerm === 'T2' ? 'Term 2' : 
+                 data.currentTerm === 'T3' ? 'Term 3' : 
                  'Teacher Portal v2.0'}
               </Badge>
               <div className="h-4 w-px bg-slate-200" />
@@ -586,15 +585,14 @@ export default function TeacherDashboard() {
                 </Badge>
               )}
               
-              <Select value={selectedHonorsQuarter} onValueChange={(val) => val && setSelectedHonorsQuarter(val)}>
+              <Select value={selectedHonorsTerm} onValueChange={(val) => val && setSelectedHonorsTerm(val)}>
                 <SelectTrigger className="h-9 w-[130px] bg-slate-50 border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm">
-                  <SelectValue placeholder="Select Quarter" />
+                  <SelectValue placeholder="Select Term" />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                  <SelectItem value="Q1" className="text-xs font-bold uppercase">1st Quarter</SelectItem>
-                  <SelectItem value="Q2" className="text-xs font-bold uppercase">2nd Quarter</SelectItem>
-                  <SelectItem value="Q3" className="text-xs font-bold uppercase">3rd Quarter</SelectItem>
-                  <SelectItem value="Q4" className="text-xs font-bold uppercase">4th Quarter</SelectItem>
+                  <SelectItem value="T1" className="text-xs font-bold uppercase">Term 1</SelectItem>
+                  <SelectItem value="T2" className="text-xs font-bold uppercase">Term 2</SelectItem>
+                  <SelectItem value="T3" className="text-xs font-bold uppercase">Term 3</SelectItem>
                   <SelectItem value="FINAL" className="text-xs font-bold uppercase">Final Grade</SelectItem>
                 </SelectContent>
               </Select>

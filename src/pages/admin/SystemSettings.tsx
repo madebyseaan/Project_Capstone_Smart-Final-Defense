@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Settings,
   Save,
@@ -74,7 +74,7 @@ const DEPED_DIVISIONS = [
   // NCR
   "Division of Manila",
   "Division of Quezon City",
-  "Division of Las PiÃ±as",
+  "Division of Las Piñas",
   "Division of Makati",
   "Division of Pasay",
   "Division of Taguig",
@@ -292,7 +292,7 @@ export default function SystemSettings() {
   };
 
   const handleCancelLogo = () => {
-    // kept for compatibility â€” no longer used
+    // kept for compatibility — no longer used
   };
 
   const handleSyncFromEnrollPro = async () => {
@@ -520,7 +520,7 @@ export default function SystemSettings() {
                 )}
                 {!syncing && !settings.lastEnrollProSync && (
                   <p className="text-xs text-amber-600 mt-1.5">
-                    Not synced yet — auto-sync will run shortly, or click the button.
+                    Not synced yet � auto-sync will run shortly, or click the button.
                   </p>
                 )}
                 {syncError && (
@@ -632,7 +632,7 @@ export default function SystemSettings() {
             </div>
             <div>
               <CardTitle className="text-lg" style={{ color: '#111827' }}>Academic Settings</CardTitle>
-              <CardDescription>School year, quarter configuration, and academic calendar</CardDescription>
+              <CardDescription>School year, term configuration, and academic calendar</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -656,24 +656,22 @@ export default function SystemSettings() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="currentQuarter" className="text-sm font-semibold text-gray-700">
-                Current Quarter
+              <Label htmlFor="currentTerm" className="text-sm font-semibold text-gray-700">
+                Current Term
               </Label>
-              <Select value={settings.currentQuarter || "Q1"} onValueChange={(val) => val && handleChange("currentQuarter", val)}>
+              <Select value={settings.currentTerm || "T1"} onValueChange={(val) => val && handleChange("currentTerm", val)}>
                 <SelectTrigger className="rounded-xl border-gray-200">
                   <SelectValue>
-                    {settings.currentQuarter === "Q1" && "1st Quarter"}
-                    {settings.currentQuarter === "Q2" && "2nd Quarter"}
-                    {settings.currentQuarter === "Q3" && "3rd Quarter"}
-                    {settings.currentQuarter === "Q4" && "4th Quarter"}
-                    {!settings.currentQuarter && "1st Quarter"}
+                    {settings.currentTerm === "T1" && "Term 1"}
+                    {settings.currentTerm === "T2" && "Term 2"}
+                    {settings.currentTerm === "T3" && "Term 3"}
+                    {!settings.currentTerm && "Term 1"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Q1">1st Quarter</SelectItem>
-                  <SelectItem value="Q2">2nd Quarter</SelectItem>
-                  <SelectItem value="Q3">3rd Quarter</SelectItem>
-                  <SelectItem value="Q4">4th Quarter</SelectItem>
+                  <SelectItem value="T1">Term 1</SelectItem>
+                  <SelectItem value="T2">Term 2</SelectItem>
+                  <SelectItem value="T3">Term 3</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -686,30 +684,30 @@ export default function SystemSettings() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <Label className="text-sm font-semibold text-gray-700">Academic Calendar</Label>
-                <p className="text-xs text-gray-500 mt-1">Set the start and end dates for each quarter</p>
+                <p className="text-xs text-gray-500 mt-1">Set the start and end dates for each term</p>
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id="autoAdvanceQuarter"
-                  checked={settings.autoAdvanceQuarter || false}
-                  onChange={(e) => handleChange("autoAdvanceQuarter", e.target.checked)}
+                  id="autoAdvanceTerm"
+                  checked={settings.autoAdvanceTerm || false}
+                  onChange={(e) => handleChange("autoAdvanceTerm", e.target.checked)}
                   className="w-4 h-4 rounded border-gray-300"
                   style={{ accentColor: themeColors.primary }}
                 />
-                <Label htmlFor="autoAdvanceQuarter" className="text-sm text-gray-600 cursor-pointer">
-                  Auto-advance quarter when end date is reached
+                <Label htmlFor="autoAdvanceTerm" className="text-sm text-gray-600 cursor-pointer">
+                  Auto-advance term when end date is reached
                 </Label>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* 1st Quarter */}
+              {/* 1st Term */}
               <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: themeColors.primary }}>1</div>
-                  <span className="font-semibold text-gray-700">1st Quarter</span>
-                  {settings.currentQuarter === "Q1" && (
+                  <span className="font-semibold text-gray-700">1st Term</span>
+                  {settings.currentTerm === "T1" && (
                     <span className="ml-auto px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: themeColors.primary }}>Current</span>
                   )}
                 </div>
@@ -718,8 +716,8 @@ export default function SystemSettings() {
                     <Label className="text-xs text-gray-500">Start Date</Label>
                     <Input
                       type="date"
-                      value={settings.q1StartDate ? new Date(settings.q1StartDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("q1StartDate", e.target.value)}
+                      value={settings.t1StartDate ? new Date(settings.t1StartDate).toISOString().split('T')[0] : ""}
+                      onChange={(e) => handleChange("t1StartDate", e.target.value)}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -727,20 +725,20 @@ export default function SystemSettings() {
                     <Label className="text-xs text-gray-500">End Date</Label>
                     <Input
                       type="date"
-                      value={settings.q1EndDate ? new Date(settings.q1EndDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("q1EndDate", e.target.value)}
+                      value={settings.t1EndDate ? new Date(settings.t1EndDate).toISOString().split('T')[0] : ""}
+                      onChange={(e) => handleChange("t1EndDate", e.target.value)}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* 2nd Quarter */}
+              {/* 2nd Term */}
               <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: themeColors.secondary }}>2</div>
-                  <span className="font-semibold text-gray-700">2nd Quarter</span>
-                  {settings.currentQuarter === "Q2" && (
+                  <span className="font-semibold text-gray-700">2nd Term</span>
+                  {settings.currentTerm === "T2" && (
                     <span className="ml-auto px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: themeColors.primary }}>Current</span>
                   )}
                 </div>
@@ -749,8 +747,8 @@ export default function SystemSettings() {
                     <Label className="text-xs text-gray-500">Start Date</Label>
                     <Input
                       type="date"
-                      value={settings.q2StartDate ? new Date(settings.q2StartDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("q2StartDate", e.target.value)}
+                      value={settings.t2StartDate ? new Date(settings.t2StartDate).toISOString().split('T')[0] : ""}
+                      onChange={(e) => handleChange("t2StartDate", e.target.value)}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -758,20 +756,20 @@ export default function SystemSettings() {
                     <Label className="text-xs text-gray-500">End Date</Label>
                     <Input
                       type="date"
-                      value={settings.q2EndDate ? new Date(settings.q2EndDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("q2EndDate", e.target.value)}
+                      value={settings.t2EndDate ? new Date(settings.t2EndDate).toISOString().split('T')[0] : ""}
+                      onChange={(e) => handleChange("t2EndDate", e.target.value)}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* 3rd Quarter */}
+              {/* 3rd Term */}
               <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: themeColors.accent }}>3</div>
-                  <span className="font-semibold text-gray-700">3rd Quarter</span>
-                  {settings.currentQuarter === "Q3" && (
+                  <span className="font-semibold text-gray-700">3rd Term</span>
+                  {settings.currentTerm === "T3" && (
                     <span className="ml-auto px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: themeColors.primary }}>Current</span>
                   )}
                 </div>
@@ -780,8 +778,8 @@ export default function SystemSettings() {
                     <Label className="text-xs text-gray-500">Start Date</Label>
                     <Input
                       type="date"
-                      value={settings.q3StartDate ? new Date(settings.q3StartDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("q3StartDate", e.target.value)}
+                      value={settings.t3StartDate ? new Date(settings.t3StartDate).toISOString().split('T')[0] : ""}
+                      onChange={(e) => handleChange("t3StartDate", e.target.value)}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -789,44 +787,14 @@ export default function SystemSettings() {
                     <Label className="text-xs text-gray-500">End Date</Label>
                     <Input
                       type="date"
-                      value={settings.q3EndDate ? new Date(settings.q3EndDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("q3EndDate", e.target.value)}
+                      value={settings.t3EndDate ? new Date(settings.t3EndDate).toISOString().split('T')[0] : ""}
+                      onChange={(e) => handleChange("t3EndDate", e.target.value)}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* 4th Quarter */}
-              <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: `${themeColors.primary}30`, color: themeColors.primary }}>4</div>
-                  <span className="font-semibold text-gray-700">4th Quarter</span>
-                  {settings.currentQuarter === "Q4" && (
-                    <span className="ml-auto px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: themeColors.primary }}>Current</span>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">Start Date</Label>
-                    <Input
-                      type="date"
-                      value={settings.q4StartDate ? new Date(settings.q4StartDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("q4StartDate", e.target.value)}
-                      className="rounded-lg border-gray-200 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">End Date</Label>
-                    <Input
-                      type="date"
-                      value={settings.q4EndDate ? new Date(settings.q4EndDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("q4EndDate", e.target.value)}
-                      className="rounded-lg border-gray-200 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Info Box */}
@@ -834,7 +802,7 @@ export default function SystemSettings() {
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-blue-700">
-                  When "Auto-advance quarter" is enabled, the system will automatically switch to the next quarter when the current quarter's end date is reached. This ensures fresh grading data for each quarter.
+                  When "Auto-advance term" is enabled, the system will automatically switch to the next term when the current term's end date is reached. This ensures fresh grading data for each term.
                 </p>
               </div>
             </div>

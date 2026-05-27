@@ -80,9 +80,9 @@ model Subject {
   name                  String
   description           String?
   type                  SubjectType       @default(CORE)
-  writtenWorkWeight     Int               @default(30)
+  writtenWorkWeight     Int               @default(20)
   perfTaskWeight        Int               @default(50)
-  quarterlyAssessWeight Int               @default(20)
+  quarterlyAssessWeight Int               @default(30)
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   classAssignments      ClassAssignment[]
@@ -133,7 +133,7 @@ model Grade {
   id                   String          @id @default(cuid())
   studentId            String
   classAssignmentId    String
-  quarter              Quarter
+  term                 Term
   writtenWorkScores    Json?
   perfTaskScores       Json?
   quarterlyAssessScore Float?
@@ -152,7 +152,7 @@ model Grade {
   classAssignment      ClassAssignment @relation(fields: [classAssignmentId], references: [id], onDelete: Cascade)
   student              Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@unique([studentId, classAssignmentId, quarter])
+  @@unique([studentId, classAssignmentId, term])
 }
 
 model GradeSnapshot {
@@ -166,12 +166,12 @@ model GradeSnapshot {
   sectionId          String
   sectionName        String
   schoolYear         String
-  quarter            Quarter
+  term               Term
   snapshot           Json
   createdAt          DateTime @default(now())
 
-  @@index([studentId, classAssignmentId, quarter])
-  @@index([classAssignmentId, quarter])
+  @@index([studentId, classAssignmentId, term])
+  @@index([classAssignmentId, term])
   @@index([teacherId, createdAt])
 }
 
@@ -264,7 +264,7 @@ model SystemSettings {
   contactNumber      String?
   email              String?
   currentSchoolYear  String    @default("2025-2026")
-  currentQuarter     Quarter   @default(Q1)
+  currentTerm        Term      @default(T1)
   logoUrl            String?
   primaryColor       String    @default("#6366f1")
   secondaryColor     String    @default("#8b5cf6")
@@ -275,15 +275,13 @@ model SystemSettings {
   requireSpecialChar Boolean   @default(true)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
-  autoAdvanceQuarter Boolean   @default(false)
-  q1EndDate          DateTime?
-  q1StartDate        DateTime?
-  q2EndDate          DateTime?
-  q2StartDate        DateTime?
-  q3EndDate          DateTime?
-  q3StartDate        DateTime?
-  q4EndDate          DateTime?
-  q4StartDate        DateTime?
+  autoAdvanceTerm    Boolean   @default(false)
+  t1EndDate          DateTime?
+  t1StartDate        DateTime?
+  t2EndDate          DateTime?
+  t2StartDate        DateTime?
+  t3EndDate          DateTime?
+  t3StartDate        DateTime?
   lastEnrollProSync  DateTime?
 }
 
@@ -349,11 +347,10 @@ enum Role {
   REGISTRAR
 }
 
-enum Quarter {
-  Q1
-  Q2
-  Q3
-  Q4
+enum Term {
+  T1
+  T2
+  T3
 }
 
 enum GradeLevel {

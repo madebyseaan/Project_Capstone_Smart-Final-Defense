@@ -116,7 +116,7 @@ export interface Grade {
   id: string;
   studentId: string;
   classAssignmentId: string;
-  quarter: "Q1" | "Q2" | "Q3" | "Q4";
+  term: "T1" | "T2" | "T3";
   writtenWorkScores: ScoreItem[] | null;
   perfTaskScores: ScoreItem[] | null;
   quarterlyAssessScore: number | null;
@@ -192,11 +192,11 @@ export const gradesApi = {
 
   getMyClasses: () => api.get<ClassAssignment[]>("/grades/my-classes"),
 
-  getClassRecord: (classAssignmentId: string, quarter?: string) =>
+  getClassRecord: (classAssignmentId: string, term?: string) =>
     api.get<{
       classAssignment: ClassAssignment;
       classRecord: ClassRecord[];
-      currentQuarter?: "Q1" | "Q2" | "Q3" | "Q4";
+      currentTerm?: "T1" | "T2" | "T3";
       effectiveWeights?: {
         ww: number;
         pt: number;
@@ -205,13 +205,13 @@ export const gradesApi = {
         hasExactEcrTemplate: boolean;
       };
     }>(`/grades/class-record/${classAssignmentId}`, {
-      params: quarter ? { quarter } : {},
+      params: term ? { term } : {},
     }),
 
   saveGrade: (data: {
     studentId: string;
     classAssignmentId: string;
-    quarter: string;
+    term: string;
     writtenWorkScores?: ScoreItem[];
     perfTaskScores?: ScoreItem[];
     quarterlyAssessScore?: number;
@@ -223,10 +223,10 @@ export const gradesApi = {
 
   deleteGrade: (gradeId: string) => api.delete(`/grades/grade/${gradeId}`),
 
-  clearScores: (classAssignmentId: string, quarter: string) =>
+  clearScores: (classAssignmentId: string, term: string) =>
     api.post<{ message: string; count: number }>("/grades/clear-scores", {
       classAssignmentId,
-      quarter,
+      term,
     }),
 
   getMasteryDistribution: (gradeLevel?: string, sectionId?: string) =>
@@ -247,12 +247,12 @@ export const gradesApi = {
       params: { gradeLevel, sectionId },
     }),
 
-  getAdvisoryHonors: (quarter?: string) =>
+  getAdvisoryHonors: (term?: string) =>
     api.get<{
       advisoryHonors: { id: string; name: string; grade: number; honor: string; class: string }[];
       withHonors: { id: string; name: string; grade: number; honor: string; class: string }[];
       hasAdvisory: boolean;
-    }>("/grades/advisory-honors", { params: { quarter } }),
+    }>("/grades/advisory-honors", { params: { term } }),
 
   // ECR (E-Class Record) Import
   getEcrStatus: (classAssignmentId: string) =>
@@ -274,7 +274,7 @@ export const gradesApi = {
         subject?: string;
       };
       quarters: {
-        quarter: string;
+        term: string;
         maxScores: {
           writtenWork: number[];
           perfTask: number[];
@@ -313,12 +313,12 @@ export const gradesApi = {
     });
   },
 
-  importEcr: (classAssignmentId: string, file: File, selectedQuarters?: string[]) => {
+  importEcr: (classAssignmentId: string, file: File, selectedTerms?: string[]) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('classAssignmentId', classAssignmentId);
-    if (selectedQuarters) {
-      formData.append('selectedQuarters', JSON.stringify(selectedQuarters));
+    if (selectedTerms) {
+      formData.append('selectedQuarters', JSON.stringify(selectedTerms));
     }
     return api.post<{
       success: boolean;
@@ -402,10 +402,9 @@ export interface SubjectGrade {
   subjectType: string;
   teacher: string;
   grades: {
-    Q1: QuarterGrade | null;
-    Q2: QuarterGrade | null;
-    Q3: QuarterGrade | null;
-    Q4: QuarterGrade | null;
+    T1: QuarterGrade | null;
+    T2: QuarterGrade | null;
+    T3: QuarterGrade | null;
   };
   finalGrade: number | null;
   remarks: string | null;
@@ -571,10 +570,9 @@ export interface SF8Data {
     subjectGrades: {
       subjectCode: string;
       subjectName: string;
-      Q1?: number;
-      Q2?: number;
-      Q3?: number;
-      Q4?: number;
+      T1?: number;
+      T2?: number;
+      T3?: number;
       final?: number;
       remarks?: string;
     }[];
@@ -600,25 +598,22 @@ export interface SF9Data {
   subjectGrades: {
     subjectCode: string;
     subjectName: string;
-    Q1?: number;
-    Q2?: number;
-    Q3?: number;
-    Q4?: number;
+    T1?: number;
+    T2?: number;
+    T3?: number;
     final?: number;
     remarks?: string;
   }[];
   attendance: {
-    Q1?: { present: number; absent: number; tardy: number };
-    Q2?: { present: number; absent: number; tardy: number };
-    Q3?: { present: number; absent: number; tardy: number };
-    Q4?: { present: number; absent: number; tardy: number };
+    T1?: { present: number; absent: number; tardy: number };
+    T2?: { present: number; absent: number; tardy: number };
+    T3?: { present: number; absent: number; tardy: number };
   };
   values: {
     mpiDescription: string;
-    Q1?: string;
-    Q2?: string;
-    Q3?: string;
-    Q4?: string;
+    T1?: string;
+    T2?: string;
+    T3?: string;
   }[];
   generalAverage?: number;
   honors?: string;
@@ -644,10 +639,9 @@ export interface SF10Data {
     subjectGrades: {
       subjectCode: string;
       subjectName: string;
-      Q1?: number;
-      Q2?: number;
-      Q3?: number;
-      Q4?: number;
+      T1?: number;
+      T2?: number;
+      T3?: number;
       final?: number;
       remarks?: string;
     }[];
@@ -781,7 +775,7 @@ export interface AdminDashboard {
   settings?: {
     schoolName: string;
     currentSchoolYear: string;
-    currentQuarter: string;
+    currentTerm: string;
   };
 }
 
@@ -824,17 +818,15 @@ export interface SystemSettings {
   contactNumber?: string;
   email?: string;
   currentSchoolYear: string;
-  currentQuarter: string;
+  currentTerm: string;
   // Academic calendar dates
-  q1StartDate?: string;
-  q1EndDate?: string;
-  q2StartDate?: string;
-  q2EndDate?: string;
-  q3StartDate?: string;
-  q3EndDate?: string;
-  q4StartDate?: string;
-  q4EndDate?: string;
-  autoAdvanceQuarter?: boolean;
+  t1StartDate?: string;
+  t1EndDate?: string;
+  t2StartDate?: string;
+  t2EndDate?: string;
+  t3StartDate?: string;
+  t3EndDate?: string;
+  autoAdvanceTerm?: boolean;
   // Theming
   logoUrl?: string;
   primaryColor: string;

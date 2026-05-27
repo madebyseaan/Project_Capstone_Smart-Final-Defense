@@ -48,7 +48,7 @@ export function AssessmentHeader({
   assessmentDetailsRef,
 }: AssessmentHeaderProps) {
   const categoryLabel = selectedColumn
-    ? `${selectedColumn.type}${selectedColumn.type === "QA" ? "" : ` ${selectedColumn.number}`}`
+    ? `${selectedColumn.type === "QA" ? "TA" : selectedColumn.type}${selectedColumn.type === "QA" ? "" : ` ${selectedColumn.number}`}`
     : "";
 
   return (
@@ -219,15 +219,15 @@ export function AssessmentHeader({
                   </div>
                 </div>
 
-                {/* Quarterly Assessment */}
+                {/* Term Assessment */}
                 <div className="px-4 py-2.5 space-y-2 flex flex-col">
                   <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 flex items-center gap-1.5 mb-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
-                    Quarterly Assessment
+                    Term Assessment
                   </p>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">
-                      QA Date
+                      TA Date
                     </label>
                     <input
                       type="date"
@@ -238,13 +238,13 @@ export function AssessmentHeader({
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">
-                      QA Description
+                      TA Description
                     </label>
                     <input
                       type="text"
                       value={qaMeta.description}
                       onChange={(e) => setQaMeta((prev) => ({ ...prev, description: e.target.value }))}
-                      placeholder="e.g., Quarter 1 Exam"
+                      placeholder="e.g., Term Assessment"
                       className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 placeholder:text-slate-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-400/30 outline-none transition-all"
                     />
                   </div>

@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { PrismaClient, Role, GradeLevel, SubjectType, Quarter, AuditAction, AuditSeverity } from "@prisma/client";
+import { PrismaClient, Role, GradeLevel, SubjectType, Term, AuditAction, AuditSeverity } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
@@ -323,7 +323,7 @@ async function main() {
       division: "Division of Silay",
       region: "Region VI - Western Visayas",
       currentSchoolYear: "2025-2026",
-      currentQuarter: Quarter.Q1,
+      currentTerm: Term.T1,
     },
   });
 

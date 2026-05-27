@@ -12,21 +12,21 @@ import type { ClassRecord } from "@/lib/api";
 
 interface ClassRecordMobileListProps {
   records: ClassRecord[];
-  selectedQuarter: string;
+  selectedTerm: string;
   isHGClass: boolean;
-  onQuarterChange: (quarter: string) => void;
+  onTermChange: (term: string) => void;
   onOpenEditor: (studentId: string) => void;
   getDisplayFinalGrade: (record: ClassRecord) => number | null;
   getGradeColor: (grade: number | null) => string;
 }
 
-const quarters = ["Q1", "Q2", "Q3", "Q4"] as const;
+const terms = ["T1", "T2", "T3"] as const;
 
 export function ClassRecordMobileList({
   records,
-  selectedQuarter,
+  selectedTerm,
   isHGClass,
-  onQuarterChange,
+  onTermChange,
   onOpenEditor,
   getDisplayFinalGrade,
   getGradeColor,
@@ -37,18 +37,18 @@ export function ClassRecordMobileList({
         <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">
           {isHGClass ? "Homeroom Guidance" : "Class Ledger"}
         </h2>
-        <Select value={selectedQuarter} onValueChange={(val) => val && onQuarterChange(val)}>
+        <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)}>
           <SelectTrigger className="h-10 w-24 bg-white border-slate-200 text-xs font-black uppercase rounded-xl shadow-sm px-3">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="rounded-xl border-slate-200 shadow-2xl p-2">
-            {quarters.map((q) => (
+            {terms.map((q) => (
               <SelectItem
                 key={q}
                 value={q}
                 className="text-xs font-black uppercase rounded-lg py-2 px-4 focus:bg-indigo-50 focus:text-indigo-600 transition-colors cursor-pointer"
               >
-                {q}
+                { q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3" }
               </SelectItem>
             ))}
           </SelectContent>
@@ -57,7 +57,7 @@ export function ClassRecordMobileList({
 
       <CardContent className="p-4 space-y-3 bg-slate-50/40">
         {records.map((record, index) => {
-          const grade = record.grades.find((g) => g.quarter === selectedQuarter);
+          const grade = record.grades.find((g) => g.term === selectedTerm);
           const descriptor = grade?.qualitativeDescriptor ?? "Not set";
           const finalGrade = getDisplayFinalGrade(record);
 
@@ -104,7 +104,7 @@ export function ClassRecordMobileList({
                       </div>
                       <div className="w-px h-3 bg-slate-200" />
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">QA</span>
+                        <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">TA</span>
                         <span className="text-[10px] font-bold text-amber-600">
                           {qaScore !== null ? (qaMax ? `${qaScore}/${qaMax}` : String(qaScore)) : "—"}
                         </span>
@@ -121,7 +121,7 @@ export function ClassRecordMobileList({
                     </>
                   ) : (
                     <>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Final</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Grade</p>
                       <p className={`text-xl font-black ${getGradeColor(finalGrade)}`}>{finalGrade ?? "—"}</p>
                     </>
                   )}

@@ -157,7 +157,7 @@ function AssignmentCard({
               <div className="text-right">
                 <p className={`text-[10px] font-black uppercase tracking-widest ${mutedText}`}>Weights</p>
                 <p className={`${archived ? 'text-[10px]' : 'text-xs'} font-black text-slate-900 font-mono tracking-tighter`}>
-                  {assignment.subject.writtenWorkWeight}/{assignment.subject.perfTaskWeight}/{assignment.subject.quarterlyAssessWeight}
+                  {assignment.subject.writtenWorkWeight}/{assignment.subject.perfTaskWeight}/{assignment.subject.quarterlyAssessWeight} (TA)
                 </p>
               </div>
             </div>
@@ -448,7 +448,7 @@ export default function ClassRecordsList() {
 
                         <div className="hidden lg:block">
                           <div className="px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 group-hover:bg-white transition-colors">
-                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 text-center">WW / PT / QA</p>
+                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
                             <p className="text-sm text-slate-900 font-black font-mono tracking-tighter text-center">
                               {assignment.subject.writtenWorkWeight} / {assignment.subject.perfTaskWeight} / {assignment.subject.quarterlyAssessWeight}
                             </p>
@@ -540,7 +540,7 @@ export default function ClassRecordsList() {
 
                             <div className="hidden lg:block">
                               <div className="px-5 py-3 rounded-2xl bg-rose-50 border border-rose-100 group-hover:bg-white transition-colors">
-                                <p className="text-[9px] text-rose-400 font-black uppercase tracking-widest mb-1 text-center">WW / PT / QA</p>
+                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
                                 <p className="text-sm text-slate-900 font-black font-mono tracking-tighter text-center">
                                   {assignment.subject.writtenWorkWeight} / {assignment.subject.perfTaskWeight} / {assignment.subject.quarterlyAssessWeight}
                                 </p>

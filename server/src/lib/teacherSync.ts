@@ -612,7 +612,7 @@ export async function syncTeacherOnLogin(
         const allSubjectsA = await prisma.subject.findMany();
         const subjectByCodeA = new Map(allSubjectsA.map((s) => [s.code, s]));
         const allSectionsA = await prisma.section.findMany({ where: { schoolYear: schoolYearLabel } });
-        const sectionByNameA = new Map(allSectionsA.map((s) => [s.name.trim(), s]));
+        const sectionByKeyA = new Map(allSectionsA.map((s) => [`${s.name.trim()}:${s.gradeLevel}`, s]));
 
         // Pre-resolve EnrollPro sections for fallback lookup if needed
         let epSectionsSync: any[] | null = null;
@@ -622,8 +622,7 @@ export async function syncTeacherOnLogin(
           const atlasCode = normalizeSubjectLabel(assignment.subject?.code ?? '');
           let atlasSections: any[] = assignment.sections ?? [];
 
-          // FALLBACK: If 'sections' array is empty (common for BASELINE_ONLY assignments in detailed view),
-          // check if 'facultySubjects' in the faculty list (from Step 1) has 'sectionIds' for this subject.
+          // ... (fallback logic omitted for brevity in replace tool, but included in actual replacement)
           if (atlasSections.length === 0) {
             const fs = (atlasMember.facultySubjects || []).find((s: any) => 
               (s.subjectId && assignment.subjectId && s.subjectId === assignment.subjectId) || 
@@ -673,11 +672,11 @@ export async function syncTeacherOnLogin(
             }
 
             // Find or create the section in SMART
-            let section = sectionByNameA.get(atlasSection.name?.trim());
+            let section = sectionByKeyA.get(`${atlasSection.name?.trim()}:${gradeLevel}`);
             if (!section) {
               section = await upsertSection(atlasSection.name, gradeLevel, schoolYearLabel);
               if (section) {
-                sectionByNameA.set(atlasSection.name?.trim(), section);
+                sectionByKeyA.set(`${atlasSection.name?.trim()}:${gradeLevel}`, section);
               }
               console.log(`[TeacherSync] Created missing section "${atlasSection.name}"`);
             }
@@ -730,7 +729,7 @@ export async function syncTeacherOnLogin(
         const allSubjectsF = await prisma.subject.findMany();
         const subjectByCodeF = new Map(allSubjectsF.map((s) => [s.code, s]));
         const allSectionsF = await prisma.section.findMany({ where: { schoolYear: schoolYearLabel } });
-        const sectionByNameF = new Map(allSectionsF.map((s) => [s.name.trim(), s]));
+        const sectionByKeyF = new Map(allSectionsF.map((s) => [`${s.name.trim()}:${s.gradeLevel}`, s]));
 
         for (const assignment of flatAssignments) {
           const atlasCode = normalizeSubjectLabel(assignment?.subjectCode ?? assignment?.subject?.code);
@@ -765,10 +764,10 @@ export async function syncTeacherOnLogin(
             continue;
           }
 
-          let section = sectionByNameF.get(epSection.name?.trim());
+          let section = sectionByKeyF.get(`${epSection.name?.trim()}:${gradeLevel}`);
           if (!section) {
             section = await upsertSection(epSection.name, gradeLevel, schoolYearLabel);
-            if (section) sectionByNameF.set(epSection.name?.trim(), section);
+            if (section) sectionByKeyF.set(`${epSection.name?.trim()}:${gradeLevel}`, section);
           }
           if (!section) continue;
 
@@ -802,46 +801,20 @@ export async function syncTeacherOnLogin(
       }
 
       // IMPORTANT DATA-SAFETY POLICY:
-      // Do not delete class assignments during background/login sync.
-      // Grade rows cascade on classAssignment deletion, so any transient Atlas mismatch
-      // can erase teacher-entered WW/PT/QA data.
+      // Never archive/deactivate class assignments in teacher login/manual sync.
+      // Atlas responses can be partial per teacher and would cause stale flips on every login,
+      // which shows up as repeatedly growing archived class records in the UI.
       //
-      // Stale assignment cleanup should be handled by an explicit admin-maintenance flow
-      // that can archive/verify grades before pruning.
-      // ── 3.4 Deactivate stale assignments ────────────────────────────────
-      // We do NOT delete (destructive pruning), but we DO set isActive: false
-      // for any assignments previously tied to this teacher+year that Atlas
-      // no longer reports. This moves them to the "Archived" section in the UI.
-      if (desiredAssignmentPairs.size > 0) {
-        const currentAssignments = await prisma.classAssignment.findMany({
-          where: {
-            teacherId: smartTeacherId,
-            schoolYear: schoolYearLabel,
-          },
-          select: { id: true, subjectId: true, sectionId: true, isActive: true },
-        });
-
-        let deactivatedCount = 0;
-        for (const assignment of currentAssignments) {
-          const key = `${assignment.subjectId}:${assignment.sectionId}`;
-          const shouldBeActive = desiredAssignmentPairs.has(key);
-          if (assignment.isActive !== shouldBeActive) {
-            await prisma.classAssignment.update({
-              where: { id: assignment.id },
-              data: shouldBeActive
-                ? { isActive: true, archivedAt: null, archivedReason: null }
-                : { isActive: false, archivedAt: new Date(), archivedReason: 'Removed from Atlas schedule' },
-            });
-            if (!shouldBeActive) deactivatedCount++;
-          }
-        }
-        if (deactivatedCount > 0) {
-          console.log(`[TeacherSync] Deactivated ${deactivatedCount} stale assignment(s) for teacherId=${smartTeacherId}`);
-        }
+      // Stale cleanup is handled only by the dedicated global Atlas sync flow.
+      if (desiredAssignmentPairs.size === 0) {
+        console.log(
+          `[TeacherSync] Skip stale class-assignment checks for teacherId=${smartTeacherId}: ` +
+          `no concrete Atlas pairs resolved in this cycle.`,
+        );
       } else {
         console.log(
-          `[TeacherSync] Skip class-assignment deactivation for teacherId=${smartTeacherId}: ` +
-          `Atlas returned no concrete assignment pairs in this sync cycle (safety guard).`,
+          `[TeacherSync] Preserved existing assignments for teacherId=${smartTeacherId}; ` +
+          `stale archival is disabled in teacher-level sync (global Atlas sync handles this).`,
         );
       }
 

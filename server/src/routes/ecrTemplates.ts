@@ -358,8 +358,8 @@ router.post('/sync/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), uplo
     }
 
     const classAssignmentId = Array.isArray(req.params.classAssignmentId) ? req.params.classAssignmentId[0] : req.params.classAssignmentId;
-    const quarter: string = req.body.quarter || 'Q1';
-    console.log(`[ECR-SYNC] Starting sync for: ${classAssignmentId}, quarter: ${quarter}`);
+    const term: string = req.body.term || 'T1';
+    console.log(`[ECR-SYNC] Starting sync for: ${classAssignmentId}, term: ${term}`);
 
     // Fetch class assignment
     const classAssignment = await prisma.classAssignment.findUnique({
@@ -392,9 +392,9 @@ router.post('/sync/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), uplo
     // Load uploaded workbook
     const workbook = await XlsxPopulate.fromFileAsync(req.file.path);
     
-    // Find quarter sheet
-    const quarterNum = quarter.replace('Q', '');
-    const qPattern = new RegExp(`Q${quarterNum}`, 'i');
+    // Find term sheet
+    const termNum = term.replace('T', '');
+    const qPattern = new RegExp(`T${termNum}`, 'i');
     const baseSubject = classAssignment.subject.name.split(' ')[0].toUpperCase();
     
     let gradeSheet: any = null;
@@ -425,7 +425,7 @@ router.post('/sync/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), uplo
       // Fallback: any sheet matching quarter
       for (const sheetName of allSheets) {
         const upper = sheetName.toUpperCase().replace(/\s+/g, '');
-        if (qPattern.test(sheetName) && upper !== 'SUMMARYOFQUARTERLYGRADES') {
+        if (qPattern.test(sheetName) && upper !== 'SUMMARYOFTERMGRADES') {
           gradeSheet = workbook.sheet(sheetName);
           console.log(`[ECR-SYNC] Found sheet (fallback): ${sheetName}`);
           break;
@@ -435,7 +435,7 @@ router.post('/sync/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), uplo
 
     if (!gradeSheet) {
       fs.unlinkSync(req.file.path);
-      res.status(400).json({ success: false, error: `No ${quarter} sheet found in uploaded file` });
+      res.status(400).json({ success: false, error: `No ${term} sheet found in uploaded file` });
       return;
     }
 
@@ -572,7 +572,7 @@ router.post('/sync/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), uplo
         where: {
           classAssignmentId,
           studentId: student.id,
-          quarter: quarter as any
+          term: term as any
         }
       });
 
@@ -595,7 +595,7 @@ router.post('/sync/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), uplo
           data: {
             classAssignmentId,
             studentId: student.id,
-            quarter: quarter as any,
+            term: term as any,
             ...gradeData
           } as any
         });
@@ -611,7 +611,7 @@ router.post('/sync/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), uplo
     await createAuditLog(
       AuditAction.UPDATE,
       buildAuditUser(req),
-      `ECR Synced: ${classAssignment.subject.name} ${quarter}`,
+      `ECR Synced: ${classAssignment.subject.name} ${term}`,
       'ECR',
       `Synced ${updated + created} grades from uploaded file`,
       req.ip,
@@ -643,9 +643,9 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
   try {
     const startTime = Date.now();
     const classAssignmentId = Array.isArray(req.params.classAssignmentId) ? req.params.classAssignmentId[0] : req.params.classAssignmentId;
-    const quarter: string = req.body.quarter || 'Q1'; // Q1, Q2, Q3, or Q4
-    const quarterNum = quarter.replace('Q', ''); // '1', '2', '3', '4'
-    console.log(`[ECR] Starting FAST generation for: ${classAssignmentId}, quarter: ${quarter}`);
+    const term: string = req.body.term || 'T1'; // T1, T2, or T3
+    const termNum = term.replace('T', ''); // '1', '2', '3'
+    console.log(`[ECR] Starting FAST generation for: ${classAssignmentId}, term: ${term}`);
 
     // Fetch class assignment and settings first (enrollments fetched separately after we have schoolYear)
     const [classAssignmentBase, settings] = await Promise.all([
@@ -671,12 +671,12 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
     });
     const classAssignment: any = { ...classAssignmentBase, section: { ...classAssignmentBase.section, enrollments: sectionEnrollments } };
 
-    // Determine which quarter sheets to fill: Q1 through selected quarter
-    // e.g. downloading Q3 fills Q1, Q2, and Q3 sheets
-    const quartersToFill = Array.from({ length: parseInt(quarterNum) }, (_, i) => `Q${i + 1}`);
-    console.log(`[ECR] Will fill sheets for quarters: ${quartersToFill.join(', ')}`);
+    // Determine which term sheets to fill: T1 through selected term
+    // e.g. downloading T3 fills T1, T2, and T3 sheets
+    const termsToFill = Array.from({ length: parseInt(termNum) }, (_, i) => `T${i + 1}`);
+    console.log(`[ECR] Will fill sheets for terms: ${termsToFill.join(', ')}`);
 
-    // Fetch grades for all needed quarters in parallel
+    // Fetch grades for all needed terms in parallel
     const gradeSelect = {
       studentId: true, writtenWorkScores: true, perfTaskScores: true,
       quarterlyAssessScore: true, quarterlyAssessMax: true,
@@ -684,14 +684,14 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
       initialGrade: true, quarterlyGrade: true
     };
     const allGradeArrays = await Promise.all(
-      quartersToFill.map(q => prisma.grade.findMany({ where: { classAssignmentId, quarter: q } as any, select: gradeSelect }))
+      termsToFill.map(t => prisma.grade.findMany({ where: { classAssignmentId, term: t } as any, select: gradeSelect }))
     );
-    // Build per-quarter grade maps: quarter -> (studentId -> grade)
-    const gradesByQuarter = new Map<string, Map<string, any>>();
-    quartersToFill.forEach((q, idx) => {
+    // Build per-term grade maps: term -> (studentId -> grade)
+    const gradesByTerm = new Map<string, Map<string, any>>();
+    termsToFill.forEach((t, idx) => {
       const m = new Map<string, any>();
       allGradeArrays[idx].forEach((g: any) => m.set(g.studentId, g));
-      gradesByQuarter.set(q, m);
+      gradesByTerm.set(t, m);
     });
 
     console.log(`[ECR] Data fetched in ${Date.now() - startTime}ms`);
@@ -716,7 +716,7 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
     // 1.5) Subject code mapping — maps specialised codes (STE_, SPS_, SPA_, HG, etc.) to standard DepEd templates
     if (!ecrTemplate) {
       const ecrDir = path.join(__dirname, '../../uploads/ecr-templates');
-      const mappedPath = resolveEcrTemplatePath(subjectCode, quarter, ecrDir);
+      const mappedPath = resolveEcrTemplatePath(subjectCode, term, ecrDir);
       if (mappedPath) {
         ecrTemplate = { filePath: mappedPath, subjectName: baseSubjectName };
         console.log(`[ECR] Template: subject code mapping "${subjectCode}" → ${path.basename(mappedPath)}`);
@@ -785,7 +785,7 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
 
     const students = classAssignment.section.enrollments.map((e: any) => e.student);
     console.log(`[ECR] Students in class: ${students.length}`);
-    console.log(`[ECR] Grade records fetched: Q1=${allGradeArrays[0]?.length ?? 0} Q2=${allGradeArrays[1]?.length ?? 0} Q3=${allGradeArrays[2]?.length ?? 0} Q4=${allGradeArrays[3]?.length ?? 0}`);
+    console.log(`[ECR] Grade records fetched: T1=${allGradeArrays[0]?.length ?? 0} T2=${allGradeArrays[1]?.length ?? 0} T3=${allGradeArrays[2]?.length ?? 0}`);
 
     const teacherName = `${classAssignment.teacher.user.firstName || ''} ${classAssignment.teacher.user.lastName || ''}`.trim() || classAssignment.teacher.user.username;
     const gradeSection = `${classAssignment.section.gradeLevel.replace('GRADE_', 'Grade ')} - ${classAssignment.section.name}`;
@@ -806,9 +806,9 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
         'SUBJECT': classAssignment.subject.name,
       };
 
-      // Find first quarter sheet to use as reference for formula discovery
+      // Find first term sheet to use as reference for formula discovery
       const firstQSheet = allSheets
-        .filter(n => /Q[1-4]/i.test(n) && !n.toUpperCase().includes('SUMMARY'))
+        .filter(n => /T[1-3]/i.test(n) && !n.toUpperCase().includes('SUMMARY'))
         .map(n => { try { return workbook.sheet(n); } catch { return null; } })
         .find(s => s !== null);
 
@@ -846,7 +846,7 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
         }
       } else {
         // Fallback: standard DepEd ECR template fixed positions
-        console.log(`[ECR] No quarter sheet found — writing header at fixed positions`);
+        console.log(`[ECR] No term sheet found — writing header at fixed positions`);
         inputDataSheet.row(4).cell(7).value(settings?.region || '');
         inputDataSheet.row(4).cell(15).value(settings?.division || '');
         inputDataSheet.row(5).cell(7).value(settings?.schoolName || '');
@@ -906,21 +906,21 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
       }
     }
 
-    // Quarter labels used for header replacement
-    const quarterLabel: Record<string, string> = { Q1: 'FIRST QUARTER', Q2: 'SECOND QUARTER', Q3: 'THIRD QUARTER', Q4: 'FOURTH QUARTER' };
-    const allQuarterLabels = ['FIRST QUARTER', 'SECOND QUARTER', 'THIRD QUARTER', 'FOURTH QUARTER'];
+    // Term labels used for header replacement
+    const termLabel: Record<string, string> = { T1: 'FIRST TERM', T2: 'SECOND TERM', T3: 'THIRD TERM' };
+    const allTermLabels = ['FIRST TERM', 'SECOND TERM', 'THIRD TERM'];
     const baseSubject = classAssignment.subject.name.split(' ')[0].toUpperCase();
 
-    // ── Fill each quarter sheet from Q1 up to the selected quarter ──────────
-    for (const currentQ of quartersToFill) {
-      const currentQNum = currentQ.replace('Q', '');
-      const qIdx = quartersToFill.indexOf(currentQ);
-      const currentGradesByStudentId = gradesByQuarter.get(currentQ) || new Map();
-      const currentGradesArray = allGradeArrays[qIdx] as any[];
-      console.log(`[ECR] ── Processing ${currentQ} sheet (${currentGradesByStudentId.size} grade records) ──`);
+    // ── Fill each term sheet from T1 up to the selected term ──────────
+    for (const currentT of termsToFill) {
+      const currentTNum = currentT.replace('T', '');
+      const tIdx = termsToFill.indexOf(currentT);
+      const currentGradesByStudentId = gradesByTerm.get(currentT) || new Map();
+      const currentGradesArray = allGradeArrays[tIdx] as any[];
+      console.log(`[ECR] ── Processing ${currentT} sheet (${currentGradesByStudentId.size} grade records) ──`);
 
-      // Find the quarter sheet in the workbook
-      const cqPattern = new RegExp(`Q${currentQNum}`, 'i');
+      // Find the term sheet in the workbook
+      const cqPattern = new RegExp(`T${currentTNum}`, 'i');
       let gradeSheet: any = null;
 
       for (const sheetName of allSheets) {
@@ -928,27 +928,27 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
         const normalizedSubject = baseSubject.replace(/\s+/g, '');
         if (upperName.includes(normalizedSubject) && cqPattern.test(sheetName)) {
           gradeSheet = workbook.sheet(sheetName);
-          console.log(`[ECR] [${currentQ}] Using sheet (subject+quarter match): ${sheetName}`);
+          console.log(`[ECR] [${currentT}] Using sheet (subject+term match): ${sheetName}`);
           break;
         }
       }
       if (!gradeSheet) {
         for (const sheetName of allSheets) {
           const upper = sheetName.toUpperCase().replace(/\s+/g, '');
-          if (cqPattern.test(sheetName) && upper !== 'SUMMARYOFQUARTERLYGRADES') {
+          if (cqPattern.test(sheetName) && upper !== 'SUMMARYOFTERMGRADES') {
             gradeSheet = workbook.sheet(sheetName);
-            console.log(`[ECR] [${currentQ}] Using sheet (quarter fallback): ${sheetName}`);
+            console.log(`[ECR] [${currentT}] Using sheet (term fallback): ${sheetName}`);
             break;
           }
         }
       }
       if (!gradeSheet) {
-        console.log(`[ECR] [${currentQ}] No matching sheet found — skipping`);
+        console.log(`[ECR] [${currentT}] No matching sheet found — skipping`);
         continue;
       }
 
-      // Replace placeholders and fix quarter header label
-      const correctLabel = quarterLabel[currentQ] || quarterLabel['Q1'];
+      // Replace placeholders and fix term header label
+      const correctLabel = termLabel[currentT] || termLabel['T1'];
       const replacements: Record<string, string> = {
         '{{SCHOOL_NAME}}': settings?.schoolName || '',
         '{{SCHOOL_ID}}': settings?.schoolId || '',
@@ -971,7 +971,7 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
             for (const [placeholder, replacement] of Object.entries(replacements)) {
               if (newValue.includes(placeholder)) newValue = newValue.split(placeholder).join(replacement);
             }
-            for (const label of allQuarterLabels) {
+            for (const label of allTermLabels) {
               if (newValue.toUpperCase() === label && label !== correctLabel) { newValue = correctLabel; break; }
             }
             if (newValue !== value) cell.value(newValue);
@@ -992,8 +992,8 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
             if (typeof cellValue === 'string') {
               const upper = cellValue.toUpperCase().trim();
               if (upper.includes('HIGHEST') && upper.includes('SCORE')) highestScoreRow = r;
-              if (upper === 'MALE' && maleInsertRow === -1) { maleInsertRow = r + 1; console.log(`[ECR] [${currentQ}] MALE section at row ${r}`); }
-              if (upper === 'FEMALE' && femaleInsertRow === -1) { femaleInsertRow = r + 1; console.log(`[ECR] [${currentQ}] FEMALE section at row ${r}`); }
+              if (upper === 'MALE' && maleInsertRow === -1) { maleInsertRow = r + 1; console.log(`[ECR] [${currentT}] MALE section at row ${r}`); }
+              if (upper === 'FEMALE' && femaleInsertRow === -1) { femaleInsertRow = r + 1; console.log(`[ECR] [${currentT}] FEMALE section at row ${r}`); }
             }
           }
         }
@@ -1047,9 +1047,9 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
           if (pt >= 1) ptItemCount = pt;
           // QA input cell: after PT items + 3 aggregate cols (PT Total, PT HPS, PT PS)
           qaInputCol = ptStartCol + ptItemCount + 3;
-          console.log(`[ECR] [${currentQ}] Col detection row ${detectionRow}: WW C${wwStartCol}(${wwItemCount}) | PT C${ptStartCol}(${ptItemCount}) | QA C${qaInputCol}`);
+          console.log(`[ECR] [${currentT}] Col detection row ${detectionRow}: WW C${wwStartCol}(${wwItemCount}) | PT C${ptStartCol}(${ptItemCount}) | QA C${qaInputCol}`);
         } else {
-          console.log(`[ECR] [${currentQ}] Col detection failed — defaults: WW C${wwStartCol}(${wwItemCount}) PT C${ptStartCol}(${ptItemCount}) QA C${qaInputCol}`);
+          console.log(`[ECR] [${currentT}] Col detection failed — defaults: WW C${wwStartCol}(${wwItemCount}) PT C${ptStartCol}(${ptItemCount}) QA C${qaInputCol}`);
         }
       }
 
@@ -1091,7 +1091,7 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
 
       maleStudents.forEach((student: any, i: number) => insertStudentData(maleInsertRow + i, i + 1, student));
       femaleStudents.forEach((student: any, i: number) => insertStudentData(femaleInsertRow + i, i + 1, student));
-      console.log(`[ECR] [${currentQ}] ✅ Inserted ${maleStudents.length + femaleStudents.length} students`);
+      console.log(`[ECR] [${currentT}] ✅ Inserted ${maleStudents.length + femaleStudents.length} students`);
 
       // Write HPS (Highest Possible Score) row — only fills cells that are empty in the template
       const hpsRow = highestScoreRow !== -1 ? highestScoreRow : (maleInsertRow - 2);
@@ -1120,21 +1120,21 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
         }
         const existingQA = gradeSheet.row(hpsRow).cell(qaInputCol).value();
         if (existingQA === undefined || existingQA === null || existingQA === '') gradeSheet.row(hpsRow).cell(qaInputCol).value(100);
-        console.log(`[ECR] [${currentQ}] HPS row ${hpsRow}: WW=[${wwHPS.filter(v => v !== '').join(',')}] PT=[${ptHPS.filter(v => v !== '').join(',')}] QA=100`);
+        console.log(`[ECR] [${currentT}] HPS row ${hpsRow}: WW=[${wwHPS.filter(v => v !== '').join(',')}] PT=[${ptHPS.filter(v => v !== '').join(',')}] QA=100`);
       }
-    } // end for quartersToFill
+    } // end for termsToFill
 
     // Write to buffer (FAST!)
     const buffer = await workbook.outputAsync();
     const totalTime = Date.now() - startTime;
-    const outputFileName = `ECR_${classAssignment.subject.name}_${quarter}_${classAssignment.section.gradeLevel}_${classAssignment.section.name}_${Date.now()}.xlsx`;
+    const outputFileName = `ECR_${classAssignment.subject.name}_${term}_${classAssignment.section.gradeLevel}_${classAssignment.section.name}_${Date.now()}.xlsx`;
     console.log(`[ECR] ✅ Generation completed in ${totalTime}ms (${(totalTime / 1000).toFixed(1)}s)`);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${outputFileName}"`);
     res.send(Buffer.from(buffer));
 
-    createAuditLog(AuditAction.CREATE, buildAuditUser(req), `ECR Generated: ${classAssignment.subject.name} ${quarter}`, 'ECR', `Generated in ${totalTime}ms`, req.ip, AuditSeverity.INFO).catch(err => console.error('[ECR] Audit log failed:', err));
+    createAuditLog(AuditAction.CREATE, buildAuditUser(req), `ECR Generated: ${classAssignment.subject.name} ${term}`, 'ECR', `Generated in ${totalTime}ms`, req.ip, AuditSeverity.INFO).catch(err => console.error('[ECR] Audit log failed:', err));
   } catch (error: any) {
     console.error('[ECR] Generation failed:', error);
     res.status(500).json({ success: false, error: error.message });

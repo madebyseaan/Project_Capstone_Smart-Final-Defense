@@ -311,7 +311,7 @@ export default function StudentGradeProfilePage() {
               <div>
                 <CardTitle className="text-lg font-bold text-gray-900">Subject Grades</CardTitle>
                 <CardDescription className="text-gray-500 text-sm">
-                  Quarterly grades and final rating per subject
+                  Term grades and final rating per subject
                 </CardDescription>
               </div>
             </div>
@@ -326,10 +326,9 @@ export default function StudentGradeProfilePage() {
               <TableHeader>
                 <TableRow className="bg-gray-50/80">
                   <TableHead className="font-bold text-gray-700 min-w-[200px]">Subject</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center">Q1</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center">Q2</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center">Q3</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center">Q4</TableHead>
+                  <TableHead className="font-bold text-gray-700 text-center">T1</TableHead>
+                  <TableHead className="font-bold text-gray-700 text-center">T2</TableHead>
+                  <TableHead className="font-bold text-gray-700 text-center">T3</TableHead>
                   <TableHead className="font-bold text-gray-700 text-center" style={{ backgroundColor: `${colors.primary}08` }}>Final Grade</TableHead>
                   <TableHead className="font-bold text-gray-700 text-center">Remarks</TableHead>
                 </TableRow>
@@ -343,12 +342,12 @@ export default function StudentGradeProfilePage() {
                         <p className="text-xs text-gray-500">{subject.teacher}</p>
                       </div>
                     </TableCell>
-                    {(["Q1", "Q2", "Q3", "Q4"] as const).map((quarter) => {
-                      const grade = subject.grades[quarter]?.quarterlyGrade;
-                      const descriptor = subject.grades[quarter]?.qualitativeDescriptor;
+                    {(["T1", "T2", "T3"] as const).map((term) => {
+                      const grade = subject.grades[term]?.quarterlyGrade;
+                      const descriptor = subject.grades[term]?.qualitativeDescriptor;
                       const isHG = subject.subjectCode.startsWith("HG");
                       return (
-                        <TableCell key={quarter} className="text-center">
+                        <TableCell key={term} className="text-center">
                           {grade !== null && grade !== undefined ? (
                             <span className={`font-semibold ${grade >= 75 ? "text-gray-900" : "text-red-600"}`}>
                               {grade}

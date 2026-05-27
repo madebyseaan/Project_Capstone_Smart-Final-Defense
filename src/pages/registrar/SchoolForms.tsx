@@ -137,7 +137,7 @@ const schoolForms: SchoolForm[] = [
     id: "SF9",
     name: "Report Card",
     fullName: "School Form 9 - Learner's Progress Report Card",
-    description: "Quarterly issued report card.",
+    description: "Term-based issued report card.",
     icon: FileText,
     color: "blue",
     status: "active",
@@ -732,7 +732,7 @@ export default function SchoolForms() {
               <thead>
                 <tr className="border-b-2 border-gray-600 bg-gray-100">
                   <th rowSpan={2} className="border-r border-gray-600 p-2 text-left text-gray-900 w-44">Learning Areas</th>
-                  <th colSpan={4} className="border-r border-gray-600 p-2 text-gray-900">Quarter</th>
+                  <th colSpan={3} className="border-r border-gray-600 p-2 text-gray-900">Term</th>
                   <th rowSpan={2} className="border-r border-gray-600 p-2 text-gray-900 w-16">Final<br/>Rating</th>
                   <th rowSpan={2} className="p-2 text-gray-900 w-20">Remarks</th>
                 </tr>
@@ -740,24 +740,20 @@ export default function SchoolForms() {
                   <th className="border-r border-gray-600 p-2 w-12 text-gray-900">1</th>
                   <th className="border-r border-gray-600 p-2 w-12 text-gray-900">2</th>
                   <th className="border-r border-gray-600 p-2 w-12 text-gray-900">3</th>
-                  <th className="border-r border-gray-600 p-2 w-12 text-gray-900">4</th>
                 </tr>
               </thead>
               <tbody>
                 {sf9Data.subjectGrades.map((sg: any, index: number) => (
                   <tr key={index} className="border-b border-gray-600">
                     <td className="border-r border-gray-600 p-2 font-medium text-gray-900">{sg.subjectName}</td>
-                    <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.Q1 ?? 0) < 75 && sg.Q1 ? 'text-red-600' : 'text-gray-900'}`}>
-                      {sg.Q1 ?? ''}
+                    <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.T1 ?? 0) < 75 && sg.T1 ? 'text-red-600' : 'text-gray-900'}`}>
+                      {sg.T1 ?? ''}
                     </td>
-                    <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.Q2 ?? 0) < 75 && sg.Q2 ? 'text-red-600' : 'text-gray-900'}`}>
-                      {sg.Q2 ?? ''}
+                    <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.T2 ?? 0) < 75 && sg.T2 ? 'text-red-600' : 'text-gray-900'}`}>
+                      {sg.T2 ?? ''}
                     </td>
-                    <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.Q3 ?? 0) < 75 && sg.Q3 ? 'text-red-600' : 'text-gray-900'}`}>
-                      {sg.Q3 ?? ''}
-                    </td>
-                    <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.Q4 ?? 0) < 75 && sg.Q4 ? 'text-red-600' : 'text-gray-900'}`}>
-                      {sg.Q4 ?? ''}
+                    <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.T3 ?? 0) < 75 && sg.T3 ? 'text-red-600' : 'text-gray-900'}`}>
+                      {sg.T3 ?? ''}
                     </td>
                     <td className={`border-r border-gray-600 p-2 text-center font-bold ${(sg.final ?? 0) < 75 && sg.final ? 'text-red-600' : 'text-gray-900'}`}>
                       {sg.final ?? ''}
@@ -768,7 +764,7 @@ export default function SchoolForms() {
                   </tr>
                 ))}
                 <tr className="bg-gray-200 font-bold border-t-2 border-gray-600">
-                  <td colSpan={5} className="border-r border-gray-600 p-2 text-right text-gray-900">General Average</td>
+                  <td colSpan={4} className="border-r border-gray-600 p-2 text-right text-gray-900">General Average</td>
                   <td className="border-r border-gray-600 p-2 text-center text-lg text-gray-900">
                     {sf9Data.generalAverage?.toFixed(2) ?? ''}
                   </td>
@@ -790,11 +786,11 @@ export default function SchoolForms() {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Outstanding</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">90-100</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
-                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Very Satisfactory</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">85-89</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
-                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Satisfactory</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">80-84</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
-                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Fairly Satisfactory</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">75-79</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
-                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Did Not Meet Expectations</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">Below 75</td><td className="border border-gray-600 p-1.5 text-gray-900">Failed</td></tr>
+                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Advancing</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">90-100</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
+                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Benchmarking</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">80-89</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
+                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Connecting</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">75-79</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
+                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Developing</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">65-74</td><td className="border border-gray-600 p-1.5 text-gray-900">Failed</td></tr>
+                  <tr><td className="border border-gray-600 p-1.5 text-gray-900">Emerging</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">Below 65</td><td className="border border-gray-600 p-1.5 text-gray-900">Failed</td></tr>
                 </tbody>
               </table>
             </div>
@@ -870,7 +866,7 @@ export default function SchoolForms() {
           <div className="mb-6 border-2 border-gray-600 p-4">
             <h3 className="font-bold text-sm mb-3 text-gray-900">PARENT / GUARDIAN'S SIGNATURE</h3>
             <div className="grid grid-cols-4 gap-4 text-xs">
-              {['1st Quarter', '2nd Quarter', '3rd Quarter', '4th Quarter'].map(q => (
+              {['Term 1', 'Term 2', 'Term 3'].map(q => (
                 <div key={q}>
                   <p className="text-gray-900 mb-6">{q}</p>
                   <div className="border-b border-gray-600"></div>
@@ -1029,8 +1025,8 @@ export default function SchoolForms() {
                     <th rowSpan={2} className="border-r border-gray-600 p-1.5 text-left text-gray-900">
                       LEARNING AREAS
                     </th>
-                    <th colSpan={4} className="border-r border-gray-600 p-1.5 text-center text-gray-900">
-                      Quarterly Rating
+                    <th colSpan={3} className="border-r border-gray-600 p-1.5 text-center text-gray-900">
+                      Term Rating
                     </th>
                     <th rowSpan={2} className="border-r border-gray-600 p-1.5 text-center text-gray-900 w-16">
                       Final<br/>Rating
@@ -1043,24 +1039,20 @@ export default function SchoolForms() {
                     <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">1</th>
                     <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">2</th>
                     <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">3</th>
-                    <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">4</th>
                   </tr>
                 </thead>
                 <tbody>
                   {record.subjectGrades.map((sg: any, idx: number) => (
                     <tr key={idx} className="border-b border-gray-600">
                       <td className="border-r border-gray-600 p-1.5 text-gray-900">{sg.subjectName}</td>
-                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.Q1 ?? 0) < 75 && sg.Q1 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {sg.Q1 ?? ''}
+                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T1 ?? 0) < 75 && sg.T1 ? 'text-red-600' : 'text-gray-900'}`}>
+                        {sg.T1 ?? ''}
                       </td>
-                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.Q2 ?? 0) < 75 && sg.Q2 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {sg.Q2 ?? ''}
+                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T2 ?? 0) < 75 && sg.T2 ? 'text-red-600' : 'text-gray-900'}`}>
+                        {sg.T2 ?? ''}
                       </td>
-                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.Q3 ?? 0) < 75 && sg.Q3 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {sg.Q3 ?? ''}
-                      </td>
-                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.Q4 ?? 0) < 75 && sg.Q4 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {sg.Q4 ?? ''}
+                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T3 ?? 0) < 75 && sg.T3 ? 'text-red-600' : 'text-gray-900'}`}>
+                        {sg.T3 ?? ''}
                       </td>
                       <td className={`border-r border-gray-600 p-1.5 text-center font-bold ${(sg.final ?? 0) < 75 && sg.final ? 'text-red-600' : 'text-gray-900'}`}>
                         {sg.final ?? ''}

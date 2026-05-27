@@ -20,7 +20,7 @@ interface GradeEditModalProps {
   onOpenChange: (open: boolean) => void;
   selectedRecord: ClassRecord | null;
   isHGClass: boolean;
-  selectedQuarter: string;
+  selectedTerm: string;
   hgDescriptors: readonly string[];
   mobileEditorTab: "WW" | "PT" | "QA" | "HG";
   onTabChange: (tab: "WW" | "PT" | "QA" | "HG") => void;
@@ -46,7 +46,7 @@ export function GradeEditModal({
   onOpenChange,
   selectedRecord,
   isHGClass,
-  selectedQuarter,
+  selectedTerm,
   hgDescriptors,
   mobileEditorTab,
   onTabChange,
@@ -82,10 +82,10 @@ export function GradeEditModal({
             {isHGClass ? (
               <div className="p-5 space-y-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  Descriptor ({selectedQuarter})
+                  Descriptor ({selectedTerm})
                 </p>
                 <Select
-                  value={selectedRecord.grades.find((g) => g.quarter === selectedQuarter)?.qualitativeDescriptor || undefined}
+                  value={selectedRecord.grades.find((g) => g.term === selectedTerm)?.qualitativeDescriptor || undefined}
                   onValueChange={(value) => {
                     if (!value) return;
                     onDescriptorUpdate(selectedRecord.student.id, value);
@@ -117,7 +117,7 @@ export function GradeEditModal({
                           className="h-10 rounded-lg text-xs font-black uppercase tracking-widest transition"
                           style={active ? { backgroundColor: "var(--theme-primary)", color: "var(--theme-primary-text)" } : { color: "#475569" }}
                         >
-                          {tab === "WW" ? "Quiz" : tab}
+                          {tab === "WW" ? "Quiz" : tab === "QA" ? "TA" : tab}
                         </button>
                       );
                     })}
@@ -214,7 +214,7 @@ export function GradeEditModal({
                         defaultValue={qaMeta.description}
                         onBlur={(e) => onApplyColumnMeta("QA", 0, e.currentTarget.value, qaMeta.date || "")}
                         className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
-                        placeholder="QA description"
+                        placeholder="TA description"
                       />
                       <input
                         type="date"
@@ -223,7 +223,7 @@ export function GradeEditModal({
                         className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
                       />
                       <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                        QA Score (MAX {getMaxForCell("QA", 0)})
+                        TA Score (MAX {getMaxForCell("QA", 0)})
                       </label>
                       <input
                         type="number"

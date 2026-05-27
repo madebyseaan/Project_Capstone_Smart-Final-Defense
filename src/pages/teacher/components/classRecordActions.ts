@@ -13,7 +13,7 @@ type ApplyMetaToScores = (
 interface ScoreUpdateArgs {
   classAssignmentId: string | undefined;
   classRecord: ClassRecord[];
-  selectedQuarter: string;
+  selectedTerm: string;
   studentId: string;
   category: ScoreCategory;
   index: number;
@@ -31,7 +31,7 @@ interface ScoreUpdateArgs {
 interface HpsUpdateArgs {
   classAssignmentId: string | undefined;
   classRecord: ClassRecord[];
-  selectedQuarter: string;
+  selectedTerm: string;
   category: ScoreCategory;
   index: number;
   newMax: number;
@@ -45,7 +45,7 @@ interface HpsUpdateArgs {
 interface RemoveTaskArgs {
   classAssignmentId: string | undefined;
   classRecord: ClassRecord[];
-  selectedQuarter: string;
+  selectedTerm: string;
   category: "WW" | "PT";
   wwCount: number;
   ptCount: number;
@@ -62,7 +62,7 @@ interface RemoveTaskArgs {
 export async function executeScoreUpdate({
   classAssignmentId,
   classRecord,
-  selectedQuarter,
+  selectedTerm,
   studentId,
   category,
   index,
@@ -102,7 +102,7 @@ export async function executeScoreUpdate({
       if (record.student.id !== studentId) return record;
 
       const newRecord = { ...record, grades: [...record.grades] };
-      const gradeIdx = newRecord.grades.findIndex((g) => g.quarter === selectedQuarter);
+      const gradeIdx = newRecord.grades.findIndex((g) => g.term === selectedTerm);
 
       let targetGrade =
         gradeIdx > -1
@@ -110,7 +110,7 @@ export async function executeScoreUpdate({
           : ({
               studentId,
               classAssignmentId,
-              quarter: selectedQuarter,
+              term: selectedTerm,
               writtenWorkScores: [],
               perfTaskScores: [],
               quarterlyAssessScore: 0,
@@ -142,7 +142,7 @@ export async function executeScoreUpdate({
 
   try {
     const record = classRecord.find((r) => r.student.id === studentId);
-    const grade = record?.grades.find((g) => g.quarter === selectedQuarter);
+    const grade = record?.grades.find((g) => g.term === selectedTerm);
 
     const wwScores = [...((grade?.writtenWorkScores || []) as ScoreItem[])];
     const ptScores = [...((grade?.perfTaskScores || []) as ScoreItem[])];
@@ -161,7 +161,7 @@ export async function executeScoreUpdate({
     await gradesApi.saveGrade({
       studentId,
       classAssignmentId,
-      quarter: selectedQuarter,
+      term: selectedTerm,
       writtenWorkScores: category === "WW" ? wwScoresWithMeta : undefined,
       perfTaskScores: category === "PT" ? ptScoresWithMeta : undefined,
       quarterlyAssessScore: category === "QA" ? newValue : undefined,
@@ -180,7 +180,7 @@ export async function executeScoreUpdate({
 export async function executeHpsUpdate({
   classAssignmentId,
   classRecord,
-  selectedQuarter,
+  selectedTerm,
   category,
   index,
   newMax,
@@ -195,7 +195,7 @@ export async function executeHpsUpdate({
   setClassRecord((prev) =>
     prev.map((record) => {
       const newRecord = { ...record, grades: [...record.grades] };
-      const gradeIdx = newRecord.grades.findIndex((g) => g.quarter === selectedQuarter);
+      const gradeIdx = newRecord.grades.findIndex((g) => g.term === selectedTerm);
 
       let targetGrade =
         gradeIdx > -1
@@ -203,7 +203,7 @@ export async function executeHpsUpdate({
           : ({
               studentId: record.student.id,
               classAssignmentId,
-              quarter: selectedQuarter,
+              term: selectedTerm,
               writtenWorkScores: [],
               perfTaskScores: [],
               quarterlyAssessScore: 0,
@@ -234,7 +234,7 @@ export async function executeHpsUpdate({
 
   try {
     const updatePromises = classRecord.map((record) => {
-      const grade = record.grades.find((g) => g.quarter === selectedQuarter);
+      const grade = record.grades.find((g) => g.term === selectedTerm);
       const wwScores = [...((grade?.writtenWorkScores || []) as ScoreItem[])];
       const ptScores = [...((grade?.perfTaskScores || []) as ScoreItem[])];
 
@@ -252,7 +252,7 @@ export async function executeHpsUpdate({
       return gradesApi.saveGrade({
         studentId: record.student.id,
         classAssignmentId,
-        quarter: selectedQuarter,
+        term: selectedTerm,
         writtenWorkScores: category === "WW" ? wwScoresWithMeta : undefined,
         perfTaskScores: category === "PT" ? ptScoresWithMeta : undefined,
         quarterlyAssessMax: category === "QA" ? newMax : undefined,
@@ -273,7 +273,7 @@ export async function executeHpsUpdate({
 export async function executeRemoveTask({
   classAssignmentId,
   classRecord,
-  selectedQuarter,
+  selectedTerm,
   category,
   wwCount,
   ptCount,
@@ -300,7 +300,7 @@ export async function executeRemoveTask({
   setClassRecord((prev) =>
     prev.map((record) => {
       const newRecord = { ...record, grades: [...record.grades] };
-      const gradeIdx = newRecord.grades.findIndex((g) => g.quarter === selectedQuarter);
+      const gradeIdx = newRecord.grades.findIndex((g) => g.term === selectedTerm);
       if (gradeIdx === -1) return newRecord;
 
       const targetGrade = { ...newRecord.grades[gradeIdx] } as any;
@@ -319,7 +319,7 @@ export async function executeRemoveTask({
 
   try {
     const updatePromises = classRecord.map((record) => {
-      const grade = record.grades.find((g) => g.quarter === selectedQuarter);
+      const grade = record.grades.find((g) => g.term === selectedTerm);
       const wwScores = [...((grade?.writtenWorkScores || []) as ScoreItem[])];
       const ptScores = [...((grade?.perfTaskScores || []) as ScoreItem[])];
 
@@ -335,7 +335,7 @@ export async function executeRemoveTask({
       return gradesApi.saveGrade({
         studentId: record.student.id,
         classAssignmentId,
-        quarter: selectedQuarter,
+        term: selectedTerm,
         writtenWorkScores: category === "WW" ? wwScoresWithMeta : undefined,
         perfTaskScores: category === "PT" ? ptScoresWithMeta : undefined,
         qaDescription: qaMeta.description || undefined,

@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { AuditAction, AuditSeverity, Quarter, EnrollmentStatus } from "@prisma/client";
+import { AuditAction, AuditSeverity, Term, EnrollmentStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../middleware/auth";
 import { createAuditLog } from "../lib/audit";
@@ -46,7 +46,7 @@ interface GradeRecord {
   id: string;
   studentId: string;
   classAssignmentId: string;
-  quarter: string;
+  term: string;
 }
 
 interface ClassAssignmentWithRelations {
@@ -63,9 +63,9 @@ interface EffectiveWeights {
 }
 
 const GENERIC_FALLBACK_WEIGHTS = {
-  ww: 30,
+  ww: 20,
   pt: 50,
-  qa: 20,
+  qa: 30,
 } as const;
 
 function getBaseSubjectName(subjectName: string): string {
@@ -90,9 +90,7 @@ async function resolveEffectiveWeightsForClassAssignment(classAssignmentId: stri
       subject: {
         select: {
           name: true,
-          writtenWorkWeight: true,
-          perfTaskWeight: true,
-          quarterlyAssessWeight: true,
+          type: true,
         },
       },
     },
@@ -121,13 +119,18 @@ async function resolveEffectiveWeightsForClassAssignment(classAssignmentId: stri
       },
     })) > 0;
 
-  if (hasExactEcrTemplate) {
+  // Use admin-configurable GradingConfig as the source of truth for weights
+  const gradingConfig = await prisma.gradingConfig.findUnique({
+    where: { subjectType: classAssignment.subject.type },
+  });
+
+  if (gradingConfig) {
     return {
-      ww: classAssignment.subject.writtenWorkWeight,
-      pt: classAssignment.subject.perfTaskWeight,
-      qa: classAssignment.subject.quarterlyAssessWeight,
+      ww: gradingConfig.writtenWorkWeight,
+      pt: gradingConfig.performanceTaskWeight,
+      qa: gradingConfig.quarterlyAssessWeight,
       source: "subject",
-      hasExactEcrTemplate: true,
+      hasExactEcrTemplate,
     };
   }
 
@@ -136,7 +139,7 @@ async function resolveEffectiveWeightsForClassAssignment(classAssignmentId: stri
     pt: GENERIC_FALLBACK_WEIGHTS.pt,
     qa: GENERIC_FALLBACK_WEIGHTS.qa,
     source: "generic-fallback",
-    hasExactEcrTemplate: false,
+    hasExactEcrTemplate,
   };
 }
 
@@ -212,7 +215,7 @@ router.get(
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const classAssignmentId = req.params.classAssignmentId as string;
-      const { quarter } = req.query;
+      const { term } = req.query;
 
       const teacher = await prisma.teacher.findUnique({
         where: { userId: req.user?.id },
@@ -260,7 +263,7 @@ router.get(
       const grades = await prisma.grade.findMany({
         where: {
           classAssignmentId,
-          ...(quarter ? { quarter: quarter as any } : {}),
+          ...(term ? { term: term as any } : {}),
         },
       });
 
@@ -277,13 +280,13 @@ router.get(
 
       const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
       const systemSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentQuarter = systemSettings?.currentQuarter ?? 'Q1';
+      const currentTerm = systemSettings?.currentTerm ?? 'T1';
 
       res.json({
         classAssignment,
         classRecord,
         effectiveWeights,
-        currentQuarter,
+        currentTerm,
       });
     } catch (error) {
       console.error("Error fetching class record:", error);
@@ -302,7 +305,7 @@ router.post(
       const {
         studentId,
         classAssignmentId,
-        quarter,
+        term,
         writtenWorkScores,
         perfTaskScores,
         quarterlyAssessScore,
@@ -357,7 +360,7 @@ router.post(
 
       // Load existing row so partial saves (WW/PT/QA one at a time) can be merged
       // before recomputing DepEd totals.
-      const existingGrade = await prisma.grade.findFirst({ where: { studentId, classAssignmentId, quarter } });
+      const existingGrade = await prisma.grade.findFirst({ where: { studentId, classAssignmentId, term } });
 
       const mergedWrittenWorkScores = !isHG
         ? ((writtenWorkScores !== undefined
@@ -446,17 +449,17 @@ router.post(
       // Upsert grade
       const grade = await prisma.grade.upsert({
         where: {
-          studentId_classAssignmentId_quarter: {
+          studentId_classAssignmentId_term: {
             studentId,
             classAssignmentId,
-            quarter,
+            term,
           },
         },
         update: gradePayload,
         create: {
           studentId,
           classAssignmentId,
-          quarter,
+          term,
           ...gradePayload,
         },
       });
@@ -476,7 +479,7 @@ router.post(
           sectionId: classAssignment.sectionId,
           sectionName: classAssignment.section.name,
           schoolYear: classAssignment.schoolYear,
-          quarter: grade.quarter,
+          term: grade.term,
           snapshot: {
             writtenWorkScores: grade.writtenWorkScores,
             perfTaskScores: grade.perfTaskScores,
@@ -496,9 +499,9 @@ router.post(
         await createAuditLog(
           isNew ? AuditAction.CREATE : AuditAction.UPDATE,
           { id: teacherUser.id, firstName: teacherUser.firstName, lastName: teacherUser.lastName, role: teacherUser.role },
-          `Grade: ${student?.firstName || ""} ${student?.lastName || ""} — ${classAssignment.subject.name} (${quarter})`,
+          `Grade: ${student?.firstName || ""} ${student?.lastName || ""} — ${classAssignment.subject.name} (${term})`,
           "Grades",
-          `${isNew ? "Recorded" : "Updated"} grade for ${student?.firstName || ""} ${student?.lastName || ""} in ${classAssignment.subject.name} (${quarter}): ${isHG ? qualitativeDescriptor : quarterlyGrade}`,
+          `${isNew ? "Recorded" : "Updated"} grade for ${student?.firstName || ""} ${student?.lastName || ""} in ${classAssignment.subject.name} (${term}): ${isHG ? qualitativeDescriptor : quarterlyGrade}`,
           req.ip || req.socket?.remoteAddress,
           AuditSeverity.INFO,
           grade.id
@@ -555,7 +558,7 @@ router.delete(
         sectionId: grade.classAssignment.sectionId,
         sectionName: grade.classAssignment.section.name,
         schoolYear: grade.classAssignment.schoolYear,
-        quarter: grade.quarter,
+        term: grade.term,
         snapshot: {
           writtenWorkScores: grade.writtenWorkScores,
           perfTaskScores: grade.perfTaskScores,
@@ -583,7 +586,7 @@ router.delete(
           { id: teacherUser.id, firstName: teacherUser.firstName, lastName: teacherUser.lastName, role: teacherUser.role },
           `Grade deleted: ${grade.student.firstName} ${grade.student.lastName} — ${grade.classAssignment.subject.name}`,
           "Grades",
-          `Deleted grade for ${grade.student.firstName} ${grade.student.lastName} in ${grade.classAssignment.subject.name} (${grade.quarter})`,
+          `Deleted grade for ${grade.student.firstName} ${grade.student.lastName} in ${grade.classAssignment.subject.name} (${grade.term})`,
           req.ip || req.socket?.remoteAddress,
           AuditSeverity.WARNING,
           gradeId
@@ -605,7 +608,7 @@ router.post(
   authorizeRoles("TEACHER"),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-      const { classAssignmentId, quarter } = req.body;
+      const { classAssignmentId, term } = req.body;
 
       const teacher = await prisma.teacher.findUnique({
         where: { userId: req.user?.id },
@@ -637,7 +640,7 @@ router.post(
       const { count } = await prisma.grade.deleteMany({
         where: {
           classAssignmentId,
-          quarter,
+          term,
         },
       });
 
@@ -650,15 +653,15 @@ router.post(
         await createAuditLog(
           AuditAction.DELETE,
           { id: teacherUser.id, firstName: teacherUser.firstName, lastName: teacherUser.lastName, role: teacherUser.role },
-          `Clear Scores: ${classAssignment.subject.name} (${quarter})`,
+          `Clear Scores: ${classAssignment.subject.name} (${term})`,
           "Grades",
-          `Cleared all (${count}) grades for ${classAssignment.subject.name} in section ${classAssignment.section.name} for ${quarter}`,
+          `Cleared all (${count}) grades for ${classAssignment.subject.name} in section ${classAssignment.section.name} for ${term}`,
           req.ip || req.socket?.remoteAddress,
           AuditSeverity.WARNING
         );
       }
 
-      res.json({ message: `Successfully cleared all scores for ${quarter}`, count });
+      res.json({ message: `Successfully cleared all scores for ${term}`, count });
     } catch (error) {
       console.error("Error clearing scores:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -824,7 +827,7 @@ router.get(
 
       const systemSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
       const currentSchoolYear = systemSettings?.currentSchoolYear ?? '2026-2027';
-      const currentQuarter = systemSettings?.currentQuarter ?? 'Q1';
+      const currentTerm = systemSettings?.currentTerm ?? 'T1';
 
       const classAssignments = await prisma.classAssignment.findMany({
         where: {
@@ -903,7 +906,7 @@ router.get(
         },
         classAssignments,
         archivedClassesCount: archivedClassAssignmentsCount,
-        currentQuarter,
+        currentTerm,
       });
     } catch (error) {
       console.error("Error fetching dashboard:", error);
@@ -930,7 +933,7 @@ router.get(
 
       const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
       const currentSY = sysSettings?.currentSchoolYear ?? '2026-2027';
-      const currentQuarter = sysSettings?.currentQuarter ?? 'Q1';
+      const currentTerm = sysSettings?.currentTerm ?? 'T1';
 
       const classAssignments = await prisma.classAssignment.findMany({
         where: {
@@ -951,7 +954,7 @@ router.get(
             },
           },
           grades: {
-            where: { quarter: currentQuarter },
+            where: { term: currentTerm },
           },
         },
       });
@@ -1155,50 +1158,50 @@ function calculateGrades(
   };
 }
 
-// DepEd Transmutation Table
+// DepEd Transmutation Table (Revised Guidelines 2026)
 function transmute(initialGrade: number): number {
+  if (initialGrade >= 99.5) return 100;
   const transmutationTable: [number, number, number][] = [
-    [100, 100, 100],
-    [98.4, 99.99, 99],
-    [96.8, 98.39, 98],
-    [95.2, 96.79, 97],
-    [93.6, 95.19, 96],
-    [92, 93.59, 95],
-    [90.4, 91.99, 94],
-    [88.8, 90.39, 93],
-    [87.2, 88.79, 92],
-    [85.6, 87.19, 91],
-    [84, 85.59, 90],
-    [82.4, 83.99, 89],
-    [80.8, 82.39, 88],
-    [79.2, 80.79, 87],
-    [77.6, 79.19, 86],
-    [76, 77.59, 85],
-    [74.4, 75.99, 84],
-    [72.8, 74.39, 83],
-    [71.2, 72.79, 82],
-    [69.6, 71.19, 81],
-    [68, 69.59, 80],
-    [66.4, 67.99, 79],
-    [64.8, 66.39, 78],
-    [63.2, 64.79, 77],
-    [61.6, 63.19, 76],
-    [60, 61.59, 75],
-    [56, 59.99, 74],
-    [52, 55.99, 73],
-    [48, 51.99, 72],
-    [44, 47.99, 71],
-    [40, 43.99, 70],
-    [36, 39.99, 69],
-    [32, 35.99, 68],
-    [28, 31.99, 67],
-    [24, 27.99, 66],
-    [20, 23.99, 65],
-    [16, 19.99, 64],
-    [12, 15.99, 63],
-    [8, 11.99, 62],
-    [4, 7.99, 61],
-    [0, 3.99, 60],
+    [97.5, 99.49, 99],
+    [96.0, 97.49, 98],
+    [95.0, 95.99, 97],
+    [94.0, 94.99, 96],
+    [93.0, 93.99, 95],
+    [92.0, 92.99, 94],
+    [91.0, 91.99, 93],
+    [90.0, 90.99, 92],
+    [89.0, 89.99, 91],
+    [88.0, 88.99, 90],
+    [87.0, 87.99, 89],
+    [86.0, 86.99, 88],
+    [85.0, 85.99, 87],
+    [84.0, 84.99, 86],
+    [83.0, 83.99, 85],
+    [82.0, 82.99, 84],
+    [81.0, 81.99, 83],
+    [80.0, 80.99, 82],
+    [79.0, 79.99, 81],
+    [78.0, 78.99, 80],
+    [77.0, 77.99, 79],
+    [76.0, 76.99, 78],
+    [75.0, 75.99, 77],
+    [73.0, 74.99, 76],
+    [70.0, 72.99, 75],
+    [68.0, 69.99, 74],
+    [66.0, 67.99, 73],
+    [64.0, 65.99, 72],
+    [62.0, 63.99, 71],
+    [60.0, 61.99, 70],
+    [58.0, 59.99, 69],
+    [56.0, 57.99, 68],
+    [54.0, 55.99, 67],
+    [52.0, 53.99, 66],
+    [50.0, 51.99, 65],
+    [48.0, 49.99, 64],
+    [46.0, 47.99, 63],
+    [43.0, 45.99, 62],
+    [40.0, 42.99, 61],
+    [0.0,  39.99, 60],
   ];
 
   for (const [min, max, grade] of transmutationTable) {
@@ -1220,7 +1223,7 @@ async function createGradeSnapshot(params: {
   sectionId: string;
   sectionName: string;
   schoolYear: string;
-  quarter: Quarter;
+  term: Term;
   snapshot: Record<string, unknown>;
 }): Promise<void> {
   try {
@@ -1235,7 +1238,7 @@ async function createGradeSnapshot(params: {
         sectionId: params.sectionId,
         sectionName: params.sectionName,
         schoolYear: params.schoolYear,
-        quarter: params.quarter,
+        term: params.term,
         snapshot: params.snapshot as any,
       },
     });
@@ -1256,7 +1259,7 @@ router.get(
 
       const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
       const currentSY = sysSettings?.currentSchoolYear ?? '2026-2027';
-      const currentQuarter = sysSettings?.currentQuarter ?? 'Q1';
+      const currentTerm = sysSettings?.currentTerm ?? 'T1';
 
       const advisorySection = await prisma.section.findFirst({
         where: { adviserId: teacher.id, schoolYear: currentSY },
@@ -1298,7 +1301,7 @@ router.get(
         where: {
           classAssignmentId: { in: nonHgAssignmentIds },
           studentId: { in: studentIds },
-          quarter: currentQuarter,
+          term: currentTerm,
           quarterlyGrade: { not: null },
         },
       });
@@ -1371,7 +1374,7 @@ router.get(
       }
 
       const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentQuarter = sysSettings?.currentQuarter ?? 'Q1';
+      const currentTerm = sysSettings?.currentTerm ?? 'T1';
 
       // Build filter for class assignments
       const classAssignmentFilter: any = {
@@ -1396,7 +1399,7 @@ router.get(
           section: true,
           subject: true,
           grades: {
-            where: { quarter: currentQuarter },
+            where: { term: currentTerm },
           },
         },
       });
@@ -1473,7 +1476,7 @@ interface ECRStudentData {
 }
 
 interface ECRQuarterData {
-  quarter: string;
+  term: string;
   students: ECRStudentData[];
   maxScores: {
     writtenWork: number[];
@@ -1489,17 +1492,16 @@ function parseECRFile(buffer: Buffer): { quarters: ECRQuarterData[]; metadata: a
   let metadata: any = {};
 
   // Map sheet names to quarters
-  const quarterSheetMap: Record<string, string> = {};
+  const termSheetMap: Record<string, string> = {};
   workbook.SheetNames.forEach(name => {
     const upperName = name.toUpperCase();
-    if (upperName.includes('Q1') || upperName.includes('_Q1')) quarterSheetMap.Q1 = name;
-    else if (upperName.includes('Q2') || upperName.includes('_Q2')) quarterSheetMap.Q2 = name;
-    else if (upperName.includes('Q3') || upperName.includes('_Q3')) quarterSheetMap.Q3 = name;
-    else if (upperName.includes('Q4') || upperName.includes('_Q4')) quarterSheetMap.Q4 = name;
+    if (upperName.includes('T1') || upperName.includes('_T1') || upperName.includes('Q1') || upperName.includes('_Q1')) termSheetMap.T1 = name;
+    else if (upperName.includes('T2') || upperName.includes('_T2') || upperName.includes('Q2') || upperName.includes('_Q2')) termSheetMap.T2 = name;
+    else if (upperName.includes('T3') || upperName.includes('_T3') || upperName.includes('Q3') || upperName.includes('_Q3')) termSheetMap.T3 = name;
   });
 
-  // Process each quarter sheet
-  for (const [quarter, sheetName] of Object.entries(quarterSheetMap)) {
+  // Process each term sheet
+  for (const [term, sheetName] of Object.entries(termSheetMap)) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
@@ -1633,7 +1635,7 @@ function parseECRFile(buffer: Buffer): { quarters: ECRQuarterData[]; metadata: a
     }
 
     if (students.length > 0) {
-      quarters.push({ quarter, students, maxScores });
+      quarters.push({ term, students, maxScores });
     }
   }
 
@@ -1800,7 +1802,7 @@ router.post(
       const { quarters, metadata } = parseECRFile(req.file.buffer);
 
       if (quarters.length === 0) {
-        res.status(400).json({ message: "No valid quarter data found in ECR file" });
+        res.status(400).json({ message: "No valid term data found in ECR file" });
         return;
       }
 
@@ -1809,7 +1811,7 @@ router.post(
 
       // Match ECR students to database students
       const matchResults = quarters.map(q => ({
-        quarter: q.quarter,
+        term: q.term,
         maxScores: q.maxScores,
         students: q.students.map(ecrStudent => {
           const match = matchStudent(ecrStudent.name, enrolledStudents);
@@ -1871,7 +1873,7 @@ router.post(
       }
 
       const { classAssignmentId, selectedQuarters } = req.body;
-      const quartersToImport = selectedQuarters ? JSON.parse(selectedQuarters) : ['Q1', 'Q2', 'Q3', 'Q4'];
+      const quartersToImport = selectedQuarters ? JSON.parse(selectedQuarters) : ['T1', 'T2', 'T3'];
 
       if (!classAssignmentId) {
         res.status(400).json({ message: "Class assignment ID required" });
@@ -1918,7 +1920,7 @@ router.post(
       const { quarters } = parseECRFile(req.file.buffer);
 
       if (quarters.length === 0) {
-        res.status(400).json({ message: "No valid quarter data found in ECR file" });
+        res.status(400).json({ message: "No valid term data found in ECR file" });
         return;
       }
 
@@ -1933,10 +1935,10 @@ router.post(
       let skippedStudents = 0;
 
       // Process each quarter
-      for (const quarterData of quarters) {
-        if (!quartersToImport.includes(quarterData.quarter)) continue;
+      for (const termData of quarters) {
+        if (!quartersToImport.includes(termData.term)) continue;
 
-        for (const ecrStudent of quarterData.students) {
+        for (const ecrStudent of termData.students) {
           const match = matchStudent(ecrStudent.name, enrolledStudents);
           
           if (!match) {
@@ -1948,13 +1950,13 @@ router.post(
           const writtenWorkScores = ecrStudent.writtenWorkScores.map((score, idx) => ({
             name: `WW ${idx + 1}`,
             score,
-            maxScore: quarterData.maxScores.writtenWork[idx] || 100,
+            maxScore: termData.maxScores.writtenWork[idx] || 100,
           }));
 
           const perfTaskScores = ecrStudent.perfTaskScores.map((score, idx) => ({
             name: `PT ${idx + 1}`,
             score,
-            maxScore: quarterData.maxScores.perfTask[idx] || 100,
+            maxScore: termData.maxScores.perfTask[idx] || 100,
           }));
 
           // Calculate PS (percentage scores) using existing function, but use ECR's final grades
@@ -1962,7 +1964,7 @@ router.post(
             writtenWorkScores,
             perfTaskScores,
             ecrStudent.quarterlyAssessScore,
-            quarterData.maxScores.quarterlyAssess,
+            termData.maxScores.quarterlyAssess,
             weights.ww,
             weights.pt,
             weights.qa
@@ -1976,17 +1978,17 @@ router.post(
           // Upsert grade
           await prisma.grade.upsert({
             where: {
-              studentId_classAssignmentId_quarter: {
+              studentId_classAssignmentId_term: {
                 studentId: match.id,
                 classAssignmentId,
-                quarter: quarterData.quarter as Quarter,
+                term: termData.term as Term,
               },
             },
             update: {
               writtenWorkScores,
               perfTaskScores,
               quarterlyAssessScore: ecrStudent.quarterlyAssessScore,
-              quarterlyAssessMax: quarterData.maxScores.quarterlyAssess,
+              quarterlyAssessMax: termData.maxScores.quarterlyAssess,
               writtenWorkPS: ecrStudent.writtenWorkPS || calculated.writtenWorkPS,
               perfTaskPS: ecrStudent.perfTaskPS || calculated.perfTaskPS,
               quarterlyAssessPS: ecrStudent.quarterlyAssessPS || calculated.quarterlyAssessPS,
@@ -1996,11 +1998,11 @@ router.post(
             create: {
               studentId: match.id,
               classAssignmentId,
-              quarter: quarterData.quarter as Quarter,
+              term: termData.term as Term,
               writtenWorkScores,
               perfTaskScores,
               quarterlyAssessScore: ecrStudent.quarterlyAssessScore,
-              quarterlyAssessMax: quarterData.maxScores.quarterlyAssess,
+              quarterlyAssessMax: termData.maxScores.quarterlyAssess,
               writtenWorkPS: ecrStudent.writtenWorkPS || calculated.writtenWorkPS,
               perfTaskPS: ecrStudent.perfTaskPS || calculated.perfTaskPS,
               quarterlyAssessPS: ecrStudent.quarterlyAssessPS || calculated.quarterlyAssessPS,
@@ -2045,7 +2047,7 @@ router.post(
         success: true,
         importedGrades,
         skippedStudents,
-        quartersImported: quarters.map(q => q.quarter).filter(q => quartersToImport.includes(q)),
+        quartersImported: quarters.map(q => q.term).filter(q => quartersToImport.includes(q)),
         ecrLastSyncedAt: new Date().toISOString(),
         ecrFileName: req.file.originalname,
       });

@@ -9,12 +9,12 @@ import {
 } from "@/components/ui/select";
 import type { ClassRecord } from "@/lib/api";
 
-const quarters = ["Q1", "Q2", "Q3", "Q4"] as const;
+const terms = ["T1", "T2", "T3"] as const;
 
 interface HGDescriptorPanelProps {
   records: ClassRecord[];
-  selectedQuarter: string;
-  onQuarterChange: (quarter: string) => void;
+  selectedTerm: string;
+  onTermChange: (term: string) => void;
   savingDescriptorStudentId: string | null;
   descriptors: readonly string[];
   onDescriptorUpdate: (studentId: string, descriptor: string) => void;
@@ -22,8 +22,8 @@ interface HGDescriptorPanelProps {
 
 export function HGDescriptorPanel({
   records,
-  selectedQuarter,
-  onQuarterChange,
+  selectedTerm,
+  onTermChange,
   savingDescriptorStudentId,
   descriptors,
   onDescriptorUpdate,
@@ -33,16 +33,16 @@ export function HGDescriptorPanel({
       <CardHeader className="p-8 border-0 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Homeroom Guidance Descriptors</h2>
-          <p className="text-slate-500 text-sm mt-1">Select one qualitative descriptor per learner for {selectedQuarter}.</p>
+          <p className="text-slate-500 text-sm mt-1">Select one qualitative descriptor per learner for {selectedTerm}.</p>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Period:</span>
-          <Select value={selectedQuarter} onValueChange={(val) => val && onQuarterChange(val)}>
+          <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)}>
             <SelectTrigger className="h-11 w-40 bg-white border-slate-200 text-sm font-black uppercase rounded-xl shadow-sm px-6">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="rounded-xl border-slate-200 shadow-2xl p-2">
-              {quarters.map((q) => (
+              {terms.map((q) => (
                 <SelectItem key={q} value={q} className="text-xs font-black uppercase rounded-lg py-2.5 px-4 focus:bg-indigo-50 focus:text-indigo-600 transition-colors cursor-pointer">
                   {q}
                 </SelectItem>
@@ -54,8 +54,8 @@ export function HGDescriptorPanel({
 
       <div className="border-t border-slate-100 p-6 space-y-3">
         {records.map((record, index) => {
-          const quarterGrade = record.grades.find((g) => g.quarter === selectedQuarter);
-          const descriptor = quarterGrade?.qualitativeDescriptor ?? "";
+          const termGrade = record.grades.find((g) => g.term === selectedTerm);
+          const descriptor = termGrade?.qualitativeDescriptor ?? "";
           const isSaving = savingDescriptorStudentId === record.student.id;
 
           return (

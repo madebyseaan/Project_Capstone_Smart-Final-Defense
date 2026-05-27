@@ -30,25 +30,25 @@ const subjectTypeInfo: Record<string, { label: string; subjects: string[]; icon:
     label: "Core Academic Subjects",
     subjects: ["English", "Filipino", "Araling Panlipunan", "Edukasyon sa Pagpapakatao"],
     icon: BookOpen,
-    defaultWeights: "30% WW · 50% PT · 20% QA",
+    defaultWeights: "20% WW · 50% PT · 30% TA",
   },
   MATH_SCIENCE: {
     label: "Mathematics & Science",
     subjects: ["Mathematics", "Science"],
     icon: Calculator,
-    defaultWeights: "40% WW · 40% PT · 20% QA",
+    defaultWeights: "20% WW · 50% PT · 30% TA",
   },
   MAPEH: {
     label: "MAPEH",
     subjects: ["Music", "Arts", "Physical Education", "Health"],
     icon: Music,
-    defaultWeights: "20% WW · 60% PT · 20% QA",
+    defaultWeights: "20% WW · 60% PT · 20% TA",
   },
   TLE: {
     label: "Technology & Livelihood Education",
     subjects: ["TLE", "Home Economics", "Industrial Arts", "Computer Education"],
     icon: Wrench,
-    defaultWeights: "20% WW · 60% PT · 20% QA",
+    defaultWeights: "20% WW · 60% PT · 20% TA",
   },
 };
 
@@ -277,22 +277,18 @@ export default function GradingConfig() {
               <Info className="w-5 h-5" style={{ color: colors.primary }} />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-sm mb-1" style={{ color: '#111827' }}>DepEd Grading Guidelines (DO 8, s. 2015)</h3>
+              <h3 className="font-semibold text-sm mb-1" style={{ color: '#111827' }}>DepEd Grading Guidelines (Revised 2026)</h3>
               <p className="text-xs text-gray-500 mb-3">
-                The Department of Education prescribes specific component weights per subject type.
+                Per the Revised Guidelines on Classroom Assessment (April 2026), weights are now aligned across Core, Math, and Science subjects.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="bg-white rounded-lg px-3 py-2 border border-white/80">
-                  <span className="text-xs text-gray-500 font-medium block">Core Subjects</span>
-                  <span className="text-xs font-semibold" style={{ color: '#111827' }}>WW 30% · PT 50% · QA 20%</span>
-                </div>
-                <div className="bg-white rounded-lg px-3 py-2 border border-white/80">
-                  <span className="text-xs text-gray-500 font-medium block">Math &amp; Science</span>
-                  <span className="text-xs font-semibold" style={{ color: '#111827' }}>WW 40% · PT 40% · QA 20%</span>
+                  <span className="text-xs text-gray-500 font-medium block">Core, Math &amp; Science</span>
+                  <span className="text-xs font-semibold" style={{ color: '#111827' }}>WW 20% · PT 50% · TA 30%</span>
                 </div>
                 <div className="bg-white rounded-lg px-3 py-2 border border-white/80">
                   <span className="text-xs text-gray-500 font-medium block">MAPEH &amp; TLE</span>
-                  <span className="text-xs font-semibold" style={{ color: '#111827' }}>WW 20% · PT 60% · QA 20%</span>
+                  <span className="text-xs font-semibold" style={{ color: '#111827' }}>WW 20% · PT 60% · TA 20%</span>
                 </div>
               </div>
             </div>
@@ -396,14 +392,14 @@ export default function GradingConfig() {
                     <p className="text-xs text-gray-400">Projects, performances, outputs</p>
                   </div>
 
-                  {/* Quarterly Assessment */}
+                  {/* Term Assessment */}
                   <div className="space-y-2">
-                    <Label htmlFor={`${config.id}-qa`} className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                      Quarterly Assessment (QA)
+                    <Label htmlFor={`${config.id}-TA`} className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Term Assessment (TA)
                     </Label>
                     <div className="relative">
                       <Input
-                        id={`${config.id}-qa`}
+                        id={`${config.id}-TA`}
                         type="number"
                         min="0"
                         max="100"
@@ -413,7 +409,7 @@ export default function GradingConfig() {
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">%</span>
                     </div>
-                    <p className="text-xs text-gray-400">Quarterly examination</p>
+                    <p className="text-xs text-gray-400">Term examination</p>
                   </div>
                 </div>
 
@@ -453,7 +449,7 @@ export default function GradingConfig() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.accent || '#f59e0b' }} />
-                      <span className="text-xs text-gray-500">QA {config.quarterlyAssessWeight}%</span>
+                      <span className="text-xs text-gray-500">TA {config.quarterlyAssessWeight}%</span>
                     </div>
                   </div>
                 </div>

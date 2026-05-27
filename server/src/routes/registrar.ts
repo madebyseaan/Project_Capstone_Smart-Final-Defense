@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { GradeLevel, Quarter } from "@prisma/client";
+import { GradeLevel, Term } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import templateService from "../services/templateService";
@@ -683,10 +683,9 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       subjectCode: string;
       subjectName: string;
       teacher: string;
-      Q1: number | null;
-      Q2: number | null;
-      Q3: number | null;
-      Q4: number | null;
+      T1: number | null;
+      T2: number | null;
+      T3: number | null;
       finalGrade: number | null;
     }> = {};
 
@@ -705,10 +704,9 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
         teacher: ca.teacher?.user
           ? `${toDisplayName(ca.teacher.user.firstName)} ${toDisplayName(ca.teacher.user.lastName)}`
           : "Unknown",
-        Q1: null,
-        Q2: null,
-        Q3: null,
-        Q4: null,
+        T1: null,
+        T2: null,
+        T3: null,
         finalGrade: null
       };
       }
@@ -732,24 +730,23 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
           teacher: grade.classAssignment.teacher?.user
             ? `${toDisplayName(grade.classAssignment.teacher.user.firstName)} ${toDisplayName(grade.classAssignment.teacher.user.lastName)}`
             : "Unknown",
-          Q1: null,
-          Q2: null,
-          Q3: null,
-          Q4: null,
+          T1: null,
+          T2: null,
+          T3: null,
           finalGrade: null,
         };
       }
 
-      if (grade.quarterlyGrade !== null && subjectGrades[key][grade.quarter as Quarter] === null) {
-        subjectGrades[key][grade.quarter as Quarter] = grade.quarterlyGrade;
+      if (grade.quarterlyGrade !== null && subjectGrades[key][grade.term as Term] === null) {
+        subjectGrades[key][grade.term as Term] = grade.quarterlyGrade;
       }
     });
 
     // Calculate final grades
     Object.values(subjectGrades).forEach((subject: any) => {
-      const quarters = [subject.Q1, subject.Q2, subject.Q3, subject.Q4].filter((q: number | null) => q !== null);
-      if (quarters.length > 0) {
-        subject.finalGrade = Math.round(quarters.reduce((a: number, b: number) => a + b, 0) / quarters.length);
+      const terms = [subject.T1, subject.T2, subject.T3].filter((q: number | null) => q !== null);
+      if (terms.length > 0) {
+        subject.finalGrade = Math.round(terms.reduce((a: number, b: number) => a + b, 0) / terms.length);
       }
     });
 
@@ -791,10 +788,9 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
         .map((s: any) => ({
         subjectCode: s.subjectCode,
         subjectName: s.subjectName,
-        Q1: s.Q1,
-        Q2: s.Q2,
-        Q3: s.Q3,
-        Q4: s.Q4,
+        T1: s.T1,
+        T2: s.T2,
+        T3: s.T3,
         final: s.finalGrade,
         remarks: s.finalGrade ? (s.finalGrade >= 75 ? "Passed" : "Failed") : null
       })),
@@ -947,10 +943,9 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
           academicHistory[sy].subjects[key] = {
           subjectCode: ca.subject.code,
           subjectName: ca.subject.name,
-          Q1: null,
-          Q2: null,
-          Q3: null,
-          Q4: null,
+          T1: null,
+          T2: null,
+          T3: null,
           finalGrade: null
         };
         }
@@ -980,19 +975,17 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
         academicHistory[sy].subjects[key] = {
           subjectCode: grade.classAssignment.subject.code,
           subjectName: grade.classAssignment.subject.name,
-          Q1: null,
-          Q2: null,
-          Q3: null,
-          Q4: null,
+          T1: null,
+          T2: null,
+          T3: null,
           finalGrade: null
         };
       }
       
-      // Store quarterly grade only if the slot is still empty (higher-priority rows run first).
-      if (grade.quarter === 'Q1' && academicHistory[sy].subjects[key].Q1 === null) academicHistory[sy].subjects[key].Q1 = grade.quarterlyGrade;
-      if (grade.quarter === 'Q2' && academicHistory[sy].subjects[key].Q2 === null) academicHistory[sy].subjects[key].Q2 = grade.quarterlyGrade;
-      if (grade.quarter === 'Q3' && academicHistory[sy].subjects[key].Q3 === null) academicHistory[sy].subjects[key].Q3 = grade.quarterlyGrade;
-      if (grade.quarter === 'Q4' && academicHistory[sy].subjects[key].Q4 === null) academicHistory[sy].subjects[key].Q4 = grade.quarterlyGrade;
+      // Store term grade only if the slot is still empty (higher-priority rows run first).
+      if (grade.term === 'T1' && academicHistory[sy].subjects[key].T1 === null) academicHistory[sy].subjects[key].T1 = grade.quarterlyGrade;
+      if (grade.term === 'T2' && academicHistory[sy].subjects[key].T2 === null) academicHistory[sy].subjects[key].T2 = grade.quarterlyGrade;
+      if (grade.term === 'T3' && academicHistory[sy].subjects[key].T3 === null) academicHistory[sy].subjects[key].T3 = grade.quarterlyGrade;
     });
 
     // Calculate final grades for each school year
@@ -1000,17 +993,16 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
       const subjectGrades = Object.values(year.subjects)
         .sort((a: any, b: any) => a.subjectName.localeCompare(b.subjectName))
         .map((subject: any) => {
-        const quarters = [subject.Q1, subject.Q2, subject.Q3, subject.Q4].filter((q: number | null) => q !== null);
-        const finalGrade = quarters.length > 0 
-          ? Math.round(quarters.reduce((a: number, b: number) => a + b, 0) / quarters.length)
+        const terms = [subject.T1, subject.T2, subject.T3].filter((q: number | null) => q !== null);
+        const finalGrade = terms.length > 0 
+          ? Math.round(terms.reduce((a: number, b: number) => a + b, 0) / terms.length)
           : null;
         return {
           subjectCode: subject.subjectCode,
           subjectName: subject.subjectName,
-          Q1: subject.Q1,
-          Q2: subject.Q2,
-          Q3: subject.Q3,
-          Q4: subject.Q4,
+          T1: subject.T1,
+          T2: subject.T2,
+          T3: subject.T3,
           final: finalGrade,
           remarks: finalGrade ? (finalGrade >= 75 ? "Passed" : "Failed") : null
         };
@@ -1145,10 +1137,9 @@ router.get("/forms/sf8", authenticateToken, async (req: AuthRequest, res: Respon
           );
           
           studentGrades[ca.subject.code] = {
-            Q1: subjectGrades.find(g => g.quarter === "Q1")?.quarterlyGrade || null,
-            Q2: subjectGrades.find(g => g.quarter === "Q2")?.quarterlyGrade || null,
-            Q3: subjectGrades.find(g => g.quarter === "Q3")?.quarterlyGrade || null,
-            Q4: subjectGrades.find(g => g.quarter === "Q4")?.quarterlyGrade || null
+            T1: subjectGrades.find(g => g.term === "T1")?.quarterlyGrade || null,
+            T2: subjectGrades.find(g => g.term === "T2")?.quarterlyGrade || null,
+            T3: subjectGrades.find(g => g.term === "T3")?.quarterlyGrade || null
           };
         });
 

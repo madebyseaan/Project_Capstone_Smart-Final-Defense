@@ -14,26 +14,25 @@
 import path from 'path';
 import fs from 'fs';
 
-const QUARTER_ORDINALS: Record<string, string> = {
-  Q1: '1ST QUARTER',
-  Q2: '2ND QUARTER',
-  Q3: '3RD QUARTER',
-  Q4: '4TH QUARTER',
+const TERM_ORDINALS: Record<string, string> = {
+  T1: '1ST TERM',
+  T2: '2ND TERM',
+  T3: '3RD TERM',
 };
 
 /**
  * Returns the ECR template filename (not full path) for a given subject code.
  *
  * @param subjectCode  The Subject.code value, e.g. "AP", "STE_RESEARCH", "TLE_HE"
- * @param quarter      Quarter string: "Q1" | "Q2" | "Q3" | "Q4" (required for MAPEH/SPA/SPS)
+ * @param term         Term string: "T1" | "T2" | "T3" (required for MAPEH/SPA/SPS)
  * @returns            Filename like "GRADE 7-10_SCIENCE.xlsx", or null if no mapping exists
  */
 export function getTemplateFilenameForSubjectCode(
   subjectCode: string,
-  quarter: string = 'Q1'
+  term: string = 'T1'
 ): string | null {
   const code = subjectCode.toUpperCase().trim();
-  const ordinal = QUARTER_ORDINALS[quarter.toUpperCase()] ?? '1ST QUARTER';
+  const ordinal = TERM_ORDINALS[term.toUpperCase()] ?? '1ST TERM';
 
   // ── Prefix-based mappings ────────────────────────────────────────────────
 
@@ -47,7 +46,7 @@ export function getTemplateFilenameForSubjectCode(
     return 'GRADE 7-10_SCIENCE.xlsx';
   }
 
-  // SPS (Sports) / SPA (Arts) specialisation → MAPEH (quarter-specific)
+  // SPS (Sports) / SPA (Arts) specialisation → MAPEH (term-specific)
   if (code.startsWith('SPS_') || code === 'SPS' || code.startsWith('SPA_') || code === 'SPA') {
     return `GRADE 7-10_MAPEH ${ordinal}.xlsx`;
   }

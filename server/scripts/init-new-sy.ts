@@ -11,12 +11,12 @@ async function main() {
       where: { id: 'main' },
       update: { 
         currentSchoolYear: '2026-2027',
-        currentQuarter: 'Q1'
+        currentTerm: 'T1'
       },
       create: { 
         id: 'main',
         currentSchoolYear: '2026-2027',
-        currentQuarter: 'Q1',
+        currentTerm: 'T1',
         schoolName: 'Hinigaran National High School'
       },
     });

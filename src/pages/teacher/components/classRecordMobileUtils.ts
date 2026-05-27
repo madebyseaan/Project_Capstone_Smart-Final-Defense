@@ -56,16 +56,16 @@ function transmuteGrade(initialGrade: number): number {
   return Math.round(Math.max(60, Math.min(100, initialGrade)));
 }
 
-export function getQuarterGrade(record: ClassRecord, selectedQuarter: string) {
-  return record.grades.find((g) => g.quarter === selectedQuarter);
+export function getQuarterGrade(record: ClassRecord, selectedTerm: string) {
+  return record.grades.find((g) => g.term === selectedTerm);
 }
 
 export function getDisplayFinalGrade(
   record: ClassRecord,
-  selectedQuarter: string,
+  selectedTerm: string,
   weights: { ww: number; pt: number; qa: number }
 ): number | null {
-  const grade = getQuarterGrade(record, selectedQuarter);
+  const grade = getQuarterGrade(record, selectedTerm);
   if (!grade) return null;
   if (grade.quarterlyGrade !== null && grade.quarterlyGrade !== undefined) return grade.quarterlyGrade;
 
@@ -99,11 +99,11 @@ export function getMobileDraftKey(studentId: string, category: ScoreCategory, in
 
 export function getScoreFromGrade(
   record: ClassRecord,
-  selectedQuarter: string,
+  selectedTerm: string,
   category: ScoreCategory,
   index: number
 ): string {
-  const grade = getQuarterGrade(record, selectedQuarter);
+  const grade = getQuarterGrade(record, selectedTerm);
   if (!grade) return "";
   if (category === "WW") {
     const score = Number((grade.writtenWorkScores as ScoreItem[] | undefined)?.[index]?.score ?? 0);

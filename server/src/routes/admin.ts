@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { Role, SubjectType, AuditAction, AuditSeverity, Quarter, WorkloadType } from "@prisma/client";
+import { Role, SubjectType, AuditAction, AuditSeverity, Term, WorkloadType } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -14,7 +14,7 @@ import { getSyncStatus, runAtlasSync } from "../lib/atlasSync";
 import { getEnrollProSyncStatus, runEnrollProSync } from "../lib/enrollproSync";
 import { getRecentSyncHistory, runUnifiedSync } from "../lib/syncCoordinator";
 import { getSystemHealthSnapshot } from "../lib/systemHealth";
-import { getIntegrationV1ActiveSchoolYear, getIntegrationV1Faculty, getIntegrationV1LearnersPage } from "../lib/enrollproClient";
+import { getIntegrationV1ActiveSchoolYear, getIntegrationV1FacultyPage, getIntegrationV1LearnersPage } from "../lib/enrollproClient";
 
 const router = Router();
 
@@ -163,9 +163,10 @@ router.get("/dashboard", authenticateToken, requireAdmin, async (req: AuthReques
     try {
       const activeSy = await getIntegrationV1ActiveSchoolYear();
       if (activeSy?.id) {
-        const faculty = await getIntegrationV1Faculty(activeSy.id);
-        if (Array.isArray(faculty) && faculty.length > 0) {
-          totalTeachers = faculty.length;
+        // Fetch just 1 record to get the meta.total count efficiently
+        const { meta } = await getIntegrationV1FacultyPage(activeSy.id, 1, 1);
+        if (meta?.total) {
+          totalTeachers = meta.total;
         }
       }
     } catch (error: any) {
@@ -294,7 +295,7 @@ router.get("/dashboard", authenticateToken, requireAdmin, async (req: AuthReques
         ? {
             schoolName: settings.schoolName,
             currentSchoolYear: settings.currentSchoolYear,
-            currentQuarter: settings.currentQuarter,
+            currentTerm: settings.currentTerm,
           }
         : null,
     });
@@ -793,7 +794,7 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
       contactNumber,
       email,
       currentSchoolYear,
-      currentQuarter,
+      currentTerm,
       primaryColor,
       secondaryColor,
       accentColor,
@@ -802,15 +803,13 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
       passwordMinLength,
       requireSpecialChar,
       // Academic calendar dates
-      q1StartDate,
-      q1EndDate,
-      q2StartDate,
-      q2EndDate,
-      q3StartDate,
-      q3EndDate,
-      q4StartDate,
-      q4EndDate,
-      autoAdvanceQuarter,
+      t1StartDate,
+      t1EndDate,
+      t2StartDate,
+      t2EndDate,
+      t3StartDate,
+      t3EndDate,
+      autoAdvanceTerm,
     } = req.body;
 
     const settings = await prisma.systemSettings.upsert({
@@ -824,7 +823,7 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
         contactNumber,
         email,
         currentSchoolYear,
-        currentQuarter: currentQuarter as Quarter,
+        currentTerm: currentTerm as Term,
         primaryColor,
         secondaryColor,
         accentColor,
@@ -832,15 +831,13 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
         maxLoginAttempts,
         passwordMinLength,
         requireSpecialChar,
-        q1StartDate: q1StartDate ? new Date(q1StartDate) : undefined,
-        q1EndDate: q1EndDate ? new Date(q1EndDate) : undefined,
-        q2StartDate: q2StartDate ? new Date(q2StartDate) : undefined,
-        q2EndDate: q2EndDate ? new Date(q2EndDate) : undefined,
-        q3StartDate: q3StartDate ? new Date(q3StartDate) : undefined,
-        q3EndDate: q3EndDate ? new Date(q3EndDate) : undefined,
-        q4StartDate: q4StartDate ? new Date(q4StartDate) : undefined,
-        q4EndDate: q4EndDate ? new Date(q4EndDate) : undefined,
-        autoAdvanceQuarter,
+        t1StartDate: t1StartDate ? new Date(t1StartDate) : undefined,
+        t1EndDate: t1EndDate ? new Date(t1EndDate) : undefined,
+        t2StartDate: t2StartDate ? new Date(t2StartDate) : undefined,
+        t2EndDate: t2EndDate ? new Date(t2EndDate) : undefined,
+        t3StartDate: t3StartDate ? new Date(t3StartDate) : undefined,
+        t3EndDate: t3EndDate ? new Date(t3EndDate) : undefined,
+        autoAdvanceTerm,
       },
       create: {
         id: "main",
@@ -852,7 +849,7 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
         contactNumber,
         email,
         currentSchoolYear,
-        currentQuarter: currentQuarter as Quarter,
+        currentTerm: currentTerm as Term,
         primaryColor,
         secondaryColor,
         accentColor,
@@ -860,15 +857,13 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
         maxLoginAttempts,
         passwordMinLength,
         requireSpecialChar,
-        q1StartDate: q1StartDate ? new Date(q1StartDate) : undefined,
-        q1EndDate: q1EndDate ? new Date(q1EndDate) : undefined,
-        q2StartDate: q2StartDate ? new Date(q2StartDate) : undefined,
-        q2EndDate: q2EndDate ? new Date(q2EndDate) : undefined,
-        q3StartDate: q3StartDate ? new Date(q3StartDate) : undefined,
-        q3EndDate: q3EndDate ? new Date(q3EndDate) : undefined,
-        q4StartDate: q4StartDate ? new Date(q4StartDate) : undefined,
-        q4EndDate: q4EndDate ? new Date(q4EndDate) : undefined,
-        autoAdvanceQuarter,
+        t1StartDate: t1StartDate ? new Date(t1StartDate) : undefined,
+        t1EndDate: t1EndDate ? new Date(t1EndDate) : undefined,
+        t2StartDate: t2StartDate ? new Date(t2StartDate) : undefined,
+        t2EndDate: t2EndDate ? new Date(t2EndDate) : undefined,
+        t3StartDate: t3StartDate ? new Date(t3StartDate) : undefined,
+        t3EndDate: t3EndDate ? new Date(t3EndDate) : undefined,
+        autoAdvanceTerm,
       },
     });
 
@@ -1063,8 +1058,8 @@ router.get("/grading-config", authenticateToken, requireAdmin, async (req: AuthR
     // If no configs exist, create defaults
     if (configs.length === 0) {
       const defaultConfigs = [
-        { subjectType: SubjectType.CORE, ww: 30, pt: 50, qa: 20 },
-        { subjectType: 'MATH_SCIENCE' as SubjectType, ww: 40, pt: 40, qa: 20 },
+        { subjectType: SubjectType.CORE, ww: 20, pt: 50, qa: 30 },
+        { subjectType: 'MATH_SCIENCE' as SubjectType, ww: 20, pt: 50, qa: 30 },
         { subjectType: SubjectType.MAPEH, ww: 20, pt: 60, qa: 20 },
         { subjectType: SubjectType.TLE, ww: 20, pt: 60, qa: 20 },
       ];
@@ -1146,10 +1141,10 @@ router.put("/grading-config/:subjectType", authenticateToken, requireAdmin, asyn
 // Reset grading configuration to DepEd defaults
 router.post("/grading-config/reset", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // DepEd default weights
+    // DepEd default weights (Revised Guidelines 2026)
     const defaults = [
-      { subjectType: SubjectType.CORE, ww: 30, pt: 50, qa: 20 },
-      { subjectType: 'MATH_SCIENCE' as SubjectType, ww: 40, pt: 40, qa: 20 },
+      { subjectType: SubjectType.CORE, ww: 20, pt: 50, qa: 30 },
+      { subjectType: 'MATH_SCIENCE' as SubjectType, ww: 20, pt: 50, qa: 30 },
       { subjectType: SubjectType.MAPEH, ww: 20, pt: 60, qa: 20 },
       { subjectType: SubjectType.TLE, ww: 20, pt: 60, qa: 20 },
     ];

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import type { ClassAssignment, ClassRecord, ScoreItem } from "@/lib/api";
 
-const quarters = ["Q1", "Q2", "Q3", "Q4"] as const;
+const terms = ["T1", "T2", "T3"] as const;
 
 function getGradeColor(grade: number | null): string {
   if (grade === null) return "text-slate-300";
@@ -92,7 +92,7 @@ interface LedgerRowProps {
   isHps?: boolean;
   hpsStickyTop?: number;
   hpsData?: { wwScores: ScoreItem[]; ptScores: ScoreItem[]; qaMax: number };
-  selectedQuarter: string;
+  selectedTerm: string;
   wwCount: number;
   ptCount: number;
   weights: { ww: number; pt: number; qa: number };
@@ -110,7 +110,7 @@ const LedgerRow = React.memo(
     isHps = false,
     hpsStickyTop,
     hpsData,
-    selectedQuarter,
+    selectedTerm,
     wwCount,
     ptCount,
     weights,
@@ -120,7 +120,7 @@ const LedgerRow = React.memo(
     isCellInvalid,
   }: LedgerRowProps) => {
     const studentId = record?.student.id || "HPS";
-    const grade = record?.grades?.find((g) => g.quarter === selectedQuarter);
+    const grade = record?.grades?.find((g) => g.term === selectedTerm);
 
     const wwScores = isHps ? hpsData?.wwScores || [] : ((grade?.writtenWorkScores || []) as ScoreItem[]);
     const ptScores = isHps ? hpsData?.ptScores || [] : ((grade?.perfTaskScores || []) as ScoreItem[]);
@@ -467,8 +467,8 @@ interface ClassRecordTableProps {
     pt: number;
     qa: number;
   } | null;
-  selectedQuarter: string;
-  onQuarterChange: (quarter: string) => void;
+  selectedTerm: string;
+  onTermChange: (term: string) => void;
   separateByGender: boolean;
   onSeparateByGenderChange: (value: boolean) => void;
   showAssessmentDetails: boolean;
@@ -499,8 +499,8 @@ interface ClassRecordTableProps {
 export function ClassRecordTable({
   classAssignment,
   effectiveWeights,
-  selectedQuarter,
-  onQuarterChange,
+  selectedTerm,
+  onTermChange,
   separateByGender,
   onSeparateByGenderChange,
   showAssessmentDetails,
@@ -682,19 +682,19 @@ export function ClassRecordTable({
             )}
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Period:</span>
-              <Select value={selectedQuarter} onValueChange={(val) => val && onQuarterChange(val)}>
+              <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)}>
                 <SelectTrigger className="h-8 w-20 bg-white border-slate-200 text-[11px] font-black uppercase rounded-xl shadow-sm px-3">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl border-slate-200 shadow-2xl p-1">
-                  {quarters.map((q) => (
+                  {terms.map((q) => (
                     <SelectItem
                       key={q}
                       value={q}
                       className="text-[11px] font-black uppercase rounded-lg py-1.5 px-3 focus:bg-indigo-50 focus:text-indigo-600 transition-colors cursor-pointer"
                     >
-                      {q}
-                    </SelectItem>
+                      { q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3" }
+              </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -773,14 +773,14 @@ export function ClassRecordTable({
                     colSpan={3}
                     className={`${thBase} border-r text-amber-600 bg-amber-50 z-20`}
                   >
-                    QA ({effectiveWeights?.qa ?? classAssignment.subject.quarterlyAssessWeight}%)
+                    TA ({effectiveWeights?.qa ?? classAssignment.subject.quarterlyAssessWeight}%)
                   </TableHead>
 
                   <TableHead
                     colSpan={2}
                     className={`${thBase} border-r text-emerald-600 bg-emerald-50 z-20`}
                   >
-                    Summary
+                    Grade Summary
                   </TableHead>
                 </TableRow>
 
@@ -809,7 +809,7 @@ export function ClassRecordTable({
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-amber-700 uppercase border-r border-b border-slate-200 bg-amber-100 bg-clip-padding sticky z-20">WS</TableHead>
 
                   <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-black text-emerald-600 uppercase border-r border-b border-slate-200 bg-emerald-50 bg-clip-padding sticky z-20">Initial</TableHead>
-                  <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-black text-slate-900 uppercase bg-emerald-100 bg-clip-padding border-r border-b border-slate-200 sticky z-20">Final</TableHead>
+                  <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-black text-slate-900 uppercase bg-emerald-100 bg-clip-padding border-r border-b border-slate-200 sticky z-20">Grade</TableHead>
                 </TableRow>
 
                 {/* ── Row 3: HPS (MAX) Row ── */}
@@ -821,7 +821,7 @@ export function ClassRecordTable({
                   isHps
                   hpsStickyTop={undefined}
                   hpsData={hpsData}
-                  selectedQuarter={selectedQuarter}
+                  selectedTerm={selectedTerm}
                   wwCount={wwCount}
                   ptCount={ptCount}
                   weights={weights}
@@ -864,7 +864,7 @@ export function ClassRecordTable({
                     );
                     maleRecords.forEach((r, i) =>
                       rows.push(
-                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedQuarter={selectedQuarter} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
+                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
                       )
                     );
                   }
@@ -881,14 +881,14 @@ export function ClassRecordTable({
                     );
                     femaleRecords.forEach((r, i) =>
                       rows.push(
-                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedQuarter={selectedQuarter} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
+                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
                       )
                     );
                   }
                 } else {
                   sortedRecords.forEach((r, i) =>
                     rows.push(
-                      <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedQuarter={selectedQuarter} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
+                      <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
                     )
                   );
                 }

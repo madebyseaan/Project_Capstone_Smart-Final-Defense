@@ -438,18 +438,51 @@ export async function getAllIntegrationV1Sections(schoolYearId?: number): Promis
 }
 
 /**
- * Returns all faculty from EnrollPro's integration feed, including advisory info.
+ * Returns a single page of faculty from EnrollPro's integration feed, including advisory info.
  * No auth required.
- * GET /api/integration/v1/faculty?schoolYearId=:id
- * Each record: { teacherId, employeeId, firstName, lastName, middleName, fullName, email,
- *   isClassAdviser, advisorySectionId, advisorySectionName, advisorySectionGradeLevelName, ... }
+ * GET /api/integration/v1/faculty?schoolYearId=:id&page=:n&limit=:n
+ */
+export async function getIntegrationV1FacultyPage(
+  schoolYearId?: number,
+  page = 1,
+  limit = 50,
+): Promise<{ data: IntegrationV1Faculty[]; meta: any }> {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (schoolYearId) query.set('schoolYearId', String(schoolYearId));
+  const url = `${ENROLLPRO_BASE}/integration/v1/faculty?${query.toString()}`;
+  const result = await fetchJSON(url);
+  return {
+    data: (result?.data ?? []) as IntegrationV1Faculty[],
+    meta: result?.meta ?? { total: (result?.data ?? []).length, page, limit, totalPages: 1 },
+  };
+}
+
+/**
+ * Returns all faculty from EnrollPro's integration feed (first page only).
+ * @deprecated Use getAllIntegrationV1Faculty() for full list or getIntegrationV1FacultyPage() for pagination.
  */
 export async function getIntegrationV1Faculty(schoolYearId?: number): Promise<IntegrationV1Faculty[]> {
-  const url = schoolYearId
-    ? `${ENROLLPRO_BASE}/integration/v1/faculty?schoolYearId=${schoolYearId}`
-    : `${ENROLLPRO_BASE}/integration/v1/faculty`;
-  const result = await fetchJSON(url);
-  return (result?.data ?? []) as IntegrationV1Faculty[];
+  const { data } = await getIntegrationV1FacultyPage(schoolYearId, 1, 50);
+  return data;
+}
+
+/**
+ * Fetches ALL faculty members across all pages from Integration v1.
+ * No auth required. Automatically paginates.
+ */
+export async function getAllIntegrationV1Faculty(schoolYearId?: number): Promise<IntegrationV1Faculty[]> {
+  const all: IntegrationV1Faculty[] = [];
+  let page = 1;
+  const limit = 200;
+
+  while (true) {
+    const { data, meta } = await getIntegrationV1FacultyPage(schoolYearId, page, limit);
+    all.push(...data);
+    if (page >= meta.totalPages || data.length === 0) break;
+    page++;
+  }
+
+  return all;
 }
 
 /**
@@ -460,7 +493,7 @@ export async function findIntegrationV1FacultyByEmployeeId(
   employeeId: string,
   schoolYearId?: number,
 ): Promise<IntegrationV1Faculty | undefined> {
-  const all = await getIntegrationV1Faculty(schoolYearId);
+  const all = await getAllIntegrationV1Faculty(schoolYearId);
   const wanted = String(employeeId ?? '').trim();
   return all.find((f) => String(f.employeeId ?? '').trim() === wanted);
 }
