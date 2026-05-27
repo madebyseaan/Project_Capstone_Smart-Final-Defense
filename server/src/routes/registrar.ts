@@ -535,6 +535,49 @@ router.get("/student/:studentId", authenticateToken, async (req: AuthRequest, re
   }
 });
 
+// Helper to check if a subject is Homeroom Guidance
+function isHomeroomGuidanceSubjectCode(subjectCode?: string | null): boolean {
+  return (subjectCode ?? '').toUpperCase().startsWith('HG');
+}
+
+function isSubjectAlignedWithGrade(subjectCode: string, gradeLevel: string): boolean {
+  const gradeSuffix = gradeLevel.replace('GRADE_', '');
+  const code = subjectCode.toUpperCase();
+  const match = code.match(/\d+$/);
+  if (match) {
+    return match[0] === gradeSuffix;
+  }
+  return true;
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function canonicalSubjectCode(subjectCode: string): string {
+  const code = normalizeWhitespace(subjectCode).toUpperCase();
+  const aliasMap: Record<string, string> = {
+    TLE_AFA_EXP: 'TLE_AFA_EXP10',
+    TLE_FCS_EXP: 'TLE_FCS_EXP10',
+    TLE_ICT_EXP: 'TLE_ICT_EXP10',
+  };
+  return aliasMap[code] ?? code;
+}
+
+function toDisplayName(value: string): string {
+  return normalizeWhitespace(value)
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function subjectCanonicalKey(subjectCode: string, subjectName: string): string {
+  // Use canonical code so legacy aliases (e.g., TLE_AFA_EXP vs TLE_AFA_EXP10)
+  // collapse into one learning area entry in SF forms.
+  return canonicalSubjectCode(subjectCode);
+}
+
 // Get SF9 (Report Card) data for a student
 router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -558,12 +601,14 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       return;
     }
 
-    // Get enrollment for school year
+    // Get active enrollment for school year.
     const enrollment = await prisma.enrollment.findFirst({
       where: {
         studentId: studentId,
-        schoolYear: currentSchoolYear
+        schoolYear: currentSchoolYear,
+        status: 'ENROLLED',
       },
+      orderBy: [{ createdAt: 'desc' }],
       include: {
         section: {
           include: {
@@ -580,13 +625,28 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       return;
     }
 
+    // Get current class assignments for this section/year.
+    const classAssignments = await prisma.classAssignment.findMany({
+      where: {
+        sectionId: enrollment.sectionId,
+        schoolYear: currentSchoolYear,
+      },
+      include: {
+        subject: true,
+        teacher: {
+          include: { user: true }
+        }
+      }
+    });
+
     // Get all grades for this student in this school year
     const grades = await prisma.grade.findMany({
       where: {
         studentId: studentId,
         classAssignment: {
           sectionId: enrollment.sectionId,
-          schoolYear: currentSchoolYear
+          schoolYear: currentSchoolYear,
+          isActive: true,
         }
       },
       include: {
@@ -601,23 +661,88 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       }
     });
 
-    // Organize grades by subject
-    const subjectGrades: Record<string, any> = {};
-    grades.forEach((grade: any) => {
-      const subjectId = grade.classAssignment.subject.id;
-      if (!subjectGrades[subjectId]) {
-        subjectGrades[subjectId] = {
-          subjectCode: grade.classAssignment.subject.code,
-          subjectName: grade.classAssignment.subject.name,
-          teacher: `${grade.classAssignment.teacher.user.firstName} ${grade.classAssignment.teacher.user.lastName}`,
+    const nonNullQuarterCountByAssignment = new Map<string, number>();
+    grades.forEach((g: any) => {
+      if (g.quarterlyGrade === null) return;
+      nonNullQuarterCountByAssignment.set(
+        g.classAssignmentId,
+        (nonNullQuarterCountByAssignment.get(g.classAssignmentId) ?? 0) + 1,
+      );
+    });
+
+    const gradePriority = (g: any): number => {
+      const activeScore = g.classAssignment?.isActive ? 10_000 : 0;
+      const densityScore = (nonNullQuarterCountByAssignment.get(g.classAssignmentId) ?? 0) * 100;
+      const freshnessScore = new Date(g.updatedAt).getTime() / 1e12;
+      return activeScore + densityScore + freshnessScore;
+    };
+
+    // Build canonical subject rows using learning-area identity (code+name), not subjectId,
+    // so duplicate subject rows from sync do not appear as separate entries.
+    const subjectGrades: Record<string, {
+      subjectCode: string;
+      subjectName: string;
+      teacher: string;
+      Q1: number | null;
+      Q2: number | null;
+      Q3: number | null;
+      Q4: number | null;
+      finalGrade: number | null;
+    }> = {};
+
+    classAssignments.forEach((ca: any) => {
+      if (isHomeroomGuidanceSubjectCode(ca.subject.code)) {
+        return;
+      }
+      if (!isSubjectAlignedWithGrade(ca.subject.code, enrollment.section.gradeLevel)) {
+        return;
+      }
+      const key = subjectCanonicalKey(ca.subject.code, ca.subject.name);
+      if (!subjectGrades[key]) {
+        subjectGrades[key] = {
+        subjectCode: ca.subject.code,
+        subjectName: ca.subject.name,
+        teacher: ca.teacher?.user
+          ? `${toDisplayName(ca.teacher.user.firstName)} ${toDisplayName(ca.teacher.user.lastName)}`
+          : "Unknown",
+        Q1: null,
+        Q2: null,
+        Q3: null,
+        Q4: null,
+        finalGrade: null
+      };
+      }
+    });
+
+    // Populate with actual grade records, preferring higher-priority assignment sources.
+    [...grades].sort((a: any, b: any) => gradePriority(b) - gradePriority(a)).forEach((grade: any) => {
+      const subject = grade.classAssignment.subject;
+      if (isHomeroomGuidanceSubjectCode(subject.code)) {
+        return;
+      }
+      if (!isSubjectAlignedWithGrade(subject.code, enrollment.section.gradeLevel)) {
+        return;
+      }
+
+      const key = subjectCanonicalKey(subject.code, subject.name);
+      if (!subjectGrades[key]) {
+        subjectGrades[key] = {
+          subjectCode: subject.code,
+          subjectName: subject.name,
+          teacher: grade.classAssignment.teacher?.user
+            ? `${toDisplayName(grade.classAssignment.teacher.user.firstName)} ${toDisplayName(grade.classAssignment.teacher.user.lastName)}`
+            : "Unknown",
           Q1: null,
           Q2: null,
           Q3: null,
           Q4: null,
-          finalGrade: null
+          finalGrade: null,
         };
       }
-      subjectGrades[subjectId][grade.quarter] = grade.quarterlyGrade;
+
+      if (grade.quarterlyGrade !== null && subjectGrades[key][grade.quarter as Quarter] === null) {
+        subjectGrades[key][grade.quarter as Quarter] = grade.quarterlyGrade;
+      }
     });
 
     // Calculate final grades
@@ -634,6 +759,18 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       ? Math.round(allFinals.reduce((a: number, b: number) => a + b, 0) / allFinals.length)
       : null;
 
+    // Calculate student age from birthDate
+    let age = null;
+    if (student.birthDate) {
+      const today = new Date();
+      const birth = new Date(student.birthDate);
+      age = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+        age--;
+      }
+    }
+
     res.json({
       student: {
         id: student.id,
@@ -641,6 +778,7 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
         name: `${student.lastName}, ${student.firstName} ${student.middleName || ""} ${student.suffix || ""}`.trim(),
         gender: normalizeDisplaySex(student.gender),
         birthDate: student.birthDate,
+        age,
         section: enrollment.section.name,
         gradeLevel: enrollment.section.gradeLevel,
         schoolYear: enrollment.schoolYear,
@@ -648,7 +786,9 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
           ? `${enrollment.section.adviser.user.firstName} ${enrollment.section.adviser.user.lastName}`
           : null
       },
-      subjectGrades: Object.values(subjectGrades).map((s: any) => ({
+      subjectGrades: Object.values(subjectGrades)
+        .sort((a, b) => a.subjectName.localeCompare(b.subjectName))
+        .map((s: any) => ({
         subjectCode: s.subjectCode,
         subjectName: s.subjectName,
         Q1: s.Q1,
@@ -705,6 +845,45 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
       return;
     }
 
+    // Resolve one canonical enrollment per school year, prioritizing ENROLLED entries.
+    const enrollmentBySchoolYear = new Map<string, any>();
+    student.enrollments.forEach((enrollment: any) => {
+      const existing = enrollmentBySchoolYear.get(enrollment.schoolYear);
+      if (!existing) {
+        enrollmentBySchoolYear.set(enrollment.schoolYear, enrollment);
+        return;
+      }
+
+      const existingScore = existing.status === 'ENROLLED' ? 2 : 1;
+      const incomingScore = enrollment.status === 'ENROLLED' ? 2 : 1;
+      if (incomingScore > existingScore) {
+        enrollmentBySchoolYear.set(enrollment.schoolYear, enrollment);
+        return;
+      }
+
+      if (incomingScore === existingScore && enrollment.createdAt > existing.createdAt) {
+        enrollmentBySchoolYear.set(enrollment.schoolYear, enrollment);
+      }
+    });
+
+    const canonicalEnrollments = Array.from(enrollmentBySchoolYear.values());
+
+    // Get all section IDs from canonical enrollments
+    const sectionIds = canonicalEnrollments.map((e: any) => e.sectionId);
+
+    // Fetch all active class assignments for these sections
+    const classAssignments = await prisma.classAssignment.findMany({
+      where: {
+        sectionId: { in: sectionIds },
+      },
+      include: {
+        subject: true,
+        teacher: {
+          include: { user: true }
+        }
+      }
+    });
+
     // Get all grades for this student across all school years
     const grades = await prisma.grade.findMany({
       where: { studentId: studentId },
@@ -721,10 +900,26 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
       }
     });
 
+    const nonNullQuarterCountByAssignment = new Map<string, number>();
+    grades.forEach((g: any) => {
+      if (g.quarterlyGrade === null) return;
+      nonNullQuarterCountByAssignment.set(
+        g.classAssignmentId,
+        (nonNullQuarterCountByAssignment.get(g.classAssignmentId) ?? 0) + 1,
+      );
+    });
+
+    const gradePriority = (g: any): number => {
+      const activeScore = g.classAssignment?.isActive ? 10_000 : 0;
+      const densityScore = (nonNullQuarterCountByAssignment.get(g.classAssignmentId) ?? 0) * 100;
+      const freshnessScore = new Date(g.updatedAt).getTime() / 1e12;
+      return activeScore + densityScore + freshnessScore;
+    };
+
     // Organize by school year
     const academicHistory: Record<string, any> = {};
     
-    student.enrollments.forEach((enrollment: any) => {
+    canonicalEnrollments.forEach((enrollment: any) => {
       const sy = enrollment.schoolYear;
       if (!academicHistory[sy]) {
         academicHistory[sy] = {
@@ -734,9 +929,35 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
           subjects: {}
         };
       }
+
+      // Populate subjects based on class assignments for this enrollment's section
+      const sectionAssignments = classAssignments.filter(
+        (ca: any) => ca.sectionId === enrollment.sectionId && ca.schoolYear === sy
+      );
+      sectionAssignments.forEach((ca: any) => {
+        if (isHomeroomGuidanceSubjectCode(ca.subject.code)) {
+          return;
+        }
+        if (!isSubjectAlignedWithGrade(ca.subject.code, enrollment.section.gradeLevel)) {
+          return;
+        }
+
+        const key = subjectCanonicalKey(ca.subject.code, ca.subject.name);
+        if (!academicHistory[sy].subjects[key]) {
+          academicHistory[sy].subjects[key] = {
+          subjectCode: ca.subject.code,
+          subjectName: ca.subject.name,
+          Q1: null,
+          Q2: null,
+          Q3: null,
+          Q4: null,
+          finalGrade: null
+        };
+        }
+      });
     });
 
-    grades.forEach((grade: any) => {
+    [...grades].sort((a: any, b: any) => gradePriority(b) - gradePriority(a)).forEach((grade: any) => {
       const sy = grade.classAssignment.schoolYear;
       if (!academicHistory[sy]) {
         academicHistory[sy] = {
@@ -747,9 +968,16 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
         };
       }
 
-      const subjectId = grade.classAssignment.subject.id;
-      if (!academicHistory[sy].subjects[subjectId]) {
-        academicHistory[sy].subjects[subjectId] = {
+      if (isHomeroomGuidanceSubjectCode(grade.classAssignment.subject.code)) {
+        return;
+      }
+      if (!isSubjectAlignedWithGrade(grade.classAssignment.subject.code, grade.classAssignment.section.gradeLevel)) {
+        return;
+      }
+
+      const key = subjectCanonicalKey(grade.classAssignment.subject.code, grade.classAssignment.subject.name);
+      if (!academicHistory[sy].subjects[key]) {
+        academicHistory[sy].subjects[key] = {
           subjectCode: grade.classAssignment.subject.code,
           subjectName: grade.classAssignment.subject.name,
           Q1: null,
@@ -759,16 +987,19 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
           finalGrade: null
         };
       }
-      // Store quarterly grade
-      if (grade.quarter === 'Q1') academicHistory[sy].subjects[subjectId].Q1 = grade.quarterlyGrade;
-      if (grade.quarter === 'Q2') academicHistory[sy].subjects[subjectId].Q2 = grade.quarterlyGrade;
-      if (grade.quarter === 'Q3') academicHistory[sy].subjects[subjectId].Q3 = grade.quarterlyGrade;
-      if (grade.quarter === 'Q4') academicHistory[sy].subjects[subjectId].Q4 = grade.quarterlyGrade;
+      
+      // Store quarterly grade only if the slot is still empty (higher-priority rows run first).
+      if (grade.quarter === 'Q1' && academicHistory[sy].subjects[key].Q1 === null) academicHistory[sy].subjects[key].Q1 = grade.quarterlyGrade;
+      if (grade.quarter === 'Q2' && academicHistory[sy].subjects[key].Q2 === null) academicHistory[sy].subjects[key].Q2 = grade.quarterlyGrade;
+      if (grade.quarter === 'Q3' && academicHistory[sy].subjects[key].Q3 === null) academicHistory[sy].subjects[key].Q3 = grade.quarterlyGrade;
+      if (grade.quarter === 'Q4' && academicHistory[sy].subjects[key].Q4 === null) academicHistory[sy].subjects[key].Q4 = grade.quarterlyGrade;
     });
 
     // Calculate final grades for each school year
     const schoolRecords = Object.values(academicHistory).map((year: any) => {
-      const subjectGrades = Object.values(year.subjects).map((subject: any) => {
+      const subjectGrades = Object.values(year.subjects)
+        .sort((a: any, b: any) => a.subjectName.localeCompare(b.subjectName))
+        .map((subject: any) => {
         const quarters = [subject.Q1, subject.Q2, subject.Q3, subject.Q4].filter((q: number | null) => q !== null);
         const finalGrade = quarters.length > 0 
           ? Math.round(quarters.reduce((a: number, b: number) => a + b, 0) / quarters.length)

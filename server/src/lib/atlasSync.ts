@@ -17,6 +17,14 @@ import { prisma } from './prisma';
 import { getEnrollProTeachers, getAllIntegrationV1Sections, resolveEnrollProSchoolYear } from './enrollproClient';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import { setCachedAtlasFaculty } from './syncCache';
+import {
+  mapGradeLevel,
+  resolveSubjectCode,
+  normalizeSubjectLabel,
+  ensureHomeroomGuidanceLabel,
+  HOMEROOM_GUIDANCE_LABEL,
+  HOMEROOM_GUIDANCE_MINUTES,
+} from './atlasUtils';
 
 const ATLAS_BASE = 'http://100.88.55.125:5001/api/v1';
 const ATLAS_SCHOOL_ID = 1;      // ATLAS internal schoolId (EnrollPro uses schoolId=5 but ATLAS stores as 1)
@@ -35,22 +43,6 @@ function normalizeEmail(email: string | null | undefined): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/├æ/g, 'n')
     .replace(/ñ/g, 'n');
-}
-
-const HOMEROOM_GUIDANCE_LABEL = 'Homeroom Guidance';
-const HOMEROOM_GUIDANCE_MINUTES = 60;
-
-async function ensureHomeroomGuidanceLabel(
-  subject: { id: string; code: string; name: string },
-  updated: Set<string>,
-): Promise<void> {
-  if (!subject.code.startsWith('HG')) return;
-  if (subject.name === HOMEROOM_GUIDANCE_LABEL) return;
-  if (updated.has(subject.id)) return;
-
-  await prisma.subject.update({ where: { id: subject.id }, data: { name: HOMEROOM_GUIDANCE_LABEL } });
-  subject.name = HOMEROOM_GUIDANCE_LABEL;
-  updated.add(subject.id);
 }
 
 // -- State ------------------------------------------------------------------
@@ -380,25 +372,20 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       const section = sectionByName.get(load.sectionName);
       if (!section) continue;
 
-      // IMPORTANT: Prefer grade-suffixed subject (e.g. "SCI_BIO7") over raw Atlas code ("SCI_BIO").
-      // Grade-suffixed subjects are the canonical SMART subjects with correct full names.
-      // Raw Atlas codes often have abbreviated names (e.g. "Sci Bio" vs "Science - Biology").
-      const gradeSuffix = section.gradeLevel.replace('GRADE_', '');
-      let subject = subjectByCode.get(load.subjectCode + gradeSuffix)
-        ?? subjectByCode.get(load.subjectCode);
+      const smartSubjectCode = resolveSubjectCode(load.subjectCode, section.gradeLevel);
+      let subject = subjectByCode.get(smartSubjectCode);
 
       if (!subject) {
-        const autoCode = load.subjectCode + gradeSuffix;
-        const autoName = autoCode.startsWith('HG')
+        const autoName = smartSubjectCode.startsWith('HG')
           ? HOMEROOM_GUIDANCE_LABEL
           : load.subjectCode.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
         subject = await prisma.subject.upsert({
-          where: { code: autoCode },
+          where: { code: smartSubjectCode },
           update: {},
-          create: { code: autoCode, name: autoName, type: 'CORE' },
+          create: { code: smartSubjectCode, name: autoName, type: 'CORE' },
         });
-        subjectByCode.set(autoCode, subject);
-        console.log(`[AtlasSync] Auto-created subject "${autoCode}" ("${autoName}")`);
+        subjectByCode.set(smartSubjectCode, subject);
+        console.log(`[AtlasSync] Auto-created subject "${smartSubjectCode}" ("${autoName}")`);
       }
 
       await ensureHomeroomGuidanceLabel(subject, homeroomLabelUpdated);

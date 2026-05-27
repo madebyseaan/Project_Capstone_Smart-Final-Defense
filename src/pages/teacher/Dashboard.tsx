@@ -123,7 +123,7 @@ export default function TeacherDashboard() {
   const [advisoryHonors, setAdvisoryHonors] = useState<AdvisoryHonorsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedHonorsClass, setSelectedHonorsClass] = useState<string>("all");
+  const [selectedHonorsQuarter, setSelectedHonorsQuarter] = useState<string>("all");
   const [selectedGradeLevel, setSelectedGradeLevel] = useState<string>("all");
   const [selectedSection, setSelectedSection] = useState<string>("all");
 
@@ -153,6 +153,7 @@ export default function TeacherDashboard() {
         setStats(statsRes.data);
         setMasteryData(masteryRes.data);
         setAdvisoryHonors(advisoryHonorsRes.data);
+        setSelectedHonorsQuarter(dashboardRes.data.currentQuarter);
       } catch (err) {
         setError("Failed to load dashboard data");
         console.error(err);
@@ -170,6 +171,21 @@ export default function TeacherDashboard() {
       fetchMasteryDistribution(selectedGradeLevel, selectedSection);
     }
   }, [selectedGradeLevel, selectedSection]);
+
+  // Update honors data when quarter changes
+  useEffect(() => {
+    if (!loading && selectedHonorsQuarter && selectedHonorsQuarter !== "all") {
+      const fetchHonors = async () => {
+        try {
+          const res = await gradesApi.getAdvisoryHonors(selectedHonorsQuarter);
+          setAdvisoryHonors(res.data);
+        } catch (err) {
+          console.error("Error fetching honors:", err);
+        }
+      };
+      fetchHonors();
+    }
+  }, [selectedHonorsQuarter]);
 
   // Get filtered sections based on selected grade level
   const filteredSections = selectedGradeLevel === "all"
@@ -400,14 +416,14 @@ export default function TeacherDashboard() {
       <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden flex flex-col bg-white">
           <CardHeader className="p-8 pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-              <div>
-                <h2 className="text-xl font-black text-slate-900 flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-slate-900 text-white">
-                    <BarChart3 className="w-5 h-5" />
-                  </div>
-                  Performance Mastery
-                </h2>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Distribution of student ratings</p>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-slate-900 text-white">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">Performance Mastery</h2>
+                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Distribution of student ratings</p>
+                </div>
               </div>
               
               <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
@@ -502,36 +518,38 @@ export default function TeacherDashboard() {
         </CardHeader>
         <CardContent className="p-8 pt-0">
             {stats?.classStats && stats.classStats.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stats.classStats.map((classStat, idx) => {
-                  const percentage = classStat.totalStudents > 0
-                    ? Math.round((classStat.gradedCount / classStat.totalStudents) * 100)
-                    : 0;
-                  const barColorList = [colors.primary, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-                  const barColor = barColorList[idx % barColorList.length];
-                  return (
-                    <div key={classStat.id} className="p-6 rounded-3xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-all">
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <p className="text-sm font-black text-slate-900 leading-tight">{classStat.sectionName}</p>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{classStat.subjectName}</p>
+              <ScrollArea className="h-[520px] pr-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-6">
+                  {stats.classStats.map((classStat, idx) => {
+                    const percentage = classStat.totalStudents > 0
+                      ? Math.round((classStat.gradedCount / classStat.totalStudents) * 100)
+                      : 0;
+                    const barColorList = [colors.primary, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+                    const barColor = barColorList[idx % barColorList.length];
+                    return (
+                      <div key={classStat.id} className="p-6 rounded-3xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-all">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <p className="text-sm font-black text-slate-900 leading-tight">{classStat.sectionName}</p>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{classStat.subjectName}</p>
+                          </div>
+                          <span className="text-xl font-black" style={{ color: barColor }}>{percentage}%</span>
                         </div>
-                        <span className="text-xl font-black" style={{ color: barColor }}>{percentage}%</span>
+                        <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
+                          <div
+                            className="h-full rounded-full transition-all duration-1000 ease-out"
+                            style={{ width: `${percentage}%`, backgroundColor: barColor }}
+                          />
+                        </div>
+                        <div className="flex justify-between mt-3">
+                          <p className="text-[9px] font-bold text-slate-400">{classStat.gradedCount} graded</p>
+                          <p className="text-[9px] font-bold text-slate-400">{classStat.totalStudents} total</p>
+                        </div>
                       </div>
-                      <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
-                        <div
-                          className="h-full rounded-full transition-all duration-1000 ease-out"
-                          style={{ width: `${percentage}%`, backgroundColor: barColor }}
-                        />
-                      </div>
-                      <div className="flex justify-between mt-3">
-                        <p className="text-[9px] font-bold text-slate-400">{classStat.gradedCount} graded</p>
-                        <p className="text-[9px] font-bold text-slate-400">{classStat.totalStudents} total</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
             ) : (
               <div className="py-16 text-center text-slate-300">
                 <FileCheck className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -557,62 +575,44 @@ export default function TeacherDashboard() {
               </div>
               <div>
                 <h2 className="text-xl font-black text-slate-900">Academic Honors</h2>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Leading achievements</p>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Leading advisory achievements</p>
               </div>
             </div>
             
-            <Select value={selectedHonorsClass} onValueChange={(val) => val && setSelectedHonorsClass(val)}>
-              <SelectTrigger className="h-9 w-[180px] bg-slate-50 border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm">
-                <SelectValue placeholder="All Classes" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                <SelectItem value="all" className="text-xs font-bold uppercase">All Classes</SelectItem>
-                <SelectItem value="advisory" className="text-xs font-bold uppercase">Advisory Class</SelectItem>
-                {stats?.classStats.map(cs => (
-                  <SelectItem key={cs.id} value={cs.id} className="text-xs font-bold uppercase">{cs.sectionName}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-3">
+              {advisoryHonors?.hasAdvisory && (
+                <Badge variant="secondary" className="bg-slate-50 text-slate-400 border-slate-100 font-black px-4 py-2 rounded-xl text-[10px] tracking-widest uppercase">
+                  ADVISORY CLASS
+                </Badge>
+              )}
+              
+              <Select value={selectedHonorsQuarter} onValueChange={(val) => val && setSelectedHonorsQuarter(val)}>
+                <SelectTrigger className="h-9 w-[130px] bg-slate-50 border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm">
+                  <SelectValue placeholder="Select Quarter" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                  <SelectItem value="Q1" className="text-xs font-bold uppercase">1st Quarter</SelectItem>
+                  <SelectItem value="Q2" className="text-xs font-bold uppercase">2nd Quarter</SelectItem>
+                  <SelectItem value="Q3" className="text-xs font-bold uppercase">3rd Quarter</SelectItem>
+                  <SelectItem value="Q4" className="text-xs font-bold uppercase">4th Quarter</SelectItem>
+                  <SelectItem value="FINAL" className="text-xs font-bold uppercase">Final Grade</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="max-h-[420px] overflow-y-auto px-8 pb-8">
               {(() => {
-                let allHonors: { id: string; name: string; grade: number; honor: string; class: string }[] = [];
-
-                if (selectedHonorsClass === "advisory") {
-                  allHonors = [
-                    ...(advisoryHonors?.advisoryHonors || []),
-                    ...(advisoryHonors?.withHonors || []),
-                  ].sort((a, b) => b.grade - a.grade);
-                } else {
-                  const filteredStats = selectedHonorsClass === "all"
-                    ? stats?.classStats
-                    : stats?.classStats.filter(cs => cs.id === selectedHonorsClass);
-
-                  const classHonors = filteredStats?.flatMap(cs =>
-                    [...cs.honorsStudents, ...cs.withHonorsStudents].map(s => ({
-                      ...s,
-                      class: cs.sectionName
-                    }))
-                  ).sort((a, b) => b.grade - a.grade) || [];
-
-                  if (selectedHonorsClass === "all" && advisoryHonors?.hasAdvisory) {
-                    const seen = new Set(classHonors.map(s => s.id));
-                    const uniqueAdvisory = [
-                      ...(advisoryHonors?.advisoryHonors || []),
-                      ...(advisoryHonors?.withHonors || []),
-                    ].filter(s => !seen.has(s.id));
-                    allHonors = [...classHonors, ...uniqueAdvisory].sort((a, b) => b.grade - a.grade);
-                  } else {
-                    allHonors = classHonors;
-                  }
-                }
+                const allHonors = [
+                  ...(advisoryHonors?.advisoryHonors || []),
+                  ...(advisoryHonors?.withHonors || []),
+                ].sort((a, b) => b.grade - a.grade);
 
                 if (allHonors.length === 0) {
                   return (
                     <div className="py-20 text-center text-slate-300 bg-slate-50 rounded-[2rem] mt-4 border-2 border-dashed border-slate-100">
                       <Star className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                      <p className="font-black text-sm uppercase tracking-widest">No honors students yet</p>
+                      <p className="font-black text-sm uppercase tracking-widest">No advisory honors yet</p>
                       <p className="text-[10px] font-bold mt-2">Students with grades of 85 and above will appear here.</p>
                     </div>
                   );
@@ -697,9 +697,9 @@ export default function TeacherDashboard() {
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t border-rose-100">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade</p>
-                      <div className="text-right">
+                      <div className="flex items-center gap-2">
                         <span className="text-2xl font-black text-rose-600 leading-none">{student.grade}</span>
-                        <span className="ml-2 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg"
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg"
                           style={{ backgroundColor: student.grade <= 72 ? '#fef2f2' : '#fff7ed', color: student.grade <= 72 ? '#dc2626' : '#ea580c' }}>
                           {student.grade <= 72 ? 'INC' : 'FAILED'}
                         </span>
@@ -710,10 +710,10 @@ export default function TeacherDashboard() {
               </div>
             </ScrollArea>
           ) : (
-            <div className="py-24 text-center bg-emerald-50/50 rounded-[2.5rem] border-2 border-dashed border-emerald-100">
-              <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-emerald-400" />
+            <div className="py-24 flex flex-col items-center justify-center text-center bg-emerald-50/50 rounded-[2.5rem] border-2 border-dashed border-emerald-100">
+              <CheckCircle2 className="w-16 h-16 mb-4 text-emerald-400" />
               <p className="font-black text-emerald-800 text-lg uppercase tracking-widest">All students passed!</p>
-              <p className="text-[10px] text-emerald-600 font-bold px-8 mt-3 leading-relaxed max-w-md mx-auto">
+              <p className="text-[10px] text-emerald-600 font-bold px-8 mt-3 leading-relaxed max-w-md text-center">
                 Great job maintaining academic performance across all sections!
               </p>
             </div>

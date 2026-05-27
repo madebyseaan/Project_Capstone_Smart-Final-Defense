@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   FolderOpen,
   FileText,
@@ -181,6 +181,7 @@ export default function SchoolForms() {
   const [sf8Data, setSf8Data] = useState<any>(null);
   const [sf9Data, setSf9Data] = useState<any>(null);
   const [sf10Data, setSf10Data] = useState<any>(null);
+  const sf9PrintRef = useRef<HTMLDivElement | null>(null);
 
   // Load school years on mount
   useEffect(() => {
@@ -586,11 +587,59 @@ export default function SchoolForms() {
   // SF9 View - Report Card (DepEd Official Format)
   if (viewMode === "sf9" && sf9Data) {
     const handlePrint = () => {
+      const formNode = sf9PrintRef.current;
+      if (!formNode) return;
+
+      // Clone the form to body-level so it sits outside the React app shell.
+      // This keeps Tailwind CSS active (already loaded in the page) so images
+      // and layout classes all work correctly, unlike an iframe approach.
+      const printContainer = document.createElement("div");
+      printContainer.className = "sf9-print-container";
+      printContainer.appendChild(formNode.cloneNode(true));
+      document.body.appendChild(printContainer);
+
+      // Inject a temporary style: force A4 landscape and hide the app shell.
+      const printStyle = document.createElement("style");
+      printStyle.id = "sf9-print-style";
+      printStyle.textContent = [
+        "@media print {",
+        "  @page { size: A4 portrait; margin: 10mm 8mm; }",
+        "  body > *:not(.sf9-print-container) { display: none !important; }",
+        "  .sf9-print-container { display: block !important; width: 100% !important; }",
+        "  .sf9-print-container .print-form { box-shadow: none !important; margin: 0 !important; padding: 4mm !important; border: none !important; width: 100% !important; max-width: none !important; }",
+        "  .sf9-print-container img { max-width: 56px !important; max-height: 56px !important; object-fit: contain !important; }",
+        "  .sf9-print-container * { font-size: 9pt !important; line-height: 1.3 !important; }",
+        "  .sf9-print-container h1 { font-size: 11pt !important; font-weight: bold !important; }",
+        "  .sf9-print-container h2, .sf9-print-container h3 { font-size: 10pt !important; font-weight: bold !important; }",
+        "  .sf9-print-container table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed; }",
+        "  .sf9-print-container th, .sf9-print-container td { border: 1px solid #000 !important; padding: 1.5px 3px !important; vertical-align: middle; }",
+        "  .sf9-print-container .bg-gray-200, .sf9-print-container .bg-gray-100 { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }",
+        "  .sf9-print-container .mb-6 { margin-bottom: 6px !important; }",
+        "  .sf9-print-container .mb-4 { margin-bottom: 4px !important; }",
+        "  .sf9-print-container .mt-4 { margin-top: 4px !important; }",
+        "  .sf9-print-container .p-4 { padding: 4px !important; }",
+        "  .sf9-print-container .p-2 { padding: 2px !important; }",
+        "  .sf9-print-container .p-1\.5 { padding: 1.5px !important; }",
+        "  .sf9-page-break { page-break-before: always !important; break-before: page !important; }",
+        "}",
+      ].join("\n");
+      document.head.appendChild(printStyle);
+
+      const cleanup = () => {
+        if (document.body.contains(printContainer)) document.body.removeChild(printContainer);
+        const s = document.getElementById("sf9-print-style");
+        if (s) s.remove();
+      };
+
+      window.addEventListener("afterprint", cleanup, { once: true });
+      // Fallback: clean up after 60s if afterprint doesn't fire.
+      window.setTimeout(cleanup, 60000);
+
       window.print();
     };
 
     return (
-      <div className="space-y-6 animate-fade-in max-w-[900px] mx-auto">
+      <div className="space-y-6 animate-fade-in max-w-[860px] mx-auto">
         {/* Action Buttons - Hidden when printing */}
         <div className="flex items-center justify-between print-hide">
           <Button variant="ghost" onClick={handleBack} className="rounded-xl">
@@ -606,7 +655,7 @@ export default function SchoolForms() {
         </div>
 
         {/* SF9 Form - Official DepEd Format */}
-        <div className="bg-white border-2 border-gray-400 shadow-xl print-form p-8">
+        <div ref={sf9PrintRef} className="bg-white border-2 border-gray-400 shadow-xl print-form print-form-sf9 p-8">
           {/* Header with DepEd Logo */}
           <div className="flex items-start justify-between mb-6 pb-4 border-b-2 border-gray-400">
             <div className="w-20">
@@ -647,7 +696,7 @@ export default function SchoolForms() {
             </div>
             <div>
               <span className="font-bold text-gray-900">Age: </span>
-              <span className="border-b border-gray-400 text-gray-900 inline-block min-w-[80px]">____</span>
+              <span className="border-b border-gray-400 text-gray-900 inline-block min-w-[80px]">{sf9Data.student.age || "____"}</span>
             </div>
             <div>
               <span className="font-bold text-gray-900">Sex: </span>
@@ -751,8 +800,8 @@ export default function SchoolForms() {
             </div>
           </div>
 
-          {/* Report on Learner's Observed Values */}
-          <div className="mb-6">
+          {/* Page break: Core Values goes on back side (page 2) */}
+          <div className="mb-6 sf9-page-break">
             <h3 className="font-bold text-sm mb-2 bg-gray-200 p-2 text-gray-900 border border-gray-400">REPORT ON LEARNER'S OBSERVED VALUES</h3>
             <table className="w-full border-2 border-gray-600 text-xs">
               <thead>
@@ -833,7 +882,9 @@ export default function SchoolForms() {
           {/* Footer Signatures */}
           <div className="grid grid-cols-2 gap-8 mt-8 pt-4 border-t-2 border-gray-400">
             <div className="text-center">
-              <div className="border-b border-gray-600 mx-8 mb-1 h-8"></div>
+              <div className="border-b border-gray-600 mx-8 mb-1 min-h-[2rem] flex items-end justify-center font-bold text-gray-900">
+                {sf9Data.student.adviser || ""}
+              </div>
               <p className="text-sm text-gray-900 font-medium">Class Adviser</p>
             </div>
             <div className="text-center">

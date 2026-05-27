@@ -31,88 +31,20 @@ import {
 } from './syncCache';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import type { GradeLevel } from '@prisma/client';
+import {
+  mapGradeLevel,
+  resolveSubjectCode,
+  normalizeSubjectLabel,
+  ensureHomeroomGuidanceLabel,
+  HOMEROOM_GUIDANCE_LABEL,
+  HOMEROOM_GUIDANCE_MINUTES,
+} from './atlasUtils';
 
 const ATLAS_BASE = 'http://100.88.55.125:5001/api/v1';
 const ATLAS_SCHOOL_ID = 1;
 const DEFAULT_SCHOOL_YEAR = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
 const DEFAULT_ENROLLPRO_SCHOOL_YEAR_ID = parseInt(process.env.ENROLLPRO_SCHOOL_YEAR_ID ?? '38', 10);
 const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '8', 10);
-
-// ---------------------------------------------------------------------------
-// Grade level mapping — handles "Grade 7", "GRADE_7", "7-Rizal", etc.
-// ---------------------------------------------------------------------------
-function mapGradeLevel(name: string | null | undefined): GradeLevel | null {
-  const n = (name ?? '').toLowerCase();
-  if (n.includes('10')) return 'GRADE_10';
-  if (n.includes('7'))  return 'GRADE_7';
-  if (n.includes('8'))  return 'GRADE_8';
-  if (n.includes('9'))  return 'GRADE_9';
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Atlas subject code → SMART subject code
-// Atlas uses base codes ("FIL", "ENG") — SMART appends the grade number ("FIL7").
-// Special overrides handle naming differences between Atlas and SMART.
-// ---------------------------------------------------------------------------
-// ATLAS_SUBJECT_OVERRIDES: maps Atlas base codes (with grade suffix appended) to SMART subject codes.
-// Add entries here when ATLAS uses a different code than the SMART canonical code.
-const ATLAS_SUBJECT_OVERRIDES: Record<string, string> = {
-  'ENV_SCI7':                 'ENVIRONMENTAL_SCIENCE7',
-  'ENV_SCI8':                 'ENVIRONMENTAL_SCIENCE7',
-  'ENV_SCI9':                 'ENVIRONMENTAL_SCIENCE7',
-  'ENV_SCI10':                'ENVIRONMENTAL_SCIENCE7',
-  'ENVIRONMENTAL_SCIENCE8':   'ENVIRONMENTAL_SCIENCE7',
-  'ENVIRONMENTAL_SCIENCE9':   'ENVIRONMENTAL_SCIENCE7',
-  'ENVIRONMENTAL_SCIENCE10':  'ENVIRONMENTAL_SCIENCE7',
-  // Homeroom Guidance: ATLAS may send bare 'HG'; ensure it routes to HG{grade}.
-  // (resolveSubjectCode appends the grade suffix before this lookup, so the
-  //  key here would be e.g. 'HG7' if Atlas sent 'HG' for a Grade 7 section.
-  //  No override needed — the passthrough (atlasCode + gradeSuffix) is correct.)
-};
-
-function resolveSubjectCode(atlasCode: string, gradeLevel: GradeLevel): string {
-  const gradeSuffix = gradeLevel.replace('GRADE_', ''); // "GRADE_7" → "7"
-  const withSuffix = atlasCode + gradeSuffix;
-  return ATLAS_SUBJECT_OVERRIDES[withSuffix] ?? withSuffix;
-}
-
-function normalizeSubjectLabel(raw: string | null | undefined): string {
-  return (raw ?? '').trim().toUpperCase().replace(/\s+/g, ' ');
-}
-
-const HOMEROOM_GUIDANCE_LABEL = 'Homeroom Guidance';
-const HOMEROOM_GUIDANCE_MINUTES = 60;
-
-async function ensureHomeroomGuidanceLabel(
-  subject: { id: string; code: string; name: string },
-  updated: Set<string>,
-): Promise<void> {
-  if (!subject.code.startsWith('HG')) return;
-  if (subject.name === HOMEROOM_GUIDANCE_LABEL) return;
-  if (updated.has(subject.id)) return;
-
-  await prisma.subject.update({ where: { id: subject.id }, data: { name: HOMEROOM_GUIDANCE_LABEL } });
-  subject.name = HOMEROOM_GUIDANCE_LABEL;
-  updated.add(subject.id);
-}
-
-// ---------------------------------------------------------------------------
-// buildSubjectCodeFromEnrollProLabel — DISABLED (universal policy)
-// ---------------------------------------------------------------------------
-// EnrollPro is the master of PEOPLE (students) only.
-// ATLAS is the master of SUBJECTS. Do not derive subject codes from text labels.
-// This function is retained for reference but must never be called to create
-// ClassAssignment records. Any call site below that still references it will
-// be skipped by the surrounding ATLAS-authority guard.
-// ---------------------------------------------------------------------------
-function _disabledBuildSubjectCodeFromEnrollProLabel(
-  _subjectLabel: string,
-  _gradeLevel: GradeLevel,
-): string | null {
-  // Intentionally disabled. ATLAS is the only allowed source of subject codes.
-  return null;
-}
 
 // ---------------------------------------------------------------------------
 // Atlas HTTP helper

@@ -692,6 +692,22 @@ export default function ClassRecordView() {
     }
   };
 
+  const handleClearScores = async () => {
+    if (!classAssignmentId) return;
+    try {
+      setLoading(true);
+      await gradesApi.clearScores(classAssignmentId, selectedQuarter);
+      setSuccess("Successfully cleared all scores for the current quarter.");
+      await fetchClassRecord();
+    } catch (err: any) {
+      console.error("Failed to clear scores:", err);
+      setError(err?.response?.data?.message || "Failed to clear scores");
+      await fetchClassRecord();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const maleRecords = useMemo(() => sortedRecords.filter(r => r.student.gender?.toLowerCase() === 'male'), [sortedRecords]);
   const femaleRecords = useMemo(() => sortedRecords.filter(r => r.student.gender?.toLowerCase() === 'female'), [sortedRecords]);
 
@@ -841,7 +857,7 @@ export default function ClassRecordView() {
   const stickyOffset = assessmentDetailsTop + assessmentPanelOffset;
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-full mx-auto px-6 pb-12">
+    <div className="space-y-8 animate-fade-in w-full px-6 pb-12">
       {/* Toast Messages */}
       {(error || success) && (
         <div className={`fixed top-20 right-6 z-[100] flex items-center gap-4 px-6 py-4 rounded-[1.5rem] shadow-2xl border-0 animate-slide-in-right ${error ? "bg-rose-500 text-white" : "bg-emerald-500 text-white"}`}>
@@ -915,6 +931,7 @@ export default function ClassRecordView() {
             onSeparateByGenderChange={setSeparateByGender}
             showAssessmentDetails={showAssessmentDetails}
             onToggleAssessmentDetails={() => setShowAssessmentDetails((prev) => !prev)}
+            onClearScores={handleClearScores}
             ledgerHeaderRef={ledgerHeaderRef}
             topNavHeight={topNavHeight}
             ledgerHeaderHeight={Math.ceil(ledgerHeaderHeight)}

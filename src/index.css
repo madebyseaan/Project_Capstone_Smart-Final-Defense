@@ -505,6 +505,11 @@ code {
   html {
     @apply font-sans;}}
 
+/* SF9 print container — hidden on screen, revealed only during SF9 printing */
+.sf9-print-container {
+  display: none;
+}
+
 /* Print Styles for School Forms */
 @media print {
   body {
@@ -521,8 +526,47 @@ code {
     box-shadow: none !important;
     border: 2px solid #000 !important;
     margin: 0 !important;
-    padding: 0.5in !important;
+    padding: 10mm !important;
     max-width: 100% !important;
+  }
+
+  /* SF9: A4 portrait back-to-back printing (front = grades, back = core values/attendance) */
+  .print-form-sf9 {
+    page: sf9-portrait;
+    width: 100% !important;
+    min-height: 0 !important;
+    border-width: 1.5px !important;
+  }
+
+  /* Force page 2 break before core values section */
+  .sf9-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .print-form-sf9 table {
+    width: 100% !important;
+    table-layout: fixed;
+    font-size: 11px !important;
+  }
+
+  .print-form-sf9 th,
+  .print-form-sf9 td {
+    padding: 3px !important;
+    vertical-align: middle;
+  }
+
+  .print-form-sf9 .text-xl {
+    font-size: 20px !important;
+    line-height: 1.2 !important;
+  }
+
+  .print-form-sf9 .text-sm {
+    font-size: 12px !important;
+  }
+
+  .print-form-sf9 .text-xs {
+    font-size: 10px !important;
   }
   
   .print-form * {
@@ -554,8 +598,13 @@ code {
   }
   
   @page {
-    size: legal;
-    margin: 0;
+    size: auto;
+    margin: 8mm;
+  }
+
+  @page sf9-portrait {
+    size: A4 portrait;
+    margin: 10mm 8mm;
   }
 }
 

@@ -379,7 +379,7 @@ export default function ClassRecordsList() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
+                      className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 text-white h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
                       onClick={(e) => {
                         e.stopPropagation();
                         setConfirmDeleteAll(true);
@@ -486,7 +486,7 @@ export default function ClassRecordsList() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
+                      className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 text-white h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
                       onClick={(e) => {
                         e.stopPropagation();
                         setConfirmDeleteAll(true);

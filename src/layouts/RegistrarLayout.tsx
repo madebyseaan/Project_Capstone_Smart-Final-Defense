@@ -150,37 +150,42 @@ export default function RegistrarLayout() {
           "h-24 flex items-center overflow-hidden transition-all duration-200",
           sidebarCollapsed ? "px-0 justify-center" : "px-6"
         )}>
-          <div className={cn(
-            "flex items-center transition-all duration-200",
-            sidebarCollapsed ? "justify-center" : "w-full min-w-[240px]"
-          )}>
-            <div className="w-12 h-12 flex flex-shrink-0 items-center justify-center">
-              <div
-                className="w-12 h-12 rounded-lg bg-white border border-slate-100 shadow-sm flex items-center justify-center overflow-hidden transition-transform duration-200 ease-out p-1"
-                style={{
-                  transform: sidebarCollapsed ? 'scale(0.85)' : 'scale(1)'
-                }}
-              >
-                {logoUrl ? (
-                  <img
-                    src={logoUrl.startsWith("http") ? logoUrl : `${SERVER_URL}${logoUrl}`}
-                    alt="School Logo"
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  <FileText className="w-6 h-6 text-[var(--theme-primary)]" />
-                )}
+          {sidebarCollapsed ? (
+            <div
+              className="w-12 h-12 rounded-lg bg-white border border-slate-100 shadow-sm flex items-center justify-center overflow-hidden transition-transform duration-200 ease-out p-1 scale-[0.85]"
+            >
+              {logoUrl ? (
+                <img
+                  src={logoUrl.startsWith("http") ? logoUrl : `${SERVER_URL}${logoUrl}`}
+                  alt="School Logo"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <FileText className="w-6 h-6 text-[var(--theme-primary)]" />
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center w-full min-w-[240px] transition-all duration-200">
+              <div className="w-12 h-12 flex flex-shrink-0 items-center justify-center">
+                <div className="w-12 h-12 rounded-lg bg-white border border-slate-100 shadow-sm flex items-center justify-center overflow-hidden p-1">
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl.startsWith("http") ? logoUrl : `${SERVER_URL}${logoUrl}`}
+                      alt="School Logo"
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <FileText className="w-6 h-6 text-[var(--theme-primary)]" />
+                  )}
+                </div>
+              </div>
+              <div className="ml-3 transition-all duration-200 origin-left flex-shrink-0">
+                <span className="font-bold text-sm leading-tight tracking-tight uppercase block max-w-[160px] text-[var(--theme-primary)]">
+                  {schoolName}
+                </span>
               </div>
             </div>
-            <div className={cn(
-              "ml-3 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left flex-shrink-0",
-              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0" : "opacity-100 scale-100 translate-x-0"
-            )}>
-              <span className="font-bold text-sm leading-tight tracking-tight uppercase block max-w-[160px] text-[var(--theme-primary)]">
-                {schoolName}
-              </span>
-            </div>
-          </div>
+          )}
           <button
             className="lg:hidden ml-auto p-2 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
             onClick={() => setSidebarOpen(false)}

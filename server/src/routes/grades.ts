@@ -598,6 +598,74 @@ router.delete(
   }
 );
 
+// Clear all scores for a class assignment and specific quarter
+router.post(
+  "/clear-scores",
+  authenticateToken,
+  authorizeRoles("TEACHER"),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { classAssignmentId, quarter } = req.body;
+
+      const teacher = await prisma.teacher.findUnique({
+        where: { userId: req.user?.id },
+      });
+
+      if (!teacher) {
+        res.status(404).json({ message: "Teacher profile not found" });
+        return;
+      }
+
+      // Verify ownership
+      const classAssignment = await prisma.classAssignment.findFirst({
+        where: {
+          id: classAssignmentId,
+          teacherId: teacher.id,
+        },
+        include: {
+          subject: true,
+          section: true,
+        },
+      });
+
+      if (!classAssignment) {
+        res.status(403).json({ message: "Not authorized for this class" });
+        return;
+      }
+
+      // Delete all grade records for this class assignment and quarter
+      const { count } = await prisma.grade.deleteMany({
+        where: {
+          classAssignmentId,
+          quarter,
+        },
+      });
+
+      const teacherUser = await prisma.user.findUnique({
+        where: { id: req.user?.id },
+        select: { id: true, firstName: true, lastName: true, role: true },
+      });
+
+      if (teacherUser) {
+        await createAuditLog(
+          AuditAction.DELETE,
+          { id: teacherUser.id, firstName: teacherUser.firstName, lastName: teacherUser.lastName, role: teacherUser.role },
+          `Clear Scores: ${classAssignment.subject.name} (${quarter})`,
+          "Grades",
+          `Cleared all (${count}) grades for ${classAssignment.subject.name} in section ${classAssignment.section.name} for ${quarter}`,
+          req.ip || req.socket?.remoteAddress,
+          AuditSeverity.WARNING
+        );
+      }
+
+      res.json({ message: `Successfully cleared all scores for ${quarter}`, count });
+    } catch (error) {
+      console.error("Error clearing scores:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
 // Delete all archived class assignments for the current teacher
 router.delete(
   "/class-assignments/archived/all",

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Plus, Minus } from "lucide-react";
+import { Plus, Minus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -198,7 +198,7 @@ const LedgerRow = React.memo(
 
         {/* Full Name */}
         <TableCell
-          className={`border-r border-b border-slate-200 px-2 w-64 min-w-[256px] max-w-[256px] sticky left-[168px] transition-colors ${
+          className={`border-r border-b border-slate-200 px-2 min-w-[256px] sticky left-[168px] transition-colors ${
             isHps
               ? "z-[18] bg-slate-800 border-y border-slate-700 bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.35)]"
               : "z-10 bg-white group-hover:bg-slate-50/80 shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]"
@@ -491,6 +491,7 @@ interface ClassRecordTableProps {
   isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
   assessmentHeaderNode?: React.ReactNode;
   ledgerHeaderRef?: React.RefObject<HTMLDivElement | null>;
+  onClearScores?: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -521,9 +522,32 @@ export function ClassRecordTable({
   isCellInvalid,
   assessmentHeaderNode,
   ledgerHeaderRef,
+  onClearScores,
 }: ClassRecordTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleClearClick = () => {
+    if (!confirmingClear) {
+      setConfirmingClear(true);
+      clearTimerRef.current = setTimeout(() => {
+        setConfirmingClear(false);
+      }, 4000);
+    } else {
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+      setConfirmingClear(false);
+      onClearScores?.();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    };
+  }, []);
 
   const handleBodyScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (headerScrollRef.current) {
@@ -565,7 +589,7 @@ export function ClassRecordTable({
       {/* Learner Info */}
       <col style={{ width: "40px", minWidth: "40px", maxWidth: "40px" }} />
       <col style={{ width: "128px", minWidth: "128px", maxWidth: "128px" }} />
-      <col style={{ width: "256px", minWidth: "256px", maxWidth: "256px" }} />
+      <col style={{ minWidth: "256px" }} />
       {/* WW */}
       {Array.from({ length: wwCount }).map((_, i) => (
         <col key={`col-ww-${i}`} style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
@@ -641,6 +665,21 @@ export function ClassRecordTable({
             >
               Optional Assessment Details
             </Button>
+            {onClearScores && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearClick}
+                className={`h-8 rounded-xl border font-bold text-[11px] uppercase tracking-widest transition-all gap-1.5 ${
+                  confirmingClear
+                    ? "bg-rose-500 text-white border-rose-500 hover:bg-rose-600 hover:text-white"
+                    : "text-rose-500 hover:text-rose-600 hover:bg-rose-50 border-rose-100"
+                }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {confirmingClear ? "Confirm Clear?" : "Clear Scores"}
+              </Button>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Period:</span>
               <Select value={selectedQuarter} onValueChange={(val) => val && onQuarterChange(val)}>
@@ -673,15 +712,15 @@ export function ClassRecordTable({
           ref={headerScrollRef}
           className="w-full overflow-x-hidden relative z-10 bg-white border-t border-slate-200/60"
         >
-          <div className="relative bg-white min-w-max">
-            <Table className="border-separate border-spacing-0 table-fixed w-max">
+          <div className="relative bg-white min-w-full">
+            <Table className="border-separate border-spacing-0 table-fixed min-w-full">
               {renderColGroup()}
               <TableHeader>
                 {/* ── Row 1: Category group headers ── */}
                 <TableRow ref={groupRowRef} className="hover:bg-transparent border-0 h-9 transition-none">
                   <TableHead
                     colSpan={3}
-                    className={`${thBase} border-l border-r text-slate-500 bg-slate-55 w-[424px] min-w-[424px] max-w-[424px] left-0 z-[25]`}
+                    className={`${thBase} border-l border-r text-slate-500 bg-slate-55 min-w-[424px] left-0 z-[25]`}
                   >
                     Learner Information
                   </TableHead>
@@ -749,7 +788,7 @@ export function ClassRecordTable({
                 <TableRow ref={subRowRef} className="hover:bg-transparent border-0 h-9 bg-white transition-none">
                   <TableHead className="w-10 min-w-[40px] max-w-[40px] text-center text-[11px] font-black text-slate-400 uppercase border-l border-r border-b border-slate-200 bg-white sticky left-0 z-[25] bg-clip-padding">#</TableHead>
                   <TableHead className="w-32 min-w-[128px] max-w-[128px] text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 px-1 bg-white sticky left-[40px] z-[25] bg-clip-padding">LRN</TableHead>
-                  <TableHead className="w-64 min-w-[256px] max-w-[256px] text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 px-2 bg-white sticky left-[168px] z-[25] bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]">Full Name</TableHead>
+                  <TableHead className="min-w-[256px] text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 px-2 bg-white sticky left-[168px] z-[25] bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]">Full Name</TableHead>
 
                   {Array.from({ length: wwCount }).map((_, i) => (
                     <TableHead key={`h-ww-${i}`} className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 bg-white bg-clip-padding sticky z-20 cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors" onClick={() => onCellFocus("WW", i)}>{i + 1}</TableHead>
@@ -803,8 +842,8 @@ export function ClassRecordTable({
         onScroll={handleBodyScroll}
         className="w-full overflow-x-auto overflow-y-clip relative z-10 bg-white rounded-b-2xl border-x border-b border-slate-200/60 shadow-sm scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100"
       >
-        <div className="relative bg-white min-w-max">
-          <Table className="border-separate border-spacing-0 table-fixed w-max">
+        <div className="relative bg-white min-w-full">
+          <Table className="border-separate border-spacing-0 table-fixed min-w-full">
             {renderColGroup()}
             <TableBody>
               {(() => {

@@ -223,6 +223,12 @@ export const gradesApi = {
 
   deleteGrade: (gradeId: string) => api.delete(`/grades/grade/${gradeId}`),
 
+  clearScores: (classAssignmentId: string, quarter: string) =>
+    api.post<{ message: string; count: number }>("/grades/clear-scores", {
+      classAssignmentId,
+      quarter,
+    }),
+
   getMasteryDistribution: (gradeLevel?: string, sectionId?: string) =>
     api.get<{
       distribution: {
@@ -241,12 +247,12 @@ export const gradesApi = {
       params: { gradeLevel, sectionId },
     }),
 
-  getAdvisoryHonors: () =>
+  getAdvisoryHonors: (quarter?: string) =>
     api.get<{
       advisoryHonors: { id: string; name: string; grade: number; honor: string; class: string }[];
       withHonors: { id: string; name: string; grade: number; honor: string; class: string }[];
       hasAdvisory: boolean;
-    }>("/grades/advisory-honors"),
+    }>("/grades/advisory-honors", { params: { quarter } }),
 
   // ECR (E-Class Record) Import
   getEcrStatus: (classAssignmentId: string) =>

@@ -49,8 +49,8 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function toDisplayName(value: string): string {
-  return normalizeWhitespace(value)
+function toDisplayName(value: string | null | undefined): string {
+  return normalizeWhitespace(value ?? '')
     .split(' ')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
@@ -346,7 +346,8 @@ router.get(
         grades: Grade[] 
       })[];
 
-      // Final filter to ensure subjects are aligned with the student's current grade level
+      // Keep all aligned assigned subjects for this section/year.
+      // Duplicates are handled separately below by canonical subject key.
       const alignedAssignments = classAssignments.filter(ca => 
         isSubjectAlignedWithGrade(ca.subject.code, currentEnrollment.section.gradeLevel)
       );
