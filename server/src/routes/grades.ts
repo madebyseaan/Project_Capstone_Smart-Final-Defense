@@ -598,6 +598,71 @@ router.delete(
   }
 );
 
+// Delete all archived class assignments for the current teacher
+router.delete(
+  "/class-assignments/archived/all",
+  authenticateToken,
+  authorizeRoles("TEACHER"),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const teacher = await prisma.teacher.findUnique({
+        where: { userId: req.user?.id },
+      });
+
+      if (!teacher) {
+        res.status(404).json({ message: "Teacher profile not found" });
+        return;
+      }
+
+      // Find all archived assignments first to log them
+      const archivedAssignments = await prisma.classAssignment.findMany({
+        where: {
+          teacherId: teacher.id,
+          isActive: false,
+        },
+        include: {
+          subject: true,
+          section: true,
+        },
+      });
+
+      if (archivedAssignments.length === 0) {
+        res.status(404).json({ message: "No archived assignments found to delete" });
+        return;
+      }
+
+      const { count } = await prisma.classAssignment.deleteMany({
+        where: {
+          teacherId: teacher.id,
+          isActive: false,
+        },
+      });
+
+      const teacherUser = await prisma.user.findUnique({
+        where: { id: req.user?.id },
+        select: { id: true, firstName: true, lastName: true, role: true },
+      });
+
+      if (teacherUser) {
+        await createAuditLog(
+          AuditAction.DELETE,
+          teacherUser,
+          `Bulk Delete Archived Class Assignments`,
+          "Class Records",
+          `Permanently deleted all (${count}) archived class assignments for teacher ${teacherUser.firstName} ${teacherUser.lastName}`,
+          req.ip || req.socket?.remoteAddress,
+          AuditSeverity.WARNING
+        );
+      }
+
+      res.json({ message: `Successfully deleted ${count} archived assignments`, count });
+    } catch (error) {
+      console.error("Error deleting all archived class assignments:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
 // Delete a class assignment (only if it's archived/inactive)
 router.delete(
   "/class-assignment/:id",

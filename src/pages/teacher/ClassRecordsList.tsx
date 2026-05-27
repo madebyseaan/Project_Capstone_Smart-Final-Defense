@@ -200,6 +200,7 @@ export default function ClassRecordsList() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [assignmentToDelete, setAssignmentToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Silent background sync on every page load — pulls fresh data from Atlas
@@ -232,6 +233,20 @@ export default function ClassRecordsList() {
     } catch (err) {
       console.error("Failed to delete class:", err);
       alert("Failed to delete class record. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    setIsDeleting(true);
+    try {
+      await gradesApi.deleteAllArchivedClassAssignments();
+      setClasses(classes.filter((c) => c.isActive !== false));
+      setConfirmDeleteAll(false);
+    } catch (err) {
+      console.error("Failed to delete all archived classes:", err);
+      alert("Failed to delete all archived records. Please try again.");
     } finally {
       setIsDeleting(false);
     }
@@ -360,6 +375,20 @@ export default function ClassRecordsList() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {isArchivedExpanded && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteAll(true);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      DELETE ALL
+                    </Button>
+                  )}
                   <Badge className="bg-rose-50 text-rose-600 border-rose-100 font-black px-4 py-2 rounded-xl">
                     {archivedClasses.length} RECORDS
                   </Badge>
@@ -453,6 +482,20 @@ export default function ClassRecordsList() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {isArchivedExpanded && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteAll(true);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      DELETE ALL
+                    </Button>
+                  )}
                   <Badge className="bg-rose-50 text-rose-600 border-rose-100 font-black px-4 py-2 rounded-xl">
                     {archivedClasses.length} RECORDS
                   </Badge>
@@ -583,6 +626,46 @@ export default function ClassRecordsList() {
                 <div className="flex items-center justify-center gap-2">
                   <Trash2 className="w-5 h-5" />
                   <span>YES, DELETE RECORD</span>
+                </div>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={confirmDeleteAll} onOpenChange={setConfirmDeleteAll}>
+        <DialogContent className="rounded-[2rem] border-0 shadow-2xl p-0 overflow-hidden max-w-md">
+          <div className="bg-rose-600 p-8 text-white">
+            <div className="w-16 h-16 bg-white/20 rounded-[1.5rem] flex items-center justify-center mb-6 backdrop-blur-md">
+              <Trash2 className="w-8 h-8 text-white" />
+            </div>
+            <DialogHeader className="p-0 text-left">
+              <DialogTitle className="text-2xl font-black text-white leading-tight">Delete All Archived Records?</DialogTitle>
+              <DialogDescription className="text-rose-100 font-medium text-base mt-2">
+                This will permanently remove all <span className="font-black text-white underline decoration-2 underline-offset-4">{archivedClasses.length} archived subjects</span>. This action cannot be undone and all historical grades for these records will be lost.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          <DialogFooter className="p-8 bg-white flex flex-col sm:flex-row gap-4">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteAll(false)}
+              className="h-14 rounded-2xl border-slate-200 font-bold hover:bg-slate-50 hover:text-slate-900 transition-all flex-1"
+              disabled={isDeleting}
+            >
+              CANCEL
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAll}
+              className="h-14 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black shadow-xl shadow-rose-100 transition-all flex-1"
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                "DELETING ALL..."
+              ) : (
+                <div className="flex items-center justify-center gap-2">
+                  <Trash2 className="w-5 h-5" />
+                  <span>YES, DELETE ALL</span>
                 </div>
               )}
             </Button>
