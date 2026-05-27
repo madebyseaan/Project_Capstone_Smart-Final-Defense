@@ -170,8 +170,8 @@ router.get(
             include: {
               enrollments: {
                 where: {
-                  schoolYear: currentSchoolYear,
                   status: 'ENROLLED',
+                  schoolYear: currentSchoolYear,
                 },
                 include: {
                   student: true,

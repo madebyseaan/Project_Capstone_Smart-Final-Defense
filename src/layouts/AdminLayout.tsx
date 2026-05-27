@@ -177,13 +177,19 @@ export default function AdminLayout() {
         style={{ fontFamily: "'Instrument Sans', 'Geist Variable', sans-serif" }}
       >
         {/* Logo Header */}
-        <div className="h-24 flex items-center overflow-hidden px-6">
-          <div className="flex items-center w-full min-w-[240px]">
+        <div className={cn(
+          "h-24 flex items-center overflow-hidden transition-all duration-200",
+          sidebarCollapsed ? "px-0 justify-center" : "px-6"
+        )}>
+          <div className={cn(
+            "flex items-center transition-all duration-200",
+            sidebarCollapsed ? "justify-center" : "w-full min-w-[240px]"
+          )}>
             <div className="w-12 h-12 flex flex-shrink-0 items-center justify-center">
               <div 
                 className="w-12 h-12 rounded-lg bg-white border border-slate-100 shadow-sm flex items-center justify-center overflow-hidden transition-transform duration-200 ease-out p-1"
                 style={{ 
-                  transform: sidebarCollapsed ? 'scale(0.9)' : 'scale(1)'
+                  transform: sidebarCollapsed ? 'scale(0.85)' : 'scale(1)'
                 }}
               >
                 {logoUrl ? (
@@ -199,7 +205,7 @@ export default function AdminLayout() {
             </div>
             <div className={cn(
               "ml-3 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left flex-shrink-0",
-              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none" : "opacity-100 scale-100 translate-x-0"
+              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0" : "opacity-100 scale-100 translate-x-0"
             )}>
               <span className="font-bold text-sm leading-tight tracking-tight uppercase block max-w-[160px] text-[var(--theme-primary)]">
                 {schoolName}
@@ -223,7 +229,7 @@ export default function AdminLayout() {
                   {group.title}
                 </span>
               )}
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {group.items.map((item) => {
                   if (item.isDropdown && item.children) {
                     const hasActiveChild = item.children.some(child => 
@@ -237,7 +243,8 @@ export default function AdminLayout() {
                         <button
                           onClick={() => toggleDropdown(item.name)}
                           className={cn(
-                            "w-full flex items-center rounded-full text-[14px] font-medium transition-all duration-200 group overflow-hidden px-4 py-1.5",
+                            "w-full flex items-center rounded-full text-[14px] font-medium transition-all duration-200 group overflow-hidden py-1.5",
+                            sidebarCollapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4",
                             hasActiveChild ? "text-[#0F1729]" : "text-[#0F1729] hover:bg-white/80"
                           )}
                           style={{
@@ -245,7 +252,10 @@ export default function AdminLayout() {
                           }}
                           title={sidebarCollapsed ? item.name : undefined}
                         >
-                          <div className="flex items-center w-full min-w-[240px]">
+                          <div className={cn(
+                            "flex items-center transition-all duration-200",
+                            sidebarCollapsed ? "justify-center" : "w-full"
+                          )}>
                             <div className="w-6 h-6 flex flex-shrink-0 items-center justify-center">
                               <item.icon className={cn(
                                 "w-5 h-5 transition-colors duration-200",
@@ -253,8 +263,8 @@ export default function AdminLayout() {
                               )} strokeWidth={2.2} />
                             </div>
                             <div className={cn(
-                              "ml-4 flex items-center justify-between flex-1 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
-                              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none" : "opacity-100 scale-100 translate-x-0"
+                              "flex items-center justify-between flex-1 transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
+                              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-4"
                             )}>
                               <span className="whitespace-nowrap">{item.name}</span>
                               <ChevronDown className={cn(
@@ -305,7 +315,8 @@ export default function AdminLayout() {
                       key={item.name}
                       to={item.href!}
                       className={cn(
-                        "flex items-center rounded-full text-[14px] font-medium transition-all duration-200 group overflow-hidden px-4 py-1.5",
+                        "flex items-center rounded-full text-[14px] font-medium transition-all duration-200 group overflow-hidden py-1.5",
+                        sidebarCollapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4",
                         isActive 
                           ? "text-white shadow-sm" 
                           : "text-[#0F1729] hover:bg-white/80"
@@ -316,7 +327,10 @@ export default function AdminLayout() {
                       onClick={() => setSidebarOpen(false)}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
-                      <div className="flex items-center w-full min-w-[240px]">
+                      <div className={cn(
+                        "flex items-center transition-all duration-200",
+                        sidebarCollapsed ? "justify-center" : "w-full"
+                      )}>
                         <div className="w-6 h-6 flex flex-shrink-0 items-center justify-center">
                           <item.icon className={cn(
                             "w-5 h-5 transition-colors duration-200",
@@ -324,8 +338,8 @@ export default function AdminLayout() {
                           )} strokeWidth={2.2} />
                         </div>
                         <span className={cn(
-                          "ml-4 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left whitespace-nowrap flex-shrink-0",
-                          sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none" : "opacity-100 scale-100 translate-x-0"
+                          "transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left whitespace-nowrap flex-shrink-0",
+                          sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-4"
                         )}>{item.name}</span>
                       </div>
                     </Link>
@@ -337,8 +351,14 @@ export default function AdminLayout() {
         </nav>
 
         {/* User Profile at Bottom */}
-        <div className="p-4 border-t border-slate-100 bg-white/20 overflow-hidden">
-          <div className="flex items-center w-full min-w-[240px] px-1 py-1">
+        <div className={cn(
+          "p-4 border-t border-slate-100 transition-all duration-200 bg-white/20 overflow-hidden",
+          sidebarCollapsed ? "px-2 py-4" : "p-4"
+        )}>
+          <div className={cn(
+            "flex items-center transition-all duration-200 px-1 py-1",
+            sidebarCollapsed ? "justify-center" : "w-full"
+          )}>
             <div className="w-9 h-9 flex flex-shrink-0 items-center justify-center">
               <Avatar className="w-9 h-9 border border-white shadow-sm transition-transform duration-200" style={{ transform: sidebarCollapsed ? 'scale(0.9)' : 'scale(1)' }}>
                 <AvatarFallback className="bg-slate-100 text-slate-700 font-bold text-xs uppercase">
@@ -347,8 +367,8 @@ export default function AdminLayout() {
               </Avatar>
             </div>
             <div className={cn(
-              "ml-3 flex-1 min-w-0 flex items-center justify-between transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
-              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none" : "opacity-100 scale-100 translate-x-0"
+              "flex-1 min-w-0 flex items-center justify-between transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
+              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-3"
             )}>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-[#0F1729] truncate leading-none mb-1">{userDisplayName}</p>

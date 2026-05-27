@@ -128,9 +128,6 @@ export async function runEnrollProSync() {
     );
 
     // 2. Fetch EnrollPro teachers + integration sections.
-    // Use the full teacher list as the source of teacher IDs, then read advisory
-    // assignments from sections. This avoids missing advisers when the faculty
-    // feed is incomplete or out of sync.
     const epTeachers = await getEnrollProTeachers();
     const epTeacherIdToEmpId = new Map<number, string>(
       epTeachers.map((t) => [Number(t.id), String(t.employeeId)])
@@ -151,7 +148,7 @@ export async function runEnrollProSync() {
     console.log(`[EnrollProSync] Loaded ${epSections.length} sections from EnrollPro`);
 
     // 5. Upsert ALL sections into SMART
-    const epSectionNameToSmartSectionId = new Map<string, string>();
+    const epSectionKeyToSmartSectionId = new Map<string, string>();
 
     for (const epSection of epSections) {
       try {
@@ -191,13 +188,14 @@ export async function runEnrollProSync() {
           schoolYear: schoolYearLabel,
         });
 
-        epSectionNameToSmartSectionId.set(epSection.name, section.id);
+        const key = `${epSection.name}:${gradeLevel}`;
+        epSectionKeyToSmartSectionId.set(key, section.id);
         if (epSection.advisingTeacher) advisoriesSynced++;
       } catch (err: any) {
         errors.push(`Section "${epSection.name}": ${err.message}`);
       }
     }
-    console.log(`[EnrollProSync] Sections upserted: ${epSectionNameToSmartSectionId.size}`);
+    console.log(`[EnrollProSync] Sections upserted: ${epSectionKeyToSmartSectionId.size}`);
 
     // 6. Fetch ALL enrolled learners
     console.log(`[EnrollProSync] Fetching all learners from Integration v1...`);
@@ -214,7 +212,7 @@ export async function runEnrollProSync() {
       } catch (deltaError: any) {
         if (!updatedSince) throw deltaError;
         console.warn(`[EnrollProSync] Delta fetch failed, retrying full pull: ${deltaError.message}`);
-        updatedSince = undefined; // Force full sync flag
+        updatedSince = undefined; 
         allLearners = await getAllIntegrationV1Learners(schoolYearId);
       }
 
@@ -233,37 +231,33 @@ export async function runEnrollProSync() {
       const learner = record.learner;
       const sectionName: string = record.section?.name ?? '';
       const gradeLevelName: string = record.gradeLevel?.name ?? '';
+      const gradeLevel = mapGradeLevel(gradeLevelName);
 
-      if (!learner?.lrn) continue;
+      if (!learner?.lrn || !gradeLevel) continue;
 
-      let resolvedSectionId = epSectionNameToSmartSectionId.get(sectionName);
+      const key = `${sectionName}:${gradeLevel}`;
+      let resolvedSectionId = epSectionKeyToSmartSectionId.get(key);
       if (!resolvedSectionId) {
-        const gradeLevel = mapGradeLevel(gradeLevelName);
-        if (gradeLevel) {
-          try {
-            const sec = await (prisma.section as any).upsert({
-              where: {
-                name_gradeLevel_schoolYear: {
-                  name: sectionName,
-                  gradeLevel,
-                  schoolYear: schoolYearLabel,
-                },
+        try {
+          const sec = await (prisma.section as any).upsert({
+            where: {
+              name_gradeLevel_schoolYear: {
+                name: sectionName,
+                gradeLevel,
+                schoolYear: schoolYearLabel,
               },
-              update: {},
-              create: { name: sectionName, gradeLevel, schoolYear: schoolYearLabel, adviserId: null },
-            });
-            epSectionNameToSmartSectionId.set(sectionName, sec.id);
-            resolvedSectionId = sec.id;
-          } catch { /* ignore */ }
-        }
+            },
+            update: {},
+            create: { name: sectionName, gradeLevel, schoolYear: schoolYearLabel, adviserId: null },
+          });
+          epSectionKeyToSmartSectionId.set(key, sec.id);
+          resolvedSectionId = sec.id;
+        } catch { /* ignore */ }
       }
 
       if (!resolvedSectionId) continue;
 
       try {
-        // Change detection: compute hash of incoming fields and compare to what's
-        // already in the DB. Skip the DB write if nothing changed — in steady state
-        // this reduces upserts from ~500/cycle to only real changes (typically 0–5).
         const incomingBirthDate = learner.birthdate ? new Date(learner.birthdate) : null;
         const incomingAddress = learner.address || record.address || record.homeAddress || record.currentAddress || null;
         const incomingGuardian = learner.parentGuardianName || learner.guardianName || record.guardianName || record.parentGuardianName || record.guardianInfo || null;
@@ -278,13 +272,38 @@ export async function runEnrollProSync() {
           guardianName: incomingGuardian,
         });
 
+        // Upsert the student record keyed by LRN.
         const existing = await prisma.student.findUnique({
           where: { lrn: learner.lrn },
-          select: { id: true, firstName: true, lastName: true, middleName: true, gender: true, birthDate: true, address: true, guardianName: true },
+          select: {
+            id: true,
+            firstName: true, lastName: true, middleName: true,
+            gender: true, birthDate: true, address: true, guardianName: true,
+          },
         });
 
         let studentId: string;
-        if (existing) {
+
+        if (!existing) {
+          // New student — create
+          const created = await prisma.student.create({
+            data: {
+              lrn: learner.lrn,
+              firstName: learner.firstName ?? '',
+              middleName: learner.middleName ?? null,
+              lastName: learner.lastName ?? '',
+              suffix: learner.extensionName ?? null,
+              gender: learner.sex ?? null,
+              birthDate: incomingBirthDate,
+              address: incomingAddress,
+              guardianName: incomingGuardian,
+            },
+            select: { id: true },
+          });
+          studentId = created.id;
+          studentsSynced++;
+        } else {
+          // Existing student — update only if fields changed
           const existingHash = hashStudentFields({
             firstName: existing.firstName,
             lastName: existing.lastName,
@@ -295,48 +314,37 @@ export async function runEnrollProSync() {
             guardianName: existing.guardianName,
           });
 
-          if (existingHash === incomingHash) {
-            // Data unchanged — skip the write, just ensure enrollment exists.
-            studentsSkipped++;
-            studentId = existing.id;
-          } else {
-            // Data changed — update the record.
-            const updated = await prisma.student.update({
+          if (existingHash !== incomingHash) {
+            await prisma.student.update({
               where: { id: existing.id },
               data: {
-                firstName: learner.firstName,
-                lastName: learner.lastName,
+                firstName: learner.firstName ?? '',
                 middleName: learner.middleName ?? null,
+                lastName: learner.lastName ?? '',
+                suffix: learner.extensionName ?? null,
                 gender: learner.sex ?? null,
                 birthDate: incomingBirthDate,
                 address: incomingAddress,
                 guardianName: incomingGuardian,
               },
-              select: { id: true },
             });
-            studentId = updated.id;
             studentsSynced++;
+          } else {
+            studentsSkipped++;
           }
-        } else {
-          // New student — insert.
-          const created = await prisma.student.create({
-            data: {
-              lrn: learner.lrn,
-              firstName: learner.firstName,
-              lastName: learner.lastName,
-              middleName: learner.middleName ?? null,
-              suffix: learner.extensionName ?? null,
-              gender: learner.sex ?? null,
-              birthDate: incomingBirthDate,
-              address: incomingAddress,
-              guardianName: incomingGuardian,
-              guardianContact: learner.parentGuardianContact || record.contactNumber || null,
-            },
-            select: { id: true },
-          });
-          studentId = created.id;
-          studentsSynced++;
+          studentId = existing.id;
         }
+
+        // Prevent duplicate enrollments in the same SY
+        await prisma.enrollment.updateMany({
+          where: {
+            studentId,
+            schoolYear: schoolYearLabel,
+            sectionId: { not: resolvedSectionId },
+            status: 'ENROLLED'
+          },
+          data: { status: 'DROPPED' }
+        });
 
         await prisma.enrollment.upsert({
           where: {
@@ -366,14 +374,9 @@ export async function runEnrollProSync() {
       }
     }
 
-    // 8. Drop stale enrollments — mark ENROLLED records as DROPPED for any student
-    //    that no longer appears in the EnrollPro roster for a synced section.
-    //    This keeps advisory counts accurate when students transfer or drop.
+    // 8. Drop stale enrollments
     let studentsDropped = 0;
     
-    // Only perform stale enrollment cleanup if this was a FULL sync.
-    // In a delta sync, `syncedStudentsPerSection` only contains the updated students,
-    // so running this would incorrectly drop all unmodified students in those sections.
     if (!updatedSince) {
       try {
         const allSmartSections = await prisma.section.findMany({
@@ -414,8 +417,7 @@ export async function runEnrollProSync() {
       console.log(`[EnrollProSync] Delta sync enabled — skipping full roster stale enrollment cleanup.`);
     }
 
-    // 9. Drop enrollments in orphaned sections — sections that exist in SMART DB
-    //    but no longer appear in the EnrollPro section list (e.g. deleted/renamed).
+    // 9. Drop enrollments in orphaned sections
     if (!updatedSince) {
       const epSectionNames = new Set(epSections.map((s: any) => s.name));
       try {
@@ -427,7 +429,6 @@ export async function runEnrollProSync() {
         const orphanedSectionIds = orphanedSections.map((s) => s.id);
 
         if (orphanedSectionIds.length > 0) {
-          // A. Mark enrollments as DROPPED in these sections
           const dropResult = await prisma.enrollment.updateMany({
             where: {
               sectionId: { in: orphanedSectionIds },
@@ -438,14 +439,8 @@ export async function runEnrollProSync() {
           });
           if (dropResult.count > 0) {
             studentsDropped += dropResult.count;
-            console.log(
-              `[EnrollProSync] Marked ${dropResult.count} enrollment(s) as DROPPED in ${orphanedSectionIds.length} orphaned section(s) not found in EnrollPro`,
-            );
           }
 
-          // B. SAFE AUTO-DELETE: Remove sections that have NO dependencies
-          // This keeps the section list clean if they were just renamed or accidentally created,
-          // but preserves them if they have historical data (grades/attendance).
           for (const section of orphanedSections) {
             try {
               const [caCount, attCount] = await Promise.all([
@@ -454,9 +449,7 @@ export async function runEnrollProSync() {
               ]);
 
               if (caCount === 0 && attCount === 0) {
-                // Section is safe to delete. Enrollment records will cascade delete.
                 await prisma.section.delete({ where: { id: section.id } });
-                console.log(`[EnrollProSync] Deleted orphaned section "${section.name}" (0 assignments, 0 attendance)`);
               }
             } catch (delErr: any) {
               console.warn(`[EnrollProSync] Failed to delete orphaned section "${section.name}":`, delErr.message);
@@ -468,7 +461,7 @@ export async function runEnrollProSync() {
       }
     }
 
-    studentsFetched = allLearners.filter((row) => String(row?.status ?? '').toUpperCase() === 'ENROLLED').length;
+    studentsFetched = allLearners.filter((row: any) => String(row?.status ?? '').toUpperCase() === 'ENROLLED').length;
 
     lastSyncResult = {
       advisoriesSynced,
@@ -481,7 +474,6 @@ export async function runEnrollProSync() {
     };
     lastSyncAt = new Date();
     
-    // Update last sync time in settings
     try {
       await prisma.systemSettings.update({
         where: { id: 'main' },
@@ -495,7 +487,6 @@ export async function runEnrollProSync() {
       `matched=${teachersMatched}, errors=${errors.length}`
     );
 
-    // Notify clients that sync is complete
     broadcastSyncStatus({
       type: 'ENROLLPRO_SYNC_COMPLETE',
       timestamp: lastSyncAt,
@@ -516,7 +507,6 @@ export async function runEnrollProSync() {
       errors,
     };
     
-    // Notify clients of failure
     broadcastSyncStatus({
       type: 'ENROLLPRO_SYNC_FAILED',
       timestamp: new Date(),
@@ -528,6 +518,3 @@ export async function runEnrollProSync() {
     syncRunning = false;
   }
 }
-
-// NOTE: Scheduling is now handled by syncCoordinator.ts.
-// Call runEnrollProSync() directly; do not add a scheduler here.

@@ -20,11 +20,17 @@ import { runAtlasSync, getSyncStatus as getAtlasSyncStatus } from './atlasSync';
 import { syncEnrollProBranding } from './enrollproBrandingSync';
 import { broadcastSyncStatus } from './sseManager';
 import { prisma } from './prisma';
+import { invalidateAllCaches } from './syncCache';
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-const SYNC_INTERVAL_MINUTES = parseInt(process.env.SYNC_INTERVAL_MINUTES ?? '60', 10);
+const DEFAULT_INTERVAL_MS = 300000; // 5 minutes
+const SYNC_INTERVAL_MS = parseInt(process.env.SYNC_INTERVAL_MS ?? '', 10) || 
+                       (parseInt(process.env.SYNC_INTERVAL_MINUTES ?? '', 10) * 60 * 1000) || 
+                       DEFAULT_INTERVAL_MS;
+
+const SYNC_INTERVAL_MINUTES = Math.round(SYNC_INTERVAL_MS / 60000);
 const BRANDING_SYNC_EVERY_N_CYCLES = parseInt(process.env.BRANDING_SYNC_EVERY_N_CYCLES ?? '12', 10); // 12 × 5min = 60min
 const INITIAL_DELAY_MS = parseInt(process.env.SYNC_INITIAL_DELAY_MS ?? '5000', 10); // 5s after boot
 const ENROLLPRO_BASE = (process.env.ENROLLPRO_URL ?? process.env.ENROLLPRO_BASE_URL ?? 'https://dev-jegs.buru-degree.ts.net/api').replace(/\/$/, '');
@@ -279,6 +285,7 @@ export async function runUnifiedSync(options?: {
     console.error('[SyncCoordinator] Fatal error:', err.message);
   } finally {
     syncRunning = false;
+    invalidateAllCaches(); // Force fresh reads on next request
   }
 
   const durationMs = Date.now() - startTime;
@@ -385,7 +392,7 @@ export function startUnifiedSyncScheduler(): void {
     runUnifiedSync({ source: 'scheduled' }).catch((err) => {
       console.error('[SyncCoordinator] Scheduled sync failed:', err);
     });
-  }, intervalMs);
+  }, SYNC_INTERVAL_MS);
 }
 
 /**

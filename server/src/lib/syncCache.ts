@@ -14,7 +14,7 @@
 
 import {
   getEnrollProTeachers,
-  getIntegrationV1Sections,
+  getAllIntegrationV1Sections,
   resolveEnrollProSchoolYear,
   type EnrollProTeacher,
 } from './enrollproClient';
@@ -85,10 +85,12 @@ export const syncCache = new SyncCache();
 /**
  * Get all EnrollPro teachers. Returns cached data if fresh, otherwise fetches.
  */
-export async function getCachedEnrollProTeachers(): Promise<EnrollProTeacher[]> {
+export async function getCachedEnrollProTeachers(force = false): Promise<EnrollProTeacher[]> {
   const KEY = 'enrollpro:teachers';
-  const cached = syncCache.get<EnrollProTeacher[]>(KEY);
-  if (cached) return cached;
+  if (!force) {
+    const cached = syncCache.get<EnrollProTeacher[]>(KEY);
+    if (cached) return cached;
+  }
 
   const fresh = await getEnrollProTeachers();
   syncCache.set(KEY, fresh);
@@ -98,12 +100,14 @@ export async function getCachedEnrollProTeachers(): Promise<EnrollProTeacher[]> 
 /**
  * Get all EnrollPro integration v1 sections. Returns cached data if fresh.
  */
-export async function getCachedIntegrationV1Sections(schoolYearId?: number): Promise<any[]> {
+export async function getCachedIntegrationV1Sections(schoolYearId?: number, force = false): Promise<any[]> {
   const KEY = `enrollpro:sections:${schoolYearId ?? 'default'}`;
-  const cached = syncCache.get<any[]>(KEY);
-  if (cached) return cached;
+  if (!force) {
+    const cached = syncCache.get<any[]>(KEY);
+    if (cached) return cached;
+  }
 
-  const fresh = await getIntegrationV1Sections(schoolYearId);
+  const fresh = await getAllIntegrationV1Sections(schoolYearId);
   syncCache.set(KEY, fresh);
   return fresh;
 }

@@ -72,7 +72,7 @@ export default function ClassRecordView() {
   const [ptMeta, setPtMeta] = useState<AssessmentTaskMeta[]>([]);
   const [qaMeta, setQaMeta] = useState<{ description: string; date: string }>({ description: '', date: '' });
   const [invalidCells, setInvalidCells] = useState<Record<string, string>>({});
-  const [metaEditorTarget, setMetaEditorTarget] = useState<{ category: 'WW' | 'PT' | 'QA'; index: number } | null>(null);
+  const [selectedColumn, setSelectedColumn] = useState<{ type: 'WW' | 'PT' | 'QA'; number: number } | null>(null);
   const [metaEditorDraft, setMetaEditorDraft] = useState<{ description: string; date: string }>({ description: '', date: '' });
   const [savingMeta, setSavingMeta] = useState(false);
   const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
@@ -218,16 +218,16 @@ export default function ClassRecordView() {
     return Number(hpsData.qaMax ?? 0);
   };
 
-  const openMetaEditor = (category: 'WW' | 'PT' | 'QA', index: number) => {
-    setMetaEditorTarget({ category, index });
-    if (category === 'WW') {
+  const openMetaEditor = (type: 'WW' | 'PT' | 'QA', index: number) => {
+    setSelectedColumn({ type, number: index + 1 });
+    if (type === 'WW') {
       setMetaEditorDraft({
         description: wwMeta[index]?.description || `WW ${index + 1}`,
         date: wwMeta[index]?.date || '',
       });
       return;
     }
-    if (category === 'PT') {
+    if (type === 'PT') {
       setMetaEditorDraft({
         description: ptMeta[index]?.description || `PT ${index + 1}`,
         date: ptMeta[index]?.date || '',
@@ -241,25 +241,27 @@ export default function ClassRecordView() {
   };
 
   const saveColumnMeta = async () => {
-    if (!classAssignmentId || !metaEditorTarget) return;
+    if (!classAssignmentId || !selectedColumn) return;
     const nextWwMeta = [...wwMeta];
     const nextPtMeta = [...ptMeta];
     const nextQaMeta = { ...qaMeta };
 
-    if (metaEditorTarget.category === 'WW') {
-      while (nextWwMeta.length <= metaEditorTarget.index) {
+    const index = selectedColumn.number - 1;
+
+    if (selectedColumn.type === 'WW') {
+      while (nextWwMeta.length <= index) {
         nextWwMeta.push({ description: `WW ${nextWwMeta.length + 1}`, date: '' });
       }
-      nextWwMeta[metaEditorTarget.index] = {
-        description: metaEditorDraft.description || `WW ${metaEditorTarget.index + 1}`,
+      nextWwMeta[index] = {
+        description: metaEditorDraft.description || `WW ${selectedColumn.number}`,
         date: metaEditorDraft.date || '',
       };
-    } else if (metaEditorTarget.category === 'PT') {
-      while (nextPtMeta.length <= metaEditorTarget.index) {
+    } else if (selectedColumn.type === 'PT') {
+      while (nextPtMeta.length <= index) {
         nextPtMeta.push({ description: `PT ${nextPtMeta.length + 1}`, date: '' });
       }
-      nextPtMeta[metaEditorTarget.index] = {
-        description: metaEditorDraft.description || `PT ${metaEditorTarget.index + 1}`,
+      nextPtMeta[index] = {
+        description: metaEditorDraft.description || `PT ${selectedColumn.number}`,
         date: metaEditorDraft.date || '',
       };
     } else {
@@ -292,6 +294,7 @@ export default function ClassRecordView() {
       await Promise.all(updatePromises);
       setSuccess('Assessment metadata applied to the selected column');
       fetchClassRecord(true);
+      setSelectedColumn(null);
     } catch (err: any) {
       console.error('Failed to save column metadata:', err);
       setError(err?.response?.data?.message || 'Failed to save assessment metadata');
@@ -462,7 +465,7 @@ export default function ClassRecordView() {
   }, [showAssessmentDetails, wwCount, ptCount]);
 
   useEffect(() => {
-    if (!metaEditorTarget) {
+    if (!selectedColumn) {
       setMetaEditorHeight(0);
       return;
     }
@@ -481,7 +484,7 @@ export default function ClassRecordView() {
       observer?.disconnect();
       window.removeEventListener('resize', update);
     };
-  }, [metaEditorTarget]);
+  }, [selectedColumn]);
 
 
   const fetchClassRecord = async (silent = false) => {
@@ -827,13 +830,15 @@ export default function ClassRecordView() {
 
   if (!classAssignment) return null;
   const topNavHeight = 64;
-  const metaEditorTop = topNavHeight + Math.ceil(ledgerHeaderHeight) - 1; // 1px overlap
-  const metaEditorOffset = metaEditorTarget ? Math.ceil(metaEditorHeight) - 1 : 0; // 1px overlap
+  // metaEditorTop: where the quick-column editor sticks (below top nav + ledger card header)
+  const metaEditorTop = topNavHeight + Math.ceil(ledgerHeaderHeight);
+  // assessmentDetailsTop: below the meta editor (if open)
+  const metaEditorOffset = selectedColumn ? Math.ceil(metaEditorHeight) : 0;
   const assessmentDetailsTop = metaEditorTop + metaEditorOffset;
-  const stickyTop = assessmentDetailsTop + (showAssessmentDetails ? Math.ceil(assessmentDetailsHeight) - 1 : 0); // 1px overlap
-  const headerTop = Math.floor(stickyTop);
-  const subHeaderTop = headerTop + 39; // 1px overlap
-  const hpsTop = subHeaderTop + 39; // 1px overlap
+  // stickyOffset: total px above the table column headers — passed to ClassRecordTable
+  // ClassRecordTable internally adds its own group-row and sub-row heights for the HPS row.
+  const assessmentPanelOffset = showAssessmentDetails ? Math.ceil(assessmentDetailsHeight) : 0;
+  const stickyOffset = assessmentDetailsTop + assessmentPanelOffset;
 
   return (
     <div className="space-y-8 animate-fade-in max-w-full mx-auto px-6 pb-12">
@@ -912,9 +917,8 @@ export default function ClassRecordView() {
             onToggleAssessmentDetails={() => setShowAssessmentDetails((prev) => !prev)}
             ledgerHeaderRef={ledgerHeaderRef}
             topNavHeight={topNavHeight}
-            headerTop={headerTop}
-            subHeaderTop={subHeaderTop}
-            hpsTop={hpsTop}
+            ledgerHeaderHeight={Math.ceil(ledgerHeaderHeight)}
+            stickyOffset={stickyOffset}
             wwCount={wwCount}
             ptCount={ptCount}
             hpsData={hpsData}
@@ -944,10 +948,10 @@ export default function ClassRecordView() {
                 setQaMeta={setQaMeta}
                 saveAssessmentDetails={saveAssessmentDetails}
                 savingMeta={savingMeta}
-                metaEditorTarget={metaEditorTarget}
+                selectedColumn={selectedColumn}
+                setSelectedColumn={setSelectedColumn}
                 metaEditorDraft={metaEditorDraft}
                 setMetaEditorDraft={setMetaEditorDraft}
-                setMetaEditorTarget={setMetaEditorTarget}
                 saveColumnMeta={saveColumnMeta}
               />
             }

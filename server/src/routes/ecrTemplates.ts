@@ -9,6 +9,7 @@ import { AuditAction, AuditSeverity } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { authenticateToken, authorizeRoles, type AuthRequest } from '../middleware/auth';
 import { createAuditLog } from '../lib/audit';
+import { resolveEcrTemplatePath } from '../lib/ecrSubjectMapping';
 
 const router = Router();
 
@@ -646,26 +647,29 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
     const quarterNum = quarter.replace('Q', ''); // '1', '2', '3', '4'
     console.log(`[ECR] Starting FAST generation for: ${classAssignmentId}, quarter: ${quarter}`);
 
-    // Fetch class assignment and settings first
-    const [classAssignment, settings] = await Promise.all([
+    // Fetch class assignment and settings first (enrollments fetched separately after we have schoolYear)
+    const [classAssignmentBase, settings] = await Promise.all([
       prisma.classAssignment.findUnique({
         where: { id: classAssignmentId },
         include: {
           teacher: { include: { user: true } },
           subject: true,
-          section: {
-            include: {
-              enrollments: {
-                where: { status: 'ENROLLED' },
-                include: { student: true },
-                orderBy: { student: { lastName: 'asc' } }
-              }
-            }
-          }
+          section: true,
         }
       }) as any,
       prisma.systemSettings.findUnique({ where: { id: 'main' }, select: { schoolName: true, schoolId: true, division: true, region: true } }),
     ]);
+
+    if (!classAssignmentBase) { res.status(404).json({ success: false, error: 'Class not found' }); return; }
+    if (req.user!.role !== 'ADMIN' && req.user!.id !== classAssignmentBase.teacher.userId) { res.status(403).json({ success: false, error: 'Not authorized' }); return; }
+
+    // Fetch enrollments with proper schoolYear filter (needs classAssignment.schoolYear)
+    const sectionEnrollments = await prisma.enrollment.findMany({
+      where: { sectionId: classAssignmentBase.sectionId, status: 'ENROLLED', schoolYear: classAssignmentBase.schoolYear },
+      include: { student: true },
+      orderBy: { student: { lastName: 'asc' } }
+    });
+    const classAssignment: any = { ...classAssignmentBase, section: { ...classAssignmentBase.section, enrollments: sectionEnrollments } };
 
     // Determine which quarter sheets to fill: Q1 through selected quarter
     // e.g. downloading Q3 fills Q1, Q2, and Q3 sheets
@@ -690,12 +694,11 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
       gradesByQuarter.set(q, m);
     });
 
-    if (!classAssignment) { res.status(404).json({ success: false, error: 'Class not found' }); return; }
-    if (req.user!.role !== 'ADMIN' && req.user!.id !== classAssignment.teacher.userId) { res.status(403).json({ success: false, error: 'Not authorized' }); return; }
     console.log(`[ECR] Data fetched in ${Date.now() - startTime}ms`);
 
-    // Find template — priority: exact subject name → subject type → any active
+    // Find template — priority: exact subject name → subject code mapping → subject type → any active
     const baseSubjectName = classAssignment.subject.name.replace(/\s+\d+$/, '').trim();
+    const subjectCode = classAssignment.subject.code; // e.g. 'AP', 'STE_RESEARCH', 'TLE_HE'
     const subjectType = classAssignment.subject.type; // e.g. 'CORE', 'TLE', 'MAPEH'
     let ecrTemplate: { filePath: string; subjectName: string } | null = null;
 
@@ -708,6 +711,16 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
     if (nameMatch && fs.existsSync(nameMatch.filePath)) {
       ecrTemplate = nameMatch;
       console.log(`[ECR] Template: exact subject name match "${baseSubjectName}"`);
+    }
+
+    // 1.5) Subject code mapping — maps specialised codes (STE_, SPS_, SPA_, HG, etc.) to standard DepEd templates
+    if (!ecrTemplate) {
+      const ecrDir = path.join(__dirname, '../../uploads/ecr-templates');
+      const mappedPath = resolveEcrTemplatePath(subjectCode, quarter, ecrDir);
+      if (mappedPath) {
+        ecrTemplate = { filePath: mappedPath, subjectName: baseSubjectName };
+        console.log(`[ECR] Template: subject code mapping "${subjectCode}" → ${path.basename(mappedPath)}`);
+      }
     }
 
     // 2) Subject type match (e.g. any CORE template, any MAPEH template)
@@ -988,24 +1001,75 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
       if (maleInsertRow === -1) maleInsertRow = 12;
       if (femaleInsertRow === -1) femaleInsertRow = 62;
 
-      // Clear old sample data
+      // ── Dynamic column detection ────────────────────────────────────────────
+      // Scan rows above the MALE data section for an item-number row.
+      // The DepEd ECR always has a row like "1  2  3  4  5 ... N" for WW items
+      // followed by another "1  2  3 ... M" for PT items.
+      // We use those to locate the actual WW/PT start columns and item counts.
+      let wwStartCol = 6;   // default: standard 10-WW DepEd ECR
+      let ptStartCol = 19;  // default
+      let wwItemCount = 10; // default
+      let ptItemCount = 10; // default
+      let qaInputCol = 32;  // default
+      {
+        let detectionRow = -1;
+        const onePositions: number[] = [];
+        for (let r = Math.max(1, maleInsertRow - 8); r < maleInsertRow; r++) {
+          const rowOnes: number[] = [];
+          for (let c = 2; c <= 60; c++) {
+            const v = gradeSheet.row(r).cell(c).value();
+            if (v === 1 || v === '1') rowOnes.push(c);
+          }
+          if (rowOnes.length >= 2) {
+            detectionRow = r;
+            onePositions.push(...rowOnes);
+            break;
+          }
+        }
+        if (detectionRow !== -1 && onePositions.length >= 2) {
+          wwStartCol = onePositions[0];
+          ptStartCol = onePositions[1];
+          // Count consecutive WW items from wwStartCol
+          let ww = 0;
+          for (let c = wwStartCol; c < ptStartCol && ww < 20; c++) {
+            const v = gradeSheet.row(detectionRow).cell(c).value();
+            if (v === ww + 1 || v === String(ww + 1)) ww++;
+            else if (ww > 0) break;
+          }
+          if (ww >= 1) wwItemCount = ww;
+          // Count consecutive PT items from ptStartCol
+          let pt = 0;
+          for (let c = ptStartCol; c <= ptStartCol + 20 && pt < 20; c++) {
+            const v = gradeSheet.row(detectionRow).cell(c).value();
+            if (v === pt + 1 || v === String(pt + 1)) pt++;
+            else if (pt > 0) break;
+          }
+          if (pt >= 1) ptItemCount = pt;
+          // QA input cell: after PT items + 3 aggregate cols (PT Total, PT HPS, PT PS)
+          qaInputCol = ptStartCol + ptItemCount + 3;
+          console.log(`[ECR] [${currentQ}] Col detection row ${detectionRow}: WW C${wwStartCol}(${wwItemCount}) | PT C${ptStartCol}(${ptItemCount}) | QA C${qaInputCol}`);
+        } else {
+          console.log(`[ECR] [${currentQ}] Col detection failed — defaults: WW C${wwStartCol}(${wwItemCount}) PT C${ptStartCol}(${ptItemCount}) QA C${qaInputCol}`);
+        }
+      }
+
+      // Clear old sample data using detected column ranges
       for (let r = maleInsertRow; r < Math.min(maleInsertRow + 50, femaleInsertRow); r++) {
         gradeSheet.row(r).cell(1).value(null);
         gradeSheet.row(r).cell(2).value(null);
-        for (let c = 6; c <= 15; c++) gradeSheet.row(r).cell(c).value(null);
-        for (let c = 19; c <= 28; c++) gradeSheet.row(r).cell(c).value(null);
-        gradeSheet.row(r).cell(32).value(null);
+        for (let c = wwStartCol; c < wwStartCol + wwItemCount; c++) gradeSheet.row(r).cell(c).value(null);
+        for (let c = ptStartCol; c < ptStartCol + ptItemCount; c++) gradeSheet.row(r).cell(c).value(null);
+        gradeSheet.row(r).cell(qaInputCol).value(null);
       }
       for (let r = femaleInsertRow; r < femaleInsertRow + 50; r++) {
         gradeSheet.row(r).cell(1).value(null);
         gradeSheet.row(r).cell(2).value(null);
-        for (let c = 6; c <= 15; c++) gradeSheet.row(r).cell(c).value(null);
-        for (let c = 19; c <= 28; c++) gradeSheet.row(r).cell(c).value(null);
-        gradeSheet.row(r).cell(32).value(null);
+        for (let c = wwStartCol; c < wwStartCol + wwItemCount; c++) gradeSheet.row(r).cell(c).value(null);
+        for (let c = ptStartCol; c < ptStartCol + ptItemCount; c++) gradeSheet.row(r).cell(c).value(null);
+        gradeSheet.row(r).cell(qaInputCol).value(null);
       }
 
-      // Insert student data for this quarter
-      // Col 1=Number, 2=Name, 6-15=WW scores, 19-28=PT scores, 32=QA
+      // Insert student data — use detected columns, write RAW scores (not PS)
       const insertStudentData = (rowNum: number, studentNumber: number, student: any): void => {
         const grade = currentGradesByStudentId.get(student.id);
         const fullName = `${student.lastName}, ${student.firstName}${student.middleName ? ' ' + student.middleName.charAt(0) + '.' : ''}`.trim();
@@ -1013,48 +1077,49 @@ router.post('/generate/:classAssignmentId', authorizeRoles('ADMIN', 'TEACHER'), 
         const ptScores = grade?.perfTaskScores ? (Array.isArray(grade.perfTaskScores) ? grade.perfTaskScores : JSON.parse(grade.perfTaskScores as any)) : [];
         gradeSheet.row(rowNum).cell(1).value(studentNumber);
         gradeSheet.row(rowNum).cell(2).value(fullName);
-        for (let w = 0; w < 10; w++) {
+        for (let w = 0; w < wwItemCount; w++) {
           const score = wwScores[w];
-          gradeSheet.row(rowNum).cell(6 + w).value(score ? score.score : '');
+          gradeSheet.row(rowNum).cell(wwStartCol + w).value(score != null ? score.score : '');
         }
-        for (let p = 0; p < 10; p++) {
+        for (let p = 0; p < ptItemCount; p++) {
           const score = ptScores[p];
-          gradeSheet.row(rowNum).cell(19 + p).value(score ? score.score : '');
+          gradeSheet.row(rowNum).cell(ptStartCol + p).value(score != null ? score.score : '');
         }
-        gradeSheet.row(rowNum).cell(32).value(grade?.quarterlyAssessPS ?? grade?.quarterlyAssessScore ?? '');
+        // Write raw QA score so the template's own formula computes the PS correctly
+        gradeSheet.row(rowNum).cell(qaInputCol).value(grade?.quarterlyAssessScore ?? '');
       };
 
       maleStudents.forEach((student: any, i: number) => insertStudentData(maleInsertRow + i, i + 1, student));
       femaleStudents.forEach((student: any, i: number) => insertStudentData(femaleInsertRow + i, i + 1, student));
       console.log(`[ECR] [${currentQ}] ✅ Inserted ${maleStudents.length + femaleStudents.length} students`);
 
-      // Write HPS (Highest Possible Score) row for this quarter
+      // Write HPS (Highest Possible Score) row — only fills cells that are empty in the template
       const hpsRow = highestScoreRow !== -1 ? highestScoreRow : (maleInsertRow - 2);
       if (hpsRow > 0 && currentGradesArray.length > 0) {
-        const wwHPS: (number | '')[] = new Array(10).fill('');
-        const ptHPS: (number | '')[] = new Array(10).fill('');
+        const wwHPS: (number | '')[] = new Array(wwItemCount).fill('');
+        const ptHPS: (number | '')[] = new Array(ptItemCount).fill('');
         for (const g of currentGradesArray) {
           const ww = g.writtenWorkScores ? (Array.isArray(g.writtenWorkScores) ? g.writtenWorkScores : JSON.parse(g.writtenWorkScores as any)) : [];
           const pt = g.perfTaskScores ? (Array.isArray(g.perfTaskScores) ? g.perfTaskScores : JSON.parse(g.perfTaskScores as any)) : [];
           ww.forEach((s: any, i: number) => {
-            if (i < 10 && s?.maxScore != null && (wwHPS[i] === '' || (s.maxScore as number) > (wwHPS[i] as number))) wwHPS[i] = s.maxScore;
+            if (i < wwItemCount && s?.maxScore != null && (wwHPS[i] === '' || (s.maxScore as number) > (wwHPS[i] as number))) wwHPS[i] = s.maxScore;
           });
           pt.forEach((s: any, i: number) => {
-            if (i < 10 && s?.maxScore != null && (ptHPS[i] === '' || (s.maxScore as number) > (ptHPS[i] as number))) ptHPS[i] = s.maxScore;
+            if (i < ptItemCount && s?.maxScore != null && (ptHPS[i] === '' || (s.maxScore as number) > (ptHPS[i] as number))) ptHPS[i] = s.maxScore;
           });
         }
-        for (let w = 0; w < 10; w++) {
-          const col = 6 + w;
+        for (let w = 0; w < wwItemCount; w++) {
+          const col = wwStartCol + w;
           const existing = gradeSheet.row(hpsRow).cell(col).value();
           if ((existing === undefined || existing === null || existing === '') && wwHPS[w] !== '') gradeSheet.row(hpsRow).cell(col).value(wwHPS[w]);
         }
-        for (let p = 0; p < 10; p++) {
-          const col = 19 + p;
+        for (let p = 0; p < ptItemCount; p++) {
+          const col = ptStartCol + p;
           const existing = gradeSheet.row(hpsRow).cell(col).value();
           if ((existing === undefined || existing === null || existing === '') && ptHPS[p] !== '') gradeSheet.row(hpsRow).cell(col).value(ptHPS[p]);
         }
-        const existingQA = gradeSheet.row(hpsRow).cell(32).value();
-        if (existingQA === undefined || existingQA === null || existingQA === '') gradeSheet.row(hpsRow).cell(32).value(100);
+        const existingQA = gradeSheet.row(hpsRow).cell(qaInputCol).value();
+        if (existingQA === undefined || existingQA === null || existingQA === '') gradeSheet.row(hpsRow).cell(qaInputCol).value(100);
         console.log(`[ECR] [${currentQ}] HPS row ${hpsRow}: WW=[${wwHPS.filter(v => v !== '').join(',')}] PT=[${ptHPS.filter(v => v !== '').join(',')}] QA=100`);
       }
     } // end for quartersToFill

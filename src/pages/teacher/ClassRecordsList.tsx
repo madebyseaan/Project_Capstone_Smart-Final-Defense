@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { gradesApi, type ClassAssignment } from "@/lib/api";
+import { gradesApi, advisoryApi, type ClassAssignment } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSyncStream } from "@/hooks/useSyncStream";
 
@@ -201,6 +201,11 @@ export default function ClassRecordsList() {
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [assignmentToDelete, setAssignmentToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Silent background sync on every page load — pulls fresh data from Atlas
+  useEffect(() => {
+    advisoryApi.syncFromEnrollPro().catch(() => {/* silent fallback */});
+  }, []);
 
   useEffect(() => {
     const fetchClasses = async () => {

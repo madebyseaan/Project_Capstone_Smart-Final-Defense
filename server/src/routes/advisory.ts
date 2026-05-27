@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../middleware/auth";
 import { syncTeacherOnLogin } from "../lib/teacherSync";
 import { invalidateEnrollProToken } from "../lib/enrollproClient";
+import { broadcastSyncStatus } from "../lib/sseManager";
 import type { Student, Enrollment, Section, ClassAssignment, Subject, Teacher, User, Grade } from "@prisma/client";
 
 const router = Router();
@@ -23,6 +24,25 @@ type ClassAssignmentWithDetails = ClassAssignment & {
 
 function isHomeroomGuidanceCode(subjectCode: string | null | undefined): boolean {
   return (subjectCode ?? '').toUpperCase().startsWith('HG');
+}
+
+/**
+ * Helper to check if a subject code is aligned with a section's grade level.
+ * Example: MATH7 is NOT aligned with GRADE_10.
+ * Generic codes like MATH or ENG are considered aligned.
+ */
+function isSubjectAlignedWithGrade(subjectCode: string, gradeLevel: string): boolean {
+  const gradeSuffix = gradeLevel.replace('GRADE_', '');
+  const code = subjectCode.toUpperCase();
+  
+  // Find numeric suffix at the end of the code (e.g., "7", "10")
+  const match = code.match(/\d+$/);
+  if (match) {
+    const codeGrade = match[0];
+    return codeGrade === gradeSuffix;
+  }
+  
+  return true; // Generic code, assume aligned
 }
 
 // Get teacher's advisory section
@@ -56,7 +76,7 @@ router.get(
       // Find advisory section assigned to this teacher for the current school year.
       // Advisory display is strict to current SY to avoid showing stale assignments.
       const advisorySection = await prisma.section.findFirst({
-        where: { adviserId: teacher.id, schoolYear: currentSchoolYear } as any,
+        where: { adviserId: teacher.id, schoolYear: currentSchoolYear },
         include: {
           enrollments: {
             where: { status: "ENROLLED" },
@@ -71,7 +91,9 @@ router.get(
           },
           _count: {
             select: {
-              enrollments: true,
+              enrollments: {
+                where: { status: "ENROLLED" }
+              },
             },
           },
         },
@@ -91,8 +113,21 @@ router.get(
       }
 
       // Get class assignments for this section (to know which subjects they have)
+      // Filter for isActive: true to ensure subjects match current curriculum
+      // Filter out Homeroom Guidance as it's not considered an academic subject for these views
       const classAssignments = await prisma.classAssignment.findMany({
-        where: { sectionId: advisorySection.id },
+        where: { 
+          sectionId: advisorySection.id,
+          isActive: true,
+          subject: {
+            NOT: {
+              code: {
+                startsWith: 'HG',
+                mode: 'insensitive'
+              }
+            }
+          }
+        },
         include: {
           subject: true,
           teacher: {
@@ -112,6 +147,11 @@ router.get(
           },
         },
       }) as ClassAssignmentWithDetails[];
+
+      // Final filter to ensure subjects are aligned with the section's grade level
+      const alignedAssignments = classAssignments.filter(ca => 
+        isSubjectAlignedWithGrade(ca.subject.code, advisorySection.gradeLevel)
+      );
 
       // Calculate section stats
       const students: StudentWithDetails[] = advisorySection.enrollments.map((e: EnrollmentWithStudent) => e.student);
@@ -140,7 +180,7 @@ router.get(
           maleCount,
           femaleCount,
         },
-        subjects: classAssignments.map((ca: ClassAssignmentWithDetails) => ({
+        subjects: alignedAssignments.map((ca: ClassAssignmentWithDetails) => ({
           id: ca.subject.id,
           code: ca.subject.code,
           name: ca.subject.name,
@@ -207,7 +247,7 @@ router.get(
         where: {
           id: currentEnrollment.sectionId,
           adviserId: teacher.id,
-        } as any,
+        },
       });
 
       // Also allow if teacher teaches this student (any class assignment)
@@ -224,10 +264,21 @@ router.get(
       }
 
       // Get all class assignments for this section
+      // Filter for isActive: true to show current assignments only
+      // Filter out Homeroom Guidance from this list
       const classAssignments = await prisma.classAssignment.findMany({
         where: { 
           sectionId: currentEnrollment.sectionId,
           schoolYear: currentEnrollment.schoolYear,
+          isActive: true,
+          subject: {
+            NOT: {
+              code: {
+                startsWith: 'HG',
+                mode: 'insensitive'
+              }
+            }
+          }
         },
         include: {
           subject: true,
@@ -256,8 +307,13 @@ router.get(
         grades: Grade[] 
       })[];
 
+      // Final filter to ensure subjects are aligned with the student's current grade level
+      const alignedAssignments = classAssignments.filter(ca => 
+        isSubjectAlignedWithGrade(ca.subject.code, currentEnrollment.section.gradeLevel)
+      );
+
       // Format grades by subject
-      const subjectGrades = classAssignments.map((ca) => {
+      const subjectGrades = alignedAssignments.map((ca) => {
         const quarters = ["Q1", "Q2", "Q3", "Q4"] as const;
         const gradesByQuarter: Record<string, {
           writtenWorkPS: number | null;
@@ -280,14 +336,12 @@ router.get(
           } : null;
         });
 
-        const isHG = isHomeroomGuidanceCode(ca.subject.code);
-
         // Calculate final grade (average of available quarterly grades)
         const quarterlyGrades = Object.values(gradesByQuarter)
           .filter((g): g is NonNullable<typeof g> => g?.quarterlyGrade !== null && g?.quarterlyGrade !== undefined)
           .map((g) => g.quarterlyGrade as number);
         
-        const finalGrade = !isHG && quarterlyGrades.length > 0 
+        const finalGrade = quarterlyGrades.length > 0 
           ? Math.round(quarterlyGrades.reduce((a, b) => a + b, 0) / quarterlyGrades.length)
           : null;
 
@@ -299,16 +353,15 @@ router.get(
           teacher: `${ca.teacher.user.firstName} ${ca.teacher.user.lastName}`,
           grades: gradesByQuarter,
           finalGrade,
-          remarks: isHG ? "QUALITATIVE" : (finalGrade ? (finalGrade >= 75 ? "PASSED" : "FAILED") : null),
+          remarks: finalGrade ? (finalGrade >= 75 ? "PASSED" : "FAILED") : null,
         };
       });
 
       // Calculate General Average
       const finalGrades = subjectGrades
-        .filter((s) => !isHomeroomGuidanceCode(s.subjectCode))
         .filter((s) => s.finalGrade !== null)
         .map((s) => s.finalGrade as number);
-      const academicSubjects = subjectGrades.filter((s) => !isHomeroomGuidanceCode(s.subjectCode));
+      const academicSubjects = subjectGrades;
       
       const generalAverage = finalGrades.length > 0
         ? Math.round((finalGrades.reduce((a, b) => a + b, 0) / finalGrades.length) * 100) / 100
@@ -391,7 +444,7 @@ router.get(
       const currentSchoolYear = systemSettings?.currentSchoolYear ?? '2026-2027';
 
       const advisorySection = await prisma.section.findFirst({
-        where: { adviserId: teacher.id, schoolYear: currentSchoolYear } as any,
+        where: { adviserId: teacher.id, schoolYear: currentSchoolYear },
         include: {
           enrollments: {
             where: { status: "ENROLLED" },
@@ -408,8 +461,21 @@ router.get(
       }
 
       // Get all grades for students in this section
-      const classAssignments = await prisma.classAssignment.findMany({
-        where: { sectionId: advisorySection.id },
+      // Filter for isActive: true and align with grade level
+      // Filter out Homeroom Guidance
+      const classAssignmentsData = await prisma.classAssignment.findMany({
+        where: { 
+          sectionId: advisorySection.id,
+          isActive: true,
+          subject: {
+            NOT: {
+              code: {
+                startsWith: 'HG',
+                mode: 'insensitive'
+              }
+            }
+          }
+        },
         include: {
           subject: { select: { code: true } },
           grades: {
@@ -417,6 +483,10 @@ router.get(
           },
         },
       }) as (ClassAssignment & { subject: { code: string }; grades: Grade[] })[];
+
+      const classAssignments = classAssignmentsData.filter(ca => 
+        isSubjectAlignedWithGrade(ca.subject.code, advisorySection.gradeLevel)
+      );
 
       // Calculate rankings based on general average
       interface StudentAverage {
@@ -431,12 +501,10 @@ router.get(
 
       const studentAverages: StudentAverage[] = await Promise.all(
         advisorySection.enrollments.map(async (enrollment: EnrollmentWithStudent) => {
-          const academicSubjectCount = classAssignments.filter(
-            (ca) => !isHomeroomGuidanceCode(ca.subject.code),
-          ).length;
+          const academicSubjects = classAssignments;
+          const academicSubjectCount = academicSubjects.length;
 
-          const academicQuarterlyGrades = classAssignments.flatMap((ca) => {
-            if (isHomeroomGuidanceCode(ca.subject.code)) return [] as number[];
+          const academicQuarterlyGrades = academicSubjects.flatMap((ca) => {
             return ca.grades
               .filter((g: Grade) => g.studentId === enrollment.studentId)
               .map((g: Grade) => g.quarterlyGrade)
@@ -532,6 +600,25 @@ router.post(
         teacher.employeeId,
         teacher.user.email,
       );
+
+      // Broadcast completion so frontend auto-refreshes
+      broadcastSyncStatus({
+        type: 'SYNC_COMPLETE',
+        source: 'teacher-manual',
+        timestamp: new Date().toISOString(),
+        result: {
+          enrollpro: { 
+            studentsUpdated: result.studentsUpserted, 
+            advisories: result.advisorySection ? 1 : 0, 
+            errors: result.errors.length 
+          },
+          atlas: { 
+            created: result.classAssignmentsCreated, 
+            matched: 1, 
+            errors: 0 
+          }
+        }
+      });
 
       res.json({
         success: true,

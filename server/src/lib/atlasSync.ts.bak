@@ -27,16 +27,6 @@ function normalizeAtlasSubjectCode(code: string | null | undefined): string {
   return (code ?? '').trim().toUpperCase();
 }
 
-function normalizeEmail(email: string | null | undefined): string {
-  if (!email) return '';
-  return email.toLowerCase()
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/├æ/g, 'n')
-    .replace(/ñ/g, 'n');
-}
-
 const HOMEROOM_GUIDANCE_LABEL = 'Homeroom Guidance';
 const HOMEROOM_GUIDANCE_MINUTES = 60;
 
@@ -155,8 +145,8 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const smartTeacherIdByEmail = new Map<string, string>();
     for (const teacher of smartTeachers) {
       smartTeacherIdByEmployeeId.set(String(teacher.employeeId).trim(), teacher.id);
-      const email = teacher.user.email;
-      if (email) smartTeacherIdByEmail.set(normalizeEmail(email), teacher.id);
+      const email = teacher.user.email?.toLowerCase().trim();
+      if (email) smartTeacherIdByEmail.set(email, teacher.id);
     }
 
     const enrollProTeachers = await getEnrollProTeachers();
@@ -171,7 +161,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       const externalTeacherId = externalMatch?.employeeId
         ? smartTeacherIdByEmployeeId.get(String(externalMatch.employeeId).trim())
         : undefined;
-      const emailMatch = smartTeacherIdByEmail.get(normalizeEmail(af.contactInfo));
+      const emailMatch = smartTeacherIdByEmail.get((af.contactInfo ?? '').toLowerCase().trim());
       const tid = externalTeacherId ?? emailMatch;
       if (tid) {
         atlasIdToSmartTeacherId.set(af.id, tid);
@@ -258,7 +248,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         const teacherLoads: Array<{ smartTeacherId: string; subjectCode: string; sectionName: string }> = [];
         const MAX_SANE_SECTIONS = 10;
 
-        if (flatAssignments.length > 0 && flatAssignments.some(a => a?.sectionId ?? a?.section?.id)) {
+        if (flatAssignments.length > 0) {
           // Trust Gate: Group by subject to detect broad over-assignment
           const flatBySubject = new Map<string, number>();
           for (const a of flatAssignments) {
@@ -286,7 +276,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
             }
             teacherLoads.push({ smartTeacherId, subjectCode, sectionName: epSection.name });
           }
-        } else if (nestedAssignments.length > 0 && nestedAssignments.some(a => (a.sections ?? []).length > 0)) {
+        } else if (nestedAssignments.length > 0) {
           for (const a of nestedAssignments) {
             const subjectCode = normalizeAtlasSubjectCode(a.subject?.code ?? '');
             if (!subjectCode) continue;
@@ -321,20 +311,6 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
               continue;
             }
             teacherLoads.push({ smartTeacherId, subjectCode, sectionName: epSection.name });
-          }
-        } else if (Array.isArray(af.facultySubjects) && af.facultySubjects.length > 0) {
-          // Fallback: use facultySubjects list from the main /faculty response
-          // This is often populated even when the detail/published endpoints are not.
-          for (const fs of af.facultySubjects) {
-            const subjectCode = normalizeAtlasSubjectCode(fs.subject?.code);
-            if (!subjectCode) continue;
-            const sectionIds: number[] = Array.isArray(fs.sectionIds) ? fs.sectionIds : [];
-            for (const sid of sectionIds) {
-              const epSection = epSectionById.get(sid);
-              if (epSection?.name) {
-                teacherLoads.push({ smartTeacherId, subjectCode, sectionName: epSection.name });
-              }
-            }
           }
         }
 

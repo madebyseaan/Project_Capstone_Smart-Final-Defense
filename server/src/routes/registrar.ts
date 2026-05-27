@@ -105,7 +105,11 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
       where: { schoolYear: currentSchoolYear },
       include: {
         _count: {
-          select: { enrollments: true }
+          select: { 
+            enrollments: {
+              where: { status: "ENROLLED" }
+            }
+          }
         },
         adviser: {
           include: {
@@ -837,7 +841,11 @@ router.get("/forms/sf8", authenticateToken, async (req: AuthRequest, res: Respon
           include: { user: true }
         },
         _count: {
-          select: { enrollments: true }
+          select: { 
+            enrollments: {
+              where: { status: "ENROLLED" }
+            }
+          }
         }
       },
       orderBy: [
@@ -990,7 +998,11 @@ router.get("/sections", authenticateToken, async (req: AuthRequest, res: Respons
           include: { user: true }
         },
         _count: {
-          select: { enrollments: true }
+          select: { 
+            enrollments: {
+              where: { status: "ENROLLED" }
+            }
+          }
         }
       },
       orderBy: [

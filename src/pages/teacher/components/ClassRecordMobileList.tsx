@@ -61,6 +61,17 @@ export function ClassRecordMobileList({
           const descriptor = grade?.qualitativeDescriptor ?? "Not set";
           const finalGrade = getDisplayFinalGrade(record);
 
+          // Score breakdowns
+          const wwScores = (grade?.writtenWorkScores ?? []) as { score: number | null; maxScore: number | null }[];
+          const ptScores = (grade?.perfTaskScores ?? []) as { score: number | null; maxScore: number | null }[];
+          const wwTotal = wwScores.reduce((acc, s) => acc + (Number(s.score) || 0), 0);
+          const wwMax = wwScores.reduce((acc, s) => acc + (Number(s.maxScore) || 0), 0);
+          const ptTotal = ptScores.reduce((acc, s) => acc + (Number(s.score) || 0), 0);
+          const ptMax = ptScores.reduce((acc, s) => acc + (Number(s.maxScore) || 0), 0);
+          const qaScore = grade?.quarterlyAssessScore ?? null;
+          const qaMax = grade?.quarterlyAssessMax ?? null;
+          const hasScores = wwMax > 0 || ptMax > 0 || qaScore !== null;
+
           return (
             <button
               key={record.student.id}
@@ -68,16 +79,41 @@ export function ClassRecordMobileList({
               onClick={() => onOpenEditor(record.student.id)}
               className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm active:scale-[0.995] transition"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">#{index + 1}</p>
-                  <p className="text-sm font-black text-slate-900 uppercase tracking-tight">
+                  <p className="text-sm font-black text-slate-900 uppercase tracking-tight truncate">
                     {record.student.lastName}, {record.student.firstName}
                   </p>
-                  <p className="text-[10px] text-slate-500 font-semibold mt-1">{record.student.lrn}</p>
+                  <p className="text-[10px] text-slate-500 font-semibold mt-0.5 font-mono">{record.student.lrn}</p>
+
+                  {!isHGClass && hasScores && (
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">WW</span>
+                        <span className="text-[10px] font-bold text-indigo-600">
+                          {wwMax > 0 ? `${wwTotal}/${wwMax}` : "—"}
+                        </span>
+                      </div>
+                      <div className="w-px h-3 bg-slate-200" />
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-black text-purple-400 uppercase tracking-widest">PT</span>
+                        <span className="text-[10px] font-bold text-purple-600">
+                          {ptMax > 0 ? `${ptTotal}/${ptMax}` : "—"}
+                        </span>
+                      </div>
+                      <div className="w-px h-3 bg-slate-200" />
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">QA</span>
+                        <span className="text-[10px] font-bold text-amber-600">
+                          {qaScore !== null ? (qaMax ? `${qaScore}/${qaMax}` : String(qaScore)) : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="text-right">
+                <div className="text-right flex-shrink-0">
                   {isHGClass ? (
                     <>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Descriptor</p>
@@ -86,7 +122,7 @@ export function ClassRecordMobileList({
                   ) : (
                     <>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Final</p>
-                      <p className={`text-xl font-black ${getGradeColor(finalGrade)}`}>{finalGrade ?? "-"}</p>
+                      <p className={`text-xl font-black ${getGradeColor(finalGrade)}`}>{finalGrade ?? "—"}</p>
                     </>
                   )}
                   <ChevronRight className="w-4 h-4 text-slate-300 ml-auto mt-1" />

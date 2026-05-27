@@ -301,60 +301,69 @@ export async function syncTeacherOnLogin(
   let advisorySectionGradeLevel: GradeLevel | null = null;
 
   const resolveAdvisoryFromSections = async (): Promise<boolean> => {
-    const teachers = await getCachedEnrollProTeachers();
+    // FORCE fresh fetch on login to ensure absolute real-time section mappings
+    const teachers = await getCachedEnrollProTeachers(true);
     const teacherRecord = teachers.find((t) => String(t.employeeId ?? '').trim() === String(employeeId).trim());
     if (!teacherRecord) {
       return false;
     }
 
     epTeacherId = Number(teacherRecord.id);
-    const sections = await getCachedIntegrationV1Sections(schoolYearId);
-    const mySection = sections
-      .filter((s: any) => Number(s?.advisingTeacher?.id) === Number(teacherRecord.id))
-      .sort((a: any, b: any) => Number(b?.enrolledCount ?? 0) - Number(a?.enrolledCount ?? 0))[0];
+    const sections = await getCachedIntegrationV1Sections(schoolYearId, true);
+    const mySections = sections
+      .filter((s: any) => Number(s?.advisingTeacher?.id) === Number(teacherRecord.id));
 
-    if (!mySection) {
+    if (mySections.length === 0) {
       return false;
     }
 
-    const gradeLevel = mapGradeLevel(mySection.gradeLevel?.name ?? mySection.gradeLevelName ?? mySection.name);
-    if (!gradeLevel) {
-      result.errors.push(`Could not determine grade level for advisory section "${mySection.name}"`);
-      return false;
-    }
+    // Process all sections assigned to this teacher in EnrollPro
+    // Aggregate learners into the primary SMART section (keyed by name)
+    let totalLearners: any[] = [];
+    
+    for (const mySection of mySections) {
+      const gradeLevel = mapGradeLevel(mySection.gradeLevel?.name ?? mySection.gradeLevelName ?? mySection.name);
+      if (!gradeLevel) {
+        result.errors.push(`Could not determine grade level for advisory section "${mySection.name}"`);
+        continue;
+      }
 
-    result.advisorySection = mySection.name;
-    console.log(`[TeacherSync] Advisory via sections: ${mySection.name} gl=${gradeLevel}`);
+      if (!result.advisorySection) result.advisorySection = mySection.name;
+      
+      const section = await upsertSection(
+        mySection.name,
+        gradeLevel,
+        schoolYearLabel,
+        smartTeacherId,
+      );
+      advisorySectionSmartId = section.id;
+      advisorySectionGradeLevel = gradeLevel;
 
-    const section = await upsertSection(
-      mySection.name,
-      gradeLevel,
-      schoolYearLabel,
-      smartTeacherId,
-    );
-    advisorySectionSmartId = section.id;
-    advisorySectionGradeLevel = gradeLevel;
+      const learners = await getAllIntegrationV1SectionLearners(Number(mySection.id));
+      totalLearners.push(...learners);
+      console.log(`[TeacherSync] Advisory "${mySection.name}" (EP id=${mySection.id}): ${learners.length} learners`);
 
-    const learners = await getAllIntegrationV1SectionLearners(Number(mySection.id));
-    result.studentsFound = learners.length;
-    console.log(`[TeacherSync] Advisory "${section.name}": ${learners.length} learners`);
-
-    for (const rec of learners) {
-      const learner = rec.learner ?? rec;
-      try {
-        const ok = await upsertLearner(learner, section.id, schoolYearLabel);
-        if (ok) result.studentsUpserted++;
-      } catch (err: any) {
-        result.errors.push(`Advisory LRN ${learner?.lrn}: ${err.message}`);
+      for (const rec of learners) {
+        const learner = rec.learner ?? rec;
+        try {
+          const ok = await upsertLearner(learner, section.id, schoolYearLabel);
+          if (ok) result.studentsUpserted++;
+        } catch (err: any) {
+          result.errors.push(`Advisory LRN ${learner?.lrn}: ${err.message}`);
+        }
       }
     }
 
-    // Drop students who are no longer in EnrollPro for this section.
-    try {
-      const dropped = await dropStaleEnrollments(section.id, schoolYearLabel, learners);
-      if (dropped > 0) console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${section.name}"`);
-    } catch (err: any) {
-      result.errors.push(`Stale enrollment cleanup: ${err.message}`);
+    result.studentsFound = totalLearners.length;
+
+    // Drop students who are no longer in EnrollPro for this section (aggregated check)
+    if (advisorySectionSmartId) {
+      try {
+        const dropped = await dropStaleEnrollments(advisorySectionSmartId, schoolYearLabel, totalLearners);
+        if (dropped > 0) console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${result.advisorySection}"`);
+      } catch (err: any) {
+        result.errors.push(`Stale enrollment cleanup: ${err.message}`);
+      }
     }
 
     return true;
@@ -436,52 +445,57 @@ export async function syncTeacherOnLogin(
         }
 
         const sections = await getCachedIntegrationV1Sections(schoolYearId);
-        const mySection = sections
-          .filter((s: any) => Number(s?.advisingTeacher?.id) === Number(epTeacher.id))
-          .sort((a: any, b: any) => Number(b?.enrolledCount ?? 0) - Number(a?.enrolledCount ?? 0))[0];
+        const mySections = sections
+          .filter((s: any) => Number(s?.advisingTeacher?.id) === Number(epTeacher.id));
 
-        if (mySection) {
-          const gradeLevel =
-            mapGradeLevel(mySection.gradeLevel?.name ?? mySection.gradeLevelName ?? mySection.name);
+        if (mySections.length > 0) {
+          let totalLearners: any[] = [];
+          
+          for (const mySection of mySections) {
+            const gradeLevel =
+              mapGradeLevel(mySection.gradeLevel?.name ?? mySection.gradeLevelName ?? mySection.name);
 
-          if (gradeLevel) {
-            result.advisorySection = mySection.name;
+            if (gradeLevel) {
+              if (!result.advisorySection) result.advisorySection = mySection.name;
 
-            const section = await upsertSection(
-              mySection.name,
-              gradeLevel,
-              schoolYearLabel,
-              smartTeacherId,
-            );
-            advisorySectionSmartId = section.id;
-            advisorySectionGradeLevel = gradeLevel;
+              const section = await upsertSection(
+                mySection.name,
+                gradeLevel,
+                schoolYearLabel,
+                smartTeacherId,
+              );
+              advisorySectionSmartId = section.id;
+              advisorySectionGradeLevel = gradeLevel;
 
-            const learners = await getAllIntegrationV1SectionLearners(Number(mySection.id));
-            result.studentsFound = learners.length;
-            console.log(
-              `[TeacherSync] Advisory fallback via sections: ${mySection.name} ` +
-              `(EP sectionId=${mySection.id}) learners=${learners.length}`,
-            );
+              const learners = await getAllIntegrationV1SectionLearners(Number(mySection.id));
+              totalLearners.push(...learners);
+              console.log(
+                `[TeacherSync] Advisory fallback via sections: ${mySection.name} ` +
+                `(EP sectionId=${mySection.id}) learners=${learners.length}`,
+              );
 
-            for (const rec of learners) {
-              const learner = rec.learner ?? rec;
-              try {
-                const ok = await upsertLearner(learner, section.id, schoolYearLabel);
-                if (ok) result.studentsUpserted++;
-              } catch (err: any) {
-                result.errors.push(`Advisory fallback LRN ${learner?.lrn}: ${err.message}`);
+              for (const rec of learners) {
+                const learner = rec.learner ?? rec;
+                try {
+                  const ok = await upsertLearner(learner, section.id, schoolYearLabel);
+                  if (ok) result.studentsUpserted++;
+                } catch (err: any) {
+                  result.errors.push(`Advisory fallback LRN ${learner?.lrn}: ${err.message}`);
+                }
               }
             }
+          }
+          
+          result.studentsFound = totalLearners.length;
 
-            // Drop students who are no longer in EnrollPro for this section.
+          // Drop students who are no longer in EnrollPro (aggregated check)
+          if (advisorySectionSmartId) {
             try {
-              const dropped = await dropStaleEnrollments(section.id, schoolYearLabel, learners);
-              if (dropped > 0) console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${section.name}" (fallback)`);
+              const dropped = await dropStaleEnrollments(advisorySectionSmartId, schoolYearLabel, totalLearners);
+              if (dropped > 0) console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${result.advisorySection}" (fallback)`);
             } catch (err: any) {
               result.errors.push(`Stale enrollment cleanup fallback: ${err.message}`);
             }
-          } else {
-            result.errors.push(`Advisory fallback: could not map grade level for section "${mySection.name}"`);
           }
         } else {
           console.log(`[TeacherSync] Advisory fallback: no section found for EP teacherId=${epTeacher.id}`);
@@ -668,9 +682,38 @@ export async function syncTeacherOnLogin(
         const allSectionsA = await prisma.section.findMany({ where: { schoolYear: schoolYearLabel } });
         const sectionByNameA = new Map(allSectionsA.map((s) => [s.name.trim(), s]));
 
+        // Pre-resolve EnrollPro sections for fallback lookup if needed
+        let epSectionsSync: any[] | null = null;
+        let epSectionByIdSync: Map<number, any> | null = null;
+
         for (const assignment of nestedAssignments) {
           const atlasCode = normalizeSubjectLabel(assignment.subject?.code ?? '');
           let atlasSections: any[] = assignment.sections ?? [];
+
+          // FALLBACK: If 'sections' array is empty (common for BASELINE_ONLY assignments in detailed view),
+          // check if 'facultySubjects' in the faculty list (from Step 1) has 'sectionIds' for this subject.
+          if (atlasSections.length === 0) {
+            const fs = (atlasMember.facultySubjects || []).find((s: any) => 
+              (s.subjectId && assignment.subjectId && s.subjectId === assignment.subjectId) || 
+              (s.subject?.id && assignment.subject?.id && s.subject.id === assignment.subject.id) ||
+              (s.subject?.code && assignment.subject?.code && s.subject.code === assignment.subject.code)
+            );
+            if (fs && fs.sectionIds && fs.sectionIds.length > 0) {
+              if (!epSectionsSync) {
+                epSectionsSync = await getCachedIntegrationV1Sections(schoolYearId);
+                if (!epSectionsSync || epSectionsSync.length === 0) epSectionsSync = await getCachedIntegrationV1Sections();
+                epSectionByIdSync = new Map<number, any>((epSectionsSync || []).map((s: any) => [Number(s.id), s]));
+              }
+              atlasSections = fs.sectionIds.map((id: number) => {
+                const ep = epSectionByIdSync!.get(Number(id));
+                return ep ? { id, name: ep.name, gradeLevelName: ep.gradeLevel?.name || ep.gradeLevelName } : null;
+              }).filter(Boolean);
+              
+              if (atlasSections.length > 0) {
+                console.log(`[TeacherSync] Fallback: recovered ${atlasSections.length} section(s) for ${atlasCode} from facultySubjects`);
+              }
+            }
+          }
 
           // Trust Gate: Reject or cap broad fallback assignments (untrusted sources)
           const MAX_SANE_SECTIONS = 10;
@@ -833,20 +876,40 @@ export async function syncTeacherOnLogin(
       //
       // Stale assignment cleanup should be handled by an explicit admin-maintenance flow
       // that can archive/verify grades before pruning.
-      const keepPairs = Array.from(desiredAssignmentPairs).map((pair) => {
-        const [subjectId, sectionId] = pair.split(':');
-        return { subjectId, sectionId };
-      });
+      // ── 3.4 Deactivate stale assignments ────────────────────────────────
+      // We do NOT delete (destructive pruning), but we DO set isActive: false
+      // for any assignments previously tied to this teacher+year that Atlas
+      // no longer reports. This moves them to the "Archived" section in the UI.
+      if (keepPairs.length > 0) {
+        const currentAssignments = await prisma.classAssignment.findMany({
+          where: {
+            teacherId: smartTeacherId,
+            schoolYear: schoolYearLabel,
+          },
+          select: { id: true, subjectId: true, sectionId: true, isActive: true },
+        });
 
-      if (keepPairs.length === 0) {
-        console.log(
-          `[TeacherSync] Skip class-assignment pruning for teacherId=${smartTeacherId}: ` +
-          `Atlas returned no concrete assignment pairs in this sync cycle.`,
-        );
+        let deactivatedCount = 0;
+        for (const assignment of currentAssignments) {
+          const key = `${assignment.subjectId}:${assignment.sectionId}`;
+          const shouldBeActive = desiredAssignmentPairs.has(key);
+          if (assignment.isActive !== shouldBeActive) {
+            await prisma.classAssignment.update({
+              where: { id: assignment.id },
+              data: shouldBeActive
+                ? { isActive: true, archivedAt: null, archivedReason: null }
+                : { isActive: false, archivedAt: new Date(), archivedReason: 'Removed from Atlas schedule' },
+            });
+            if (!shouldBeActive) deactivatedCount++;
+          }
+        }
+        if (deactivatedCount > 0) {
+          console.log(`[TeacherSync] Deactivated ${deactivatedCount} stale assignment(s) for teacherId=${smartTeacherId}`);
+        }
       } else {
         console.log(
-          `[TeacherSync] Skip class-assignment pruning for teacherId=${smartTeacherId}: ` +
-          `destructive pruning is disabled to protect grade history.`,
+          `[TeacherSync] Skip class-assignment deactivation for teacherId=${smartTeacherId}: ` +
+          `Atlas returned no concrete assignment pairs in this sync cycle (safety guard).`,
         );
       }
 
@@ -948,16 +1011,16 @@ export async function syncTeacherOnLogin(
     });
 
     if (teachingAssignments.length > 0) {
-      const epSections = await getEnrollProSections();
-      // EnrollPro can return duplicate section names with different IDs.
-      // Group by normalized name so we can pick the candidate with real roster data.
-      const epSectionsByName = new Map<string, any[]>();
+      const epSections = await getCachedIntegrationV1Sections(schoolYearId);
+      // Group EnrollPro sections by composite key (NAME:GRADE) to handle data split across multiple IDs.
+      const epSectionsByKey = new Map<string, any[]>();
       for (const s of epSections) {
-        const key = s.name?.trim();
-        if (!key) continue;
-        const list = epSectionsByName.get(key) ?? [];
+        const gradeLevel = mapGradeLevel(s.gradeLevel?.name ?? s.gradeLevelName ?? s.name);
+        if (!gradeLevel) continue;
+        const key = `${s.name?.trim()}:${gradeLevel}`;
+        const list = epSectionsByKey.get(key) ?? [];
         list.push(s);
-        epSectionsByName.set(key, list);
+        epSectionsByKey.set(key, list);
       }
 
       // Cache roster lookups per EP sectionId to avoid repeated network calls.
@@ -976,44 +1039,53 @@ export async function syncTeacherOnLogin(
         // Skip advisory section — already synced in step 2
         if (result.advisorySection && smartSection.name === result.advisorySection) continue;
 
-        const candidates = epSectionsByName.get(smartSection.name.trim()) ?? [];
+        const compositeKey = `${smartSection.name.trim()}:${smartSection.gradeLevel}`;
+        const candidates = epSectionsByKey.get(compositeKey) ?? [];
         if (candidates.length === 0) {
-          console.log(`[TeacherSync] Teaching section "${smartSection.name}" not in EnrollPro`);
+          console.log(`[TeacherSync] Teaching section "${smartSection.name}" (${smartSection.gradeLevel}) not found in EnrollPro`);
           continue;
         }
 
-        // Prefer candidates with higher enrolledCount, then verify using live roster.
-        const sortedCandidates = [...candidates].sort(
-          (a, b) => (Number(b.enrolledCount ?? 0) - Number(a.enrolledCount ?? 0)),
-        );
+        // Aggregate learners from ALL sections with this name and grade in EnrollPro.
+        let allLearnersForSection: any[] = [];
+        let epSectionIdsUsed: number[] = [];
 
-        let learners: any[] = [];
-        let selectedSectionId: number | null = null;
-        for (const c of sortedCandidates) {
-          const roster = await getRoster(Number(c.id));
-          if (roster.length > learners.length) {
-            learners = roster;
-            selectedSectionId = Number(c.id);
+        for (const candidate of candidates) {
+          const roster = await getRoster(Number(candidate.id));
+          if (roster.length > 0) {
+            allLearnersForSection.push(...roster);
+            epSectionIdsUsed.push(Number(candidate.id));
           }
-          if (roster.length > 0) break;
         }
 
-        if (!selectedSectionId && sortedCandidates[0]) {
-          selectedSectionId = Number(sortedCandidates[0].id);
+        if (allLearnersForSection.length === 0 && candidates[0]) {
+           // Fallback if roster fetch yielded 0 (e.g. enrollment not open yet)
+           epSectionIdsUsed = [Number(candidates[0].id)];
         }
 
         console.log(
-          `[TeacherSync] Teaching "${smartSection.name}" (EP sectionId=${selectedSectionId}): ` +
-          `${learners.length} learners`,
+          `[TeacherSync] Teaching "${smartSection.name}" (${smartSection.gradeLevel}) (EP ids=[${epSectionIdsUsed.join(', ')}]): ` +
+          `${allLearnersForSection.length} learners aggregated`,
         );
 
-        for (const rec of learners) {
+        for (const rec of allLearnersForSection) {
           const learner = rec.learner ?? rec;
           try {
             await upsertLearner(learner, smartSection.id, schoolYearLabel);
           } catch (err: any) {
             result.errors.push(`Teaching LRN ${learner?.lrn}: ${err.message}`);
           }
+        }
+
+        // --- HARDENING: Drop stale enrollments for this teaching section ---
+        // This keeps the count accurate if students moved out of this section in EnrollPro.
+        try {
+          const dropped = await dropStaleEnrollments(smartSection.id, schoolYearLabel, allLearnersForSection);
+          if (dropped > 0) {
+            console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for teaching section "${smartSection.name}"`);
+          }
+        } catch (err: any) {
+          result.errors.push(`Teaching section cleanup "${smartSection.name}": ${err.message}`);
         }
       }
     }
