@@ -100,7 +100,7 @@ export function ClassRecordHero({
         </div>
       </div>
 
-      {classAssignment.isActive === false && (
+      {(classAssignment.isActive === false || !!classAssignment.archivedAt) && (
         <Card className="border-0 shadow-lg shadow-rose-100/50 rounded-[2rem] overflow-hidden bg-rose-50/60 border border-rose-100">
           <CardContent className="p-6 flex flex-col gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.25em] text-rose-600">Archived from Atlas</p>

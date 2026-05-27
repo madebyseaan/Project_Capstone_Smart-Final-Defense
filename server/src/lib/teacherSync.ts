@@ -880,7 +880,7 @@ export async function syncTeacherOnLogin(
       // We do NOT delete (destructive pruning), but we DO set isActive: false
       // for any assignments previously tied to this teacher+year that Atlas
       // no longer reports. This moves them to the "Archived" section in the UI.
-      if (keepPairs.length > 0) {
+      if (desiredAssignmentPairs.size > 0) {
         const currentAssignments = await prisma.classAssignment.findMany({
           where: {
             teacherId: smartTeacherId,

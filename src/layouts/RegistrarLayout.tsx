@@ -99,7 +99,7 @@ export default function RegistrarLayout() {
   const handleLogout = () => {
     sessionStorage.removeItem("token");
     sessionStorage.removeItem("user");
-    navigate("/login");
+    navigate("/login/registrar");
   };
 
   const toggleSidebarCollapse = () => {

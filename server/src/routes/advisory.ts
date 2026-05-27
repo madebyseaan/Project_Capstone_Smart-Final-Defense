@@ -45,6 +45,41 @@ function isSubjectAlignedWithGrade(subjectCode: string, gradeLevel: string): boo
   return true; // Generic code, assume aligned
 }
 
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function toDisplayName(value: string): string {
+  return normalizeWhitespace(value)
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function subjectDedupKey(subjectCode: string, subjectName: string): string {
+  return `${normalizeWhitespace(subjectCode).toUpperCase()}::${normalizeWhitespace(subjectName).toUpperCase()}`;
+}
+
+function gradeSignalScore(assignment: { grades: Grade[]; updatedAt: Date }): number {
+  const gradedQuarters = assignment.grades.filter(
+    (g) =>
+      g.quarterlyGrade !== null ||
+      g.initialGrade !== null ||
+      g.qualitativeDescriptor !== null
+  ).length;
+
+  const scoredQuarters = assignment.grades.filter(
+    (g) =>
+      g.writtenWorkPS !== null ||
+      g.perfTaskPS !== null ||
+      g.quarterlyAssessPS !== null
+  ).length;
+
+  // Weighted score to prefer rows with complete grading data, then recency.
+  return gradedQuarters * 1000 + scoredQuarters * 100 + assignment.grades.length * 10 + assignment.updatedAt.getTime() / 1e12;
+}
+
 // Get teacher's advisory section
 router.get(
   "/my-advisory",
@@ -219,13 +254,17 @@ router.get(
         where: { id: studentId },
         include: {
           enrollments: {
-            where: schoolYear ? { schoolYear } : {},
+            where: {
+              ...(schoolYear ? { schoolYear } : {}),
+              status: 'ENROLLED',
+            },
             include: {
               section: true,
             },
-            orderBy: {
-              schoolYear: "desc",
-            },
+            orderBy: [
+              { schoolYear: "desc" },
+              { createdAt: "desc" },
+            ],
             take: 1,
           },
         },
@@ -312,8 +351,23 @@ router.get(
         isSubjectAlignedWithGrade(ca.subject.code, currentEnrollment.section.gradeLevel)
       );
 
+      // Deduplicate duplicate class assignments that point to the same subject
+      // (e.g., duplicate teacher sync rows with different name casing).
+      const dedupedAssignments = Array.from(
+        alignedAssignments.reduce((acc, assignment) => {
+          const key = subjectDedupKey(assignment.subject.code, assignment.subject.name);
+          const existing = acc.get(key);
+
+          if (!existing || gradeSignalScore(assignment) > gradeSignalScore(existing)) {
+            acc.set(key, assignment);
+          }
+
+          return acc;
+        }, new Map<string, (ClassAssignment & { subject: Subject; teacher: TeacherWithUser; grades: Grade[] })>()).values()
+      );
+
       // Format grades by subject
-      const subjectGrades = alignedAssignments.map((ca) => {
+      const subjectGrades = dedupedAssignments.map((ca) => {
         const quarters = ["Q1", "Q2", "Q3", "Q4"] as const;
         const gradesByQuarter: Record<string, {
           writtenWorkPS: number | null;
@@ -350,7 +404,7 @@ router.get(
           subjectCode: ca.subject.code,
           subjectName: ca.subject.name,
           subjectType: ca.subject.type,
-          teacher: `${ca.teacher.user.firstName} ${ca.teacher.user.lastName}`,
+          teacher: `${toDisplayName(ca.teacher.user.firstName)} ${toDisplayName(ca.teacher.user.lastName)}`,
           grades: gradesByQuarter,
           finalGrade,
           remarks: finalGrade ? (finalGrade >= 75 ? "PASSED" : "FAILED") : null,

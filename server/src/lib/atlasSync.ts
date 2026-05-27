@@ -199,20 +199,38 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     }
 
     // 4. Build subject code → SMART subject map
-    // 4.1 First, fetch complete subject definitions from ATLAS to get their full names
+    // 4.1 First, fetch complete subject definitions from ATLAS.
+    // IMPORTANT: Do NOT overwrite existing subject names — SMART names are authoritative.
+    // Atlas often sends abbreviated names (e.g. "Sci Bio" instead of "Science - Biology").
+    // Only create brand-new subjects that don't already exist in any form (raw or grade-suffixed).
     try {
       const atlasSubjectsData = await get(`${ATLAS_BASE}/subjects?schoolId=${ATLAS_SCHOOL_ID}`, authHeader);
       const atlasSubjects: any[] = atlasSubjectsData.subjects ?? [];
+      // Pre-load existing subjects to check for grade-suffixed duplicates
+      const existingSubjects = await prisma.subject.findMany({ select: { code: true } });
+      const existingCodes = new Set(existingSubjects.map(s => s.code));
+      let subjectsCreated = 0;
       for (const atlasSubj of atlasSubjects) {
         if (!atlasSubj.code || !atlasSubj.name) continue;
         const code = normalizeAtlasSubjectCode(atlasSubj.code);
-        await prisma.subject.upsert({
-          where: { code },
-          update: { name: atlasSubj.name },
-          create: { code, name: atlasSubj.name, type: 'CORE' },
-        });
+        // Skip if a grade-suffixed version already exists (e.g. SCI_BIO7 exists, don't create SCI_BIO)
+        const hasGradeSuffixed = ['7', '8', '9', '10'].some(g => existingCodes.has(code + g));
+        if (hasGradeSuffixed) {
+          // Grade-suffixed subjects are already in SMART — don't create a raw-code duplicate
+          continue;
+        }
+        if (existingCodes.has(code)) {
+          // Subject already exists — do NOT overwrite its name (SMART names are authoritative)
+          continue;
+        }
+        // Brand new subject — create it
+        await prisma.subject.create({
+          data: { code, name: atlasSubj.name, type: 'CORE' },
+        }).catch(() => { /* already exists via race condition */ });
+        existingCodes.add(code);
+        subjectsCreated++;
       }
-      console.log(`[AtlasSync] Synced ${atlasSubjects.length} subjects from ATLAS`);
+      console.log(`[AtlasSync] Processed ${atlasSubjects.length} Atlas subjects, created ${subjectsCreated} new`);
     } catch (err: any) {
       console.warn(`[AtlasSync] Failed to fetch subjects from ATLAS: ${err.message}`);
     }
@@ -362,11 +380,12 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       const section = sectionByName.get(load.sectionName);
       if (!section) continue;
 
-      // Try exact subject code first, then append grade level suffix (e.g. "FIL" → "FIL7").
-      // If neither exists, auto-create the subject so Atlas assignments are never dropped.
+      // IMPORTANT: Prefer grade-suffixed subject (e.g. "SCI_BIO7") over raw Atlas code ("SCI_BIO").
+      // Grade-suffixed subjects are the canonical SMART subjects with correct full names.
+      // Raw Atlas codes often have abbreviated names (e.g. "Sci Bio" vs "Science - Biology").
       const gradeSuffix = section.gradeLevel.replace('GRADE_', '');
-      let subject = subjectByCode.get(load.subjectCode)
-        ?? subjectByCode.get(load.subjectCode + gradeSuffix);
+      let subject = subjectByCode.get(load.subjectCode + gradeSuffix)
+        ?? subjectByCode.get(load.subjectCode);
 
       if (!subject) {
         const autoCode = load.subjectCode + gradeSuffix;

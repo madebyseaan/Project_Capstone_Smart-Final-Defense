@@ -15,13 +15,15 @@ const router = Router();
 // Login route
 router.post("/login", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
     const ipAddress = req.ip || req.socket.remoteAddress;
 
     if (!email || !password) {
       res.status(400).json({ message: "Email and password are required" });
       return;
     }
+
+    email = email.trim();
 
     let user = null;
     let epAuthResult = null; // Store EnrollPro auth result if obtained during JIT provisioning

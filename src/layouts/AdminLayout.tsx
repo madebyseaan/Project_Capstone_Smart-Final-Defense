@@ -111,7 +111,7 @@ export default function AdminLayout() {
   const handleLogout = () => {
     sessionStorage.removeItem("token");
     sessionStorage.removeItem("user");
-    navigate("/login");
+    navigate("/login/admin");
   };
 
   const toggleSidebarCollapse = () => {

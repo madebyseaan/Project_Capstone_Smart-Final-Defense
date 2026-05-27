@@ -299,6 +299,36 @@ code {
   animation: gradient-shift 8s ease infinite;
 }
 
+@keyframes login-gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes login-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-16px); }
+}
+
+@keyframes login-scale-in {
+  0%   { opacity: 0; transform: scale(0.98); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-login-gradient {
+  background-size: 200% 200%;
+  animation: login-gradient-shift 14s ease infinite;
+}
+
+.animate-login-float {
+  animation: login-float 9s ease-in-out infinite;
+}
+
+.animate-login-scale-in {
+  animation: login-scale-in 220ms ease-out forwards;
+}
+
+
 @utility rose-scrollbar {
   &::-webkit-scrollbar {
     height: 6px;

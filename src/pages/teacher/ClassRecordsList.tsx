@@ -14,7 +14,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -242,7 +242,7 @@ export default function ClassRecordsList() {
     setIsDeleting(true);
     try {
       await gradesApi.deleteAllArchivedClassAssignments();
-      setClasses(classes.filter((c) => c.isActive !== false));
+      setClasses(classes.filter((c) => c.isActive !== false && !c.archivedAt));
       setConfirmDeleteAll(false);
     } catch (err) {
       console.error("Failed to delete all archived classes:", err);
@@ -259,8 +259,8 @@ export default function ClassRecordsList() {
       gradeLevelLabels[c.section.gradeLevel].toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const activeClasses = filteredClasses.filter((assignment) => assignment.isActive !== false);
-  const archivedClasses = filteredClasses.filter((assignment) => assignment.isActive === false);
+  const activeClasses = filteredClasses.filter((assignment) => assignment.isActive !== false && !assignment.archivedAt);
+  const archivedClasses = filteredClasses.filter((assignment) => assignment.isActive === false || !!assignment.archivedAt);
 
   if (loading) {
     return (
