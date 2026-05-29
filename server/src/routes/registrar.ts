@@ -1437,44 +1437,140 @@ router.get("/export/sf1/:sectionId", authenticateToken, async (req: AuthRequest,
 // Phase 1 – Applications, BOSY, Remedial, Section Roster
 // ============================================================
 
+// Simple in-memory cache for EnrollPro applications to prevent API timeouts during heavy filtering
+interface ApplicationsCacheEntry {
+  applications: any[];
+  timestamp: number;
+}
+let applicationsCache: ApplicationsCacheEntry | null = null;
+const CACHE_TTL_MS = 3 * 60 * 1000; // Cache for 3 minutes
+
 // GET /registrar/applications — proxy EnrollPro applications
 router.get("/applications", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
   try {
-    const { status, gradeLevel, page, limit, search } = req.query as Record<string, string>;
-    const sy = await resolveEnrollProSchoolYear();
-    const data = await getEnrollProApplications({
-      schoolYearId: sy.id,
-      status: status || undefined,
-      gradeLevel: gradeLevel || undefined,
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 50,
-      search: search || undefined,
-    });
-    // Normalise response shape: EnrollPro may return { data: [...], meta: {...} }
-    // or { applications: [...], pagination: {...} } — unify to { applications, meta }
-    const applications: any[] = data.applications ?? data.data ?? data.items ?? [];
-    
-    // Robustly extract pagination info from common EnrollPro response shapes
-    const total = data.total ?? data.meta?.total ?? data.pagination?.total ?? applications.length;
-    const pageNum = parseInt(page) || (data.page ?? data.meta?.page ?? data.pagination?.page ?? 1);
-    const limitNum = parseInt(limit) || (data.limit ?? data.meta?.limit ?? data.pagination?.limit ?? 50);
-    const totalPages = data.totalPages ?? data.meta?.totalPages ?? data.pagination?.totalPages ?? Math.ceil(total / limitNum);
+    const { status, gradeLevel, page, limit, search, forceRefresh } = req.query as Record<string, string>;
+    console.log("[registrar/applications] query params received:", { status, gradeLevel, page, limit, search, forceRefresh });
 
-    const meta = {
-      total,
-      page: pageNum,
-      limit: limitNum,
-      totalPages: Math.max(1, totalPages),
+    const GRADE_LEVEL_MAP: Record<string, string> = {
+      GRADE_7:  "Grade 7",
+      GRADE_8:  "Grade 8",
+      GRADE_9:  "Grade 9",
+      GRADE_10: "Grade 10",
     };
 
-    res.json({ applications, meta });
+    const sy = await resolveEnrollProSchoolYear();
+    const now = Date.now();
+
+    const isCacheExpired = !applicationsCache || (now - applicationsCache.timestamp > CACHE_TTL_MS);
+    const shouldRefresh = isCacheExpired || forceRefresh === "true";
+
+    if (shouldRefresh) {
+      console.log(`[registrar/applications] cache status: ${!applicationsCache ? "empty" : isCacheExpired ? "expired" : "forceRefresh requested"}. Re-fetching...`);
+      const limitVal = 500;
+      const firstPage = await getEnrollProApplications({
+        schoolYearId: sy.id,
+        page: 1,
+        limit: limitVal,
+      });
+
+      const applications = firstPage.applications ?? firstPage.data ?? firstPage.items ?? [];
+      const total = firstPage.total ?? firstPage.meta?.total ?? firstPage.pagination?.total ?? applications.length;
+      let allApps = [...applications];
+
+      const totalPages = Math.ceil(total / limitVal);
+      console.log(`[registrar/applications] total applications in EnrollPro: ${total}. Fetching ${totalPages} pages sequentially...`);
+      
+      for (let p = 2; p <= totalPages; p++) {
+        try {
+          const resData = await getEnrollProApplications({
+            schoolYearId: sy.id,
+            page: p,
+            limit: limitVal,
+          });
+          const apps = resData.applications ?? resData.data ?? resData.items ?? [];
+          allApps = allApps.concat(apps);
+        } catch (fetchErr: any) {
+          console.error(`[registrar/applications] error fetching page ${p}, retrying once:`, fetchErr.message);
+          await new Promise(r => setTimeout(r, 500));
+          const resData = await getEnrollProApplications({
+            schoolYearId: sy.id,
+            page: p,
+            limit: limitVal,
+          });
+          const apps = resData.applications ?? resData.data ?? resData.items ?? [];
+          allApps = allApps.concat(apps);
+        }
+      }
+
+      applicationsCache = {
+        applications: allApps,
+        timestamp: now,
+      };
+      console.log(`[registrar/applications] cache populated successfully with ${allApps.length} applications`);
+    } else {
+      console.log(`[registrar/applications] serving from in-memory cache (age: ${Math.round((now - applicationsCache.timestamp) / 1000)}s)`);
+    }
+
+    let filteredApps = [...applicationsCache.applications];
+
+    // 1. Filter by status
+    if (status && status !== "all") {
+      filteredApps = filteredApps.filter((app: any) => {
+        const appStatus = String(app.status ?? "PENDING").toUpperCase();
+        return appStatus === status.toUpperCase();
+      });
+    }
+
+    // 2. Filter by grade level
+    if (gradeLevel && gradeLevel !== "all") {
+      const displayName = (GRADE_LEVEL_MAP[gradeLevel] ?? gradeLevel).toLowerCase();
+      filteredApps = filteredApps.filter((app: any) => {
+        const glName = String(
+          app.gradeLevel?.name ?? app.gradeLevelName ?? app.gradeLevel ?? ""
+        ).toLowerCase();
+        return glName.includes(displayName) || glName.includes(gradeLevel.toLowerCase());
+      });
+    }
+
+    // 3. Filter by search (name or LRN)
+    if (search && search.trim() !== "") {
+      const searchLower = search.trim().toLowerCase();
+      filteredApps = filteredApps.filter((app: any) => {
+        const learner = app.learner ?? app;
+        const firstName = String(learner.firstName ?? "").toLowerCase();
+        const lastName = String(learner.lastName ?? "").toLowerCase();
+        const middleName = String(learner.middleName ?? "").toLowerCase();
+        const lrn = String(learner.lrn ?? "").toLowerCase();
+        const fullName = `${lastName}, ${firstName} ${middleName}`.toLowerCase();
+        return fullName.includes(searchLower) || lrn.includes(searchLower) || firstName.includes(searchLower) || lastName.includes(searchLower);
+      });
+    }
+
+    // Paginate and slice
+    const pageNum = page ? parseInt(page) : 1;
+    const limitNum = limit ? parseInt(limit) : 50;
+    const totalFiltered = filteredApps.length;
+    const startIndex = (pageNum - 1) * limitNum;
+    const paginatedApps = filteredApps.slice(startIndex, startIndex + limitNum);
+    const totalPagesFiltered = Math.max(1, Math.ceil(totalFiltered / limitNum));
+
+    const meta = {
+      total: totalFiltered,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: totalPagesFiltered,
+    };
+
+    console.log(`[registrar/applications] returning ${paginatedApps.length} of ${totalFiltered} filtered applications`);
+    res.json({ applications: paginatedApps, meta });
   } catch (err: any) {
-    console.error("[registrar/applications]", err.message);
+    console.error("[registrar/applications] error:", err.message);
     res.status(502).json({ message: "Failed to fetch applications from EnrollPro", error: err.message });
   }
 });
+
 
 // GET /registrar/bosy/queue — proxy EnrollPro BOSY pending-confirmation queue
 router.get("/bosy/queue", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
@@ -1685,6 +1781,7 @@ router.get("/eosy/sf6", authenticateToken, async (req: AuthRequest, res: Respons
 // ============================================================
 
 // GET /registrar/atlas/teaching-loads — faculty teaching load summary from ATLAS
+// Falls back to SMART local DB (last synced ClassAssignments) when ATLAS is unreachable.
 router.get("/atlas/teaching-loads", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
@@ -1694,22 +1791,93 @@ router.get("/atlas/teaching-loads", authenticateToken, async (req: AuthRequest, 
       : undefined;
     const data = await getAtlasTeachingLoadSummary(atlasSchoolYearId);
     res.json(data);
-  } catch (err: any) {
-    console.error("[registrar/atlas/teaching-loads]", err.message);
-    res.status(502).json({ message: "Failed to fetch teaching loads from ATLAS", error: err.message });
+  } catch (atlasErr: any) {
+    console.warn("[registrar/atlas/teaching-loads] ATLAS unavailable, falling back to local DB:", atlasErr.message);
+    try {
+      const currentSchoolYear = await resolveCurrentSchoolYearLabel();
+      const assignments = await prisma.classAssignment.findMany({
+        where: { schoolYear: currentSchoolYear, isActive: true },
+        include: {
+          teacher: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
+          subject: { select: { id: true, code: true, name: true } },
+          section: { select: { name: true, gradeLevel: true } },
+        },
+      });
+
+      // Group assignments by teacher
+      const byTeacher = new Map<string, any>();
+      for (const ca of assignments) {
+        const tid = ca.teacherId;
+        if (!byTeacher.has(tid)) {
+          byTeacher.set(tid, {
+            facultyId: tid,
+            firstName: ca.teacher.user.firstName ?? "",
+            lastName: ca.teacher.user.lastName ?? "",
+            email: ca.teacher.user.email ?? "",
+            assignments: [],
+            subjectCount: 0,
+            totalMinutesPerWeek: 0,
+            maxHoursPerWeek: 8,
+          });
+        }
+        const entry = byTeacher.get(tid);
+        entry.assignments.push({
+          subject: { code: ca.subject.code, name: ca.subject.name },
+          section: { name: ca.section.name, gradeLevel: ca.section.gradeLevel },
+        });
+        if (ca.teachingMinutes) entry.totalMinutesPerWeek += ca.teachingMinutes;
+      }
+
+      // Compute unique subject count per teacher
+      for (const entry of byTeacher.values()) {
+        const uniqueSubjects = new Set(entry.assignments.map((a: any) => a.subject.code));
+        entry.subjectCount = uniqueSubjects.size;
+      }
+
+      res.json({
+        faculty: Array.from(byTeacher.values()),
+        source: "smart-local-db",
+        warning: "ATLAS is currently unreachable. Showing last synced data from SMART local database.",
+      });
+    } catch (dbErr: any) {
+      console.error("[registrar/atlas/teaching-loads] Local DB fallback also failed:", dbErr.message);
+      res.status(502).json({ message: "Failed to fetch teaching loads from ATLAS", error: atlasErr.message });
+    }
   }
 });
 
 // GET /registrar/atlas/subject-coverage — subjects stats (assigned vs unassigned)
+// Falls back to SMART local DB when ATLAS is unreachable.
 router.get("/atlas/subject-coverage", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
   try {
     const data = await getAtlasSubjectStats();
     res.json(data);
-  } catch (err: any) {
-    console.error("[registrar/atlas/subject-coverage]", err.message);
-    res.status(502).json({ message: "Failed to fetch subject coverage from ATLAS", error: err.message });
+  } catch (atlasErr: any) {
+    console.warn("[registrar/atlas/subject-coverage] ATLAS unavailable, falling back to local DB:", atlasErr.message);
+    try {
+      const currentSchoolYear = await resolveCurrentSchoolYearLabel();
+      // Subjects that have at least one active assignment this SY
+      const assignedSubjectIds = await prisma.classAssignment.findMany({
+        where: { schoolYear: currentSchoolYear, isActive: true },
+        select: { subjectId: true },
+        distinct: ["subjectId"],
+      });
+      const assignedIds = new Set(assignedSubjectIds.map((a: any) => a.subjectId));
+      const allSubjects = await prisma.subject.findMany({ select: { id: true, code: true, name: true } });
+      const unassigned = allSubjects.filter((s: any) => !assignedIds.has(s.id));
+      res.json({
+        count: allSubjects.length,
+        unassignedCount: unassigned.length,
+        unassigned,
+        source: "smart-local-db",
+        warning: "ATLAS is currently unreachable. Showing last synced data from SMART local database.",
+      });
+    } catch (dbErr: any) {
+      console.error("[registrar/atlas/subject-coverage] Local DB fallback also failed:", dbErr.message);
+      res.status(502).json({ message: "Failed to fetch subject coverage from ATLAS", error: atlasErr.message });
+    }
   }
 });
 

@@ -14,7 +14,7 @@ import { getSyncStatus, runAtlasSync } from "../lib/atlasSync";
 import { getEnrollProSyncStatus, runEnrollProSync } from "../lib/enrollproSync";
 import { getRecentSyncHistory, runUnifiedSync } from "../lib/syncCoordinator";
 import { getSystemHealthSnapshot } from "../lib/systemHealth";
-import { getIntegrationV1ActiveSchoolYear, getIntegrationV1FacultyPage, getIntegrationV1LearnersPage } from "../lib/enrollproClient";
+import { getIntegrationV1ActiveSchoolYear, getIntegrationV1FacultyPage, getIntegrationV1LearnersPage, getEnrollProTeachers } from "../lib/enrollproClient";
 
 const router = Router();
 
@@ -389,16 +389,46 @@ router.get("/users", authenticateToken, requireAdmin, async (req: AuthRequest, r
       orderBy: { createdAt: "desc" },
     });
 
+    let enrollProTeachers: any[] = [];
+    try {
+      enrollProTeachers = await getEnrollProTeachers();
+    } catch (err) {
+      console.error("Failed to fetch EnrollPro teachers for user management mapping:", err);
+    }
+
     // Add status (we'll assume all users are active for now - could add isActive field later)
-    const usersWithStatus = users.map((user) => ({
-      ...user,
-      status: "Active", // In production, this would come from a field in the database
-      lastActive: user.updatedAt.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-    }));
+    const usersWithStatus = users.map((user) => {
+      let resolvedEmployeeId = user.teacher?.employeeId || user.username;
+
+      if (user.role === "TEACHER" && enrollProTeachers.length > 0) {
+        const epTeacher = enrollProTeachers.find((et) => {
+          const emailMatch = et.email && user.email && et.email.toLowerCase() === user.email.toLowerCase();
+          const nameMatch = et.firstName && et.lastName && user.firstName && user.lastName &&
+            et.firstName.toLowerCase().trim() === user.firstName.toLowerCase().trim() &&
+            et.lastName.toLowerCase().trim() === user.lastName.toLowerCase().trim();
+          const idMatch = String(et.id) === user.username || String(et.id) === user.teacher?.employeeId;
+          const empIdMatch = et.employeeId && (et.employeeId === user.teacher?.employeeId || et.employeeId === user.username);
+          return emailMatch || nameMatch || idMatch || empIdMatch;
+        });
+
+        if (epTeacher?.employeeId) {
+          resolvedEmployeeId = epTeacher.employeeId;
+        }
+      }
+
+      return {
+        ...user,
+        teacher: user.teacher
+          ? { ...user.teacher, employeeId: resolvedEmployeeId }
+          : { employeeId: resolvedEmployeeId },
+        status: "Active", // In production, this would come from a field in the database
+        lastActive: user.updatedAt.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+      };
+    });
 
     res.json({ users: usersWithStatus });
   } catch (error) {
@@ -1051,22 +1081,41 @@ router.get("/settings/stream", authenticateToken, (req: AuthRequest, res: Respon
 // Get grading configurations
 router.get("/grading-config", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const configs = await prisma.gradingConfig.findMany({
+    const defaultConfigs = [
+      { subjectType: SubjectType.CORE, ww: 20, pt: 50, qa: 30 },
+      { subjectType: SubjectType.MATH_SCIENCE, ww: 20, pt: 50, qa: 30 },
+      { subjectType: SubjectType.MAPEH, ww: 20, pt: 60, qa: 20 },
+      { subjectType: SubjectType.TLE, ww: 20, pt: 60, qa: 20 },
+    ] as const;
+
+    const existing = await prisma.gradingConfig.findMany({
       orderBy: { subjectType: "asc" },
     });
 
-    // If no configs exist, create defaults
-    if (configs.length === 0) {
-      const defaultConfigs = [
-        { subjectType: SubjectType.CORE, ww: 20, pt: 50, qa: 30 },
-        { subjectType: 'MATH_SCIENCE' as SubjectType, ww: 20, pt: 50, qa: 30 },
-        { subjectType: SubjectType.MAPEH, ww: 20, pt: 60, qa: 20 },
-        { subjectType: SubjectType.TLE, ww: 20, pt: 60, qa: 20 },
-      ];
+    const existingByType = new Map(existing.map((row) => [row.subjectType, row]));
 
-      for (const config of defaultConfigs) {
-        await prisma.gradingConfig.create({
-          data: {
+    for (const config of defaultConfigs) {
+      const current = existingByType.get(config.subjectType);
+
+      // Self-heal legacy defaults: if config row is marked DepEd default but still has old weights,
+      // normalize it to revised 2026 policy values.
+      const shouldNormalizeDepEdDefaults =
+        current &&
+        current.isDepEdDefault &&
+        (current.writtenWorkWeight !== config.ww ||
+          current.performanceTaskWeight !== config.pt ||
+          current.quarterlyAssessWeight !== config.qa);
+
+      if (!current || shouldNormalizeDepEdDefaults) {
+        await prisma.gradingConfig.upsert({
+          where: { subjectType: config.subjectType },
+          update: {
+            writtenWorkWeight: config.ww,
+            performanceTaskWeight: config.pt,
+            quarterlyAssessWeight: config.qa,
+            isDepEdDefault: true,
+          },
+          create: {
             subjectType: config.subjectType,
             writtenWorkWeight: config.ww,
             performanceTaskWeight: config.pt,
@@ -1075,13 +1124,11 @@ router.get("/grading-config", authenticateToken, requireAdmin, async (req: AuthR
           },
         });
       }
-
-      const newConfigs = await prisma.gradingConfig.findMany({
-        orderBy: { subjectType: "asc" },
-      });
-      res.json({ configs: newConfigs });
-      return;
     }
+
+    const configs = await prisma.gradingConfig.findMany({
+      orderBy: { subjectType: "asc" },
+    });
 
     res.json({ configs });
   } catch (error) {

@@ -26,9 +26,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { gradesApi, advisoryApi, type ClassAssignment } from "@/lib/api";
+import { gradesApi, advisoryApi, type ClassAssignment, type GradeDeadlineInfo } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSyncStream } from "@/hooks/useSyncStream";
+import { GradeDeadlineBanner } from "@/components/GradeDeadlineBanner";
 
 const gradeLevelLabels: Record<string, string> = {
   GRADE_7: "Grade 7",
@@ -99,6 +100,9 @@ function AssignmentCard({
   const chevronClass = archived
     ? "w-10 h-10 rounded-xl bg-rose-100 text-rose-400"
     : "w-12 h-12 rounded-2xl bg-slate-50 text-slate-300";
+  const displayWwWeight = assignment.effectiveWeights?.ww ?? assignment.subject.writtenWorkWeight;
+  const displayPtWeight = assignment.effectiveWeights?.pt ?? assignment.subject.perfTaskWeight;
+  const displayQaWeight = assignment.effectiveWeights?.qa ?? assignment.subject.quarterlyAssessWeight;
 
   return (
     <div className="relative group/card h-full">
@@ -157,7 +161,7 @@ function AssignmentCard({
               <div className="text-right">
                 <p className={`text-[10px] font-black uppercase tracking-widest ${mutedText}`}>Weights</p>
                 <p className={`${archived ? 'text-[10px]' : 'text-xs'} font-black text-slate-900 font-mono tracking-tighter`}>
-                  {assignment.subject.writtenWorkWeight}/{assignment.subject.perfTaskWeight}/{assignment.subject.quarterlyAssessWeight} (TA)
+                  {displayWwWeight}/{displayPtWeight}/{displayQaWeight} (TA)
                 </p>
               </div>
             </div>
@@ -196,6 +200,7 @@ export default function ClassRecordsList() {
   const { syncVersion } = useSyncStream();
   const [classes, setClasses] = useState<ClassAssignment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [gradeDeadline, setGradeDeadline] = useState<GradeDeadlineInfo | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
@@ -211,8 +216,12 @@ export default function ClassRecordsList() {
   useEffect(() => {
     const fetchClasses = async () => {
       try {
-        const response = await gradesApi.getMyClasses();
-        setClasses(response.data);
+        const [classesRes, deadlineRes] = await Promise.all([
+          gradesApi.getMyClasses(),
+          gradesApi.getDeadlineStatus().catch(() => ({ data: { gradeDeadline: null } })),
+        ]);
+        setClasses(classesRes.data);
+        setGradeDeadline(deadlineRes.data.gradeDeadline);
       } catch (err) {
         console.error("Failed to fetch classes:", err);
       } finally {
@@ -285,6 +294,11 @@ export default function ClassRecordsList() {
 
   return (
     <div className="space-y-10 animate-fade-in max-w-7xl mx-auto pb-12">
+      {/* Grade Submission Deadline Banner */}
+      {gradeDeadline && (
+        <GradeDeadlineBanner deadline={gradeDeadline} hideLink />
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
         <div className="space-y-2">
           <div className="flex items-center gap-3 flex-wrap">

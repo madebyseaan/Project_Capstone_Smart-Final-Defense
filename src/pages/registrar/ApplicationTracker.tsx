@@ -21,6 +21,20 @@ const STATUS_COLORS: Record<string, string> = {
   REJECTED: "bg-red-100 text-red-700",
 };
 
+const GRADE_LABELS: Record<string, string> = {
+  GRADE_7: "Grade 7",
+  GRADE_8: "Grade 8",
+  GRADE_9: "Grade 9",
+  GRADE_10: "Grade 10",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pending",
+  VERIFIED: "Verified",
+  ENROLLED: "Enrolled",
+  REJECTED: "Rejected",
+};
+
 export default function ApplicationTracker() {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -36,6 +50,13 @@ export default function ApplicationTracker() {
   const load = async (p = 1, l = limit, s = search, silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    console.log("[ApplicationTracker] calling getApplications with params:", {
+      status: statusFilter !== "all" ? statusFilter : undefined,
+      gradeLevel: gradeFilter !== "all" ? gradeFilter : undefined,
+      page: p,
+      limit: l,
+      search: s.trim() || undefined,
+    });
     try {
       const res = await registrarApi.getApplications({
         status: statusFilter !== "all" ? statusFilter : undefined,
@@ -45,6 +66,7 @@ export default function ApplicationTracker() {
         search: s.trim() || undefined,
       });
       const payload = res.data as any;
+      console.log("[ApplicationTracker] payload received:", payload);
       const apps = payload.applications ?? payload.data ?? payload.items ?? [];
       setApplications(apps);
       
@@ -64,18 +86,21 @@ export default function ApplicationTracker() {
     }
   };
 
-  // Reset to page 1 when filters change
+  // Single effect: reset to page 1 when filters change, then load
   useEffect(() => {
     setPage(1);
+    const timer = setTimeout(() => {
+      void load(1, limit, search);
+    }, search ? 500 : 0);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, gradeFilter, limit, search]);
 
-  // Load data when page or other dependencies change
+  // Separate effect: reload when page changes (but not when filters change)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void load(page, limit, search);
-    }, search ? 500 : 0); // Debounce search
-    return () => clearTimeout(timer);
-  }, [page, statusFilter, gradeFilter, limit, search]);
+    void load(page, limit, search);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   // Keep client-side filter as a secondary "instant" filter for the current page
   const filtered = search

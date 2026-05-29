@@ -172,6 +172,16 @@ export default function StudentRecords() {
     setCurrentPage(1);
   }, [searchQuery, selectedGradeLevel, selectedSection, selectedSchoolYear, limit]);
 
+  // Reset section filter if it does not belong to the selected grade level
+  useEffect(() => {
+    if (selectedGradeLevel !== "all" && selectedSection !== "all") {
+      const activeSectionObj = sections.find(s => s.id === selectedSection);
+      if (activeSectionObj && activeSectionObj.gradeLevel !== selectedGradeLevel) {
+        setSelectedSection("all");
+      }
+    }
+  }, [selectedGradeLevel, sections, selectedSection]);
+
   // Load school years once on mount
   useEffect(() => {
     registrarApi.getSchoolYears().then((res) => {
@@ -221,12 +231,10 @@ export default function StudentRecords() {
   // Filter students
   const filteredStudents = students.filter((student) => {
     const fullName = `${student.lastName} ${student.firstName} ${student.middleName || ""}`.toLowerCase();
-    const matchesSearch = fullName.includes(searchQuery.toLowerCase()) || student.lrn.includes(searchQuery);
+    const matchesSearch = fullName.includes(searchQuery.toLowerCase()) || String(student.lrn || "").includes(searchQuery);
     
-    // Handle grade level - could be "7" or "GRADE_7" format
-    const studentGrade = student.gradeLevel || "";
-    const normalizedGrade = studentGrade.replace("GRADE_", "");
-    const matchesGrade = selectedGradeLevel === "all" || normalizedGrade === selectedGradeLevel;
+    // Handle grade level - match the database enum value (e.g. GRADE_7) exactly
+    const matchesGrade = selectedGradeLevel === "all" || student.gradeLevel === selectedGradeLevel;
     
     const matchesSection = selectedSection === "all" || student.sectionId === selectedSection;
     
@@ -269,8 +277,7 @@ export default function StudentRecords() {
     sections: searchQuery 
       ? new Set(filteredStudents.map((s) => s.sectionId).filter(Boolean)).size
       : sections.filter(s => {
-          const normalizedGrade = s.gradeLevel.replace("GRADE_", "");
-          const matchesGrade = selectedGradeLevel === "all" || normalizedGrade === selectedGradeLevel;
+          const matchesGrade = selectedGradeLevel === "all" || s.gradeLevel === selectedGradeLevel;
           const matchesSection = selectedSection === "all" || s.id === selectedSection;
           
           if (!matchesGrade || !matchesSection) return false;
@@ -408,28 +415,25 @@ export default function StudentRecords() {
               </div>
               <Select value={selectedGradeLevel} onValueChange={(val) => val && setSelectedGradeLevel(val)}>
                 <SelectTrigger className="w-36 rounded-xl border-gray-200">
-                  <SelectValue>
-                    {selectedGradeLevel === "all" ? "All Grades" : gradeLevelLabels[selectedGradeLevel]}
-                  </SelectValue>
+                  <SelectValue placeholder="All Grades" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Grades</SelectItem>
-                  <SelectItem value="7">Grade 7</SelectItem>
-                  <SelectItem value="8">Grade 8</SelectItem>
-                  <SelectItem value="9">Grade 9</SelectItem>
-                  <SelectItem value="10">Grade 10</SelectItem>
+                  <SelectItem value="GRADE_7">Grade 7</SelectItem>
+                  <SelectItem value="GRADE_8">Grade 8</SelectItem>
+                  <SelectItem value="GRADE_9">Grade 9</SelectItem>
+                  <SelectItem value="GRADE_10">Grade 10</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={selectedSection} onValueChange={(val) => val && setSelectedSection(val)}>
                 <SelectTrigger className="w-40 rounded-xl border-gray-200">
-                  <SelectValue>
-                    {selectedSection === "all" ? "All Sections" : sections.find((s) => s.id === selectedSection)?.name}
-                  </SelectValue>
+                  <SelectValue placeholder="All Sections" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Sections</SelectItem>
                   {sections
                     .filter(s => s.enrollProId !== null || students.some(st => st.sectionId === s.id))
+                    .filter(s => selectedGradeLevel === "all" || s.gradeLevel === selectedGradeLevel)
                     .map((section) => (
                       <SelectItem key={section.id} value={section.id}>
                         {section.name} ({section.gradeLevel.replace("GRADE_", "Grade ")})

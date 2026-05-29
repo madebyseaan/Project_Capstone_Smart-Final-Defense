@@ -361,10 +361,6 @@ export default function AdminDashboard() {
                   <p className="text-xl font-bold">{stats.totalTeachers}</p>
                 </div>
                 <div className="bg-white/10 rounded-xl px-4 py-2">
-                  <span className="text-white/70 text-sm">Students</span>
-                  <p className="text-xl font-bold">{stats.totalStudents}</p>
-                </div>
-                <div className="bg-white/10 rounded-xl px-4 py-2">
                   <span className="text-white/70 text-sm">Admins</span>
                   <p className="text-xl font-bold">{stats.totalAdmins}</p>
                 </div>

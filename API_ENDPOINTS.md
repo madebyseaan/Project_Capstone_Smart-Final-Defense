@@ -113,6 +113,39 @@ Base URL: `GET /api/registrar/...`
 
 ## 🔵 APIs YOU PROVIDE (Other teams can call these)
 
+### Teacher Class Assignments
+```
+GET /api/grades/my-classes
+```
+
+**Purpose:** Returns the logged-in teacher's active class assignments from SMART local DB (current school year), excluding Homeroom Guidance (`HG`) from class records.
+
+**Auth:** Teacher only.
+
+**Response update:** Each class assignment now includes `effectiveWeights` so the Class Records list uses the same WW/PT/TA weighting shown in Class Record view.
+
+**Example (abridged):**
+```json
+[
+  {
+    "id": "ca_123",
+    "subject": {
+      "name": "Science 8",
+      "writtenWorkWeight": 20,
+      "perfTaskWeight": 50,
+      "quarterlyAssessWeight": 30
+    },
+    "effectiveWeights": {
+      "ww": 30,
+      "pt": 50,
+      "qa": 20,
+      "source": "subject",
+      "hasExactEcrTemplate": true
+    }
+  }
+]
+```
+
 ### Admin Login Immediate Sync
 ```
 POST /api/auth/login

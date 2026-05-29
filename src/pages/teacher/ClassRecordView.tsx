@@ -634,20 +634,6 @@ export default function ClassRecordView() {
     });
   };
 
-  const stats = useMemo(() => {
-    if (classRecord.length === 0) return null;
-    const grades = classRecord
-      .map((r) => r.grades.find((g) => g.term === selectedTerm)?.quarterlyGrade)
-      .filter((g): g is number => g !== undefined && g !== null);
-    if (grades.length === 0) return { avg: 0, passed: 0, highest: 0, lowest: 0 };
-    return {
-      avg: grades.reduce((a, b) => a + b, 0) / grades.length,
-      passed: grades.filter((g) => g >= 75).length,
-      highest: Math.max(...grades),
-      lowest: Math.min(...grades),
-    };
-  }, [classRecord, selectedTerm]);
-
   const sortedRecords = useMemo(
     () =>
       [...classRecord].sort((a, b) => {
@@ -719,6 +705,20 @@ export default function ClassRecordView() {
 
   const getDisplayFinalGrade = (record: ClassRecord): number | null =>
     computeDisplayFinalGrade(record, selectedTerm, activeWeights);
+
+  const stats = useMemo(() => {
+    if (classRecord.length === 0) return null;
+    const grades = classRecord
+      .map((record) => getDisplayFinalGrade(record))
+      .filter((g): g is number => g !== undefined && g !== null);
+    if (grades.length === 0) return { avg: 0, passed: 0, highest: 0, lowest: 0 };
+    return {
+      avg: grades.reduce((a, b) => a + b, 0) / grades.length,
+      passed: grades.filter((g) => g >= 75).length,
+      highest: Math.max(...grades),
+      lowest: Math.min(...grades),
+    };
+  }, [classRecord, selectedTerm, activeWeights]);
 
   const openMobileEditor = (studentId: string) => {
     setMobileEditorStudentId(studentId);

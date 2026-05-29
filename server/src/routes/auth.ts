@@ -86,7 +86,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
                   ? {
                       teacher: {
                         create: {
-                          employeeId: email,
+                          employeeId: epAuthResult.user.employeeId || email,
                         },
                       },
                     }

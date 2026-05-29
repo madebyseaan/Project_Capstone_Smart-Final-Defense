@@ -30,57 +30,60 @@ function getGradeColor(grade: number | null): string {
 }
 
 function transmuteGrade(initialGrade: number): number {
+  const roundedGrade = Math.round(initialGrade * 100) / 100;
+  if (roundedGrade >= 99.5) return 100;
+
   const transmutationTable: [number, number, number][] = [
-    [100, 100, 100],
-    [98.4, 99.99, 99],
-    [96.8, 98.39, 98],
-    [95.2, 96.79, 97],
-    [93.6, 95.19, 96],
-    [92, 93.59, 95],
-    [90.4, 91.99, 94],
-    [88.8, 90.39, 93],
-    [87.2, 88.79, 92],
-    [85.6, 87.19, 91],
-    [84, 85.59, 90],
-    [82.4, 83.99, 89],
-    [80.8, 82.39, 88],
-    [79.2, 80.79, 87],
-    [77.6, 79.19, 86],
-    [76, 77.59, 85],
-    [74.4, 75.99, 84],
-    [72.8, 74.39, 83],
-    [71.2, 72.79, 82],
-    [69.6, 71.19, 81],
-    [68, 69.59, 80],
-    [66.4, 67.99, 79],
-    [64.8, 66.39, 78],
-    [63.2, 64.79, 77],
-    [61.6, 63.19, 76],
-    [60, 61.59, 75],
-    [56, 59.99, 74],
-    [52, 55.99, 73],
-    [48, 51.99, 72],
-    [44, 47.99, 71],
-    [40, 43.99, 70],
-    [36, 39.99, 69],
-    [32, 35.99, 68],
-    [28, 31.99, 67],
-    [24, 27.99, 66],
-    [20, 23.99, 65],
-    [16, 19.99, 64],
-    [12, 15.99, 63],
-    [8, 11.99, 62],
-    [4, 7.99, 61],
-    [0, 3.99, 60],
+    [97.5, 99.49, 99],
+    [96.0, 97.49, 98],
+    [95.0, 95.99, 97],
+    [94.0, 94.99, 96],
+    [93.0, 93.99, 95],
+    [92.0, 92.99, 94],
+    [91.0, 91.99, 93],
+    [90.0, 90.99, 92],
+    [89.0, 89.99, 91],
+    [88.0, 88.99, 90],
+    [87.0, 87.99, 89],
+    [86.0, 86.99, 88],
+    [85.0, 85.99, 87],
+    [84.0, 84.99, 86],
+    [83.0, 83.99, 85],
+    [82.0, 82.99, 84],
+    [81.0, 81.99, 83],
+    [80.0, 80.99, 82],
+    [79.0, 79.99, 81],
+    [78.0, 78.99, 80],
+    [77.0, 77.99, 79],
+    [76.0, 76.99, 78],
+    [75.0, 75.99, 77],
+    [73.0, 74.99, 76],
+    [70.0, 72.99, 75],
+    [68.0, 69.99, 74],
+    [66.0, 67.99, 73],
+    [64.0, 65.99, 72],
+    [62.0, 63.99, 71],
+    [60.0, 61.99, 70],
+    [58.0, 59.99, 69],
+    [56.0, 57.99, 68],
+    [54.0, 55.99, 67],
+    [52.0, 53.99, 66],
+    [50.0, 51.99, 65],
+    [48.0, 49.99, 64],
+    [46.0, 47.99, 63],
+    [43.0, 45.99, 62],
+    [40.0, 42.99, 61],
+    [25.0, 39.99, 60],
+    [0.0,  24.99, 60],
   ];
 
   for (const [min, max, grade] of transmutationTable) {
-    if (initialGrade >= min && initialGrade <= max) {
+    if (roundedGrade >= min && roundedGrade <= max) {
       return grade;
     }
   }
 
-  return Math.round(Math.max(60, Math.min(100, initialGrade)));
+  return 60; // Minimum grade
 }
 
 // ─── LedgerRow ────────────────────────────────────────────────────────────────
@@ -134,6 +137,11 @@ const LedgerRow = React.memo(
       return Number(val).toFixed(1);
     };
 
+    const formatInitialGrade = (val: number | undefined | null, fallback = "-") => {
+      if (val === undefined || val === null) return fallback;
+      return Number(val).toFixed(2);
+    };
+
     const calcTotal = (scores: ScoreItem[]) => scores.reduce((acc, curr) => acc + (Number(curr.score) || 0), 0);
     const calcMax = (scores: ScoreItem[]) => scores.reduce((acc, curr) => acc + (Number(curr.maxScore) || 0), 0);
     const calcPS = (total: number, max: number) => (max > 0 ? (total / max) * 100 : 0);
@@ -153,11 +161,9 @@ const LedgerRow = React.memo(
     const displayQAPS = grade?.quarterlyAssessPS ?? (qaMax > 0 ? calcPS(qaScore, qaMax) : null);
     const displayQAWS = displayQAPS !== null ? displayQAPS * (weights.qa / 100) : null;
 
-    const computedInitialGrade =
+    const displayInitialGrade =
       displayWWWS !== null && displayPTWS !== null && displayQAWS !== null ? displayWWWS + displayPTWS + displayQAWS : null;
-    const displayInitialGrade = grade?.initialGrade ?? computedInitialGrade;
-    const displayQuarterlyGrade =
-      grade?.quarterlyGrade ?? (displayInitialGrade !== null ? transmuteGrade(displayInitialGrade) : null);
+    const displayQuarterlyGrade = displayInitialGrade !== null ? transmuteGrade(displayInitialGrade) : null;
 
     const cellClass = "text-center text-[11px] font-bold border-r border-slate-200 p-0 h-9 w-14 min-w-[56px] max-w-[56px]";
     const inputClass =
@@ -438,7 +444,7 @@ const LedgerRow = React.memo(
           }`}
           style={rowStyle}
         >
-          {isHps ? "100.0" : formatNum(displayInitialGrade)}
+          {isHps ? "100.00" : formatInitialGrade(displayInitialGrade)}
         </TableCell>
         {/* FINAL */}
         <TableCell

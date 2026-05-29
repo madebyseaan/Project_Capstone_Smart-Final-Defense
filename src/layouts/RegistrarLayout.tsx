@@ -30,7 +30,20 @@ interface UserData {
   email?: string;
 }
 
-const navigationGroups = [
+interface NavItem {
+  name: string;
+  href: string;
+  icon: any;
+  inDevelopment?: boolean;
+  disabled?: boolean;
+}
+
+interface NavGroup {
+  title: string;
+  items: NavItem[];
+}
+
+const navigationGroups: NavGroup[] = [
   {
     title: "OPERATIONS",
     items: [
@@ -40,8 +53,8 @@ const navigationGroups = [
   {
     title: "INTAKE & PREPARATION",
     items: [
-      { name: "Applications", href: "/registrar/applications", icon: ClipboardList },
-      { name: "BOSY Queue", href: "/registrar/bosy", icon: CalendarCheck },
+      { name: "Applications", href: "/registrar/applications", icon: ClipboardList, disabled: true },
+      { name: "BOSY Queue", href: "/registrar/bosy", icon: CalendarCheck, disabled: true },
     ]
   },
   {
@@ -53,8 +66,8 @@ const navigationGroups = [
   {
     title: "CLOSING OPERATIONS",
     items: [
-      { name: "Remedial", href: "/registrar/remedial", icon: FlaskConical },
-      { name: "EOSY", href: "/registrar/eosy", icon: GraduationCap },
+      { name: "Remedial", href: "/registrar/remedial", icon: FlaskConical, disabled: true },
+      { name: "EOSY", href: "/registrar/eosy", icon: GraduationCap, disabled: true },
     ]
   },
   {
@@ -205,8 +218,55 @@ export default function RegistrarLayout() {
               )}
               <div className="space-y-1">
                 {group.items.map((item) => {
-                  const isActive = location.pathname === item.href || 
-                    (item.href !== "/registrar" && location.pathname.startsWith(item.href));
+                  const isActive = !item.disabled && (location.pathname === item.href || 
+                    (item.href !== "/registrar" && location.pathname.startsWith(item.href)));
+                  
+                  const linkContent = (
+                    <div className={cn(
+                      "flex items-center transition-all duration-200",
+                      sidebarCollapsed ? "justify-center" : "w-full"
+                    )}>
+                      <div className="w-6 h-6 flex flex-shrink-0 items-center justify-center">
+                        <item.icon className={cn(
+                          "w-5 h-5 transition-colors duration-200",
+                          isActive ? "text-white" : "text-[#0F1729]/70 group-hover:text-[#0F1729]"
+                        )} strokeWidth={2.2} />
+                      </div>
+                      <div className={cn(
+                        "flex min-w-0 items-center gap-2 transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
+                        sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-4"
+                      )}>
+                        <span className="truncate whitespace-nowrap">{item.name}</span>
+                        {item.inDevelopment && (
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase whitespace-nowrap",
+                              isActive ? "bg-white/20 text-white/90" : "bg-amber-100 text-amber-700"
+                            )}
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                            In Dev
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+
+                  if (item.disabled) {
+                    return (
+                      <div
+                        key={item.name}
+                        className={cn(
+                          "flex items-center rounded-full text-[14px] font-medium opacity-40 cursor-not-allowed select-none py-1.5 text-[#0F1729]",
+                          sidebarCollapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4"
+                        )}
+                        title={`${item.name} (Unavailable)`}
+                      >
+                        {linkContent}
+                      </div>
+                    );
+                  }
+
                   return (
                     <Link
                       key={item.name}
@@ -224,21 +284,7 @@ export default function RegistrarLayout() {
                       onClick={() => setSidebarOpen(false)}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
-                      <div className={cn(
-                        "flex items-center transition-all duration-200",
-                        sidebarCollapsed ? "justify-center" : "w-full"
-                      )}>
-                        <div className="w-6 h-6 flex flex-shrink-0 items-center justify-center">
-                          <item.icon className={cn(
-                            "w-5 h-5 transition-colors duration-200",
-                            isActive ? "text-white" : "text-[#0F1729]/70 group-hover:text-[#0F1729]"
-                          )} strokeWidth={2.2} />
-                        </div>
-                        <span className={cn(
-                          "transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left whitespace-nowrap flex-shrink-0",
-                          sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-4"
-                        )}>{item.name}</span>
-                      </div>
+                      {linkContent}
                     </Link>
                   );
                 })}

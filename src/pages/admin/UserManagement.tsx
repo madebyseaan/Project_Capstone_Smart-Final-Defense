@@ -280,17 +280,6 @@ export default function UserManagement() {
             Manage system users and their access permissions
           </p>
         </div>
-        <Button 
-          onClick={() => {
-            setFormData(initialFormData);
-            setIsCreateOpen(true);
-          }}
-          className="gap-2 text-white font-semibold rounded-xl shadow-lg w-fit"
-          style={{ backgroundColor: colors.primary }}
-        >
-          <Plus className="w-4 h-4" />
-          Add New User
-        </Button>
       </div>
 
       {/* Stats Row */}
@@ -414,7 +403,7 @@ export default function UserManagement() {
               <TableHeader>
                 <TableRow className="bg-gray-50/80">
                   <TableHead className="font-bold text-gray-700">User</TableHead>
-                  <TableHead className="font-bold text-gray-700">Username</TableHead>
+                  <TableHead className="font-bold text-gray-700">Employee ID</TableHead>
                   <TableHead className="font-bold text-gray-700">Role</TableHead>
                   <TableHead className="font-bold text-gray-700">Status</TableHead>
                   <TableHead className="font-bold text-gray-700">Last Active</TableHead>
@@ -455,7 +444,7 @@ export default function UserManagement() {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm text-gray-600">
-                        {user.username}
+                        {user.teacher?.employeeId || user.username}
                       </TableCell>
                       <TableCell>
                         <Badge className="border-0 font-medium flex items-center gap-1 w-fit" style={{ backgroundColor: `${colors.primary}${roleOpacity[user.role] || '18'}`, color: colors.primary }}>
@@ -483,29 +472,15 @@ export default function UserManagement() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={<Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="w-4 h-4" /></Button>}
-                          />
-                          <DropdownMenuContent align="end" className="rounded-xl">
-                            <DropdownMenuItem className="rounded-lg" onClick={() => openViewDialog(user)}>
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="rounded-lg" onClick={() => openEditDialog(user)}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit User
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              className="rounded-lg text-red-600"
-                              onClick={() => openDeleteDialog(user)}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete User
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 rounded-lg gap-1.5 px-3 font-semibold hover:bg-slate-100 transition-colors"
+                          onClick={() => openViewDialog(user)}
+                        >
+                          <Eye className="w-4 h-4 text-slate-500" />
+                          View Details
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -789,8 +764,8 @@ export default function UserManagement() {
               </div>
               <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                 <div>
-                  <p className="text-xs text-gray-500">Username</p>
-                  <p className="font-mono font-medium">{selectedUser.username}</p>
+                  <p className="text-xs text-gray-500">Employee ID</p>
+                  <p className="font-mono font-medium">{selectedUser.teacher?.employeeId || selectedUser.username}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Email</p>
@@ -806,17 +781,11 @@ export default function UserManagement() {
                   <p className="text-xs text-gray-500">Last Active</p>
                   <p className="font-medium">{selectedUser.lastActive}</p>
                 </div>
-                {selectedUser.teacher && (
-                  <>
-                    <div>
-                      <p className="text-xs text-gray-500">Employee ID</p>
-                      <p className="font-mono font-medium">{selectedUser.teacher.employeeId}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Specialization</p>
-                      <p className="font-medium">{selectedUser.teacher.specialization || "—"}</p>
-                    </div>
-                  </>
+                {selectedUser.teacher?.specialization && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-500">Specialization</p>
+                    <p className="font-medium">{selectedUser.teacher.specialization}</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -824,17 +793,6 @@ export default function UserManagement() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsViewOpen(false)} className="rounded-xl">
               Close
-            </Button>
-            <Button 
-              onClick={() => {
-                setIsViewOpen(false);
-                if (selectedUser) openEditDialog(selectedUser);
-              }}
-              className="gap-2 text-white rounded-xl"
-              style={{ backgroundColor: colors.primary }}
-            >
-              <Edit className="w-4 h-4" />
-              Edit User
             </Button>
           </DialogFooter>
         </DialogContent>

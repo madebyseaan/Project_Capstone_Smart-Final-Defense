@@ -99,6 +99,13 @@ export interface ClassAssignment {
   archivedReason?: string | null;
   subject: Subject;
   section: Section;
+  effectiveWeights?: {
+    ww: number;
+    pt: number;
+    qa: number;
+    source: "subject" | "generic-fallback";
+    hasExactEcrTemplate: boolean;
+  };
   // ECR sync tracking
   ecrLastSyncedAt?: string | null;
   ecrFileName?: string | null;
@@ -137,6 +144,16 @@ export interface ClassRecord {
   grades: Grade[];
 }
 
+export interface GradeDeadlineInfo {
+  termEndDate: string | null;
+  daysRemaining: number | null;
+  urgencyLevel: 'none' | 'warn' | 'urgent' | 'critical' | 'overdue';
+  currentTerm: string;
+  hasIncompleteClasses: boolean;
+  incompleteCount: number;
+  incompleteClasses: { subjectName: string; sectionName: string; gradedCount: number; totalStudents: number }[];
+}
+
 // Auth API
 export const authApi = {
   login: (username: string, password: string) =>
@@ -161,6 +178,8 @@ export const gradesApi = {
       };
       classAssignments: ClassAssignment[];
       archivedClassesCount?: number;
+      currentTerm: string;
+      gradeDeadline?: GradeDeadlineInfo | null;
     }>("/grades/dashboard"),
 
   getDashboardStats: () =>
@@ -188,6 +207,7 @@ export const gradesApi = {
         studentsAtRiskCount: number;
       };
       archivedClassesCount?: number;
+      gradeDeadline?: GradeDeadlineInfo | null;
     }>("/grades/dashboard-stats"),
 
   getMyClasses: () => api.get<ClassAssignment[]>("/grades/my-classes"),
@@ -337,6 +357,9 @@ export const gradesApi = {
 
   deleteAllArchivedClassAssignments: () =>
     api.delete<{ message: string; count: number }>("/grades/class-assignments/archived/all"),
+
+  getDeadlineStatus: () =>
+    api.get<{ gradeDeadline: GradeDeadlineInfo | null }>("/grades/deadline-status"),
 };
 
 // Advisory API

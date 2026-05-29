@@ -33,7 +33,9 @@ interface NavItem {
   href?: string;
   icon: any;
   isDropdown?: boolean;
-  children?: Array<{ name: string; href: string; icon: any }>;
+  inDevelopment?: boolean;
+  disabled?: boolean;
+  children?: Array<{ name: string; href: string; icon: any; inDevelopment?: boolean; disabled?: boolean }>;
 }
 
 const navigationGroups = [
@@ -57,8 +59,10 @@ const navigationGroups = [
         name: "Template Managers",
         icon: FileSpreadsheet,
         isDropdown: true,
+        inDevelopment: true,
+        disabled: true,
         children: [
-          { name: "SF Forms", href: "/admin/templates", icon: FileSpreadsheet },
+          { name: "SF Forms", href: "/admin/templates", icon: FileSpreadsheet, disabled: true },
           { name: "ECR Templates", href: "/admin/ecr-templates", icon: BookOpen },
         ],
       },
@@ -237,11 +241,50 @@ export default function AdminLayout() {
               <div className="space-y-1">
                 {group.items.map((item) => {
                   if (item.isDropdown && item.children) {
-                    const hasActiveChild = item.children.some(child => 
+                    const hasActiveChild = !item.disabled && item.children.some(child => 
                       location.pathname === child.href || location.pathname.startsWith(child.href)
                     );
                     const isOpen = dropdownOpen[item.name];
                     
+                    if (item.disabled) {
+                      return (
+                        <div key={item.name} className="relative">
+                          {/* Dropdown Header (Disabled) */}
+                          <div
+                            className={cn(
+                              "w-full flex items-center rounded-full text-[14px] font-medium opacity-40 cursor-not-allowed select-none py-1.5 text-[#0F1729]",
+                              sidebarCollapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4"
+                            )}
+                            title={`${item.name} (Unavailable)`}
+                          >
+                            <div className={cn(
+                              "flex items-center transition-all duration-200",
+                              sidebarCollapsed ? "justify-center" : "w-full"
+                            )}>
+                              <div className="w-6 h-6 flex flex-shrink-0 items-center justify-center">
+                                <item.icon className="w-5 h-5 text-[#0F1729]/70" strokeWidth={2.2} />
+                              </div>
+                              <div className={cn(
+                                "flex items-center justify-between flex-1 transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
+                                sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-4"
+                              )}>
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className="truncate whitespace-nowrap">{item.name}</span>
+                                  {item.inDevelopment && (
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700 whitespace-nowrap">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                                      In Dev
+                                    </span>
+                                  )}
+                                </div>
+                                <ChevronDown className="w-4 h-4 transition-transform duration-200 opacity-60 shrink-0" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div key={item.name}>
                         {/* Dropdown Header */}
@@ -271,9 +314,17 @@ export default function AdminLayout() {
                               "flex items-center justify-between flex-1 transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
                               sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-4"
                             )}>
-                              <span className="whitespace-nowrap">{item.name}</span>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="truncate whitespace-nowrap">{item.name}</span>
+                                {item.inDevelopment && (
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700 whitespace-nowrap">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                                    In Dev
+                                  </span>
+                                )}
+                              </div>
                               <ChevronDown className={cn(
-                                "w-4 h-4 transition-transform duration-200 opacity-60",
+                                "w-4 h-4 transition-transform duration-200 opacity-60 shrink-0",
                                 isOpen && "transform rotate-180"
                               )} />
                             </div>
@@ -284,7 +335,43 @@ export default function AdminLayout() {
                         {isOpen && !sidebarCollapsed && (
                           <div className="mt-0.5 space-y-0.5 pl-4 animate-in fade-in slide-in-from-top-1 duration-200 border-l border-slate-100 ml-7">
                             {item.children.map((child) => {
-                              const isActive = location.pathname === child.href || location.pathname.startsWith(child.href);
+                              const isActive = !child.disabled && (location.pathname === child.href || location.pathname.startsWith(child.href));
+                              
+                              const childContent = (
+                                <>
+                                  <child.icon className={cn(
+                                    "w-4 h-4 flex-shrink-0",
+                                    isActive ? "text-white" : "text-[#0F1729]/60"
+                                  )} strokeWidth={2.2} />
+                                  <span className="flex-1 min-w-0 truncate">{child.name}</span>
+                                  {child.inDevelopment && (
+                                    <span
+                                      className={cn(
+                                        "ml-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase whitespace-nowrap",
+                                        isActive
+                                          ? "bg-white/20 text-white/90"
+                                          : "bg-amber-100 text-amber-700"
+                                      )}
+                                    >
+                                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                                      In Dev
+                                    </span>
+                                  )}
+                                </>
+                              );
+
+                              if (child.disabled) {
+                                return (
+                                  <div
+                                    key={child.name}
+                                    className="flex items-center gap-3 rounded-full text-[13px] font-medium px-4 py-1.5 opacity-40 cursor-not-allowed select-none text-[#0F1729]"
+                                    title={`${child.name} (Unavailable)`}
+                                  >
+                                    {childContent}
+                                  </div>
+                                );
+                              }
+
                               return (
                                 <Link
                                   key={child.name}
@@ -298,11 +385,7 @@ export default function AdminLayout() {
                                   }}
                                   onClick={() => setSidebarOpen(false)}
                                 >
-                                  <child.icon className={cn(
-                                    "w-4 h-4 flex-shrink-0",
-                                    isActive ? "text-white" : "text-[#0F1729]/60"
-                                  )} strokeWidth={2.2} />
-                                  <span className="whitespace-nowrap">{child.name}</span>
+                                  {childContent}
                                 </Link>
                               );
                             })}
@@ -313,8 +396,42 @@ export default function AdminLayout() {
                   }
                   
                   // Regular navigation item
-                  const isActive = location.pathname === item.href || 
-                    (item.href && item.href !== "/admin" && location.pathname.startsWith(item.href));
+                  const isActive = !item.disabled && (location.pathname === item.href || 
+                    (item.href && item.href !== "/admin" && location.pathname.startsWith(item.href)));
+                  
+                  const regularContent = (
+                    <div className={cn(
+                      "flex items-center transition-all duration-200",
+                      sidebarCollapsed ? "justify-center" : "w-full"
+                    )}>
+                      <div className="w-6 h-6 flex flex-shrink-0 items-center justify-center">
+                        <item.icon className={cn(
+                          "w-5 h-5 transition-colors duration-200",
+                          isActive ? "text-white" : "text-[#0F1729]/70 group-hover:text-[#0F1729]"
+                        )} strokeWidth={2.2} />
+                      </div>
+                      <span className={cn(
+                        "transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left whitespace-nowrap flex-shrink-0",
+                        sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-4"
+                      )}>{item.name}</span>
+                    </div>
+                  );
+
+                  if (item.disabled) {
+                    return (
+                      <div
+                        key={item.name}
+                        className={cn(
+                          "flex items-center rounded-full text-[14px] font-medium opacity-40 cursor-not-allowed select-none py-1.5 text-[#0F1729]",
+                          sidebarCollapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4"
+                        )}
+                        title={`${item.name} (Unavailable)`}
+                      >
+                        {regularContent}
+                      </div>
+                    );
+                  }
+
                   return (
                     <Link
                       key={item.name}
@@ -332,21 +449,7 @@ export default function AdminLayout() {
                       onClick={() => setSidebarOpen(false)}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
-                      <div className={cn(
-                        "flex items-center transition-all duration-200",
-                        sidebarCollapsed ? "justify-center" : "w-full"
-                      )}>
-                        <div className="w-6 h-6 flex flex-shrink-0 items-center justify-center">
-                          <item.icon className={cn(
-                            "w-5 h-5 transition-colors duration-200",
-                            isActive ? "text-white" : "text-[#0F1729]/70 group-hover:text-[#0F1729]"
-                          )} strokeWidth={2.2} />
-                        </div>
-                        <span className={cn(
-                          "transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left whitespace-nowrap flex-shrink-0",
-                          sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-4"
-                        )}>{item.name}</span>
-                      </div>
+                      {regularContent}
                     </Link>
                   );
                 })}

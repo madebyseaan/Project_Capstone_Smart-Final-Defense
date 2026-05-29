@@ -20,8 +20,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { gradesApi, type ClassAssignment } from "@/lib/api";
+import { gradesApi, type ClassAssignment, type GradeDeadlineInfo } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { GradeDeadlineBanner } from "@/components/GradeDeadlineBanner";
 import {
   Select,
   SelectContent,
@@ -61,6 +62,7 @@ interface DashboardData {
   classAssignments: ClassAssignment[];
   archivedClassesCount?: number;
   currentTerm: string;
+  gradeDeadline?: GradeDeadlineInfo | null;
 }
 
 interface ClassStats {
@@ -273,6 +275,11 @@ export default function TeacherDashboard() {
 
   return (
     <div className="space-y-8 animate-fade-in max-w-7xl mx-auto pb-12">
+      {/* Grade Submission Deadline Banner */}
+      {data.gradeDeadline && (
+        <GradeDeadlineBanner deadline={data.gradeDeadline} />
+      )}
+
       {/* Hero Welcome Section - Refined for "Professional Settings" */}
       <div className="relative overflow-hidden rounded-[2.5rem] bg-white border border-slate-200 p-8 md:p-12 shadow-xl shadow-slate-200/50">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-slate-50/50 -skew-x-12 translate-x-1/2" />
@@ -304,7 +311,7 @@ export default function TeacherDashboard() {
             </h1>
             
             <p className="text-slate-500 text-lg mt-6 max-w-lg leading-relaxed font-medium">
-              You're currently managing <span className="text-slate-900 font-bold underline decoration-indigo-200 decoration-4 underline-offset-4">{data.stats.totalStudents} students</span> across <span className="text-slate-900 font-bold underline decoration-emerald-200 decoration-4 underline-offset-4">{data.stats.totalClasses} sections</span>.
+              You're currently managing <span className="text-slate-900 font-bold underline decoration-indigo-200 decoration-4 underline-offset-4">{data.stats.totalStudents} students</span> across <span className="text-slate-900 font-bold underline decoration-emerald-200 decoration-4 underline-offset-4">{data.stats.totalClasses} classes</span>.
             </p>
             
             <div className="flex flex-wrap items-center gap-4 mt-10">
@@ -642,7 +649,9 @@ export default function TeacherDashboard() {
                             </td>
                             <td className="px-6 py-5 text-slate-500 font-bold text-xs">{student.class}</td>
                             <td className="px-6 py-5 text-center">
-                              <span className="font-black text-xs px-3 py-1.5 rounded-xl" style={{ color: colors.primary, backgroundColor: `${colors.primary}15` }}>{student.grade}</span>
+                              <span className="font-black text-xs px-3 py-1.5 rounded-xl" style={{ color: colors.primary, backgroundColor: `${colors.primary}15` }}>
+                                {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
+                              </span>
                             </td>
                             <td className="px-6 py-5 text-right">
                               <Badge className="bg-emerald-500 text-white border-0 text-[9px] font-black uppercase px-3 py-1 rounded-lg shadow-lg shadow-emerald-500/20">
@@ -696,14 +705,15 @@ export default function TeacherDashboard() {
                     <div className="flex items-center justify-between pt-2 border-t border-rose-100">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade</p>
                       <div className="flex items-center gap-2">
-                        <span className="text-2xl font-black text-rose-600 leading-none">{student.grade}</span>
+                        <span className="text-2xl font-black text-rose-600 leading-none">
+                          {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
+                        </span>
                         <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg"
                           style={{ backgroundColor: student.grade <= 72 ? '#fef2f2' : '#fff7ed', color: student.grade <= 72 ? '#dc2626' : '#ea580c' }}>
                           {student.grade <= 72 ? 'INC' : 'FAILED'}
                         </span>
                       </div>
-                    </div>
-                  </div>
+                    </div>                  </div>
                 ))}
               </div>
             </ScrollArea>
@@ -712,7 +722,7 @@ export default function TeacherDashboard() {
               <CheckCircle2 className="w-16 h-16 mb-4 text-emerald-400" />
               <p className="font-black text-emerald-800 text-lg uppercase tracking-widest">All students passed!</p>
               <p className="text-[10px] text-emerald-600 font-bold px-8 mt-3 leading-relaxed max-w-md text-center">
-                Great job maintaining academic performance across all sections!
+                Great job maintaining academic performance across all classes!
               </p>
             </div>
           )}

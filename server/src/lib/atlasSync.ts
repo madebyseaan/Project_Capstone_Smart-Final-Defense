@@ -13,6 +13,7 @@
  */
 import http from 'http';
 import https from 'https';
+import type { GradeLevel } from '@prisma/client';
 import { prisma } from './prisma';
 import { getEnrollProTeachers, getAllIntegrationV1Sections, resolveEnrollProSchoolYear } from './enrollproClient';
 import { syncAdvisoryWorkloadEntry } from './workload';
@@ -26,8 +27,8 @@ import {
   HOMEROOM_GUIDANCE_MINUTES,
 } from './atlasUtils';
 
-const ATLAS_BASE = 'http://100.88.55.125:5001/api/v1';
-const ATLAS_SCHOOL_ID = 1;      // ATLAS internal schoolId (EnrollPro uses schoolId=5 but ATLAS stores as 1)
+const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'http://100.88.55.125:5001/api/v1').replace(/\/$/, '');
+const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1'); // ATLAS internal schoolId (EnrollPro uses schoolId=5 but ATLAS stores as 1)
 const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '8', 10);
 const DEFAULT_SCHOOL_YEAR_LABEL = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
 
@@ -175,13 +176,39 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     let epSectionById = new Map<number, any>();
     try {
       let epSections = await getAllIntegrationV1Sections(enrollProSchoolYearId);
+      let unscopedSections: any[] = [];
+
       if (epSections.length === 0) {
         epSections = await getAllIntegrationV1Sections();
         console.warn(
           `[AtlasSync] No EnrollPro sections for schoolYearId=${enrollProSchoolYearId}; using unscoped sections fallback (${epSections.length})`,
         );
+      } else {
+        // Merge unscoped sections to reduce false misses when ATLAS section IDs
+        // reference records not included in the scoped EnrollPro response.
+        unscopedSections = await getAllIntegrationV1Sections();
       }
-      epSectionById = new Map<number, any>(epSections.map((s: any) => [Number(s.id), s]));
+
+      const mergedSections = new Map<number, any>();
+      for (const s of epSections) {
+        mergedSections.set(Number(s.id), s);
+      }
+      for (const s of unscopedSections) {
+        if (!mergedSections.has(Number(s.id))) {
+          mergedSections.set(Number(s.id), s);
+        }
+      }
+
+      epSectionById = mergedSections;
+
+      if (unscopedSections.length > 0) {
+        const mergedExtra = Math.max(0, epSectionById.size - epSections.length);
+        if (mergedExtra > 0) {
+          console.log(
+            `[AtlasSync] EnrollPro section merge: scoped=${epSections.length}, unscoped=${unscopedSections.length}, mergedExtra=${mergedExtra}`,
+          );
+        }
+      }
     } catch (err: any) {
       errors.push(`EnrollPro sections lookup failed: ${err.message}`);
     }
@@ -228,7 +255,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const homeroomLabelUpdated = new Set<string>();
 
     // 5. Fetch teaching loads from ATLAS per faculty
-    const loads: Array<{ smartTeacherId: string; subjectCode: string; sectionName: string }> = [];
+    const loads: Array<{ smartTeacherId: string; subjectCode: string; sectionName: string; gradeLevel: GradeLevel }> = [];
     const desiredAssignmentPairs = new Set<string>();
     // Only teachers with at least 1 successfully resolved load are eligible for stale-check.
     // Teachers whose loads fail (e.g. section-ID lookup returns nothing in EnrollPro) are skipped
@@ -445,17 +472,29 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         select: { id: true, teacherId: true, subjectId: true, sectionId: true, isActive: true },
       });
 
+      let reactivatedCount = 0;
+      let preservedMissingCount = 0;
+
       for (const assignment of currentAssignments) {
         const key = `${assignment.teacherId}:${assignment.subjectId}:${assignment.sectionId}`;
         const shouldBeActive = desiredAssignmentPairs.has(key);
-        if (assignment.isActive !== shouldBeActive) {
+        if (shouldBeActive && !assignment.isActive) {
           await prisma.classAssignment.update({
             where: { id: assignment.id },
-            data: shouldBeActive
-              ? { isActive: true, archivedAt: null, archivedReason: null }
-              : { isActive: false, archivedAt: new Date(), archivedReason: 'Removed from Atlas schedule' },
+            data: { isActive: true, archivedAt: null, archivedReason: null },
           });
+          reactivatedCount++;
+        } else if (!shouldBeActive && assignment.isActive) {
+          // Preserve existing assignment when a sync cycle cannot prove it is stale.
+          // This avoids false negative "-1 section" drops during partial ATLAS payloads.
+          preservedMissingCount++;
         }
+      }
+
+      if (reactivatedCount > 0 || preservedMissingCount > 0) {
+        console.log(
+          `[AtlasSync] Stale-check (safe mode): reactivated=${reactivatedCount}, preservedMissing=${preservedMissingCount}.`,
+        );
       }
     }
 

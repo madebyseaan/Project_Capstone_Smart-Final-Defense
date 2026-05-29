@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { AuditAction, AuditSeverity, Term, EnrollmentStatus } from "@prisma/client";
+import { AuditAction, AuditSeverity, Term, EnrollmentStatus, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../middleware/auth";
 import { createAuditLog } from "../lib/audit";
@@ -50,7 +50,7 @@ interface GradeRecord {
 }
 
 interface ClassAssignmentWithRelations {
-  subject: { name: string };
+  subject: { name: string; code: string };
   section: { _count: { enrollments: number } };
 }
 
@@ -67,6 +67,124 @@ const GENERIC_FALLBACK_WEIGHTS = {
   pt: 50,
   qa: 30,
 } as const;
+
+// ─── Grade Deadline Utilities ─────────────────────────────────────────────────
+
+export interface GradeDeadlineInfo {
+  termEndDate: string | null;
+  daysRemaining: number | null;
+  urgencyLevel: 'none' | 'warn' | 'urgent' | 'critical' | 'overdue';
+  currentTerm: string;
+  hasIncompleteClasses: boolean;
+  incompleteCount: number;
+  /** Populated for all urgency levels — lists exactly which classes are missing grades */
+  incompleteClasses: { subjectName: string; sectionName: string; gradedCount: number; totalStudents: number }[];
+}
+
+/**
+ * Reads the active term's end date from SystemSettings and returns deadline
+ * info for the banner.  Returns null when no end date is configured OR when
+ * the term is fully graded (nothing to warn about).
+ */
+async function resolveTermDeadline(
+  teacherId: string,
+  currentSchoolYear: string
+): Promise<GradeDeadlineInfo | null> {
+  const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
+  if (!settings) return null;
+
+  const currentTerm = settings.currentTerm ?? 'T1';
+
+  // Pick the end-date for the current term
+  let termEndDate: Date | null = null;
+  if (currentTerm === 'T1' && settings.t1EndDate) termEndDate = new Date(settings.t1EndDate);
+  else if (currentTerm === 'T2' && settings.t2EndDate) termEndDate = new Date(settings.t2EndDate);
+  else if (currentTerm === 'T3' && settings.t3EndDate) termEndDate = new Date(settings.t3EndDate);
+
+  if (!termEndDate) return null;
+
+  // Days remaining — floor so day-of counts as 0, negative means overdue
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  termEndDate.setHours(0, 0, 0, 0);
+  const msRemaining = termEndDate.getTime() - now.getTime();
+  const daysRemaining = Math.floor(msRemaining / (1000 * 60 * 60 * 24));
+
+  // Gather all active teaching classes (excluding HG) with their grade counts
+  const activeClasses = await prisma.classAssignment.findMany({
+    where: { teacherId, schoolYear: currentSchoolYear, isActive: true },
+    include: {
+      subject: { select: { code: true, name: true } },
+      section: {
+        select: {
+          name: true,
+          _count: {
+            select: {
+              enrollments: {
+                where: { status: EnrollmentStatus.ENROLLED, schoolYear: currentSchoolYear },
+              },
+            },
+          },
+        },
+      },
+      grades: { where: { term: currentTerm as any } },
+    },
+  });
+
+  // Exclude Homeroom Guidance (HG) subjects
+  const teachingClasses = activeClasses.filter(
+    (ca: any) => !isHomeroomGuidanceSubjectCode(ca.subject.code)
+  );
+
+  const incompleteClasses: GradeDeadlineInfo['incompleteClasses'] = [];
+  for (const ca of teachingClasses) {
+    const totalStudents = ca.section._count.enrollments;
+    const gradedCount = (ca.grades as any[]).filter(
+      (g: any) => g.quarterlyGrade !== null
+    ).length;
+    if (gradedCount < totalStudents) {
+      incompleteClasses.push({
+        subjectName: ca.subject.name,
+        sectionName: ca.section.name,
+        gradedCount,
+        totalStudents,
+      });
+    }
+  }
+
+  const incompleteCount = incompleteClasses.length;
+  const hasIncompleteClasses = incompleteCount > 0;
+
+  // If everything is graded, no banner needed regardless of date
+  if (!hasIncompleteClasses) return null;
+
+  // Determine urgency — overdue takes priority over all other levels
+  let urgencyLevel: GradeDeadlineInfo['urgencyLevel'];
+  if (daysRemaining < 0) {
+    urgencyLevel = 'overdue';
+  } else if (daysRemaining <= 1) {
+    urgencyLevel = 'critical';
+  } else if (daysRemaining <= 3) {
+    urgencyLevel = 'urgent';
+  } else if (daysRemaining <= 7) {
+    urgencyLevel = 'warn';
+  } else {
+    urgencyLevel = 'none';
+  }
+
+  // Nothing to show if deadline is far away and no overdue state
+  if (urgencyLevel === 'none') return null;
+
+  return {
+    termEndDate: termEndDate.toISOString(),
+    daysRemaining,
+    urgencyLevel,
+    currentTerm,
+    hasIncompleteClasses,
+    incompleteCount,
+    incompleteClasses,
+  };
+}
 
 function getBaseSubjectName(subjectName: string): string {
   return subjectName.replace(/\s+\d+$/, "").trim();
@@ -199,7 +317,18 @@ router.get(
         (ca: any) => !isHomeroomGuidanceSubjectCode(ca.subject.code)
       );
 
-      res.json(filteredClasses);
+      // Keep card weights aligned with ClassRecordView by exposing the same effective weights.
+      const classesWithEffectiveWeights = await Promise.all(
+        filteredClasses.map(async (classAssignment: any) => {
+          const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignment.id);
+          return {
+            ...classAssignment,
+            effectiveWeights,
+          };
+        })
+      );
+
+      res.json(classesWithEffectiveWeights);
     } catch (error) {
       console.error("Error fetching classes:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -418,8 +547,8 @@ router.post(
 
       const gradePayload = isHG
         ? {
-            writtenWorkScores: null,
-            perfTaskScores: null,
+            writtenWorkScores: Prisma.JsonNull,
+            perfTaskScores: Prisma.JsonNull,
             quarterlyAssessScore: null,
             quarterlyAssessMax: null,
             writtenWorkPS: null,
@@ -502,7 +631,7 @@ router.post(
           `Grade: ${student?.firstName || ""} ${student?.lastName || ""} — ${classAssignment.subject.name} (${term})`,
           "Grades",
           `${isNew ? "Recorded" : "Updated"} grade for ${student?.firstName || ""} ${student?.lastName || ""} in ${classAssignment.subject.name} (${term}): ${isHG ? qualitativeDescriptor : quarterlyGrade}`,
-          req.ip || req.socket?.remoteAddress,
+          (req.ip as string) || req.socket?.remoteAddress,
           AuditSeverity.INFO,
           grade.id
         );
@@ -538,7 +667,12 @@ router.delete(
       const grade = await prisma.grade.findUnique({
         where: { id: gradeId },
         include: {
-          classAssignment: { include: { subject: { select: { name: true, code: true } } } },
+          classAssignment: { 
+            include: { 
+              subject: { select: { name: true, code: true } },
+              section: { select: { name: true } }
+            } 
+          },
           student: { select: { firstName: true, lastName: true } },
         },
       });
@@ -587,7 +721,7 @@ router.delete(
           `Grade deleted: ${grade.student.firstName} ${grade.student.lastName} — ${grade.classAssignment.subject.name}`,
           "Grades",
           `Deleted grade for ${grade.student.firstName} ${grade.student.lastName} in ${grade.classAssignment.subject.name} (${grade.term})`,
-          req.ip || req.socket?.remoteAddress,
+          (req.ip as string) || req.socket?.remoteAddress,
           AuditSeverity.WARNING,
           gradeId
         );
@@ -656,7 +790,7 @@ router.post(
           `Clear Scores: ${classAssignment.subject.name} (${term})`,
           "Grades",
           `Cleared all (${count}) grades for ${classAssignment.subject.name} in section ${classAssignment.section.name} for ${term}`,
-          req.ip || req.socket?.remoteAddress,
+          (req.ip as string) || req.socket?.remoteAddress,
           AuditSeverity.WARNING
         );
       }
@@ -721,7 +855,7 @@ router.delete(
           `Bulk Delete Archived Class Assignments`,
           "Class Records",
           `Permanently deleted all (${count}) archived class assignments for teacher ${teacherUser.firstName} ${teacherUser.lastName}`,
-          req.ip || req.socket?.remoteAddress,
+          (req.ip as string) || req.socket?.remoteAddress,
           AuditSeverity.WARNING
         );
       }
@@ -780,14 +914,15 @@ router.delete(
         select: { id: true, firstName: true, lastName: true, role: true },
       });
 
-      if (teacherUser) {
+      const assignmentAny = assignment as any;
+      if (teacherUser && assignmentAny) {
         await createAuditLog(
           AuditAction.DELETE,
           teacherUser,
-          `Class Assignment Deleted: ${assignment.subject.name} - ${assignment.section.name}`,
+          `Class Assignment Deleted: ${assignmentAny.subject.name} - ${assignmentAny.section.name}`,
           "Class Records",
-          `Permanently deleted archived class assignment: ${assignment.subject.name} for section ${assignment.section.name} (${assignment.schoolYear})`,
-          req.ip || req.socket?.remoteAddress,
+          `Permanently deleted archived class assignment: ${assignmentAny.subject.name} for section ${assignmentAny.section.name} (${assignmentAny.schoolYear})`,
+          (req.ip as string) || req.socket?.remoteAddress,
           AuditSeverity.WARNING,
           assignmentId
         );
@@ -859,6 +994,10 @@ router.get(
         },
       });
 
+      const activeTeachingAssignments = classAssignments.filter(
+        (ca: ClassAssignmentWithRelations) => !isHomeroomGuidanceSubjectCode(ca.subject.code)
+      );
+
       // Count unique students across unique sections (avoid double-counting students
       // who appear in multiple class assignments for the same section)
       const uniqueSectionEnrollments = new Map<string, number>();
@@ -891,7 +1030,9 @@ router.get(
         }
 
         const totalStudents = [...uniqueSectionEnrollments.values()].reduce((sum, n) => sum + n, 0);
-        const totalSections = uniqueSectionEnrollments.size;
+        const totalTeachingClasses = activeTeachingAssignments.length;
+
+      const gradeDeadline = await resolveTermDeadline(teacher.id, currentSchoolYear);
 
       res.json({
         teacher: {
@@ -899,7 +1040,7 @@ router.get(
           name: `${teacher.user.firstName} ${teacher.user.lastName}`,
         },
         stats: {
-          totalClasses: totalSections,
+          totalClasses: totalTeachingClasses,
           totalStudents,
           subjects: [...new Set(classAssignments.map((ca: ClassAssignmentWithRelations) => ca.subject.name))],
           archivedClassesCount: archivedClassAssignmentsCount,
@@ -907,6 +1048,7 @@ router.get(
         classAssignments,
         archivedClassesCount: archivedClassAssignmentsCount,
         currentTerm,
+        gradeDeadline,
       });
     } catch (error) {
       console.error("Error fetching dashboard:", error);
@@ -1076,6 +1218,8 @@ router.get(
         : 0;
       const gradeSubmissionRate = totalStudents > 0 ? Math.round((totalGraded / totalStudents) * 100) : 0;
 
+      const gradeDeadline = await resolveTermDeadline(teacher.id, currentSY);
+
       res.json({
         classStats,
         summary: {
@@ -1094,9 +1238,39 @@ router.get(
             isActive: false,
           },
         }),
+        gradeDeadline,
       });
     } catch (error) {
       console.error("Error fetching dashboard stats:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// Lightweight endpoint for grade deadline status (used by Class Records page)
+router.get(
+  "/deadline-status",
+  authenticateToken,
+  authorizeRoles("TEACHER"),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const teacher = await prisma.teacher.findUnique({
+        where: { userId: req.user?.id },
+      });
+
+      if (!teacher) {
+        res.status(404).json({ message: "Teacher profile not found" });
+        return;
+      }
+
+      const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
+      const currentSchoolYear = settings?.currentSchoolYear ?? '2026-2027';
+
+      const gradeDeadline = await resolveTermDeadline(teacher.id, currentSchoolYear);
+
+      res.json({ gradeDeadline });
+    } catch (error) {
+      console.error("Error fetching deadline status:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -1160,7 +1334,9 @@ function calculateGrades(
 
 // DepEd Transmutation Table (Revised Guidelines 2026)
 function transmute(initialGrade: number): number {
-  if (initialGrade >= 99.5) return 100;
+  const roundedGrade = Math.round(initialGrade * 100) / 100;
+  if (roundedGrade >= 99.5) return 100;
+
   const transmutationTable: [number, number, number][] = [
     [97.5, 99.49, 99],
     [96.0, 97.49, 98],
@@ -1201,11 +1377,12 @@ function transmute(initialGrade: number): number {
     [46.0, 47.99, 63],
     [43.0, 45.99, 62],
     [40.0, 42.99, 61],
-    [0.0,  39.99, 60],
+    [25.0, 39.99, 60],
+    [0.0,  24.99, 60],
   ];
 
   for (const [min, max, grade] of transmutationTable) {
-    if (initialGrade >= min && initialGrade <= max) {
+    if (roundedGrade >= min && roundedGrade <= max) {
       return grade;
     }
   }
@@ -1257,9 +1434,10 @@ router.get(
       const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
       if (!teacher) { res.status(404).json({ message: "Teacher not found" }); return; }
 
+      const { term } = req.query;
       const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
       const currentSY = sysSettings?.currentSchoolYear ?? '2026-2027';
-      const currentTerm = sysSettings?.currentTerm ?? 'T1';
+      const selectedTerm = (term as string) || sysSettings?.currentTerm || 'T1';
 
       const advisorySection = await prisma.section.findFirst({
         where: { adviserId: teacher.id, schoolYear: currentSY },
@@ -1296,20 +1474,60 @@ router.get(
         return;
       }
 
-      // Get current quarter grades for advisory students in their section subjects
-      const grades = await prisma.grade.findMany({
-        where: {
-          classAssignmentId: { in: nonHgAssignmentIds },
-          studentId: { in: studentIds },
-          term: currentTerm,
-          quarterlyGrade: { not: null },
-        },
-      });
+      // Get grades for advisory students in their section subjects
+      // If term is 'FINAL', we calculate based on the final grade field (if it exists) 
+      // or average of available terms.
+      
+      let grades: any[] = [];
+      if (selectedTerm === 'FINAL') {
+        // For FINAL, we need all terms to calculate the average of quarterly grades
+        grades = await prisma.grade.findMany({
+          where: {
+            classAssignmentId: { in: nonHgAssignmentIds },
+            studentId: { in: studentIds },
+            quarterlyGrade: { not: null },
+          },
+        });
+      } else {
+        grades = await prisma.grade.findMany({
+          where: {
+            classAssignmentId: { in: nonHgAssignmentIds },
+            studentId: { in: studentIds },
+            term: selectedTerm as any,
+            quarterlyGrade: { not: null },
+          },
+        });
+      }
 
       // Group grades by student and calculate GWA
       const studentGradesMap = new Map<string, number[]>();
-      for (const grade of grades) {
-        if (grade.quarterlyGrade !== null) {
+      
+      if (selectedTerm === 'FINAL') {
+        // Calculate average of final grades per subject first
+        // Map: studentId -> Map: classAssignmentId -> quarterlyGrades[]
+        const studentSubjectGrades = new Map<string, Map<string, number[]>>();
+        
+        for (const grade of grades) {
+          if (!studentSubjectGrades.has(grade.studentId)) {
+            studentSubjectGrades.set(grade.studentId, new Map());
+          }
+          const subjectMap = studentSubjectGrades.get(grade.studentId)!;
+          if (!subjectMap.has(grade.classAssignmentId)) {
+            subjectMap.set(grade.classAssignmentId, []);
+          }
+          subjectMap.get(grade.classAssignmentId)!.push(grade.quarterlyGrade);
+        }
+        
+        for (const [studentId, subjects] of studentSubjectGrades.entries()) {
+          const finalGrades: number[] = [];
+          for (const [caId, qGrades] of subjects.entries()) {
+            const finalGrade = qGrades.reduce((a, b) => a + b, 0) / qGrades.length;
+            finalGrades.push(finalGrade);
+          }
+          studentGradesMap.set(studentId, finalGrades);
+        }
+      } else {
+        for (const grade of grades) {
           if (!studentGradesMap.has(grade.studentId)) {
             studentGradesMap.set(grade.studentId, []);
           }
@@ -1322,6 +1540,8 @@ router.get(
 
       for (const enrollment of (advisorySection.enrollments as any[])) {
         const studentGradesList = studentGradesMap.get(enrollment.student.id);
+        
+        // Ensure student has grades for most subjects (e.g. at least 1)
         if (!studentGradesList || studentGradesList.length === 0) continue;
 
         const gwa = studentGradesList.reduce((sum: number, g: number) => sum + g, 0) / studentGradesList.length;
@@ -1332,7 +1552,7 @@ router.get(
           advisoryHonors.push({
             id: enrollment.student.id,
             name: studentName,
-            grade: roundedGwa,
+            grade: gwa, // Return unrounded GWA
             honor: roundedGwa >= 98 ? 'Highest Honors' : roundedGwa >= 95 ? 'High Honors' : 'Honors',
             class: advisorySection.name,
           });
@@ -1340,7 +1560,7 @@ router.get(
           withHonors.push({
             id: enrollment.student.id,
             name: studentName,
-            grade: roundedGwa,
+            grade: gwa, // Return unrounded GWA
             honor: 'With Honors',
             class: advisorySection.name,
           });
@@ -2037,7 +2257,7 @@ router.post(
           `ECR Import: ${classAssignment.subject.name} - ${classAssignment.section.name}`,
           "Grades",
           `Imported ${importedGrades} grades from ECR file "${req.file.originalname}" for quarters: ${quartersToImport.join(', ')}. ${skippedStudents} students unmatched.`,
-          req.ip || req.socket?.remoteAddress,
+          (req.ip as string) || req.socket?.remoteAddress,
           AuditSeverity.INFO,
           classAssignmentId
         );

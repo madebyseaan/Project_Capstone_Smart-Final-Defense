@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BarChart3, Loader2, AlertTriangle, RefreshCw, BookOpen, User } from "lucide-react";
+import { BarChart3, Loader2, AlertTriangle, RefreshCw, BookOpen, User, WifiOff } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,20 +22,23 @@ export default function TeachingLoad() {
   const [coverage, setCoverage] = useState<any>(null);
 
   const [search, setSearch] = useState("");
+  const [isLocalDbFallback, setIsLocalDbFallback] = useState(false);
 
   const loadAll = async (silent = false) => {
     if (!silent) { setLoadLoading(true); setCoverageLoading(true); }
     setLoadError(null);
     setCoverageError(null);
+    setIsLocalDbFallback(false);
 
     void (async () => {
       try {
         const res = await registrarApi.getAtlasTeachingLoads();
         const payload = res.data as any;
         setFaculty(payload.faculty ?? payload.teachers ?? payload.data ?? []);
+        if (payload.source === "smart-local-db") setIsLocalDbFallback(true);
       } catch (err: any) {
         const detail = err?.response?.data?.error ?? err?.response?.data?.message ?? err?.message ?? "";
-        setLoadError(`Failed to load teaching loads from ATLAS: ${detail}`);
+        setLoadError(`Failed to load teaching loads: ${detail}`);
         setFaculty([]);
       } finally {
         setLoadLoading(false);
@@ -48,7 +51,7 @@ export default function TeachingLoad() {
         setCoverage(res.data);
       } catch (err: any) {
         const detail = err?.response?.data?.error ?? err?.response?.data?.message ?? err?.message ?? "";
-        setCoverageError(`Failed to load subject coverage from ATLAS: ${detail}`);
+        setCoverageError(`Failed to load subject coverage: ${detail}`);
         setCoverage(null);
       } finally {
         setCoverageLoading(false);
@@ -85,6 +88,16 @@ export default function TeachingLoad() {
           <RefreshCw className="w-4 h-4 mr-2" /> Refresh
         </Button>
       </div>
+
+      {/* Local DB fallback banner */}
+      {isLocalDbFallback && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <WifiOff className="w-4 h-4 shrink-0 text-amber-600" />
+          <span>
+            <strong>ATLAS is currently offline.</strong> Showing last synced data from SMART's local database. Data may not reflect the latest assignments.
+          </span>
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
