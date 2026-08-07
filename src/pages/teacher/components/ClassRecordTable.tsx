@@ -217,6 +217,7 @@ const LedgerRow = React.memo(
         </TableCell>
 
         {/* WW score cells */}
+        {/* WW score cells */}
         {Array.from({ length: wwCount }).map((_, i) => (
           <TableCell
             key={`ww-${i}`}
@@ -225,13 +226,19 @@ const LedgerRow = React.memo(
           >
             {(() => {
               const invalid = !isHps && isCellInvalid(studentId, "WW", i);
+              const scoreVal = isHps ? wwScores[i]?.maxScore || 0 : ((wwScores[i] as any)?.status || (wwScores[i]?.score === 0 ? "" : (wwScores[i]?.score ?? "")));
+              const scoreStatus = !isHps && ((wwScores[i] as any)?.status || (wwScores[i]?.score === "A" || wwScores[i]?.score === "E" ? wwScores[i]?.score : ""));
               return (
                 <input
-                  type="number"
+                  type={isHps ? "number" : "text"}
                   inputMode="decimal"
-                  defaultValue={isHps ? wwScores[i]?.maxScore || 0 : wwScores[i]?.score || ""}
+                  defaultValue={scoreVal}
                   placeholder="0"
-                  className={`${inputClass} ${isHps ? "text-indigo-300 font-black" : "text-slate-600"} ${
+                  className={`${inputClass} ${isHps ? "text-indigo-300 font-black" : (
+                    scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
+                    scoreStatus === "E" ? "text-indigo-600 bg-indigo-55 font-black rounded-lg" :
+                    "text-slate-600"
+                  )} ${
                     invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
                   }`}
                   onFocus={(e) => {
@@ -248,10 +255,14 @@ const LedgerRow = React.memo(
                     }
                   }}
                   onKeyDown={(e) => {
-                    if (e.key !== "Enter" || isHps) return;
+                    if (e.key !== "Enter") return;
                     e.preventDefault();
-                    const didSave = onScoreCommit(e.currentTarget, studentId, "WW", i);
-                    if (!didSave) return;
+                    if (isHps) {
+                      const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
+                      onHpsUpdate("WW", i, val);
+                    } else {
+                      onScoreCommit(e.currentTarget, studentId, "WW", i);
+                    }
                     const nextInput = document.querySelector<HTMLInputElement>(
                       `[data-row-index="${rowIndex + 1}"][data-cat="WW"][data-col="${i}"]`
                     );
@@ -303,13 +314,19 @@ const LedgerRow = React.memo(
           >
             {(() => {
               const invalid = !isHps && isCellInvalid(studentId, "PT", i);
+              const scoreVal = isHps ? ptScores[i]?.maxScore || 0 : ((ptScores[i] as any)?.status || (ptScores[i]?.score === 0 ? "" : (ptScores[i]?.score ?? "")));
+              const scoreStatus = !isHps && ((ptScores[i] as any)?.status || (ptScores[i]?.score === "A" || ptScores[i]?.score === "E" ? ptScores[i]?.score : ""));
               return (
                 <input
-                  type="number"
+                  type={isHps ? "number" : "text"}
                   inputMode="decimal"
-                  defaultValue={isHps ? ptScores[i]?.maxScore || 0 : ptScores[i]?.score || ""}
+                  defaultValue={scoreVal}
                   placeholder="0"
-                  className={`${inputClass} ${isHps ? "text-purple-300 font-black" : "text-slate-600"} ${
+                  className={`${inputClass} ${isHps ? "text-purple-300 font-black" : (
+                    scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
+                    scoreStatus === "E" ? "text-indigo-600 bg-indigo-55 font-black rounded-lg" :
+                    "text-slate-600"
+                  )} ${
                     invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
                   }`}
                   onFocus={(e) => {
@@ -326,10 +343,14 @@ const LedgerRow = React.memo(
                     }
                   }}
                   onKeyDown={(e) => {
-                    if (e.key !== "Enter" || isHps) return;
+                    if (e.key !== "Enter") return;
                     e.preventDefault();
-                    const didSave = onScoreCommit(e.currentTarget, studentId, "PT", i);
-                    if (!didSave) return;
+                    if (isHps) {
+                      const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
+                      onHpsUpdate("PT", i, val);
+                    } else {
+                      onScoreCommit(e.currentTarget, studentId, "PT", i);
+                    }
                     const nextInput = document.querySelector<HTMLInputElement>(
                       `[data-row-index="${rowIndex + 1}"][data-cat="PT"][data-col="${i}"]`
                     );
@@ -379,13 +400,19 @@ const LedgerRow = React.memo(
         >
           {(() => {
             const invalid = !isHps && isCellInvalid(studentId, "QA", 0);
+            const scoreVal = isHps ? qaMax : ((grade as any)?.qaStatus || (grade?.quarterlyAssessScore === 0 ? "" : (grade?.quarterlyAssessScore ?? "")));
+            const scoreStatus = !isHps && ((grade as any)?.qaStatus || (grade?.quarterlyAssessScore === "A" || grade?.quarterlyAssessScore === "E" ? grade?.quarterlyAssessScore : ""));
             return (
               <input
-                type="number"
+                type={isHps ? "number" : "text"}
                 inputMode="decimal"
-                defaultValue={isHps ? qaMax : grade?.quarterlyAssessScore || ""}
+                defaultValue={scoreVal}
                 placeholder="0"
-                className={`${inputClass} ${isHps ? "text-amber-300 font-black" : "text-amber-600"} ${
+                className={`${inputClass} ${isHps ? "text-amber-300 font-black" : (
+                  scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
+                  scoreStatus === "E" ? "text-indigo-600 bg-indigo-55 font-black rounded-lg" :
+                  "text-slate-600"
+                )} ${
                   invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
                 }`}
                 onFocus={(e) => {
@@ -402,10 +429,14 @@ const LedgerRow = React.memo(
                   }
                 }}
                 onKeyDown={(e) => {
-                  if (e.key !== "Enter" || isHps) return;
+                  if (e.key !== "Enter") return;
                   e.preventDefault();
-                  const didSave = onScoreCommit(e.currentTarget, studentId, "QA", 0);
-                  if (!didSave) return;
+                  if (isHps) {
+                    const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
+                    onHpsUpdate("QA", 0, val);
+                  } else {
+                    onScoreCommit(e.currentTarget, studentId, "QA", 0);
+                  }
                   const nextInput = document.querySelector<HTMLInputElement>(
                     `[data-row-index="${rowIndex + 1}"][data-cat="QA"][data-col="0"]`
                   );
@@ -689,18 +720,18 @@ export function ClassRecordTable({
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Period:</span>
               <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)}>
-                <SelectTrigger className="h-8 w-20 bg-white border-slate-200 text-[11px] font-black uppercase rounded-xl shadow-sm px-3">
+                <SelectTrigger className="w-24 font-bold" size="sm">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-200 shadow-2xl p-1">
+                <SelectContent className="shadow-2xl">
                   {terms.map((q) => (
                     <SelectItem
                       key={q}
                       value={q}
-                      className="text-[11px] font-black uppercase rounded-lg py-1.5 px-3 focus:bg-indigo-50 focus:text-indigo-600 transition-colors cursor-pointer"
+                      className="text-[11px] font-bold"
                     >
                       { q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3" }
-              </SelectItem>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

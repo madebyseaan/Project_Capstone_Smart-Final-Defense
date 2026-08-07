@@ -196,12 +196,11 @@ export default function EOSYFinalization() {
                   <div className="flex flex-wrap items-center gap-4">
                     {/* Section Dropdown */}
                     <Select value={selectedSectionId} onValueChange={setSelectedSectionId}>
-                      <SelectTrigger className="w-[280px] rounded-xl border-gray-200 bg-white">
+                      <SelectTrigger className="w-[280px]">
                         <SelectValue placeholder="— Select a section —">
                           {(() => {
-                            const s = sections.find((s) => String(s.id) === selectedSectionId);
-                            if (!s) return null;
-                            return `${s.name ?? s.sectionName}${s.gradeLevel?.name ? ` (${s.gradeLevel.name})` : ""}`;
+                            const s = sections.find((sec) => String(sec.id) === selectedSectionId);
+                            return s ? `${s.name ?? s.sectionName}${s.gradeLevel?.name ? ` (${s.gradeLevel.name})` : ""}${s.finalized ? " ✓ Finalized" : ""}` : "— Select a section —";
                           })()}
                         </SelectValue>
                       </SelectTrigger>
@@ -218,9 +217,12 @@ export default function EOSYFinalization() {
                     {/* School Year Dropdown */}
                     {schoolYears.length > 0 && (
                       <Select value={selectedSchoolYearId} onValueChange={setSelectedSchoolYearId}>
-                        <SelectTrigger className="w-[140px] rounded-xl border-gray-200 bg-white">
+                        <SelectTrigger className="w-[140px]">
                           <SelectValue placeholder="Select SY">
-                            {schoolYears.find(sy => String(sy.id) === selectedSchoolYearId)?.yearLabel}
+                            {(() => {
+                              const sy = schoolYears.find((y) => String(y.id) === selectedSchoolYearId);
+                              return sy ? `${sy.yearLabel} ${sy.status === "ACTIVE" ? "(Active)" : ""}` : "Select SY";
+                            })()}
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>

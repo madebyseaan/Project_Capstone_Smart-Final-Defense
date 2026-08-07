@@ -376,10 +376,24 @@ export default function ClassRecordView() {
     category: 'WW' | 'PT' | 'QA',
     index: number,
   ): boolean => {
-    const rawValue = inputEl.value;
-    const parsed = rawValue === '' ? 0 : Number(rawValue);
+    const rawValue = inputEl.value.trim().toUpperCase();
+    const isSpecial = rawValue === 'A' || rawValue === 'E';
     const key = getCellKey(studentId, category, index);
     const maxAllowed = getMaxForCell(category, index);
+
+    if (isSpecial) {
+      setInvalidCells((prev) => {
+        if (!prev[key]) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      inputEl.dataset.prev = rawValue;
+      handleScoreUpdate(studentId, category, index, rawValue as any);
+      return true;
+    }
+
+    const parsed = rawValue === '' ? 0 : Number(rawValue);
 
     if (Number.isNaN(parsed) || parsed < 0 || parsed > maxAllowed) {
       const prevValue = inputEl.dataset.prev ?? '';

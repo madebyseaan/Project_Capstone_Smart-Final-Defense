@@ -1,27 +1,90 @@
-# SMART - Student Management and Records Tracking
+# 🎓 SMART: System for Monitoring & Academic Records Tracking
 
-A full-stack web application for managing student grades and academic records built with React, Express, and Prisma.
+> **An Enterprise Academic Grading System & DepEd K-12 Compliance Platform**
+> Integrated with the EnrollPro & ATLAS Microservices Ecosystem over Tailscale.
 
-## Tech Stack
+---
 
-- **Frontend**: React 19 + TypeScript + Vite + TailwindCSS + shadcn/ui
-- **Backend**: Node.js + Express + Prisma ORM
-- **Database**: PostgreSQL
-- **Authentication**: JWT
+## 🌟 Overview
 
-## Prerequisites
+**SMART** (System for Monitoring & Academic Records Tracking) is a production-grade, full-stack academic grading and record-keeping platform designed for Philippine Secondary Education (DepEd K-12). It provides real-time grade computation, automated Form 137/138 (SF9/SF10) report generation, attendance tracking, and seamless microservice synchronization.
 
-Before running this application, make sure you have installed:
+Built for high performance and reliability, SMART operates as the **Grading & Academic Records Engine** within a distributed microservice ecosystem:
+- **EnrollPro**: Identity, Enrollment, & Advisory Section Assignment (Single Source of Truth)
+- **ATLAS**: Master Scheduling, Faculty Loading, & Room Allocations
+- **SMART**: Real-Time Grade Calculation, Attendance Ledger, & Class Records
+- **AIMS**: Learning Management & Remediation Analytics
+- **MRF**: Facility Maintenance & Operations Tracking
 
-- [Node.js](https://nodejs.org/) (v18 or higher)
-- [PostgreSQL](https://www.postgresql.org/download/) (v14 or higher)
-- npm or yarn package manager
+---
 
-## Getting Started
+## 🏛️ Ecosystem Architecture
 
-### 1. Clone and Install Dependencies
+```mermaid
+flowchart TD
+    subgraph Tailnet ["Tailscale Private Network (.ts.net)"]
+        EP["EnrollPro (Identity & Enrollment)"]
+        ATLAS["ATLAS (Master Scheduling)"]
+        SMART["SMART (Grading & Records System)"]
+        AIMS["AIMS (LMS & Mastery)"]
+    end
+
+    EP -- "Live Auth & Identity (SSOT)" --> SMART
+    EP -- "Advisory & Student Masterlists" --> SMART
+    ATLAS -- "Teaching Load & Schedules" --> SMART
+    SMART -- "Final EOSY Averages" --> EP
+    AIMS -- "Remediation & Mastery Signals" --> SMART
+```
+
+---
+
+## ✨ Key Features
+
+### 👩‍🏫 Teacher Portal
+- **Advisory Class Management**: Instant live sync of advisory section rosters (Grade 7-10) directly from EnrollPro.
+- **Transmutation & Grading**: Automated DepEd K-12 grade computation (Written Work, Performance Tasks, Quarterly Assessments) with automatic score transmutation.
+- **Attendance Ledger**: Daily student attendance tracking with automatic status aggregation.
+- **Real-Time Grade Profile**: Student-by-student academic performance metrics and honors ranking.
+
+### 🛡️ Administrator Portal
+- **System Settings & School Year Management**: Active school year control, term management, and automated branding sync.
+- **Live Ecosystem Synchronization**: One-click and scheduled synchronization across EnrollPro & ATLAS endpoints.
+- **Audit Logging**: Comprehensive activity logs for compliance and security auditing.
+- **Template Reindexing**: Automated indexing for SF/ECR official DepEd document templates.
+
+### 📋 Registrar Portal
+- **Intake & Admissions Queue**: Real-time integration with EnrollPro intake pipeline.
+- **Academic Ledger**: Grade verification, promotion status tracking, and archival records.
+- **Export Engine**: Official DepEd School Form generation (SF1, SF5, SF6, SF9, SF10).
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology |
+| :--- | :--- |
+| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui, Lucide Icons |
+| **Backend** | Node.js, Express 5, TypeScript, `ts-node-dev` |
+| **Database & ORM** | PostgreSQL, Prisma ORM |
+| **Authentication** | EnrollPro JIT Authentication over Tailscale, JWT, `bcryptjs` |
+| **Live Updates** | Server-Sent Events (SSE) |
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- **Node.js**: v18.x or higher
+- **PostgreSQL**: v14.x or higher
+- **npm**: v9.x or higher
+
+### 1. Clone Repository & Install Dependencies
 
 ```bash
+# Clone the repository
+git clone https://github.com/madebyseaan/CapstoneFinal.git
+cd CapstoneFinal
+
 # Install frontend dependencies
 npm install
 
@@ -31,189 +94,70 @@ npm install
 cd ..
 ```
 
-### 2. Database Setup
+### 2. Environment Configuration
 
-Create a PostgreSQL database for the application:
-
-```sql
-CREATE DATABASE smart_db;
-```
-
-Create a `.env` file in the `server` folder with your database credentials:
+Create a `.env` file inside the `server/` directory:
 
 ```env
-DATABASE_URL="postgresql://username:password@localhost:5432/smart_db"
-JWT_SECRET="your-secret-key-here-change-in-production"
-PORT=3000
+# Database Connection
+DATABASE_URL="postgresql://postgres:password@localhost:5432/smart_db"
+
+# JWT Secret
+JWT_SECRET="your-super-secret-jwt-key"
+
+# Server Port
+PORT=5003
+
+# Microservices Integration Over Tailscale
+ENROLLPRO_BASE_URL="https://dev-jegs.buru-degree.ts.net/api"
+ENROLLPRO_ACCOUNT_NAME="1000001"
+ENROLLPRO_PASSWORD="AdminSY2026!"
+
+ATLAS_SYSTEM_TOKEN="your-atlas-system-token"
+ATLAS_SYNC_INTERVAL_MINUTES=30
 ```
 
-Replace `username` and `password` with your PostgreSQL credentials.
-
-### 3. Initialize Database
-
-Run Prisma migrations to create the database schema:
+### 3. Database Initialization
 
 ```bash
 cd server
-npm run prisma:generate
+
+# Apply database migrations
 npm run prisma:push
-```
 
-(Optional) Seed the database with sample data:
+# Generate Prisma Client
+npm run prisma:generate
 
-```bash
+# Seed initial system configuration
 npm run prisma:seed
+
 cd ..
 ```
 
-### 4. Run the Application
+### 4. Running the Development Stack
 
-You'll need **two terminal windows** to run both servers:
+Launch both frontend and backend development servers:
 
-**Terminal 1 - Backend Server:**
 ```bash
+# Terminal 1: Backend Server (Port 5003)
 cd server
 npm run dev
-```
-The backend API will run on `http://localhost:3000`
 
-**Terminal 2 - Frontend Development Server:**
-```bash
+# Terminal 2: Frontend Client (Port 5173)
 npm run dev
 ```
-The frontend will run on `http://localhost:5173`
 
-### 5. Access the Application
+---
 
-Open your browser and navigate to:
-```
-http://localhost:5173
-```
+## 🔒 Security & Privacy
 
-## Available Scripts
+- **Identity Ownership**: EnrollPro serves as the sole Single Source of Truth for identity. Credentials are non-persistent and verified live against EnrollPro's authentication API.
+- **Audit Trails**: Critical operations (logins, grade modifications, section assignments) log IP addresses, timestamps, and severity levels.
+- **Microservice Isolation**: Direct inter-service API calls are restricted to private Tailscale Tailnet IPs with token-based access.
 
-### Frontend (Root Directory)
+---
 
-- `npm run dev` - Start the Vite development server
-- `npm run build` - Build for production
-- `npm run lint` - Run ESLint
-- `npm run preview` - Preview production build locally
+## 📄 License
 
-### Backend (Server Directory)
-
-- `npm run dev` - Start development server with hot reload
-- `npm run build` - Compile TypeScript to JavaScript
-- `npm run start` - Run production server
-- `npm run prisma:generate` - Generate Prisma Client
-- `npm run prisma:migrate` - Run database migrations
-- `npm run prisma:push` - Push schema changes to database
-- `npm run prisma:seed` - Seed database with initial data
-- `npm run prisma:studio` - Open Prisma Studio (database GUI)
-
-## Project Structure
-
-```
-├── src/                    # Frontend source code
-│   ├── components/        # React components
-│   ├── pages/            # Page components
-│   ├── layouts/          # Layout components
-│   └── lib/              # Utility functions
-├── server/               # Backend source code
-│   ├── src/             # Express server code
-│   ├── prisma/          # Database schema and migrations
-│   └── middleware/      # Express middleware
-└── public/              # Static assets
-```
-
-## Default Login Credentials
-
-After seeding the database, you can use these credentials to log in:
-
-- **Username**: (check `server/prisma/seed.ts` for default users)
-- **Password**: (check `server/prisma/seed.ts` for default passwords)
-
-## Troubleshooting
-
-### Database Connection Issues
-- Ensure PostgreSQL is running
-- Verify your `DATABASE_URL` in `.env` is correct
-- Check that the database exists
-
-### Port Already in Use
-- Frontend default port: 5173
-- Backend default port: 3000
-- Change ports in `vite.config.ts` or `.env` if needed
-
-### Prisma Issues
-```bash
-cd server
-npm run prisma:generate
-npm run prisma:push
-```
-
-## React Compiler
-
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
-
-Note: This will impact Vite dev & build performances.
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Developed as a Final Senior Capstone Project for Hinigaran National High School Academic Systems Modernization.
+All rights reserved.

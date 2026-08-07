@@ -128,6 +128,8 @@ export default function TeacherDashboard() {
   const [selectedHonorsTerm, setSelectedHonorsTerm] = useState<string>("all");
   const [selectedGradeLevel, setSelectedGradeLevel] = useState<string>("all");
   const [selectedSection, setSelectedSection] = useState<string>("all");
+  const [attentionSectionFilter, setAttentionSectionFilter] = useState<string>("all");
+  const [attentionSubjectFilter, setAttentionSubjectFilter] = useState<string>("all");
 
   // Fetch mastery distribution with filters
   const fetchMasteryDistribution = async (gradeLevel?: string, sectionId?: string) => {
@@ -432,29 +434,33 @@ export default function TeacherDashboard() {
                 </div>
               </div>
               
-              <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+              <div className="flex items-center gap-4 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
                 <Select value={selectedGradeLevel} onValueChange={(val) => {
                   if (val) setSelectedGradeLevel(val);
                   setSelectedSection("all");
                 }}>
-                  <SelectTrigger className="h-9 w-[110px] bg-white border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm focus:ring-2 focus:ring-slate-100 transition-all">
-                    <SelectValue placeholder="Grade" />
+                  <SelectTrigger className="w-[115px]">
+                    <SelectValue placeholder="Grade">
+                      {selectedGradeLevel === "all" ? "All Grades" : (gradeLevelLabels[selectedGradeLevel] || selectedGradeLevel)}
+                    </SelectValue>
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                    <SelectItem value="all" className="text-xs font-bold uppercase">All Grades</SelectItem>
+                  <SelectContent className="shadow-xl">
+                    <SelectItem value="all" className="text-xs font-bold">All Grades</SelectItem>
                     {masteryData?.filters.gradeLevels.map(gl => (
-                      <SelectItem key={gl} value={gl} className="text-xs font-bold uppercase">{gradeLevelLabels[gl] || gl}</SelectItem>
+                      <SelectItem key={gl} value={gl} className="text-xs font-bold">{gradeLevelLabels[gl] || gl}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <Select value={selectedSection} onValueChange={(val) => val && setSelectedSection(val)}>
-                  <SelectTrigger className="h-9 w-[130px] bg-white border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm focus:ring-2 focus:ring-slate-100 transition-all">
-                    <SelectValue placeholder="Section" />
+                  <SelectTrigger className="w-[135px]">
+                    <SelectValue placeholder="Section">
+                      {selectedSection === "all" ? "All Sections" : (filteredSections.find((sec) => sec.id === selectedSection)?.name || "All Sections")}
+                    </SelectValue>
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                    <SelectItem value="all" className="text-xs font-bold uppercase">All Sections</SelectItem>
+                  <SelectContent className="shadow-xl">
+                    <SelectItem value="all" className="text-xs font-bold">All Sections</SelectItem>
                     {filteredSections.map(s => (
-                      <SelectItem key={s.id} value={s.id} className="text-xs font-bold uppercase">{s.name}</SelectItem>
+                      <SelectItem key={s.id} value={s.id} className="text-xs font-bold">{s.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -524,7 +530,7 @@ export default function TeacherDashboard() {
         </CardHeader>
         <CardContent className="p-8 pt-0">
             {stats?.classStats && stats.classStats.length > 0 ? (
-              <ScrollArea className="h-[520px] pr-4">
+              <ScrollArea className="max-h-[520px] pr-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-6">
                   {stats.classStats.map((classStat, idx) => {
                     const percentage = classStat.totalStudents > 0
@@ -572,162 +578,235 @@ export default function TeacherDashboard() {
           </CardContent>
         </Card>
 
-      {/* ── Academic Honors ── Full Width */}
-        <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
-          <CardHeader className="p-8 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
-                <Medal className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-xl font-black text-slate-900">Academic Honors</h2>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Leading advisory achievements</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              {advisoryHonors?.hasAdvisory && (
-                <Badge variant="secondary" className="bg-slate-50 text-slate-400 border-slate-100 font-black px-4 py-2 rounded-xl text-[10px] tracking-widest uppercase">
-                  ADVISORY CLASS
-                </Badge>
-              )}
-              
-              <Select value={selectedHonorsTerm} onValueChange={(val) => val && setSelectedHonorsTerm(val)}>
-                <SelectTrigger className="h-9 w-[130px] bg-slate-50 border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm">
-                  <SelectValue placeholder="Select Term" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                  <SelectItem value="T1" className="text-xs font-bold uppercase">Term 1</SelectItem>
-                  <SelectItem value="T2" className="text-xs font-bold uppercase">Term 2</SelectItem>
-                  <SelectItem value="T3" className="text-xs font-bold uppercase">Term 3</SelectItem>
-                  <SelectItem value="FINAL" className="text-xs font-bold uppercase">Final Grade</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="max-h-[420px] overflow-y-auto px-8 pb-8">
-              {(() => {
-                const allHonors = [
-                  ...(advisoryHonors?.advisoryHonors || []),
-                  ...(advisoryHonors?.withHonors || []),
-                ].sort((a, b) => b.grade - a.grade);
+      {/* ── Academic Honors ── Full Width with Safety Guard */}
+      {(() => {
+        const isGradingComplete = stats?.classStats && stats.classStats.length > 0
+          ? stats.classStats.every(c => c.totalStudents > 0 && c.gradedCount === c.totalStudents) && stats.summary.gradeSubmissionRate === 100
+          : false;
 
-                if (allHonors.length === 0) {
+        if (!isGradingComplete) return null;
+
+        return (
+          <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
+            <CardHeader className="p-8 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
+                  <Medal className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">Academic Honors</h2>
+                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Leading advisory achievements</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                {advisoryHonors?.hasAdvisory && (
+                  <Badge variant="secondary" className="bg-slate-50 text-slate-400 border-slate-100 font-black px-4 py-2 rounded-xl text-[10px] tracking-widest uppercase">
+                    ADVISORY CLASS
+                  </Badge>
+                )}
+                
+                <Select value={selectedHonorsTerm} onValueChange={(val) => val && setSelectedHonorsTerm(val)}>
+                  <SelectTrigger className="w-[135px]">
+                    <SelectValue placeholder="Select Term" />
+                  </SelectTrigger>
+                  <SelectContent className="shadow-xl">
+                    <SelectItem value="T1" className="text-xs font-bold">Term 1</SelectItem>
+                    <SelectItem value="T2" className="text-xs font-bold">Term 2</SelectItem>
+                    <SelectItem value="T3" className="text-xs font-bold">Term 3</SelectItem>
+                    <SelectItem value="FINAL" className="text-xs font-bold">Final Grade</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="max-h-[420px] overflow-y-auto px-8 pb-8">
+                {(() => {
+                  const allHonors = [
+                    ...(advisoryHonors?.advisoryHonors || []),
+                    ...(advisoryHonors?.withHonors || []),
+                  ].sort((a, b) => b.grade - a.grade);
+
+                  if (allHonors.length === 0) {
+                    return (
+                      <div className="py-20 text-center text-slate-300 bg-slate-50 rounded-[2rem] mt-4 border-2 border-dashed border-slate-100">
+                        <Star className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                        <p className="font-black text-sm uppercase tracking-widest">No advisory honors yet</p>
+                        <p className="text-[10px] font-bold mt-2">Students with grades of 85 and above will appear here.</p>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div className="py-20 text-center text-slate-300 bg-slate-50 rounded-[2rem] mt-4 border-2 border-dashed border-slate-100">
-                      <Star className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                      <p className="font-black text-sm uppercase tracking-widest">No advisory honors yet</p>
-                      <p className="text-[10px] font-bold mt-2">Students with grades of 85 and above will appear here.</p>
+                    <div className="overflow-hidden rounded-3xl border border-slate-100 mt-4">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-slate-50/50 border-b border-slate-100">
+                            <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Student</th>
+                            <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Section</th>
+                            <th className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade</th>
+                            <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {allHonors.map((student, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50 transition-all">
+                              <td className="px-6 py-5">
+                                <div className="flex items-center gap-3">
+                                  <Avatar className="w-9 h-9 border-2 border-white shadow-sm">
+                                    <AvatarFallback className="font-black text-xs text-white" style={{ backgroundColor: colors.primary }}>
+                                      {student.name.charAt(0)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="font-black text-slate-900 text-sm tracking-tight">{student.name}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-5 text-slate-500 font-bold text-xs">{student.class}</td>
+                              <td className="px-6 py-5 text-center">
+                                <span className="font-black text-xs px-3 py-1.5 rounded-xl" style={{ color: colors.primary, backgroundColor: `${colors.primary}15` }}>
+                                  {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
+                                </span>
+                              </td>
+                              <td className="px-6 py-5 text-right">
+                                <Badge className="bg-emerald-500 text-white border-0 text-[9px] font-black uppercase px-3 py-1 rounded-lg shadow-lg shadow-emerald-500/20">
+                                  {student.honor}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   );
-                }
-
-                return (
-                  <div className="overflow-hidden rounded-3xl border border-slate-100 mt-4">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-slate-50/50 border-b border-slate-100">
-                          <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Student</th>
-                          <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Section</th>
-                          <th className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade</th>
-                          <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {allHonors.map((student, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/50 transition-all">
-                            <td className="px-6 py-5">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="w-9 h-9 border-2 border-white shadow-sm">
-                                  <AvatarFallback className="font-black text-xs text-white" style={{ backgroundColor: colors.primary }}>
-                                    {student.name.charAt(0)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="font-black text-slate-900 text-sm tracking-tight">{student.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-5 text-slate-500 font-bold text-xs">{student.class}</td>
-                            <td className="px-6 py-5 text-center">
-                              <span className="font-black text-xs px-3 py-1.5 rounded-xl" style={{ color: colors.primary, backgroundColor: `${colors.primary}15` }}>
-                                {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
-                              </span>
-                            </td>
-                            <td className="px-6 py-5 text-right">
-                              <Badge className="bg-emerald-500 text-white border-0 text-[9px] font-black uppercase px-3 py-1 rounded-lg shadow-lg shadow-emerald-500/20">
-                                {student.honor}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
-            </div>
-          </CardContent>
-        </Card>
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* ── Students Needing Attention ── Full Width Big Card */}
-      <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white border-t-[8px] border-t-rose-500">
-        <CardHeader className="p-8 pb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-rose-50 text-rose-500">
-                <AlertTriangle className="w-6 h-6" />
+      {(() => {
+        const advisoryName = advisoryHonors?.advisoryHonors?.[0]?.class || advisoryHonors?.withHonors?.[0]?.class;
+        
+        // Extract unique section names and subject names from class stats
+        const sectionNames = Array.from(new Set(stats?.classStats.map(c => c.sectionName) || []));
+        const subjectNames = Array.from(new Set(stats?.classStats.map(c => c.subjectName) || []));
+
+        const filteredStudentsAtRisk = (stats?.summary.studentsAtRisk || []).filter(student => {
+          // 1. Filter by Section
+          if (attentionSectionFilter !== "all") {
+            if (attentionSectionFilter === "advisory") {
+              if (!advisoryName || !student.class.includes(advisoryName)) return false;
+            } else {
+              if (!student.class.includes(attentionSectionFilter)) return false;
+            }
+          }
+          // 2. Filter by Subject
+          if (attentionSubjectFilter !== "all") {
+            if (!student.class.includes(attentionSubjectFilter)) return false;
+          }
+          return true;
+        });
+
+        return (
+          <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white border-t-[8px] border-t-rose-500">
+            <CardHeader className="p-8 pb-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-2xl bg-rose-50 text-rose-500">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black text-slate-900">Students Needing Attention</h2>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Immediate intervention required</p>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-4">
+                  {/* Section Select Filter */}
+                  <Select value={attentionSectionFilter} onValueChange={setAttentionSectionFilter}>
+                    <SelectTrigger className="w-[185px]">
+                      <SelectValue placeholder="Select Section" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                      <SelectItem value="all" className="text-xs font-semibold">All Sections</SelectItem>
+                      {advisoryHonors?.hasAdvisory && (
+                        <SelectItem value="advisory" className="text-xs font-semibold text-indigo-600">My Advisory Section</SelectItem>
+                      )}
+                      {sectionNames.map(sect => (
+                        <SelectItem key={sect} value={sect} className="text-xs font-semibold">
+                          Section {sect}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Subject Select Filter */}
+                  <Select value={attentionSubjectFilter} onValueChange={setAttentionSubjectFilter}>
+                    <SelectTrigger className="w-[185px]">
+                      <SelectValue placeholder="Select Subject" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                      <SelectItem value="all" className="text-xs font-semibold">All Subjects</SelectItem>
+                      {subjectNames.map(subj => (
+                        <SelectItem key={subj} value={subj} className="text-xs font-semibold">
+                          {subj}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Badge className="bg-rose-500 text-white font-black px-4 py-2 rounded-xl border-0 shadow-lg shadow-rose-500/30 text-sm">
+                    {filteredStudentsAtRisk.length} students
+                  </Badge>
+                </div>
               </div>
-              <div>
-                <h2 className="text-2xl font-black text-slate-900">Students Needing Attention</h2>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Immediate intervention required</p>
-              </div>
-            </div>
-            <Badge className="bg-rose-500 text-white font-black px-4 py-2 rounded-xl border-0 shadow-lg shadow-rose-500/30 text-sm">
-              {stats?.summary.studentsAtRisk.length || 0} students
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="p-8 pt-0">
-          {stats?.summary.studentsAtRisk && stats.summary.studentsAtRisk.length > 0 ? (
-            <ScrollArea className="h-[350px] pr-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
-                {stats.summary.studentsAtRisk.map((student, idx) => (
-                  <div key={idx} className="p-6 rounded-3xl bg-rose-50/40 border border-rose-100 hover:bg-rose-50 hover:border-rose-200 transition-all flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-rose-500 shrink-0">
-                        <Users className="w-6 h-6" />
+            </CardHeader>
+            <CardContent className="p-8 pt-0">
+              {filteredStudentsAtRisk && filteredStudentsAtRisk.length > 0 ? (
+                <ScrollArea className="h-[350px] pr-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
+                    {filteredStudentsAtRisk.map((student, idx) => (
+                      <div key={idx} className="p-6 rounded-3xl bg-rose-50/40 border border-rose-100 hover:bg-rose-50 hover:border-rose-200 transition-all flex flex-col gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-rose-500 shrink-0">
+                            <Users className="w-6 h-6" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-slate-900 truncate">{student.name}</p>
+                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-0.5 truncate">{student.class}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t border-rose-100">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl font-black text-rose-600 leading-none">
+                              {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg"
+                              style={{ backgroundColor: student.grade <= 72 ? '#fef2f2' : '#fff7ed', color: student.grade <= 72 ? '#dc2626' : '#ea580c' }}>
+                              {student.grade <= 72 ? 'INC' : 'FAILED'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-black text-slate-900 truncate">{student.name}</p>
-                        <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-0.5 truncate">{student.class}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-rose-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl font-black text-rose-600 leading-none">
-                          {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
-                        </span>
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg"
-                          style={{ backgroundColor: student.grade <= 72 ? '#fef2f2' : '#fff7ed', color: student.grade <= 72 ? '#dc2626' : '#ea580c' }}>
-                          {student.grade <= 72 ? 'INC' : 'FAILED'}
-                        </span>
-                      </div>
-                    </div>                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          ) : (
-            <div className="py-24 flex flex-col items-center justify-center text-center bg-emerald-50/50 rounded-[2.5rem] border-2 border-dashed border-emerald-100">
-              <CheckCircle2 className="w-16 h-16 mb-4 text-emerald-400" />
-              <p className="font-black text-emerald-800 text-lg uppercase tracking-widest">All students passed!</p>
-              <p className="text-[10px] text-emerald-600 font-bold px-8 mt-3 leading-relaxed max-w-md text-center">
-                Great job maintaining academic performance across all classes!
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="py-24 flex flex-col items-center justify-center text-center bg-emerald-50/50 rounded-[2.5rem] border-2 border-dashed border-emerald-100">
+                  <CheckCircle2 className="w-16 h-16 mb-4 text-emerald-400" />
+                  <p className="font-black text-emerald-800 text-lg uppercase tracking-widest">All students passed!</p>
+                  <p className="text-[10px] text-emerald-600 font-bold px-8 mt-3 leading-relaxed max-w-md text-center">
+                    Great job maintaining academic performance across all classes!
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }

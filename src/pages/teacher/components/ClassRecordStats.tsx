@@ -14,21 +14,21 @@ export function ClassRecordStats({ avg, passed, total, highest }: ClassRecordSta
   const passingRate = total > 0 ? `${Math.round((passed / total) * 100)}%` : "0%";
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {[
-        { label: "Class Average", value: avg.toFixed(1), icon: Target, color: "indigo" },
-        { label: "Passing Rate", value: passingRate, icon: TrendingUp, color: "emerald" },
-        { label: "Highest Grade", value: highest, icon: Award, color: "amber" },
-        { label: "Needs Support", value: needsSupport, icon: TrendingDown, color: "rose" },
+        { label: "Class Average", value: avg.toFixed(1), icon: Target, bg: "bg-indigo-50", fg: "text-indigo-600" },
+        { label: "Passing Rate", value: passingRate, icon: TrendingUp, bg: "bg-emerald-50", fg: "text-emerald-600" },
+        { label: "Highest Grade", value: highest, icon: Award, bg: "bg-amber-50", fg: "text-amber-600" },
+        { label: "Needs Support", value: needsSupport, icon: TrendingDown, bg: "bg-rose-50", fg: "text-rose-600" },
       ].map((stat) => (
-        <Card key={stat.label} className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden group hover:-translate-y-1 transition-all duration-300">
-          <CardContent className="p-7 flex flex-col justify-between h-full">
-            <div className="p-3 rounded-2xl w-fit mb-4 bg-slate-50 group-hover:bg-white transition-colors shadow-sm">
-              <stat.icon className={`w-6 h-6 text-${stat.color}-600`} />
+        <Card key={stat.label} className="border-0 shadow-sm shadow-slate-100 rounded-xl bg-white overflow-hidden hover:shadow-md transition-all duration-350">
+          <CardContent className="p-3 flex items-center gap-3.5">
+            <div className={`p-2 rounded-lg ${stat.bg} ${stat.fg} shrink-0`}>
+              <stat.icon className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
-              <p className="text-3xl font-black text-slate-900 leading-none">{stat.value}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none">{stat.label}</p>
+              <p className="text-lg font-black text-slate-900 mt-1 leading-none">{stat.value}</p>
             </div>
           </CardContent>
         </Card>

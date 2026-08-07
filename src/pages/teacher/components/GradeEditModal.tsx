@@ -91,7 +91,7 @@ export function GradeEditModal({
                     onDescriptorUpdate(selectedRecord.student.id, value);
                   }}
                 >
-                  <SelectTrigger className="h-12 rounded-xl text-sm font-semibold">
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select descriptor" />
                   </SelectTrigger>
                   <SelectContent>

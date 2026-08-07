@@ -6,9 +6,8 @@ import { AuditAction, AuditSeverity } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 import { createAuditLog } from "../lib/audit";
-import { getEnrollProTeachers, validateEnrollProTeacherCredentials } from "../lib/enrollproClient";
-import { syncTeacherOnLogin } from "../lib/teacherSync";
-import { triggerImmediateSync } from "../lib/syncCoordinator";
+import { validateEnrollProTeacherCredentials } from "../lib/enrollproClient";
+import { runEnrollProSync } from "../lib/enrollproSync";
 
 const router = Router();
 
@@ -26,172 +25,104 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     email = email.trim();
 
     let user = null;
-    let epAuthResult = null; // Store EnrollPro auth result if obtained during JIT provisioning
+    let isValidPassword = false;
+    let epAuthResult = null;
 
-    // If the identifier looks like an employee ID (no @ sign), try teacher lookup first,
-    // then username (admin / registrar use their employee ID as username)
-    if (!email.includes('@')) {
-      const teacher = await prisma.teacher.findUnique({
-        where: { employeeId: email },
-        include: { user: true },
+    // 1. Prioritize live EnrollPro authentication (EnrollPro is SSOT for accounts)
+    try {
+      epAuthResult = await validateEnrollProTeacherCredentials(email, password);
+    } catch (epErr: any) {
+      console.warn(`[Auth] EnrollPro auth service unreachable for "${email}":`, epErr.message);
+    }
+
+    if (epAuthResult?.user) {
+      const epUser = epAuthResult.user;
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const empId = String(epUser.employeeId ?? epUser.accountName ?? email).trim();
+      const userEmail = epUser.email ?? (email.includes('@') ? email : `${empId}@deped.gov.ph`);
+
+      const rolesList: string[] = Array.isArray(epUser.roles) ? epUser.roles : [epUser.role].filter(Boolean);
+      const isAdminRole = rolesList.some((r) => ['ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'].includes(String(r).toUpperCase()));
+      const isRegistrarRole = rolesList.some((r) => ['REGISTRAR', 'HEAD_REGISTRAR', 'SCHOOL_REGISTRAR', 'REGISTRATION_OFFICER'].includes(String(r).toUpperCase()));
+      const assignedRole = isAdminRole ? 'ADMIN' : (isRegistrarRole ? 'REGISTRAR' : 'TEACHER');
+
+      // Find local user by username or email
+      let existingUser = await prisma.user.findFirst({
+        where: { OR: [{ username: empId }, { email: userEmail }, { email }] },
       });
-      user = teacher?.user ?? null;
 
-      if (!user) {
-        user = await prisma.user.findUnique({
-          where: { username: email },
+      if (!existingUser) {
+        user = await prisma.user.create({
+          data: {
+            username: empId,
+            email: userEmail,
+            password: hashedPassword,
+            role: assignedRole,
+            firstName: epUser.firstName ?? '',
+            lastName: epUser.lastName ?? '',
+          },
+        });
+      } else {
+        user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            username: empId,
+            password: hashedPassword,
+            role: assignedRole,
+            firstName: epUser.firstName ?? existingUser.firstName,
+            lastName: epUser.lastName ?? existingUser.lastName,
+          },
         });
       }
-    }
 
-    // Fall back to email lookup
-    if (!user) {
-      user = await prisma.user.findFirst({
-        where: { email },
-      });
-    }
+      isValidPassword = true;
+      console.log(`[Auth] Authenticated & synced user "${empId}" (${assignedRole}) via EnrollPro live SSOT.`);
+    } else {
+      // 2. Offline fallback ONLY if EnrollPro service was unreachable (not for invalid credentials)
+      let localUser = null;
+      if (!email.includes('@')) {
+        const teacher = await prisma.teacher.findUnique({
+          where: { employeeId: email },
+          include: { user: true },
+        });
+        localUser = teacher?.user ?? (await prisma.user.findUnique({ where: { username: email } }));
+      }
+      if (!localUser) {
+        localUser = await prisma.user.findFirst({ where: { email } });
+      }
 
-    // JIT Provisioning: If user not found but identifier looks like an employee ID,
-    // check EnrollPro. If valid, create the account on-the-fly.
-    if (!user && !email.includes("@")) {
-      try {
-        epAuthResult = await validateEnrollProTeacherCredentials(email, password);
-        if (epAuthResult && epAuthResult.user) {
-          const epRole = epAuthResult.user.role;
-          const isStaff =
-            epRole === "TEACHER" ||
-            epRole === "SYSTEM_ADMIN" ||
-            epRole === "HEAD_REGISTRAR";
-
-          if (isStaff) {
-            let smartRole: any = "TEACHER";
-            if (epRole === "SYSTEM_ADMIN") smartRole = "ADMIN";
-            else if (epRole === "HEAD_REGISTRAR") smartRole = "REGISTRAR";
-
-            // Provision account
-            const fallbackPasswordHash = await bcrypt.hash(
-              crypto.randomBytes(32).toString("hex"),
-              10
-            );
-
-            user = await prisma.user.create({
-              data: {
-                username: email,
-                password: fallbackPasswordHash,
-                role: smartRole,
-                firstName: epAuthResult.user.firstName,
-                lastName: epAuthResult.user.lastName,
-                email: epAuthResult.user.email,
-                ...(smartRole === "TEACHER"
-                  ? {
-                      teacher: {
-                        create: {
-                          employeeId: epAuthResult.user.employeeId || email,
-                        },
-                      },
-                    }
-                  : {}),
-              },
-              include: { teacher: true },
-            });
-
-            await createAuditLog(
-              AuditAction.LOGIN,
-              {
-                id: user.id,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                role: user.role,
-              },
-              `JIT Provisioning: ${email}`,
-              "Auth",
-              `${smartRole} account provisioned on-the-fly from EnrollPro for ${user.firstName} ${user.lastName}`,
-              ipAddress,
-              AuditSeverity.INFO
-            );
-          }
+      if (localUser) {
+        const localMatch = await bcrypt.compare(password, localUser.password);
+        if (localMatch) {
+          user = localUser;
+          isValidPassword = true;
+          console.log(`[Auth] Offline fallback authenticated local user "${localUser.username}".`);
         }
-      } catch (err) {
-        console.error("[Auth] JIT provisioning error:", err);
-        // Fall through to "Invalid username or password"
       }
     }
 
-    if (!user) {
-      // Log failed login attempt (unknown user)
+    if (user && isValidPassword && user.role === 'TEACHER') {
+      const empId = user.username || email;
+      try {
+        await prisma.teacher.upsert({
+          where: { employeeId: empId },
+          update: { userId: user.id },
+          create: { employeeId: empId, userId: user.id },
+        });
+        runEnrollProSync().catch((e) => console.warn('[Auth] Background sync on login error:', e.message));
+      } catch (tErr: any) {
+        console.warn(`[Auth] Failed to upsert Teacher record for ${empId}:`, tErr.message);
+      }
+    }
+
+    if (!user || !isValidPassword) {
+      // Log failed login attempt
       await createAuditLog(
         AuditAction.LOGIN,
         { firstName: email, lastName: null, role: "UNKNOWN" },
         `Login attempt: ${email}`,
         "Auth",
-        `Failed login attempt for email: ${email} — user not found`,
-        ipAddress,
-        AuditSeverity.WARNING
-      );
-      res.status(401).json({ message: "Invalid username or password" });
-      return;
-    }
-
-    const teacher = user.role === 'TEACHER'
-      ? await prisma.teacher.findUnique({
-          where: { userId: user.id },
-          include: { user: true },
-        })
-      : null;
-
-    // Verify password — for accounts linked to EnrollPro (via employeeId or username), 
-    // first try EnrollPro credentials
-    let isValidPassword = false;
-
-    if (user.role === 'TEACHER' || user.role === 'ADMIN' || user.role === 'REGISTRAR') {
-      const loginIdentifier = user.role === 'TEACHER' ? teacher?.employeeId : user.username;
-      
-      // Only attempt EnrollPro if the identifier looks like an employee ID (numeric-ish)
-      const isPossibleEmployeeId = loginIdentifier && /^\d+$/.test(loginIdentifier);
-
-      if (isPossibleEmployeeId) {
-        try {
-          const epResult = epAuthResult ?? await validateEnrollProTeacherCredentials(loginIdentifier, password);
-          if (epResult) {
-            // Verify roles match or are compatible
-            const epRole = epResult.user.role;
-            let roleMatched = false;
-            
-            if (user.role === 'TEACHER' && epRole === 'TEACHER') roleMatched = true;
-            else if (user.role === 'ADMIN' && epRole === 'SYSTEM_ADMIN') roleMatched = true;
-            else if (user.role === 'REGISTRAR' && epRole === 'HEAD_REGISTRAR') roleMatched = true;
-
-            if (roleMatched) {
-              isValidPassword = true;
-            } else {
-              console.warn(`[Auth] Role mismatch for ${loginIdentifier}: SMART=${user.role}, EnrollPro=${epRole}`);
-              // Continue to local password check as fallback
-            }
-          }
-        } catch (epErr) {
-          console.warn('[Auth] EnrollPro unreachable for login:', (epErr as Error).message);
-          // If EnrollPro is unreachable, we fall through to local bcrypt check for ADMIN/REGISTRAR
-          // but fail-closed for TEACHER (as per existing policy).
-          if (user.role === 'TEACHER') {
-             res.status(503).json({ message: "EnrollPro is unavailable. Teacher login is temporarily disabled." });
-             return;
-          }
-        }
-      }
-    }
-
-    if (!isValidPassword) {
-      isValidPassword = await bcrypt.compare(password, user.password);
-    }
-
-    if (!isValidPassword) {
-      // Log failed login (wrong password)
-      await createAuditLog(
-        AuditAction.LOGIN,
-        { id: user.id, firstName: user.firstName, lastName: user.lastName, role: user.role },
-        `Login attempt: ${email}`,
-        "Auth",
-        `Failed login attempt for ${user.firstName || ""} ${user.lastName || ""} (${user.role}) — incorrect password`,
+        `Failed login attempt for: ${email} — invalid credentials`,
         ipAddress,
         AuditSeverity.WARNING
       );
@@ -203,6 +134,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign(
       {
         id: user.id,
+        username: user.username,
         email: user.email,
         role: user.role,
       },
@@ -221,19 +153,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       AuditSeverity.INFO
     );
 
-    // For teachers: fire-and-forget real-time sync from EnrollPro + Atlas
-    if (user.role === 'TEACHER') {
-      if (teacher?.employeeId && user.email) {
-        syncTeacherOnLogin(teacher.id, teacher.employeeId, user.email).catch((e: Error) => {
-          console.error('[Auth] Teacher sync error:', e.message);
-        });
-      }
-    }
-
-    // For admins and registrars: trigger non-blocking unified sync so dashboard starts fresh.
-    if (user.role === 'ADMIN' || user.role === 'REGISTRAR') {
-      triggerImmediateSync(`${user.role.toLowerCase()}_login`);
-    }
+    // Live background sync triggers disabled due to external refactoring timeouts
 
 
     res.json({

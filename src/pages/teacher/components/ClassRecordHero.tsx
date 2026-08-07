@@ -63,7 +63,7 @@ export function ClassRecordHero({
                   Section {classAssignment.section.name}
                 </span>
               </div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">{classAssignment.subject.name}</h1>
+              <h1 className="text-3xl font-semibold text-slate-900 tracking-tight uppercase">{classAssignment.subject.name}</h1>
               {effectiveWeightsSource === "generic-fallback" && !isHGClass && (
                 <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 mt-2">
                   Generic WW/PT/TA fallback active (no exact ECR template for this subject)

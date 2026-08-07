@@ -63,6 +63,99 @@ export default function Attendance() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [monthlyStats, setMonthlyStats] = useState<{
+    enrollmentRate: number;
+    avgAttendance: number;
+    schoolDays: number;
+    consecutiveAbsenceFlags: Record<string, boolean>;
+  } | null>(null);
+  const [loadingMonthly, setLoadingMonthly] = useState(false);
+
+  const fetchMonthlySF2Stats = async (sectionId: string, dateStr: string) => {
+    setLoadingMonthly(true);
+    try {
+      const token = sessionStorage.getItem("token");
+      const d = new Date(dateStr);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const start = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      const end = `${y}-${String(m + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+      const summaryRes = await axios.get(
+        `${SERVER_URL}/api/attendance/summary/${sectionId}`,
+        {
+          params: { startDate: start, endDate: end },
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const summaryList = summaryRes.data?.data?.summary || [];
+      if (summaryList.length === 0) {
+        setMonthlyStats(null);
+        return;
+      }
+
+      const schoolDays = Math.max(...summaryList.map((s: any) => s.total), 0);
+      const totalPresence = summaryList.reduce((acc: number, s: any) => acc + s.present + s.late, 0);
+      const registeredLearners = summaryList.length;
+      
+      const avgAttendance = schoolDays > 0 ? totalPresence / schoolDays : 0;
+      const enrollmentRate = registeredLearners > 0 ? (avgAttendance / registeredLearners) * 100 : 0;
+
+      const studentsToFetch = summaryList.filter((s: any) => s.absent >= 5);
+      const flagsMap: Record<string, boolean> = {};
+
+      if (studentsToFetch.length > 0) {
+        const fetchPromises = studentsToFetch.map(async (student: any) => {
+          try {
+            const res = await axios.get(
+              `${SERVER_URL}/api/attendance/student/${student.studentId}`,
+              {
+                params: { startDate: start, endDate: end, sectionId },
+                headers: { Authorization: `Bearer ${token}` },
+              }
+            );
+            const records = res.data?.data?.records || [];
+            const sortedRecords = [...records].sort(
+              (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
+            );
+
+            let maxConsecutive = 0;
+            let currentConsecutive = 0;
+            for (const rec of sortedRecords) {
+              if (rec.status === "ABSENT") {
+                currentConsecutive++;
+                if (currentConsecutive > maxConsecutive) {
+                  maxConsecutive = currentConsecutive;
+                }
+              } else {
+                currentConsecutive = 0;
+              }
+            }
+            if (maxConsecutive >= 5) {
+              flagsMap[student.studentId] = true;
+            }
+          } catch (err) {
+            console.error("Error checking consecutive absences:", err);
+          }
+        });
+        await Promise.all(fetchPromises);
+      }
+
+      setMonthlyStats({
+        schoolDays,
+        avgAttendance,
+        enrollmentRate,
+        consecutiveAbsenceFlags: flagsMap,
+      });
+    } catch (error) {
+      console.error("Error fetching monthly SF2 stats:", error);
+      setMonthlyStats(null);
+    } finally {
+      setLoadingMonthly(false);
+    }
+  };
 
   // Fetch teacher's sections
   useEffect(() => {
@@ -128,6 +221,7 @@ export default function Attendance() {
   useEffect(() => {
     if (selectedSection && selectedDate) {
       fetchAttendance();
+      fetchMonthlySF2Stats(selectedSection, selectedDate);
     }
   }, [selectedSection, selectedDate]);
 
@@ -201,6 +295,7 @@ export default function Attendance() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setMessage({ type: "success", text: "Attendance saved successfully!" });
+      fetchMonthlySF2Stats(selectedSection, selectedDate);
       setTimeout(() => setMessage(null), 3000);
     } catch (error: any) {
       setMessage({ type: "error", text: error.response?.data?.message || "Failed to save attendance" });
@@ -243,19 +338,17 @@ export default function Attendance() {
             <div className="space-y-2">
               <Label htmlFor="section" className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Target Section</Label>
               <Select value={selectedSection} onValueChange={setSelectedSection}>
-                <SelectTrigger id="section" className="h-12 bg-slate-50 border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all">
+                <SelectTrigger id="section" className="w-full">
                   <SelectValue placeholder="Select section">
-                    {selectedSection && sections.length > 0 ? (
-                      (() => {
-                        const selected = sections.find(s => s.id === selectedSection);
-                        return selected ? `${gradeLevelLabels[selected.gradeLevel]} - ${selected.name}` : 'Select section';
-                      })()
-                    ) : 'Select section'}
+                    {(() => {
+                      const sec = sections.find((s) => s.id === selectedSection);
+                      return sec ? `${gradeLevelLabels[sec.gradeLevel]} - ${sec.name}` : "Select section";
+                    })()}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                <SelectContent className="shadow-xl">
                   {sections.map((section) => (
-                    <SelectItem key={section.id} value={section.id} className="text-xs font-bold uppercase">
+                    <SelectItem key={section.id} value={section.id} className="text-xs font-bold">
                       {gradeLevelLabels[section.gradeLevel]} - {section.name}
                     </SelectItem>
                   ))}
@@ -330,24 +423,49 @@ export default function Attendance() {
         </div>
       )}
 
-      {/* Quick Stats Grid */}
+      {/* Quick Stats Grid - SF2 Monthly & Daily live counters */}
       {attendanceData && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           {[
-            { label: "PRESENT", value: stats.present, icon: CheckCircle2, color: "emerald" },
-            { label: "ABSENT", value: stats.absent, icon: X, color: "rose" },
-            { label: "LATE", value: stats.late, icon: Clock, color: "amber" },
-            { label: "EXCUSED", value: stats.excused, icon: FileText, color: "indigo" },
+            { 
+              label: "Daily Presence", 
+              value: `${stats.present} / ${attendanceData.attendance.length}`, 
+              icon: CheckCircle2, 
+              color: "emerald",
+              desc: "Learners present today"
+            },
+            { 
+              label: "Monthly Attendance Rate", 
+              value: loadingMonthly ? "Syncing..." : (monthlyStats ? `${monthlyStats.enrollmentRate.toFixed(1)}%` : "0.0%"), 
+              icon: RefreshCw, 
+              color: "indigo",
+              desc: "SF2 Month Average"
+            },
+            { 
+              label: "Average Daily Attendance", 
+              value: loadingMonthly ? "Syncing..." : (monthlyStats ? monthlyStats.avgAttendance.toFixed(1) : "0.0"), 
+              icon: Users, 
+              color: "amber",
+              desc: "Learners present daily avg"
+            },
+            { 
+              label: "School Days Tracked", 
+              value: loadingMonthly ? "Syncing..." : (monthlyStats ? `${monthlyStats.schoolDays} Days` : "0 Days"), 
+              icon: CalendarIcon, 
+              color: "slate",
+              desc: "Days with records this month"
+            },
           ].map((stat) => (
             <Card key={stat.label} className="border-0 shadow-lg shadow-slate-200/50 rounded-3xl bg-white overflow-hidden">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
-                    <p className={`text-3xl font-black text-${stat.color}-600`}>{stat.value}</p>
+                    <p className={`text-2xl font-black text-slate-800`}>{stat.value}</p>
+                    <p className="text-[9px] text-slate-400 font-medium mt-1">{stat.desc}</p>
                   </div>
-                  <div className={`p-3 rounded-2xl bg-${stat.color}-50 text-${stat.color}-500`}>
-                    <stat.icon className="w-6 h-6" />
+                  <div className={`p-3 rounded-2xl bg-${stat.color}-50 text-${stat.color}-500 shrink-0`}>
+                    <stat.icon className={`w-6 h-6 ${loadingMonthly && stat.icon === RefreshCw ? "animate-spin" : ""}`} />
                   </div>
                 </div>
               </CardContent>
@@ -398,35 +516,44 @@ export default function Attendance() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-black text-xs">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-black text-xs shrink-0">
                             {student.lastName.charAt(0)}
                           </div>
-                          <span className="font-bold text-slate-900 tracking-tight">
-                            {student.lastName}, {student.firstName}
-                          </span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-bold text-slate-900 tracking-tight truncate">
+                              {student.lastName}, {student.firstName}
+                            </span>
+                            {monthlyStats?.consecutiveAbsenceFlags[student.studentId] && (
+                              <span className="text-[8px] font-black uppercase text-rose-600 bg-rose-50 border border-rose-100 rounded px-1.5 py-0.5 mt-0.5 w-fit tracking-wide animate-pulse">
+                                ⚠️ 5+ Consecutive Absences
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex justify-center gap-1">
-                          {[
-                            { id: "PRESENT", icon: Check, color: "emerald", label: "P" },
-                            { id: "ABSENT", icon: X, color: "rose", label: "A" },
-                            { id: "LATE", icon: Clock, color: "amber", label: "L" },
-                            { id: "EXCUSED", icon: FileText, color: "indigo", label: "E" }
-                          ].map((option) => (
-                            <button
-                              key={option.id}
-                              onClick={() => handleStatusChange(student.studentId, option.id as any)}
-                              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                                student.status === option.id 
-                                  ? `bg-${option.color}-500 text-white shadow-lg shadow-${option.color}-200 scale-110` 
-                                  : `bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600`
-                              }`}
-                              title={option.id}
-                            >
-                              <option.icon className="w-4 h-4" />
-                            </button>
-                          ))}
+                        <div className="flex justify-center">
+                          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner">
+                            {[
+                              { id: "PRESENT", symbol: "•", color: "emerald", label: "Present" },
+                              { id: "ABSENT", symbol: "X", color: "rose", label: "Absent" },
+                              { id: "LATE", symbol: "/", color: "amber", label: "Tardy" },
+                              { id: "EXCUSED", symbol: "E", color: "indigo", label: "Excused" }
+                            ].map((option) => (
+                              <button
+                                key={option.id}
+                                onClick={() => handleStatusChange(student.studentId, option.id as any)}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center font-black transition-all text-xs ${
+                                  student.status === option.id 
+                                    ? `bg-${option.color}-600 text-white shadow-md scale-105 z-10` 
+                                    : `text-slate-400 hover:text-slate-700 hover:bg-slate-200/50`
+                                }`}
+                                title={option.label}
+                              >
+                                {option.symbol}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="px-8">

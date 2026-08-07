@@ -1,339 +1,220 @@
 import "dotenv/config";
-import { PrismaClient, Role, GradeLevel, SubjectType, Term, AuditAction, AuditSeverity } from "@prisma/client";
+import { PrismaClient, Role, GradeLevel, SubjectType, Term } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
+const connectionString = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({
-    connectionString: process.env.DATABASE_URL,
-  }),
+  adapter: new PrismaPg({ connectionString }),
 });
 
-// Filipino names for students
-const firstNames = [
-  "Juan", "Maria", "Jose", "Ana", "Pedro", "Rosa", "Carlos", "Elena", "Miguel", "Sofia",
-  "Antonio", "Isabella", "Francisco", "Gabriela", "Manuel", "Andrea", "Rafael", "Carmen",
-  "Gabriel", "Patricia", "Diego", "Lucia", "Fernando", "Mariana", "Ricardo", "Valentina",
-  "Luis", "Camila", "Andres", "Paula", "Daniel", "Daniela", "Jorge", "Victoria", "Marco",
-  "Samantha", "Adrian", "Nicole", "Christian", "Alexandra", "Javier", "Katherine", "Paolo",
-  "Michelle", "Kenneth", "Jasmine", "Mark", "Angela"
-];
-
-const lastNames = [
-  "Santos", "Reyes", "Cruz", "Garcia", "Mendoza", "Torres", "Flores", "Gonzales", "Bautista",
-  "Villanueva", "Ramos", "Aquino", "Castro", "Rivera", "Dela Cruz", "Francisco", "Hernandez",
-  "Lopez", "Morales", "Pascual", "Perez", "Rosario", "Salvador", "Tan", "Mercado", "Navarro",
-  "Ortega", "Padilla", "Quinto", "Ramirez", "Santiago", "Valdez", "Velasco", "Aguilar",
-  "Bernal", "Cabrera", "Diaz", "Espinosa", "Fernandez", "Gutierrez", "Ibarra", "Jimenez"
-];
-
-function generateLRN(counter: number): string {
-  // LRN format: 1234567890XX (12 digits)
-  const paddedCounter = counter.toString().padStart(11, '0');
-  return `1${paddedCounter}`;
-}
-
-function randomElement<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-// Transmute to DepEd grading scale
-function transmute(initial: number): number {
-  const rounded = Math.round(initial * 100) / 100;
-  if (rounded >= 99.5) return 100;
-  if (rounded >= 97.5) return 99;
-  if (rounded >= 96.0) return 98;
-  if (rounded >= 95.0) return 97;
-  if (rounded >= 94.0) return 96;
-  if (rounded >= 93.0) return 95;
-  if (rounded >= 92.0) return 94;
-  if (rounded >= 91.0) return 93;
-  if (rounded >= 90.0) return 92;
-  if (rounded >= 89.0) return 91;
-  if (rounded >= 88.0) return 90;
-  if (rounded >= 87.0) return 89;
-  if (rounded >= 86.0) return 88;
-  if (rounded >= 85.0) return 87;
-  if (rounded >= 84.0) return 86;
-  if (rounded >= 83.0) return 85;
-  if (rounded >= 82.0) return 84;
-  if (rounded >= 81.0) return 83;
-  if (rounded >= 80.0) return 82;
-  if (rounded >= 79.0) return 81;
-  if (rounded >= 78.0) return 80;
-  if (rounded >= 77.0) return 79;
-  if (rounded >= 76.0) return 78;
-  if (rounded >= 75.0) return 77;
-  if (rounded >= 73.0) return 76;
-  if (rounded >= 70.0) return 75;
-  if (rounded >= 68.0) return 74;
-  if (rounded >= 66.0) return 73;
-  if (rounded >= 64.0) return 72;
-  if (rounded >= 62.0) return 71;
-  if (rounded >= 60.0) return 70;
-  if (rounded >= 58.0) return 69;
-  if (rounded >= 56.0) return 68;
-  if (rounded >= 54.0) return 67;
-  if (rounded >= 52.0) return 66;
-  if (rounded >= 50.0) return 65;
-  if (rounded >= 48.0) return 64;
-  if (rounded >= 46.0) return 63;
-  if (rounded >= 43.0) return 62;
-  if (rounded >= 40.0) return 61;
-  return 60;
-}
-
 async function main() {
-  console.log("Starting seed...");
+  console.log("Starting DB seeding...");
 
-  // Clean up existing data to avoid conflicts
-  console.log("Cleaning up existing data...");
+  // Clean up existing data to prevent unique constraints or foreign key violations
+  console.log("Cleaning up existing tables...");
   await prisma.auditLog.deleteMany({});
-  await prisma.gradingConfig.deleteMany({});
-  await prisma.systemSettings.deleteMany({});
+  await prisma.syncHistory.deleteMany({});
+  await prisma.gradeSnapshot.deleteMany({});
   await prisma.grade.deleteMany({});
+  await prisma.attendance.deleteMany({});
+  await prisma.workloadEntry.deleteMany({});
   await prisma.enrollment.deleteMany({});
-  await prisma.student.deleteMany({});
   await prisma.classAssignment.deleteMany({});
   await prisma.section.deleteMany({});
-  
-  console.log("Creating new seed data...");
+  await prisma.student.deleteMany({});
+  await prisma.eCRTemplate.deleteMany({});
+  await prisma.excelTemplate.deleteMany({});
+  await prisma.teacher.deleteMany({});
+  await prisma.user.deleteMany({});
+  await prisma.systemSettings.deleteMany({});
+  await prisma.gradingConfig.deleteMany({});
+  await prisma.subject.deleteMany({});
 
-  // Hash passwords
+  console.log("Tables cleaned.");
+
+  // Password hashing
   const saltRounds = 10;
-  const teacherPassword = await bcrypt.hash("DepEd2026!", saltRounds);
-  const adminPassword = await bcrypt.hash("AdminSY2026!", saltRounds);
-  const registrarPassword = await bcrypt.hash("Registrar2026!", saltRounds);
+  const adminPasswordHash = bcrypt.hashSync("AdminPassword123!", saltRounds);
+  const registrarPasswordHash = bcrypt.hashSync("RegistrarPassword123!", saltRounds);
+  const teacherPasswordHash = bcrypt.hashSync("TeacherPassword123!", saltRounds);
 
-  // Create users - Teacher 1 (MATH - Advisory)
-  const teacherUser = await prisma.user.upsert({
-    where: { username: "3179586" },
-    update: {
-      firstName: "DIEGO",
-      lastName: "AQUINO",
-      email: "diego.aquino@deped.gov.ph",
-      password: teacherPassword,
-    },
-    create: {
-      username: "3179586",
-      password: teacherPassword,
-      role: Role.TEACHER,
-      firstName: "DIEGO",
-      lastName: "AQUINO",
-      email: "diego.aquino@deped.gov.ph",
-    },
-  });
-
-  // Create Admin
-  await prisma.user.upsert({
-    where: { username: "1000001" },
-    update: {
-      password: adminPassword,
-      firstName: "System",
-      lastName: "Admin",
-    },
-    create: {
-      username: "1000001",
-      password: adminPassword,
+  // 1. Create Admin
+  console.log("Seeding Admin User...");
+  const adminUser = await prisma.user.create({
+    data: {
+      username: "admin",
+      password: adminPasswordHash,
       role: Role.ADMIN,
-      firstName: "System",
-      lastName: "Admin",
+      firstName: "Admin",
+      lastName: "User",
+      email: "admin@school.edu.ph",
     },
   });
 
-  // Create Registrar
-  await prisma.user.upsert({
-    where: { username: "1000002" },
-    update: {
-      password: registrarPassword,
-      firstName: "School",
-      lastName: "Registrar",
-    },
-    create: {
-      username: "1000002",
-      password: registrarPassword,
+  // 2. Create Registrar
+  console.log("Seeding Registrar User...");
+  const registrarUser = await prisma.user.create({
+    data: {
+      username: "registrar",
+      password: registrarPasswordHash,
       role: Role.REGISTRAR,
-      firstName: "School",
-      lastName: "Registrar",
+      firstName: "Registrar",
+      lastName: "User",
+      email: "registrar@school.edu.ph",
     },
   });
 
-  // Create Teacher profile
-  const teacher = await prisma.teacher.upsert({
-    where: { employeeId: "3179586" },
-    update: {
-      userId: teacherUser.id,
-      specialization: "MATH",
-    },
-    create: {
-      userId: teacherUser.id,
-      employeeId: "3179586",
-      specialization: "MATH",
-    },
-  });
-
-  // Create Teacher 2 (English)
-  const teacher2User = await prisma.user.upsert({
-    where: { username: "teacher2" },
-    update: {
-      firstName: "Maria",
-      lastName: "Santos",
-      email: "maria.santos@school.edu.ph",
-      password: teacherPassword,
-    },
-    create: {
-      username: "teacher2",
-      password: teacherPassword,
-      role: Role.TEACHER,
-      firstName: "Maria",
-      lastName: "Santos",
-      email: "maria.santos@school.edu.ph",
-    },
-  });
-
-  const teacher2 = await prisma.teacher.upsert({
-    where: { userId: teacher2User.id },
-    update: {},
-    create: {
-      userId: teacher2User.id,
-      employeeId: "EMP-2024-002",
-      specialization: "English",
-    },
-  });
-
-  // Create extra teachers for variety
-  const otherTeachers = [
-    { username: "teacher3", firstName: "Jose", lastName: "Reyes", spec: "Science" },
-    { username: "teacher4", firstName: "Carmen", lastName: "Dela Cruz", spec: "Filipino" },
-    { username: "teacher5", firstName: "Roberto", lastName: "Gonzales", spec: "Araling Panlipunan" },
-    { username: "teacher6", firstName: "Patricia", lastName: "Ramos", spec: "MAPEH" },
+  // 3. Create 5 Teachers
+  console.log("Seeding 5 Teacher Users...");
+  const teachersData = [
+    { username: "teacher1", firstName: "Diego", lastName: "Aquino", specialization: "Mathematics", employeeId: "EMP-T01" },
+    { username: "teacher2", firstName: "Maria", lastName: "Santos", specialization: "Science", employeeId: "EMP-T02" },
+    { username: "teacher3", firstName: "Jose", lastName: "Reyes", specialization: "English", employeeId: "EMP-T03" },
+    { username: "teacher4", firstName: "Carmen", lastName: "Dela Cruz", specialization: "Filipino", employeeId: "EMP-T04" },
+    { username: "teacher5", firstName: "Roberto", lastName: "Gonzales", specialization: "Araling Panlipunan", employeeId: "EMP-T05" },
   ];
 
-  const createdTeachers = [];
-  for (const t of otherTeachers) {
-    const user = await prisma.user.upsert({
-      where: { username: t.username },
-      update: { password: teacherPassword },
-      create: {
+  const teachersList = [];
+  for (const t of teachersData) {
+    const user = await prisma.user.create({
+      data: {
         username: t.username,
-        password: teacherPassword,
+        password: teacherPasswordHash,
         role: Role.TEACHER,
         firstName: t.firstName,
         lastName: t.lastName,
         email: `${t.username}@school.edu.ph`,
       },
     });
-    const profile = await prisma.teacher.upsert({
-      where: { userId: user.id },
-      update: {},
-      create: {
+
+    const teacher = await prisma.teacher.create({
+      data: {
         userId: user.id,
-        employeeId: `EMP-2024-${t.username.slice(-1)}`,
-        specialization: t.spec,
+        employeeId: t.employeeId,
+        specialization: t.specialization,
       },
     });
-    createdTeachers.push(profile);
+    teachersList.push(teacher);
   }
 
-  // Create Subjects for all grade levels
-  const subjects = [
-    { code: "MATH7", name: "Mathematics 7", type: SubjectType.CORE, ww: 30, pt: 50, qa: 20 },
-    { code: "ENG7", name: "English 7", type: SubjectType.CORE, ww: 30, pt: 50, qa: 20 },
-    { code: "SCI7", name: "Science 7", type: SubjectType.CORE, ww: 30, pt: 50, qa: 20 },
-  ];
-
-  for (const subject of subjects) {
-    await prisma.subject.upsert({
-      where: { code: subject.code },
-      update: {},
-      create: {
-        code: subject.code,
-        name: subject.name,
-        type: subject.type,
-        writtenWorkWeight: subject.ww,
-        perfTaskWeight: subject.pt,
-        quarterlyAssessWeight: subject.qa,
-      },
-    });
-  }
-
-  const math7 = await prisma.subject.findUnique({ where: { code: "MATH7" } });
-  const eng7 = await prisma.subject.findUnique({ where: { code: "ENG7" } });
-
-  // Create Sections
+  // 4. Create Section Einstein (Grade 7)
   const schoolYear = "2025-2026";
-  const sectionEinstein = await prisma.section.upsert({
-    where: { name_gradeLevel_schoolYear: { name: "Einstein", gradeLevel: GradeLevel.GRADE_7, schoolYear } },
-    update: { adviserId: teacher.id },
-    create: {
-      name: "Einstein",
+  console.log("Seeding Section & Advisory...");
+  const section = await prisma.section.create({
+    data: {
+      name: "Diamond",
       gradeLevel: GradeLevel.GRADE_7,
       schoolYear,
-      adviserId: teacher.id,
+      adviserId: teachersList[0].id, // 5. Advisory Assignment (Teacher 1 is Advisor)
     },
   });
 
-  // Create specific learner: ROXAS, SERGIO I. (122516700045)
-  const specialLearner = await prisma.student.upsert({
-    where: { lrn: "122516700045" },
-    update: {
-      firstName: "SERGIO",
-      middleName: "I.",
-      lastName: "ROXAS",
-    },
-    create: {
-      lrn: "122516700045",
-      firstName: "SERGIO",
-      middleName: "I.",
-      lastName: "ROXAS",
-      gender: "Male",
-      birthDate: new Date(2012, 0, 1),
-      address: "Manila",
-    },
-  });
+  // Create 5 Core Subjects
+  console.log("Seeding Subjects...");
+  const subjectsData = [
+    { code: "MATH7", name: "Mathematics 7", type: SubjectType.CORE },
+    { code: "SCI7", name: "Science 7", type: SubjectType.CORE },
+    { code: "ENG7", name: "English 7", type: SubjectType.CORE },
+    { code: "FIL7", name: "Filipino 7", type: SubjectType.CORE },
+    { code: "AP7", name: "Araling Panlipunan 7", type: SubjectType.CORE },
+  ];
 
-  await prisma.enrollment.create({
+  const subjectsList = [];
+  for (const s of subjectsData) {
+    const subject = await prisma.subject.create({
+      data: {
+        code: s.code,
+        name: s.name,
+        type: s.type,
+        writtenWorkWeight: 30,
+        perfTaskWeight: 50,
+        quarterlyAssessWeight: 20,
+      },
+    });
+    subjectsList.push(subject);
+  }
+
+  // 4. Interconnected Setup: Link 5 teachers to teach 5 subjects in Section Diamond
+  console.log("Seeding Class Assignments...");
+  for (let i = 0; i < 5; i++) {
+    await prisma.classAssignment.create({
+      data: {
+        teacherId: teachersList[i].id,
+        subjectId: subjectsList[i].id,
+        sectionId: section.id,
+        schoolYear,
+        isActive: true,
+      },
+    });
+  }
+
+  // 6. Bulk seed 45 Students inside Section Diamond
+  console.log("Seeding 45 Students...");
+  const firstNames = [
+    "Juan", "Maria", "Jose", "Ana", "Pedro", "Rosa", "Carlos", "Elena", "Miguel", "Sofia",
+    "Antonio", "Isabella", "Francisco", "Gabriela", "Manuel", "Andrea", "Rafael", "Carmen",
+    "Gabriel", "Patricia", "Diego", "Lucia", "Fernando", "Mariana", "Ricardo", "Valentina",
+    "Luis", "Camila", "Andres", "Paula", "Daniel", "Daniela", "Jorge", "Victoria", "Marco",
+    "Samantha", "Adrian", "Nicole", "Christian", "Alexandra", "Javier", "Katherine", "Paolo",
+    "Michelle", "Kenneth"
+  ];
+
+  const lastNames = [
+    "Santos", "Reyes", "Cruz", "Garcia", "Mendoza", "Torres", "Flores", "Gonzales", "Bautista",
+    "Villanueva", "Ramos", "Aquino", "Castro", "Rivera", "Dela Cruz", "Francisco", "Hernandez",
+    "Lopez", "Morales", "Pascual", "Perez", "Rosario", "Salvador", "Tan", "Mercado", "Navarro",
+    "Ortega", "Padilla", "Quinto", "Ramirez", "Santiago", "Valdez", "Velasco", "Aguilar",
+    "Bernal", "Cabrera", "Diaz", "Espinosa", "Fernandez", "Gutierrez", "Ibarra", "Jimenez",
+    "Coloma", "Legaspi", "De Leon"
+  ];
+
+  for (let i = 1; i <= 45; i++) {
+    const lrn = `1225167${i.toString().padStart(5, "0")}`;
+    const firstName = firstNames[(i - 1) % firstNames.length];
+    const lastName = lastNames[(i - 1) % lastNames.length];
+
+    const student = await prisma.student.create({
+      data: {
+        lrn,
+        firstName,
+        lastName,
+        gender: i % 2 === 0 ? "Female" : "Male",
+        birthDate: new Date(2013, 0, i),
+        address: "Barangay Central",
+      },
+    });
+
+    await prisma.enrollment.create({
+      data: {
+        studentId: student.id,
+        sectionId: section.id,
+        schoolYear,
+        status: "ENROLLED",
+      },
+    });
+  }
+
+  // System Settings
+  console.log("Seeding default system settings...");
+  await prisma.systemSettings.create({
     data: {
-      studentId: specialLearner.id,
-      sectionId: sectionEinstein.id,
-      schoolYear,
-      status: "ENROLLED",
-    },
-  });
-
-  // Create class assignments
-  await prisma.classAssignment.upsert({
-    where: { teacherId_subjectId_sectionId_schoolYear: { teacherId: teacher.id, subjectId: math7!.id, sectionId: sectionEinstein.id, schoolYear } },
-    update: {},
-    create: {
-      teacherId: teacher.id,
-      subjectId: math7!.id,
-      sectionId: sectionEinstein.id,
-      schoolYear,
-    },
-  });
-
-  // System settings
-  await prisma.systemSettings.upsert({
-    where: { id: "main" },
-    update: {},
-    create: {
       id: "main",
       schoolName: "Hinigaran National High School",
       schoolId: "300847",
-      division: "Division of Silay",
+      division: "Division of Negros Occidental",
       region: "Region VI - Western Visayas",
-      currentSchoolYear: "2025-2026",
+      currentSchoolYear: schoolYear,
       currentTerm: Term.T1,
     },
   });
 
-  console.log("Seed completed successfully!");
+  console.log("DB seeding completed successfully!");
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error("Error during seeding:", e);
     process.exit(1);
   })
   .finally(async () => {

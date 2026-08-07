@@ -103,7 +103,9 @@ export default function FormViewer() {
                 disabled={templatesLoading}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a form..." />
+                  <SelectValue placeholder="Choose a form...">
+                    {activeTemplates.find((t) => t.formType === selectedFormType)?.formName || selectedFormType}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {activeTemplates.length === 0 && (

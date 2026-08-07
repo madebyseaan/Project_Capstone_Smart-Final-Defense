@@ -4,20 +4,22 @@
  * Read-only client for the EnrollPro API.
  * NEVER writes to EnrollPro — read-only per system policy.
  *
- * Primary Integration: EnrollPro Partner Integration v1 (/api/integration/v1/...)
- * Public, read-only feeds designed for companion systems (SMART, ATLAS, AIMS).
+ * Auth: POST /auth/login  { accountName, password }  →  { token }
+ *   ENROLLPRO_ACCOUNT_NAME = admin account ID (e.g. "1000001")
+ *   ENROLLPRO_PASSWORD     = admin password
  *
- * Auth (Staff/Teacher Verification only):
- *   POST /api/auth/login  { accountName, password }  →  { token, user }
+ * Endpoints used:
+ *   GET /teachers                                          → all teachers with employee IDs
+ *   GET /sections                                          → all sections grouped by gradeLevels
+ *   GET /students?schoolYearId=:sy                        → all students for a school year
+ *   GET /students?sectionId=:id&schoolYearId=:sy          → students in a specific section
+ *   GET /school-years                                      → available school years
  */
 
 import https from 'https';
 import http from 'http';
 
-function getEnrollProBase(): string {
-  const base = process.env.ENROLLPRO_URL ?? process.env.ENROLLPRO_BASE_URL ?? 'https://dev-jegs.buru-degree.ts.net/api';
-  return base.replace(/\/$/, '');
-}
+const ENROLLPRO_BASE = process.env.ENROLLPRO_BASE_URL ?? 'https://dev-jegs.buru-degree.ts.net/api';
 
 // Cached admin token (re-fetched when expired)
 let _cachedToken: string | null = null;
@@ -89,7 +91,7 @@ async function getAdminToken(): Promise<string> {
     throw new Error('ENROLLPRO_ACCOUNT_NAME / ENROLLPRO_PASSWORD not set in .env');
   }
 
-  const result = await fetchJSON(`${getEnrollProBase()}/auth/login`, {
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/auth/login`, {
     method: 'POST',
     body: JSON.stringify({ accountName, password }),
   });
@@ -104,7 +106,7 @@ async function getAdminToken(): Promise<string> {
 }
 
 /** Force token refresh on next call (call after auth errors) */
-export function invalidateEnrollProToken(token?: string): void {
+export function invalidateEnrollProToken(): void {
   _cachedToken = null;
   _tokenFetchedAt = 0;
 }
@@ -115,36 +117,21 @@ export function invalidateEnrollProToken(token?: string): void {
 
 /**
  * Returns all teachers from EnrollPro.
- * Attempts internal route with admin token, falling back to Partner Integration v1.
+ * Fields include: id, employeeId, firstName, lastName, middleName, email,
+ *   contactNumber, designationTitle, specialization, department, isActive, subjects[]
  */
 export async function getEnrollProTeachers(): Promise<EnrollProTeacher[]> {
-  try {
-    const token = await getAdminToken();
-    const result = await fetchJSON(`${getEnrollProBase()}/teachers`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return (result?.teachers ?? []) as EnrollProTeacher[];
-  } catch {
-    // Fallback to Partner Integration v1 faculty feed
-    const v1Faculty = await getAllIntegrationV1Faculty();
-    return v1Faculty.map((f) => ({
-      id: f.teacherId,
-      employeeId: f.employeeId,
-      firstName: f.firstName,
-      lastName: f.lastName,
-      middleName: f.middleName,
-      email: f.email,
-      contactNumber: f.contactNumber,
-      specialization: f.specialization,
-      isActive: f.isActive,
-      subjects: [],
-    }));
-  }
+  const token = await getAdminToken();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/teachers`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return (result?.teachers ?? []) as EnrollProTeacher[];
 }
 
 /**
  * @deprecated Use getEnrollProTeachers() instead.
  * Kept for backward compatibility. Returns teachers mapped to the old EnrollProFaculty shape.
+ * Note: advisorySectionId is always null — advisory info is now on the section record.
  */
 export async function getEnrollProFaculty(): Promise<EnrollProFaculty[]> {
   const teachers = await getEnrollProTeachers();
@@ -194,46 +181,32 @@ export async function findEnrollProFacultyByEmail(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns all sections from EnrollPro.
+ * Returns all sections from EnrollPro, flattened from the gradeLevels grouping.
+ * Each section includes: id, name, sortOrder, maxCapacity, programType,
+ *   isHomogeneous, enrolledCount, advisingTeacher {id, name},
+ *   gradeLevelId, gradeLevelName (e.g. "Grade 7"), displayOrder (7/8/9/10)
  */
 export async function getEnrollProSections(): Promise<EnrollProSectionWithGradeLevel[]> {
-  try {
-    const token = await getAdminToken();
-    const result = await fetchJSON(`${getEnrollProBase()}/sections`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const gradeLevels: any[] = result?.gradeLevels ?? [];
-    return gradeLevels.flatMap((gl) =>
-      (gl.sections ?? []).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        sortOrder: s.sortOrder,
-        maxCapacity: s.maxCapacity,
-        programType: s.programType,
-        isHomogeneous: s.isHomogeneous,
-        enrolledCount: s.enrolledCount ?? 0,
-        advisingTeacher: s.advisingTeacher ?? null,
-        gradeLevelId: gl.gradeLevelId,
-        gradeLevelName: gl.gradeLevelName,
-        displayOrder: gl.displayOrder,
-      }))
-    );
-  } catch {
-    const sections = await getAllIntegrationV1Sections();
-    return sections.map((s: any) => ({
+  const token = await getAdminToken();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/sections`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const gradeLevels: any[] = result?.gradeLevels ?? [];
+  return gradeLevels.flatMap((gl) =>
+    (gl.sections ?? []).map((s: any) => ({
       id: s.id,
       name: s.name,
-      sortOrder: 0,
-      maxCapacity: s.capacity ?? s.maxCapacity ?? 40,
-      programType: s.programType ?? 'REGULAR',
-      isHomogeneous: false,
-      enrolledCount: s.enrolledCount ?? s.learnerCount ?? 0,
-      advisingTeacher: s.adviser ?? s.advisingTeacher ?? null,
-      gradeLevelId: s.gradeLevel?.id ?? 0,
-      gradeLevelName: s.gradeLevel?.name ?? 'Grade',
-      displayOrder: 0,
-    }));
-  }
+      sortOrder: s.sortOrder,
+      maxCapacity: s.maxCapacity,
+      programType: s.programType,
+      isHomogeneous: s.isHomogeneous,
+      enrolledCount: s.enrolledCount ?? 0,
+      advisingTeacher: s.advisingTeacher ?? null,
+      gradeLevelId: gl.gradeLevelId,
+      gradeLevelName: gl.gradeLevelName,
+      displayOrder: gl.displayOrder,
+    }))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -242,75 +215,51 @@ export async function getEnrollProSections(): Promise<EnrollProSectionWithGradeL
 
 /**
  * Returns students for a specific section and school year.
+ * GET /students?sectionId=:id&schoolYearId=:sy&limit=200
  */
 export async function getEnrollProSectionStudents(
   sectionId: number,
   schoolYearId: number
 ): Promise<EnrollProStudent[]> {
-  try {
-    const token = await getAdminToken();
-    const url = `${getEnrollProBase()}/students?sectionId=${sectionId}&schoolYearId=${schoolYearId}&limit=200`;
-    const result = await fetchJSON(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return (result?.students ?? []) as EnrollProStudent[];
-  } catch {
-    const learners = await getAllIntegrationV1SectionLearners(sectionId);
-    return learners.map((l: any) => {
-      const student = l.learner ?? l;
-      return {
-        id: student.id ?? 0,
-        lrn: student.lrn ?? '',
-        fullName: `${student.lastName ?? ''}, ${student.firstName ?? ''}`,
-        firstName: student.firstName ?? '',
-        lastName: student.lastName ?? '',
-        middleName: student.middleName,
-        sex: student.sex ?? 'MALE',
-        birthDate: student.birthdate,
-      };
-    });
-  }
+  const token = await getAdminToken();
+  const url = `${ENROLLPRO_BASE}/students?sectionId=${sectionId}&schoolYearId=${schoolYearId}&limit=200`;
+  const result = await fetchJSON(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return (result?.students ?? []) as EnrollProStudent[];
 }
 
 /**
  * Returns enrolled learners for a section using the registrar roster endpoint.
+ * This endpoint is section-bound and does not require an explicit schoolYearId.
+ *
+ * GET /sections/:id/roster
  */
 export async function getEnrollProSectionRoster(
   sectionId: number,
 ): Promise<any[]> {
-  try {
-    const token = await getAdminToken();
-    const result = await fetchJSON(`${getEnrollProBase()}/sections/${sectionId}/roster`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return result?.learners ?? result?.data?.learners ?? [];
-  } catch {
-    return getAllIntegrationV1SectionLearners(sectionId);
-  }
+  const token = await getAdminToken();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/sections/${sectionId}/roster`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result?.learners ?? result?.data?.learners ?? [];
 }
 
 /**
  * Returns all students for a school year (paginated).
+ * GET /students?schoolYearId=:sy&limit=200&page=:n
  */
 export async function getEnrollProLearners(
   schoolYearId: number,
   page = 1,
   limit = 200
 ): Promise<EnrollProStudent[]> {
-  const { data } = await getIntegrationV1LearnersPage(schoolYearId, page, limit);
-  return data.map((r: any) => {
-    const l = r.learner ?? r;
-    return {
-      id: l.id ?? 0,
-      lrn: l.lrn ?? '',
-      fullName: `${l.lastName ?? ''}, ${l.firstName ?? ''}`,
-      firstName: l.firstName ?? '',
-      lastName: l.lastName ?? '',
-      middleName: l.middleName,
-      sex: l.sex ?? 'MALE',
-      birthDate: l.birthdate,
-    };
+  const token = await getAdminToken();
+  const url = `${ENROLLPRO_BASE}/students?schoolYearId=${schoolYearId}&page=${page}&limit=${limit}`;
+  const result = await fetchJSON(url, {
+    headers: { Authorization: `Bearer ${token}` },
   });
+  return (result?.students ?? []) as EnrollProStudent[];
 }
 
 // ---------------------------------------------------------------------------
@@ -319,40 +268,36 @@ export async function getEnrollProLearners(
 
 /**
  * Returns available school years from EnrollPro.
+ * Fields: id, yearLabel (e.g. "2025-2026"), status ("ACTIVE" | "ARCHIVED")
  */
 export async function getEnrollProSchoolYears(): Promise<EnrollProSchoolYear[]> {
-  try {
-    const token = await getAdminToken();
-    const result = await fetchJSON(`${getEnrollProBase()}/school-years`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const rows: any[] = result?.schoolYears ?? result?.years ?? result?.data ?? [];
-    if (Array.isArray(rows) && rows.length > 0) {
-      return rows
-        .map((row) => {
-          const id = Number(row?.id ?? row?.schoolYearId ?? row?.value);
-          const yearLabel = String(row?.yearLabel ?? row?.label ?? row?.year ?? row?.schoolYear ?? '').trim();
-          const statusRaw = String(row?.status ?? row?.schoolYearStatus ?? '').toUpperCase();
-          const status: 'ACTIVE' | 'ARCHIVED' = statusRaw === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED';
-          if (!Number.isFinite(id) || !yearLabel) return null;
-          return { id, yearLabel, status } as EnrollProSchoolYear;
-        })
-        .filter((row): row is EnrollProSchoolYear => Boolean(row));
-    }
-  } catch { /* ignore fallback below */ }
+  const token = await getAdminToken();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/school-years`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const rows: any[] = result?.schoolYears ?? result?.years ?? result?.data ?? [];
+  if (!Array.isArray(rows)) return [];
 
-  try {
-    const active = await getIntegrationV1ActiveSchoolYear();
-    if (active?.id && active?.yearLabel) {
-      return [{ id: active.id, yearLabel: active.yearLabel, status: 'ACTIVE' }];
-    }
-  } catch { /* ignore */ }
-
-  return [];
+  return rows
+    .map((row) => {
+      const id = Number(row?.id ?? row?.schoolYearId ?? row?.value);
+      const yearLabel = String(
+        row?.yearLabel ?? row?.label ?? row?.year ?? row?.schoolYear ?? ''
+      ).trim();
+      const statusRaw = String(row?.status ?? row?.schoolYearStatus ?? '').toUpperCase();
+      const status: 'ACTIVE' | 'ARCHIVED' = statusRaw === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED';
+      if (!Number.isFinite(id) || !yearLabel) return null;
+      return { id, yearLabel, status } as EnrollProSchoolYear;
+    })
+    .filter((row): row is EnrollProSchoolYear => Boolean(row));
 }
 
 /**
  * Resolve the best school year context to use for EnrollPro sync calls.
+ * Priority:
+ *   1) integration/v1 active school year
+ *   2) /school-years matched by preferred label, then ACTIVE, then latest
+ *   3) env fallback
  */
 export async function resolveEnrollProSchoolYear(
   preferredLabel?: string,
@@ -401,16 +346,20 @@ export async function resolveEnrollProSchoolYear(
 
 /**
  * Returns the active school year from EnrollPro's integration feed.
+ * No auth required.
  * GET /api/integration/v1/school-year
  */
 export async function getIntegrationV1ActiveSchoolYear(): Promise<{ id: number; yearLabel: string }> {
-  const result = await fetchJSON(`${getEnrollProBase()}/integration/v1/school-year`);
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/integration/v1/school-year`);
   return result?.data as { id: number; yearLabel: string };
 }
 
 /**
  * Returns a single page of enrolled learners from EnrollPro's integration feed.
+ * No auth required.
  * GET /api/integration/v1/learners?schoolYearId=:id&page=:n&limit=:n
+ * Each record: { enrollmentApplicationId, status, learner: { lrn, firstName, lastName, middleName, birthdate, sex },
+ *               gradeLevel: { id, name }, section: { id, name } }
  */
 export async function getIntegrationV1LearnersPage(
   schoolYearId: number,
@@ -426,31 +375,22 @@ export async function getIntegrationV1LearnersPage(
   if (updatedSince) query.set('updatedSince', updatedSince);
 
   const result = await fetchJSON(
-    `${getEnrollProBase()}/integration/v1/learners?${query.toString()}`
+    `${ENROLLPRO_BASE}/integration/v1/learners?${query.toString()}`
   );
   return { data: result?.data ?? [], meta: result?.meta ?? { total: 0, page, limit, totalPages: 0 } };
 }
 
 /**
  * Fetches ALL enrolled learners across all pages from Integration v1.
+ * No auth required. Automatically paginates until all records are retrieved.
  */
-export async function getAllIntegrationV1Learners(schoolYearId?: number, updatedSince?: string): Promise<any[]> {
+export async function getAllIntegrationV1Learners(schoolYearId: number, updatedSince?: string): Promise<any[]> {
   const all: any[] = [];
   let page = 1;
   const limit = 200;
 
-  let targetSY = schoolYearId;
-  if (!targetSY) {
-    try {
-      const active = await getIntegrationV1ActiveSchoolYear();
-      targetSY = active?.id;
-    } catch { /* ignore */ }
-  }
-
-  if (!targetSY) return [];
-
   while (true) {
-    const { data, meta } = await getIntegrationV1LearnersPage(targetSY, page, limit, updatedSince);
+    const { data, meta } = await getIntegrationV1LearnersPage(schoolYearId, page, limit, updatedSince);
     all.push(...data);
     if (page >= meta.totalPages || data.length === 0) break;
     page++;
@@ -461,6 +401,7 @@ export async function getAllIntegrationV1Learners(schoolYearId?: number, updated
 
 /**
  * Returns a single page of sections from EnrollPro's integration feed.
+ * No auth required.
  * GET /api/integration/v1/sections?schoolYearId=:id&page=:n&limit=:n
  */
 export async function getIntegrationV1Sections(
@@ -470,12 +411,15 @@ export async function getIntegrationV1Sections(
 ): Promise<any[]> {
   const query = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (schoolYearId) query.set('schoolYearId', String(schoolYearId));
-  const result = await fetchJSON(`${getEnrollProBase()}/integration/v1/sections?${query.toString()}`);
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/integration/v1/sections?${query.toString()}`);
   return result?.data ?? [];
 }
 
 /**
  * Fetches ALL sections across all pages from EnrollPro's integration feed.
+ * No auth required. Automatically paginates.
+ * Use this instead of getIntegrationV1Sections() when you need the full list
+ * (e.g., if there are 66 sections but the server default limit is 50).
  */
 export async function getAllIntegrationV1Sections(schoolYearId?: number): Promise<any[]> {
   const all: any[] = [];
@@ -485,6 +429,7 @@ export async function getAllIntegrationV1Sections(schoolYearId?: number): Promis
   while (true) {
     const data = await getIntegrationV1Sections(schoolYearId, page, limit);
     all.push(...data);
+    // If fewer results than the limit, we've hit the last page
     if (data.length < limit) break;
     page++;
   }
@@ -493,7 +438,8 @@ export async function getAllIntegrationV1Sections(schoolYearId?: number): Promis
 }
 
 /**
- * Returns a single page of faculty from EnrollPro's integration feed.
+ * Returns a single page of faculty from EnrollPro's integration feed, including advisory info.
+ * No auth required.
  * GET /api/integration/v1/faculty?schoolYearId=:id&page=:n&limit=:n
  */
 export async function getIntegrationV1FacultyPage(
@@ -503,7 +449,7 @@ export async function getIntegrationV1FacultyPage(
 ): Promise<{ data: IntegrationV1Faculty[]; meta: any }> {
   const query = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (schoolYearId) query.set('schoolYearId', String(schoolYearId));
-  const url = `${getEnrollProBase()}/integration/v1/faculty?${query.toString()}`;
+  const url = `${ENROLLPRO_BASE}/integration/v1/faculty?${query.toString()}`;
   const result = await fetchJSON(url);
   return {
     data: (result?.data ?? []) as IntegrationV1Faculty[],
@@ -512,7 +458,8 @@ export async function getIntegrationV1FacultyPage(
 }
 
 /**
- * Returns all faculty from EnrollPro's integration feed.
+ * Returns all faculty from EnrollPro's integration feed (first page only).
+ * @deprecated Use getAllIntegrationV1Faculty() for full list or getIntegrationV1FacultyPage() for pagination.
  */
 export async function getIntegrationV1Faculty(schoolYearId?: number): Promise<IntegrationV1Faculty[]> {
   const { data } = await getIntegrationV1FacultyPage(schoolYearId, 1, 50);
@@ -521,6 +468,7 @@ export async function getIntegrationV1Faculty(schoolYearId?: number): Promise<In
 
 /**
  * Fetches ALL faculty members across all pages from Integration v1.
+ * No auth required. Automatically paginates.
  */
 export async function getAllIntegrationV1Faculty(schoolYearId?: number): Promise<IntegrationV1Faculty[]> {
   const all: IntegrationV1Faculty[] = [];
@@ -539,6 +487,7 @@ export async function getAllIntegrationV1Faculty(schoolYearId?: number): Promise
 
 /**
  * Find one faculty member by employeeId from integration v1.
+ * No auth required.
  */
 export async function findIntegrationV1FacultyByEmployeeId(
   employeeId: string,
@@ -551,6 +500,7 @@ export async function findIntegrationV1FacultyByEmployeeId(
 
 /**
  * Returns paginated learner roster for a specific section.
+ * No auth required.
  * GET /api/integration/v1/sections/:sectionId/learners?page=:n&limit=:n
  */
 export async function getIntegrationV1SectionLearners(
@@ -561,7 +511,7 @@ export async function getIntegrationV1SectionLearners(
 ): Promise<{ section: any; learners: any[]; total: number }> {
   const query = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (updatedSince) query.set('updatedSince', updatedSince);
-  const url = `${getEnrollProBase()}/integration/v1/sections/${sectionId}/learners?${query.toString()}`;
+  const url = `${ENROLLPRO_BASE}/integration/v1/sections/${sectionId}/learners?${query.toString()}`;
   const result = await fetchJSON(url);
   return {
     section: result?.data?.section ?? null,
@@ -572,6 +522,7 @@ export async function getIntegrationV1SectionLearners(
 
 /**
  * Returns ALL learners in a section across all pages.
+ * No auth required.
  */
 export async function getAllIntegrationV1SectionLearners(sectionId: number, updatedSince?: string): Promise<any[]> {
   const all: any[] = [];
@@ -588,226 +539,42 @@ export async function getAllIntegrationV1SectionLearners(sectionId: number, upda
 
 /**
  * Validate teacher credentials against EnrollPro's auth endpoint.
- * POST /api/auth/login { accountName, password }
+ * Returns the EnrollPro user object if valid, null if invalid credentials, throws if unreachable.
+ * accountName is the employeeId (e.g. "3179586").
  */
 export async function validateEnrollProTeacherCredentials(
   accountName: string,
   password: string,
 ): Promise<{ token: string; user: any } | null> {
   try {
-    const result = await fetchJSON(`${getEnrollProBase()}/auth/login`, {
+    const result = await fetchJSON(`${ENROLLPRO_BASE}/auth/login`, {
       method: 'POST',
       body: JSON.stringify({ accountName, password }),
     });
     if (result?.token) return { token: result.token, user: result.user };
     return null;
   } catch (err: any) {
+    // Re-throw network errors so caller can distinguish "wrong password" vs "unreachable"
     if (err.message?.includes('HTTP 401') || err.message?.includes('HTTP 400')) {
-      return null;
+      return null; // Wrong credentials
     }
-    throw err;
+    throw err; // Network error, timeout, etc.
   }
 }
 
 // ---------------------------------------------------------------------------
-// Health check & Public settings
+// Health check
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true if EnrollPro is reachable.
+ * Returns true if EnrollPro is reachable and credentials are valid.
  */
 export async function checkEnrollProHealth(): Promise<boolean> {
   try {
-    await fetchJSON(`${getEnrollProBase()}/integration/v1/health`);
+    await getAdminToken();
     return true;
   } catch {
-    try {
-      await fetchJSON(`${getEnrollProBase()}/health`);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-
-export interface EnrollProPaletteColor {
-  hex: string;
-  hsl: string;
-  foreground: string;
-}
-
-export interface EnrollProPublicSettings {
-  schoolName: string;
-  logoUrl: string | null;
-  colorScheme: {
-    palette: EnrollProPaletteColor[];
-    extracted_at?: string;
-  } | null;
-  selectedAccentHsl: string | null;
-  activeSchoolYearId: number | null;
-  activeSchoolYearLabel: string | null;
-  activeSchoolYearStatus: string | null;
-  depedEmail: string | null;
-  facebookPageUrl: string | null;
-  schoolWebsite: string | null;
-  enrollmentPhase: string | null;
-  systemStatus: string | null;
-}
-
-/**
- * Fetches public branding and school info from EnrollPro.
- * GET /api/settings/public
- */
-export async function getEnrollProPublicSettings(): Promise<EnrollProPublicSettings> {
-  return fetchJSON(`${getEnrollProBase()}/settings/public`) as Promise<EnrollProPublicSettings>;
-}
-
-// ---------------------------------------------------------------------------
-// Admissions, BOSY, Remedial & EOSY Endpoints
-// ---------------------------------------------------------------------------
-
-export async function getEnrollProApplications(params?: {
-  status?: string;
-  schoolYearId?: number;
-  gradeLevel?: string;
-  page?: number;
-  limit?: number;
-  search?: string;
-}): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    const query = new URLSearchParams();
-    if (params?.status) query.set('status', params.status);
-    if (params?.schoolYearId) query.set('schoolYearId', String(params.schoolYearId));
-    if (params?.gradeLevel) query.set('gradeLevel', params.gradeLevel);
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.limit) query.set('limit', String(params.limit));
-    if (params?.search) query.set('search', params.search);
-    const qs = query.toString();
-    return await fetchJSON(`${getEnrollProBase()}/applications${qs ? '?' + qs : ''}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { applications: [], total: 0 };
-  }
-}
-
-export async function getEnrollProBosyQueue(params?: {
-  schoolYearId?: number;
-  gradeLevel?: string;
-  page?: number;
-  limit?: number;
-  search?: string;
-}): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    const query = new URLSearchParams();
-    if (params?.schoolYearId) query.set('schoolYearId', String(params.schoolYearId));
-    if (params?.gradeLevel) query.set('gradeLevel', params.gradeLevel);
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.limit) query.set('limit', String(params.limit));
-    if (params?.search) query.set('search', params.search);
-    const qs = query.toString();
-    return await fetchJSON(`${getEnrollProBase()}/bosy/queue${qs ? '?' + qs : ''}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { data: [], total: 0 };
-  }
-}
-
-export async function getEnrollProBosyExpectedQueue(params?: {
-  priorSchoolYearId?: number;
-  currentSchoolYearId?: number;
-  gradeLevel?: string;
-  page?: number;
-  limit?: number;
-  search?: string;
-}): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    const query = new URLSearchParams();
-    if (params?.priorSchoolYearId) query.set('priorSchoolYearId', String(params.priorSchoolYearId));
-    if (params?.currentSchoolYearId) query.set('currentSchoolYearId', String(params.currentSchoolYearId));
-    if (params?.gradeLevel) query.set('gradeLevel', params.gradeLevel);
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.limit) query.set('limit', String(params.limit));
-    if (params?.search) query.set('search', params.search);
-    const qs = query.toString();
-    return await fetchJSON(`${getEnrollProBase()}/bosy/expected-queue${qs ? '?' + qs : ''}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { data: [], total: 0 };
-  }
-}
-
-export async function getEnrollProRemedialPending(params?: {
-  schoolYearId?: number;
-  gradeLevel?: string;
-  page?: number;
-  limit?: number;
-  search?: string;
-}): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    const query = new URLSearchParams();
-    if (params?.schoolYearId) query.set('schoolYearId', String(params.schoolYearId));
-    if (params?.gradeLevel) query.set('gradeLevel', params.gradeLevel);
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.limit) query.set('limit', String(params.limit));
-    if (params?.search) query.set('search', params.search);
-    const qs = query.toString();
-    return await fetchJSON(`${getEnrollProBase()}/remedial/pending${qs ? '?' + qs : ''}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { data: [], total: 0 };
-  }
-}
-
-export async function getEnrollProEosySections(schoolYearId?: number): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    const qs = schoolYearId ? `?schoolYearId=${schoolYearId}` : '';
-    return await fetchJSON(`${getEnrollProBase()}/eosy/sections${qs}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { sections: [] };
-  }
-}
-
-export async function getEnrollProEosySectionRecords(sectionId: number): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    return await fetchJSON(`${getEnrollProBase()}/eosy/sections/${sectionId}/records`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { records: [] };
-  }
-}
-
-export async function getEnrollProEosySF5(sectionId: number): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    return await fetchJSON(`${getEnrollProBase()}/eosy/sections/${sectionId}/exports/sf5`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return null;
-  }
-}
-
-export async function getEnrollProEosySF6(schoolYearId: number): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    return await fetchJSON(`${getEnrollProBase()}/eosy/exports/sf6?schoolYearId=${schoolYearId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return null;
+    return false;
   }
 }
 
@@ -842,8 +609,8 @@ export interface EnrollProSectionWithGradeLevel {
   enrolledCount: number;
   advisingTeacher: { id: number; name: string } | null;
   gradeLevelId: number;
-  gradeLevelName: string;
-  displayOrder: number;
+  gradeLevelName: string; // e.g. "Grade 7", "Grade 8", "Grade 9", "Grade 10"
+  displayOrder: number;   // 7, 8, 9, 10
 }
 
 export interface EnrollProStudent {
@@ -865,10 +632,11 @@ export interface EnrollProStudent {
 
 export interface EnrollProSchoolYear {
   id: number;
-  yearLabel: string;
+  yearLabel: string;  // e.g. "2025-2026"
   status: 'ACTIVE' | 'ARCHIVED';
 }
 
+/** @deprecated Use EnrollProTeacher instead */
 export interface EnrollProFaculty {
   teacherId: number;
   employeeId: string;
@@ -888,9 +656,74 @@ export interface EnrollProFaculty {
   schoolYearLabel: string;
 }
 
+/** @deprecated Use EnrollProSectionWithGradeLevel instead */
+export interface EnrollProSection {
+  id: number;
+  name: string;
+  programType: string;
+  maxCapacity: number;
+  enrolledCount: number;
+  gradeLevel: { id: number; name: string; displayOrder: number };
+  advisingTeacher: { id: number; firstName: string; lastName: string; middleName?: string } | null;
+  schoolYear: { id: number; yearLabel: string };
+}
+
+/** @deprecated Use EnrollProStudent instead */
+export interface EnrollProLearner {
+  id: number;
+  lrn: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  sex: 'MALE' | 'FEMALE';
+  status: string;
+  enrolledAt: string;
+  enrollmentApplicationId?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Public Settings (no auth required)
+// ---------------------------------------------------------------------------
+
+export interface EnrollProPaletteColor {
+  hex: string;
+  hsl: string;
+  foreground: string;
+}
+
+export interface EnrollProPublicSettings {
+  schoolName: string;
+  logoUrl: string | null;
+  colorScheme: {
+    palette: EnrollProPaletteColor[];
+    extracted_at?: string;
+  } | null;
+  selectedAccentHsl: string | null;
+  activeSchoolYearId: number | null;
+  activeSchoolYearLabel: string | null;
+  activeSchoolYearStatus: string | null;
+  depedEmail: string | null;
+  facebookPageUrl: string | null;
+  schoolWebsite: string | null;
+  enrollmentPhase: string | null;
+  systemStatus: string | null;
+}
+
+/**
+ * Fetches public branding and school info from EnrollPro.
+ * No authentication required — this is publicly accessible.
+ */
+export async function getEnrollProPublicSettings(): Promise<EnrollProPublicSettings> {
+  return fetchJSON(`${ENROLLPRO_BASE}/settings/public`) as Promise<EnrollProPublicSettings>;
+}
+
+// ---------------------------------------------------------------------------
+// Integration v1 Faculty type
+// ---------------------------------------------------------------------------
+
 export interface IntegrationV1Faculty {
-  teacherId: number;
-  employeeId: string;
+  teacherId: number;              // EnrollPro internal teacher ID
+  employeeId: string;             // DepEd employee ID (e.g. "3179586") — matches SMART Teacher.employeeId
   firstName: string;
   lastName: string;
   middleName?: string;
@@ -907,4 +740,173 @@ export interface IntegrationV1Faculty {
   advisorySectionGradeLevelName: string | null;
   schoolYearId: number;
   schoolYearLabel: string;
+}
+
+// ---------------------------------------------------------------------------
+// Admissions — Applications (Phase 9, requires auth)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns enrollment applications from EnrollPro.
+ * GET /api/applications
+ */
+export async function getEnrollProApplications(params?: {
+  status?: string;
+  schoolYearId?: number;
+  gradeLevel?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+}): Promise<any> {
+  const token = await getAdminToken();
+  const query = new URLSearchParams();
+  if (params?.status) query.set('status', params.status);
+  if (params?.schoolYearId) query.set('schoolYearId', String(params.schoolYearId));
+  if (params?.gradeLevel) query.set('gradeLevel', params.gradeLevel);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search) query.set('search', params.search);
+  const qs = query.toString();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/applications${qs ? '?' + qs : ''}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// BOSY — Beginning of School Year (requires auth)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns learners in the PENDING_CONFIRMATION BOSY queue.
+ * GET /api/bosy/queue
+ */
+export async function getEnrollProBosyQueue(params?: {
+  schoolYearId?: number;
+  gradeLevel?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+}): Promise<any> {
+  const token = await getAdminToken();
+  const query = new URLSearchParams();
+  if (params?.schoolYearId) query.set('schoolYearId', String(params.schoolYearId));
+  if (params?.gradeLevel) query.set('gradeLevel', params.gradeLevel);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search) query.set('search', params.search);
+  const qs = query.toString();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/bosy/queue${qs ? '?' + qs : ''}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result;
+}
+
+/**
+ * Returns prior-year PROMOTED learners not yet in current SY pipeline.
+ * GET /api/bosy/expected-queue
+ */
+export async function getEnrollProBosyExpectedQueue(params?: {
+  priorSchoolYearId?: number;
+  currentSchoolYearId?: number;
+  gradeLevel?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+}): Promise<any> {
+  const token = await getAdminToken();
+  const query = new URLSearchParams();
+  if (params?.priorSchoolYearId) query.set('priorSchoolYearId', String(params.priorSchoolYearId));
+  if (params?.currentSchoolYearId) query.set('currentSchoolYearId', String(params.currentSchoolYearId));
+  if (params?.gradeLevel) query.set('gradeLevel', params.gradeLevel);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search) query.set('search', params.search);
+  const qs = query.toString();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/bosy/expected-queue${qs ? '?' + qs : ''}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Remedial Processing (requires auth)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns learners with pending remedial status.
+ * GET /api/remedial/pending
+ */
+export async function getEnrollProRemedialPending(params?: {
+  schoolYearId?: number;
+  gradeLevel?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+}): Promise<any> {
+  const token = await getAdminToken();
+  const query = new URLSearchParams();
+  if (params?.schoolYearId) query.set('schoolYearId', String(params.schoolYearId));
+  if (params?.gradeLevel) query.set('gradeLevel', params.gradeLevel);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search) query.set('search', params.search);
+  const qs = query.toString();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/remedial/pending${qs ? '?' + qs : ''}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// EOSY — End of School Year (requires auth)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns sections available for EOSY processing.
+ * GET /api/eosy/sections
+ */
+export async function getEnrollProEosySections(schoolYearId?: number): Promise<any> {
+  const token = await getAdminToken();
+  const qs = schoolYearId ? `?schoolYearId=${schoolYearId}` : '';
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/eosy/sections${qs}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result;
+}
+
+/**
+ * Returns final grades and promotion status for a section.
+ * GET /api/eosy/sections/:id/records
+ */
+export async function getEnrollProEosySectionRecords(sectionId: number): Promise<any> {
+  const token = await getAdminToken();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/eosy/sections/${sectionId}/records`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result;
+}
+
+/**
+ * Returns SF5 data for a section (section-scoped promotion report).
+ * GET /api/eosy/sections/:id/exports/sf5
+ */
+export async function getEnrollProEosySF5(sectionId: number): Promise<any> {
+  const token = await getAdminToken();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/eosy/sections/${sectionId}/exports/sf5`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result;
+}
+
+/**
+ * Returns SF6 data (school-wide enrollment summary by grade level).
+ * GET /api/eosy/exports/sf6
+ */
+export async function getEnrollProEosySF6(schoolYearId: number): Promise<any> {
+  const token = await getAdminToken();
+  const result = await fetchJSON(`${ENROLLPRO_BASE}/eosy/exports/sf6?schoolYearId=${schoolYearId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result;
 }

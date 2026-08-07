@@ -246,7 +246,7 @@ export default function GradingConfig() {
             className="gap-2 text-white font-semibold rounded-xl shadow-lg"
             style={{ backgroundColor: colors.primary }}
             onClick={handleSave}
-            disabled={!hasChanges || !allValid || saving}
+            disabled={!allValid || saving}
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Changes

@@ -53,8 +53,8 @@ const navigationGroups: NavGroup[] = [
   {
     title: "INTAKE & PREPARATION",
     items: [
-      { name: "Applications", href: "/registrar/applications", icon: ClipboardList, disabled: true },
-      { name: "BOSY Queue", href: "/registrar/bosy", icon: CalendarCheck, disabled: true },
+      { name: "Applications", href: "/registrar/applications", icon: ClipboardList },
+      { name: "BOSY Queue", href: "/registrar/bosy", icon: CalendarCheck },
     ]
   },
   {
@@ -66,8 +66,8 @@ const navigationGroups: NavGroup[] = [
   {
     title: "CLOSING OPERATIONS",
     items: [
-      { name: "Remedial", href: "/registrar/remedial", icon: FlaskConical, disabled: true },
-      { name: "EOSY", href: "/registrar/eosy", icon: GraduationCap, disabled: true },
+      { name: "Remedial", href: "/registrar/remedial", icon: FlaskConical },
+      { name: "EOSY", href: "/registrar/eosy", icon: GraduationCap },
     ]
   },
   {
@@ -156,7 +156,7 @@ export default function RegistrarLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           sidebarCollapsed ? "lg:w-[70px] w-[280px]" : "w-[280px]"
         )}
-        style={{ fontFamily: "'Instrument Sans', 'Geist Variable', sans-serif" }}
+        style={{ fontFamily: "'Inter', 'Geist Variable', sans-serif" }}
       >
         {/* Logo Header */}
         <div className={cn(

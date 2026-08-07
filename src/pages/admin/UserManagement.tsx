@@ -359,7 +359,7 @@ export default function UserManagement() {
               <CardTitle className="text-lg" style={{ color: '#111827' }}>All Users</CardTitle>
               <CardDescription>View and manage all system users</CardDescription>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
@@ -370,10 +370,8 @@ export default function UserManagement() {
                 />
               </div>
               <Select value={selectedRole} onValueChange={(val) => val && setSelectedRole(val)}>
-                <SelectTrigger className="w-36 rounded-xl border-gray-200">
-                  <SelectValue>
-                    {selectedRole === "all" ? "All Roles" : roleLabels[selectedRole]}
-                  </SelectValue>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
@@ -383,10 +381,8 @@ export default function UserManagement() {
                 </SelectContent>
               </Select>
               <Select value={selectedStatus} onValueChange={(val) => val && setSelectedStatus(val)}>
-                <SelectTrigger className="w-32 rounded-xl border-gray-200">
-                  <SelectValue>
-                    {selectedStatus === "all" ? "All Status" : selectedStatus}
-                  </SelectValue>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
@@ -402,7 +398,7 @@ export default function UserManagement() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50/80">
-                  <TableHead className="font-bold text-gray-700">User</TableHead>
+                  <TableHead className="font-bold text-gray-700 pl-[52px]">User</TableHead>
                   <TableHead className="font-bold text-gray-700">Employee ID</TableHead>
                   <TableHead className="font-bold text-gray-700">Role</TableHead>
                   <TableHead className="font-bold text-gray-700">Status</TableHead>
@@ -563,7 +559,7 @@ export default function UserManagement() {
             <div className="space-y-2">
               <Label htmlFor="role">Role *</Label>
               <Select value={formData.role} onValueChange={(val) => val && setFormData({ ...formData, role: val })}>
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -683,7 +679,7 @@ export default function UserManagement() {
             <div className="space-y-2">
               <Label htmlFor="editRole">Role *</Label>
               <Select value={formData.role} onValueChange={(val) => val && setFormData({ ...formData, role: val })}>
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

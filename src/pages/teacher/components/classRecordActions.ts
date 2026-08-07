@@ -80,16 +80,22 @@ export async function executeScoreUpdate({
 
   const key = getCellKey(studentId, category, index);
   const maxAllowed = getMaxForCell(category, index);
-  if (newValue < 0) {
-    setInvalidCells((prev) => ({ ...prev, [key]: "Score cannot be negative." }));
-    setError("Score cannot be negative.");
-    return;
+  const isSpecial = typeof newValue === "string" && (newValue.toUpperCase() === "A" || newValue.toUpperCase() === "E");
+
+  if (!isSpecial) {
+    const numValue = Number(newValue);
+    if (numValue < 0) {
+      setInvalidCells((prev) => ({ ...prev, [key]: "Score cannot be negative." }));
+      setError("Score cannot be negative.");
+      return;
+    }
+    if (numValue > maxAllowed) {
+      setInvalidCells((prev) => ({ ...prev, [key]: `Score cannot exceed ${maxAllowed}.` }));
+      setError(`${category} ${category === "QA" ? "" : index + 1} score cannot exceed MAX (${maxAllowed}).`.trim());
+      return;
+    }
   }
-  if (newValue > maxAllowed) {
-    setInvalidCells((prev) => ({ ...prev, [key]: `Score cannot exceed ${maxAllowed}.` }));
-    setError(`${category} ${category === "QA" ? "" : index + 1} score cannot exceed MAX (${maxAllowed}).`.trim());
-    return;
-  }
+
   setInvalidCells((prev) => {
     if (!prev[key]) return prev;
     const next = { ...prev };
@@ -120,15 +126,23 @@ export async function executeScoreUpdate({
       if (category === "WW") {
         const scores = [...((targetGrade.writtenWorkScores as any[]) || [])];
         while (scores.length <= index) scores.push({ name: `WW ${scores.length + 1}`, score: 0, maxScore: 10 });
-        scores[index] = { ...scores[index], score: newValue };
+        if (isSpecial) {
+          scores[index] = { ...scores[index], score: 0, status: (newValue as string).toUpperCase() };
+        } else {
+          scores[index] = { ...scores[index], score: Number(newValue) || 0, status: undefined };
+        }
         targetGrade.writtenWorkScores = applyMetaToScores(scores as ScoreItem[], "WW", index + 1);
       } else if (category === "PT") {
         const scores = [...((targetGrade.perfTaskScores as any[]) || [])];
         while (scores.length <= index) scores.push({ name: `PT ${scores.length + 1}`, score: 0, maxScore: 10 });
-        scores[index] = { ...scores[index], score: newValue };
+        if (isSpecial) {
+          scores[index] = { ...scores[index], score: 0, status: (newValue as string).toUpperCase() };
+        } else {
+          scores[index] = { ...scores[index], score: Number(newValue) || 0, status: undefined };
+        }
         targetGrade.perfTaskScores = applyMetaToScores(scores as ScoreItem[], "PT", index + 1);
       } else if (category === "QA") {
-        targetGrade.quarterlyAssessScore = newValue;
+        targetGrade.quarterlyAssessScore = isSpecial ? 0 : Number(newValue) || 0;
         targetGrade.qaDescription = qaMeta.description || null;
         targetGrade.qaDate = qaMeta.date || null;
       }
@@ -149,10 +163,18 @@ export async function executeScoreUpdate({
 
     if (category === "WW") {
       while (wwScores.length <= index) wwScores.push({ name: `WW ${wwScores.length + 1}`, score: 0, maxScore: 10 });
-      wwScores[index].score = newValue;
+      if (isSpecial) {
+        wwScores[index] = { ...wwScores[index], score: 0, status: (newValue as string).toUpperCase() } as any;
+      } else {
+        wwScores[index] = { ...wwScores[index], score: Number(newValue) || 0, status: undefined } as any;
+      }
     } else if (category === "PT") {
       while (ptScores.length <= index) ptScores.push({ name: `PT ${ptScores.length + 1}`, score: 0, maxScore: 10 });
-      ptScores[index].score = newValue;
+      if (isSpecial) {
+        ptScores[index] = { ...ptScores[index], score: 0, status: (newValue as string).toUpperCase() } as any;
+      } else {
+        ptScores[index] = { ...ptScores[index], score: Number(newValue) || 0, status: undefined } as any;
+      }
     }
 
     const wwScoresWithMeta = applyMetaToScores(wwScores, "WW", index + 1);
@@ -164,7 +186,7 @@ export async function executeScoreUpdate({
       term: selectedTerm,
       writtenWorkScores: category === "WW" ? wwScoresWithMeta : undefined,
       perfTaskScores: category === "PT" ? ptScoresWithMeta : undefined,
-      quarterlyAssessScore: category === "QA" ? newValue : undefined,
+      quarterlyAssessScore: category === "QA" ? (isSpecial ? 0 : Number(newValue) || 0) : undefined,
       qaDescription: qaMeta.description || undefined,
       qaDate: qaMeta.date || undefined,
     });

@@ -389,10 +389,12 @@ export default function StudentRecords() {
             </div>
             
             {/* Filters */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-4">
               <Select value={selectedSchoolYear} onValueChange={(val) => val && setSelectedSchoolYear(val)}>
-                <SelectTrigger className="w-36 rounded-xl border-gray-200">
-                  <SelectValue />
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Select SY">
+                    {selectedSchoolYear}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {schoolYears.map((sy) => (
@@ -414,8 +416,10 @@ export default function StudentRecords() {
                 </kbd>
               </div>
               <Select value={selectedGradeLevel} onValueChange={(val) => val && setSelectedGradeLevel(val)}>
-                <SelectTrigger className="w-36 rounded-xl border-gray-200">
-                  <SelectValue placeholder="All Grades" />
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="All Grades">
+                    {gradeLevelLabels[selectedGradeLevel] || "All Grades"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Grades</SelectItem>
@@ -426,8 +430,10 @@ export default function StudentRecords() {
                 </SelectContent>
               </Select>
               <Select value={selectedSection} onValueChange={(val) => val && setSelectedSection(val)}>
-                <SelectTrigger className="w-40 rounded-xl border-gray-200">
-                  <SelectValue placeholder="All Sections" />
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All Sections">
+                    {selectedSection === "all" ? "All Sections" : (sections.find((s) => s.id === selectedSection)?.name || "All Sections")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Sections</SelectItem>
@@ -615,7 +621,7 @@ export default function StudentRecords() {
                 <div className="flex items-center gap-2">
                   <span>Rows per page:</span>
                   <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-                    <SelectTrigger className="h-9 w-20 rounded-lg border-slate-200 bg-white">
+                    <SelectTrigger className="w-20" size="sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

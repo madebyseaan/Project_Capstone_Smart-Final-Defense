@@ -58,7 +58,7 @@ app.get("*splat", (_req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  // Single unified sync scheduler — replaces the previous triple-scheduler pattern
-  startUnifiedSyncScheduler();
+  // Unified sync scheduler disabled to isolate local environment
+  // startUnifiedSyncScheduler();
 });
 

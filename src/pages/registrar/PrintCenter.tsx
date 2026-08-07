@@ -252,7 +252,7 @@ export default function PrintCenter() {
               <CardTitle className="text-lg" style={{ color: '#111827' }}>Print Queue</CardTitle>
               <CardDescription>Recent and pending print jobs</CardDescription>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
@@ -263,14 +263,8 @@ export default function PrintCenter() {
                 />
               </div>
               <Select value={statusFilter} onValueChange={(val) => val && setStatusFilter(val)}>
-                <SelectTrigger className="w-40 rounded-xl border-gray-200">
-                  <SelectValue>
-                    {statusFilter === "all" && "All Status"}
-                    {statusFilter === "completed" && "Completed"}
-                    {statusFilter === "in-progress" && "In Progress"}
-                    {statusFilter === "queued" && "Queued"}
-                    {statusFilter === "failed" && "Failed"}
-                  </SelectValue>
+                <SelectTrigger className="w-40">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>

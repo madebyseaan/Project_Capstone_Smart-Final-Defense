@@ -26,6 +26,7 @@ import {
   resolveEnrollProSchoolYear,
 } from './enrollproClient';
 import { prisma } from './prisma';
+import bcrypt from 'bcryptjs';
 import type { GradeLevel } from '@prisma/client';
 import { broadcastSyncStatus } from './sseManager';
 import { syncAdvisoryWorkloadEntry } from './workload';
@@ -130,18 +131,58 @@ export async function runEnrollProSync() {
     // 2. Fetch EnrollPro teachers + integration sections.
     const epTeachers = await getEnrollProTeachers();
     const epTeacherIdToEmpId = new Map<number, string>(
-      epTeachers.map((t) => [Number(t.id), String(t.employeeId)])
+      epTeachers.map((t: any) => [Number(t.id ?? t.teacherId), String(t.employeeId)])
     );
     console.log(`[EnrollProSync] Loaded ${epTeachers.length} teachers from EnrollPro`);
 
-    // 3. Build SMART teacher lookup by employeeId
-    const smartTeachers = await prisma.teacher.findMany({
-      select: { id: true, employeeId: true },
-    });
-    const empIdToSmartTeacherId = new Map<string, string>(
-      smartTeachers.filter((t) => t.employeeId).map((t) => [t.employeeId!, t.id])
-    );
-    console.log(`[EnrollProSync] Loaded ${smartTeachers.length} SMART teachers`);
+    // 3. Build & Upsert SMART teachers for all EnrollPro faculty
+    const empIdToSmartTeacherId = new Map<string, string>();
+    for (const epTeacher of epTeachers) {
+      if (!epTeacher.employeeId) continue;
+      try {
+        const empId = String(epTeacher.employeeId).trim();
+        const userEmail = epTeacher.email ?? `${empId}@deped.gov.ph`;
+        const firstName = epTeacher.firstName ?? '';
+        const lastName = epTeacher.lastName ?? '';
+
+        const user = await prisma.user.findFirst({
+          where: { OR: [{ username: empId }, { email: userEmail }] },
+        });
+
+        let targetUserId = user?.id;
+        if (!user) {
+          const defaultPassword = await bcrypt.hash('password123', 10);
+          const createdUser = await prisma.user.create({
+            data: {
+              username: empId,
+              email: userEmail,
+              password: defaultPassword,
+              role: 'TEACHER',
+              firstName,
+              lastName,
+            },
+          });
+          targetUserId = createdUser.id;
+        } else {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { firstName, lastName },
+          });
+        }
+
+        if (targetUserId) {
+          const teacher = await prisma.teacher.upsert({
+            where: { employeeId: empId },
+            update: { userId: targetUserId, specialization: epTeacher.specialization ?? null },
+            create: { employeeId: empId, userId: targetUserId, specialization: epTeacher.specialization ?? null },
+          });
+          empIdToSmartTeacherId.set(empId, teacher.id);
+        }
+      } catch (tErr: any) {
+        errors.push(`Teacher ${epTeacher.employeeId}: ${tErr.message}`);
+      }
+    }
+    console.log(`[EnrollProSync] Synced ${empIdToSmartTeacherId.size} SMART teachers`);
 
     // 4. Fetch ALL sections from EnrollPro integration v1 (paginated — fixes 50-section cap)
     const epSections = await getAllIntegrationV1Sections(schoolYearId);
@@ -160,8 +201,8 @@ export async function runEnrollProSync() {
         }
 
         // Resolve adviser
-        const epAdviserTeacherId: number | undefined = epSection.advisingTeacher?.id;
-        const adviserEmployeeId = epAdviserTeacherId ? epTeacherIdToEmpId.get(epAdviserTeacherId) : undefined;
+        const epAdviserTeacherId = epSection.advisingTeacher?.id ?? epSection.adviser?.id ?? epSection.adviserId;
+        const adviserEmployeeId = epAdviserTeacherId ? epTeacherIdToEmpId.get(Number(epAdviserTeacherId)) : (epSection.adviser?.employeeId ?? epSection.advisingTeacher?.employeeId);
         const teacherId = adviserEmployeeId ? (empIdToSmartTeacherId.get(adviserEmployeeId) ?? null) : null;
         if (teacherId) teachersMatched++;
 
@@ -190,7 +231,7 @@ export async function runEnrollProSync() {
 
         const key = `${epSection.name}:${gradeLevel}`;
         epSectionKeyToSmartSectionId.set(key, section.id);
-        if (epSection.advisingTeacher) advisoriesSynced++;
+        if (epSection.advisingTeacher || epSection.adviser) advisoriesSynced++;
       } catch (err: any) {
         errors.push(`Section "${epSection.name}": ${err.message}`);
       }
@@ -226,7 +267,8 @@ export async function runEnrollProSync() {
     const syncedStudentsPerSection = new Map<string, Set<string>>();
 
     for (const record of allLearners) {
-      if (record.status !== 'ENROLLED') continue;
+      const statusUpper = String(record.status ?? '').toUpperCase();
+      if (statusUpper !== 'ENROLLED' && statusUpper !== 'OFFICIALLY_ENROLLED' && statusUpper !== 'SECTIONED') continue;
 
       const learner = record.learner;
       const sectionName: string = record.section?.name ?? '';
@@ -477,7 +519,10 @@ export async function runEnrollProSync() {
     try {
       await prisma.systemSettings.update({
         where: { id: 'main' },
-        data: { lastEnrollProSync: lastSyncAt }
+        data: {
+          lastEnrollProSync: lastSyncAt,
+          currentSchoolYear: schoolYearLabel,
+        }
       });
     } catch { /* ignore if settings missing */ }
 

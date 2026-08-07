@@ -109,8 +109,7 @@ router.get(
       const currentSchoolYear = systemSettings?.currentSchoolYear ?? '2026-2027';
 
       // Find advisory section assigned to this teacher for the current school year.
-      // Advisory display is strict to current SY to avoid showing stale assignments.
-      const advisorySection = await prisma.section.findFirst({
+      let advisorySection = await prisma.section.findFirst({
         where: { adviserId: teacher.id, schoolYear: currentSchoolYear },
         include: {
           enrollments: {
@@ -133,6 +132,33 @@ router.get(
           },
         },
       }) as SectionWithEnrollments | null;
+
+      // Fallback: if no section for currentSchoolYear, try any section assigned to teacher
+      if (!advisorySection) {
+        advisorySection = await prisma.section.findFirst({
+          where: { adviserId: teacher.id },
+          include: {
+            enrollments: {
+              where: { status: "ENROLLED" },
+              include: {
+                student: true,
+              },
+              orderBy: {
+                student: {
+                  lastName: "asc",
+                },
+              },
+            },
+            _count: {
+              select: {
+                enrollments: {
+                  where: { status: "ENROLLED" }
+                },
+              },
+            },
+          },
+        }) as SectionWithEnrollments | null;
+      }
 
       if (!advisorySection) {
         res.json({ 

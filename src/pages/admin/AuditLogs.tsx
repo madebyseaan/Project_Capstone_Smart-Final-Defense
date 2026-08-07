@@ -361,7 +361,7 @@ export default function AuditLogs() {
               </CardTitle>
               <CardDescription>Complete log of all system activities</CardDescription>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
@@ -372,10 +372,8 @@ export default function AuditLogs() {
                 />
               </div>
               <Select value={selectedAction} onValueChange={(val) => val && setSelectedAction(val)}>
-                <SelectTrigger className="w-36 rounded-xl border-gray-200">
-                  <SelectValue>
-                    {selectedAction === "all" ? "All Actions" : actionLabels[selectedAction]}
-                  </SelectValue>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Actions</SelectItem>
@@ -388,10 +386,8 @@ export default function AuditLogs() {
                 </SelectContent>
               </Select>
               <Select value={selectedSeverity} onValueChange={(val) => val && setSelectedSeverity(val)}>
-                <SelectTrigger className="w-32 rounded-xl border-gray-200">
-                  <SelectValue>
-                    {selectedSeverity === "all" ? "All Severity" : severityConfig[selectedSeverity].label}
-                  </SelectValue>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Severity</SelectItem>

@@ -198,15 +198,13 @@ export async function syncTeacherOnLogin(
 ): Promise<TeacherSyncResult> {
   const result: TeacherSyncResult = {
     employeeId,
-    advisorySection: null,
+    advisorySection: 'none',
     studentsFound: 0,
     studentsUpserted: 0,
     classAssignmentsCreated: 0,
     classAssignmentsFromAtlas: 0,
     errors: [],
   };
-
-  console.log(`[TeacherSync] Starting sync for employeeId=${employeeId}`);
 
   // ── 1. Resolve sync school year ────────────────────────────────────────
   // Source of truth is SMART system setting (currentSchoolYear), then we
@@ -240,10 +238,13 @@ export async function syncTeacherOnLogin(
       return false;
     }
 
-    epTeacherId = Number(teacherRecord.id);
+    epTeacherId = Number((teacherRecord as any).teacherId ?? teacherRecord.id);
     const sections = await getCachedIntegrationV1Sections(schoolYearId, true);
     const mySections = sections
-      .filter((s: any) => Number(s?.advisingTeacher?.id) === Number(teacherRecord.id));
+      .filter((s: any) =>
+        String(s?.advisingTeacher?.employeeId ?? s?.adviser?.employeeId ?? '').trim() === String(employeeId).trim() ||
+        Number(s?.advisingTeacher?.id ?? s?.adviser?.id) === Number(epTeacherId)
+      );
 
     if (mySections.length === 0) {
       return false;

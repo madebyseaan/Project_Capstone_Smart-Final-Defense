@@ -355,7 +355,7 @@ export default function SystemSettings() {
           className="gap-2 text-white font-semibold rounded-xl shadow-lg w-fit"
           style={{ backgroundColor: themeColors.primary }}
           onClick={handleSave}
-          disabled={!hasChanges || saving}
+          disabled={saving}
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save Settings
@@ -436,8 +436,8 @@ export default function SystemSettings() {
                 Division
               </Label>
               <Select value={settings.division} onValueChange={(val) => val && handleChange("division", val)}>
-                <SelectTrigger className="rounded-xl border-gray-200">
-                  <SelectValue>{settings.division}</SelectValue>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select division" />
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
                   {DEPED_DIVISIONS.map((division) => (
@@ -453,8 +453,8 @@ export default function SystemSettings() {
                 Region
               </Label>
               <Select value={settings.region} onValueChange={(val) => val && handleChange("region", val)}>
-                <SelectTrigger className="rounded-xl border-gray-200">
-                  <SelectValue>{settings.region}</SelectValue>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select region" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="NCR (National Capital Region)">NCR (National Capital Region)</SelectItem>
@@ -644,8 +644,8 @@ export default function SystemSettings() {
                 Academic Year
               </Label>
               <Select value={settings.currentSchoolYear || "2026-2027"} onValueChange={(val) => val && handleChange("currentSchoolYear", val)}>
-                <SelectTrigger className="rounded-xl border-gray-200">
-                  <SelectValue>{settings.currentSchoolYear || "2026-2027"}</SelectValue>
+                <SelectTrigger>
+                  <SelectValue placeholder="2026-2027" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="2024-2025">2024-2025</SelectItem>
@@ -660,13 +660,8 @@ export default function SystemSettings() {
                 Current Term
               </Label>
               <Select value={settings.currentTerm || "T1"} onValueChange={(val) => val && handleChange("currentTerm", val)}>
-                <SelectTrigger className="rounded-xl border-gray-200">
-                  <SelectValue>
-                    {settings.currentTerm === "T1" && "Term 1"}
-                    {settings.currentTerm === "T2" && "Term 2"}
-                    {settings.currentTerm === "T3" && "Term 3"}
-                    {!settings.currentTerm && "Term 1"}
-                  </SelectValue>
+                <SelectTrigger>
+                  <SelectValue placeholder="Term 1" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="T1">Term 1</SelectItem>
@@ -886,8 +881,8 @@ export default function SystemSettings() {
                 Session Timeout (minutes)
               </Label>
               <Select value={String(settings.sessionTimeout || 30)} onValueChange={(val) => val && handleChange("sessionTimeout", parseInt(val) as any)}>
-                <SelectTrigger className="rounded-xl border-gray-200">
-                  <SelectValue>{settings.sessionTimeout || 30} minutes</SelectValue>
+                <SelectTrigger>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="15">15 minutes</SelectItem>
@@ -902,8 +897,8 @@ export default function SystemSettings() {
                 Max Login Attempts
               </Label>
               <Select value={String(settings.maxLoginAttempts || 5)} onValueChange={(val) => val && handleChange("maxLoginAttempts", parseInt(val) as any)}>
-                <SelectTrigger className="rounded-xl border-gray-200">
-                  <SelectValue>{settings.maxLoginAttempts || 5} attempts</SelectValue>
+                <SelectTrigger>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="3">3 attempts</SelectItem>
@@ -917,8 +912,8 @@ export default function SystemSettings() {
                 Min Password Length
               </Label>
               <Select value={String(settings.passwordMinLength || 8)} onValueChange={(val) => val && handleChange("passwordMinLength", parseInt(val) as any)}>
-                <SelectTrigger className="rounded-xl border-gray-200">
-                  <SelectValue>{settings.passwordMinLength || 8} characters</SelectValue>
+                <SelectTrigger>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="6">6 characters</SelectItem>

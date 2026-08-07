@@ -134,9 +134,12 @@ export default function SectionRosterViewer() {
             </div>
           ) : (
             <Select value={selectedSectionId} onValueChange={handleSectionChange}>
-              <SelectTrigger className="w-full max-w-sm rounded-xl border-gray-200">
+              <SelectTrigger className="w-full max-w-sm">
                 <SelectValue placeholder="— Select a section —">
-                  {selectedSection ? `${selectedSection.name}${selectedSection.gradeLevel ? ` (${String(selectedSection.gradeLevel).replace("GRADE_", "Grade ")})` : ""}` : "— Select a section —"}
+                  {(() => {
+                    const s = sections.find((sec) => String(sec.id) === selectedSectionId);
+                    return s ? `${s.name}${s.gradeLevel ? ` (${String(s.gradeLevel).replace("GRADE_", "Grade ")})` : ""}${!s.enrollProId ? " ⚠" : ""}` : "— Select a section —";
+                  })()}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>

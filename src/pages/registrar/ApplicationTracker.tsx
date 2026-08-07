@@ -150,8 +150,10 @@ export default function ApplicationTracker() {
                 />
               </div>
               <Select value={gradeFilter} onValueChange={setGradeFilter}>
-                <SelectTrigger className="w-40 rounded-xl border-gray-200">
-                  <SelectValue placeholder="All Grades" />
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All Grades">
+                    {gradeFilter === "all" ? "All Grades" : gradeFilter.replace("GRADE_", "Grade ")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Grades</SelectItem>
@@ -162,8 +164,10 @@ export default function ApplicationTracker() {
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40 rounded-xl border-gray-200">
-                  <SelectValue placeholder="All Statuses" />
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All Statuses">
+                    {statusFilter === "all" ? "All Statuses" : statusFilter.charAt(0) + statusFilter.slice(1).toLowerCase()}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
@@ -255,7 +259,7 @@ export default function ApplicationTracker() {
                 <div className="flex items-center gap-2">
                   <span>Rows per page:</span>
                   <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-                    <SelectTrigger className="h-9 w-20 rounded-lg border-slate-200 bg-white">
+                    <SelectTrigger className="w-20" size="sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

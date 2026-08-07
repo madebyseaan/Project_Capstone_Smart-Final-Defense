@@ -60,9 +60,8 @@ const navigationGroups = [
         icon: FileSpreadsheet,
         isDropdown: true,
         inDevelopment: true,
-        disabled: true,
         children: [
-          { name: "SF Forms", href: "/admin/templates", icon: FileSpreadsheet, disabled: true },
+          { name: "SF Forms", href: "/admin/templates", icon: FileSpreadsheet },
           { name: "ECR Templates", href: "/admin/ecr-templates", icon: BookOpen },
         ],
       },

@@ -934,7 +934,7 @@ export default function SchoolForms() {
                   <HelpTooltip content="Select the school year for which to generate forms" />
                 </div>
                 <Select value={schoolYear} onValueChange={(v: string | null) => v && setSchoolYear(v)}>
-                  <SelectTrigger className="rounded-xl">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -954,10 +954,8 @@ export default function SchoolForms() {
                     setSelectedStudent("");
                   }
                 }}>
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue>
-                      {selectedGrade === "ALL" ? "All Grades" : `Grade ${formatGradeLevel(selectedGrade)}`}
-                    </SelectValue>
+                  <SelectTrigger>
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">All Grades</SelectItem>
@@ -977,11 +975,14 @@ export default function SchoolForms() {
                     setSelectedStudent("");
                   }
                 }}>
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select section">
                       {(() => {
                         const section = sections.find(s => s.id === selectedSection);
-                        return section ? section.name : "Select section";
+                        if (!section) return "Select section";
+                        return selectedGrade === "ALL"
+                          ? `Grade ${formatGradeLevel(section.gradeLevel)} - ${section.name}`
+                          : section.name;
                       })()}
                     </SelectValue>
                   </SelectTrigger>

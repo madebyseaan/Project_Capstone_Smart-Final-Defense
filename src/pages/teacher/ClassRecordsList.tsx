@@ -127,7 +127,7 @@ function AssignmentCard({
 
             <div className="space-y-1">
               <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${mutedText}`}>Subject Title</p>
-              <h3 className={`${archived ? 'text-lg' : 'text-2xl'} font-black text-slate-900 ${titleHover} transition-colors leading-tight`}>
+              <h3 className={`${archived ? 'text-lg' : 'text-3xl'} font-semibold text-slate-900 ${titleHover} transition-colors leading-tight`}>
                 {assignment.subject.name}
               </h3>
             </div>
@@ -444,7 +444,7 @@ export default function ClassRecordsList() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-3 mb-2">
-                          <h3 className="text-xl font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{assignment.subject.name}</h3>
+                          <h3 className="text-2xl font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">{assignment.subject.name}</h3>
                           <Badge className={`${getGradeColors(assignment.section.gradeLevel).badge} border-0 text-[10px] font-black uppercase tracking-widest px-3`}>
                             {gradeLevelLabels[assignment.section.gradeLevel]}
                           </Badge>
@@ -531,7 +531,7 @@ export default function ClassRecordsList() {
 
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-3 mb-2">
-                              <h3 className="text-xl font-black text-slate-900 group-hover:text-rose-600 transition-colors">{assignment.subject.name}</h3>
+                              <h3 className="text-2xl font-semibold text-slate-900 group-hover:text-rose-600 transition-colors">{assignment.subject.name}</h3>
                               <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[10px] font-black uppercase tracking-widest px-3">
                                 ARCHIVED
                               </Badge>

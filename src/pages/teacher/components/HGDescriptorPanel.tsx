@@ -38,12 +38,12 @@ export function HGDescriptorPanel({
         <div className="flex items-center gap-4">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Period:</span>
           <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)}>
-            <SelectTrigger className="h-11 w-40 bg-white border-slate-200 text-sm font-black uppercase rounded-xl shadow-sm px-6">
+            <SelectTrigger className="w-40 font-bold">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="rounded-xl border-slate-200 shadow-2xl p-2">
+            <SelectContent className="shadow-2xl">
               {terms.map((q) => (
-                <SelectItem key={q} value={q} className="text-xs font-black uppercase rounded-lg py-2.5 px-4 focus:bg-indigo-50 focus:text-indigo-600 transition-colors cursor-pointer">
+                <SelectItem key={q} value={q} className="text-xs font-bold">
                   {q}
                 </SelectItem>
               ))}
@@ -71,7 +71,7 @@ export function HGDescriptorPanel({
                 }}
                 disabled={isSaving}
               >
-                <SelectTrigger className="h-10 rounded-xl">
+                <SelectTrigger>
                   <SelectValue placeholder="Select descriptor" />
                 </SelectTrigger>
                 <SelectContent>

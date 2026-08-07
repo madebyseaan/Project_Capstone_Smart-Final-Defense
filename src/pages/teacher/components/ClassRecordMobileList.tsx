@@ -38,15 +38,15 @@ export function ClassRecordMobileList({
           {isHGClass ? "Homeroom Guidance" : "Class Ledger"}
         </h2>
         <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)}>
-          <SelectTrigger className="h-10 w-24 bg-white border-slate-200 text-xs font-black uppercase rounded-xl shadow-sm px-3">
+          <SelectTrigger className="w-28 font-bold" size="sm">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="rounded-xl border-slate-200 shadow-2xl p-2">
+          <SelectContent className="shadow-2xl">
             {terms.map((q) => (
               <SelectItem
                 key={q}
                 value={q}
-                className="text-xs font-black uppercase rounded-lg py-2 px-4 focus:bg-indigo-50 focus:text-indigo-600 transition-colors cursor-pointer"
+                className="text-xs font-bold"
               >
                 { q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3" }
               </SelectItem>

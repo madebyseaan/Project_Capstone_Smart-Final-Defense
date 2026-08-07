@@ -59,6 +59,63 @@ export default function AttendanceReports() {
   const [summary, setSummary] = useState<AttendanceSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [studentGenders, setStudentGenders] = useState<Record<string, string>>({});
+  const [dailyRecords, setDailyRecords] = useState<Record<string, any[]>>({});
+  const [loadingDaily, setLoadingDaily] = useState(false);
+
+  const getDatesInRange = (startStr: string, endStr: string) => {
+    const dates: string[] = [];
+    const curr = new Date(startStr);
+    const end = new Date(endStr);
+    while (curr <= end) {
+      const day = curr.getDay();
+      if (day >= 1 && day <= 5) {
+        dates.push(curr.toISOString().split("T")[0]);
+      }
+      curr.setDate(curr.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const fetchGenders = async (sectionId: string) => {
+    try {
+      const token = sessionStorage.getItem("token");
+      const gendersMap: Record<string, string> = {};
+
+      const advisoryRes = await axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (advisoryRes.data?.hasAdvisory && advisoryRes.data?.section?.id === sectionId) {
+        const students = advisoryRes.data.students || [];
+        students.forEach((s: any) => {
+          if (s.gender) {
+            gendersMap[s.id] = s.gender.toUpperCase();
+          }
+        });
+        setStudentGenders(gendersMap);
+        return;
+      }
+
+      const classRes = await axios.get(`${SERVER_URL}/api/grades/my-classes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const assignment = classRes.data.find((c: any) => c.section.id === sectionId);
+      if (assignment) {
+        const recordRes = await axios.get(`${SERVER_URL}/api/grades/class-record/${assignment.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const records = recordRes.data?.classRecord || [];
+        records.forEach((r: any) => {
+          if (r.student?.gender) {
+            gendersMap[r.student.id] = r.student.gender.toUpperCase();
+          }
+        });
+      }
+      setStudentGenders(gendersMap);
+    } catch (err) {
+      console.error("Error fetching genders:", err);
+    }
+  };
 
   // Fetch sections on mount
   useState(() => {
@@ -124,8 +181,11 @@ export default function AttendanceReports() {
     if (!selectedSection || !startDate || !endDate) return;
 
     setLoading(true);
+    setLoadingDaily(true);
     try {
       const token = sessionStorage.getItem("token");
+      await fetchGenders(selectedSection);
+
       const response = await axios.get(
         `${SERVER_URL}/api/attendance/summary/${selectedSection}`,
         {
@@ -133,11 +193,32 @@ export default function AttendanceReports() {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      setSummary(response.data.data.summary);
+      const summaryList = response.data.data.summary || [];
+      setSummary(summaryList);
+
+      const studentRecordsMap: Record<string, any[]> = {};
+      const fetchPromises = summaryList.map(async (student: any) => {
+        try {
+          const detailRes = await axios.get(
+            `${SERVER_URL}/api/attendance/student/${student.studentId}`,
+            {
+              params: { startDate, endDate, sectionId: selectedSection },
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+          studentRecordsMap[student.studentId] = detailRes.data?.data?.records || [];
+        } catch (err) {
+          console.error("Error fetching student daily records:", student.studentId, err);
+          studentRecordsMap[student.studentId] = [];
+        }
+      });
+      await Promise.all(fetchPromises);
+      setDailyRecords(studentRecordsMap);
     } catch (error) {
       console.error("Error fetching report:", error);
     } finally {
       setLoading(false);
+      setLoadingDaily(false);
     }
   };
 
@@ -207,12 +288,10 @@ export default function AttendanceReports() {
               <Select value={selectedSection} onValueChange={setSelectedSection}>
                 <SelectTrigger id="section" className="w-full truncate">
                   <SelectValue placeholder="Select section">
-                    {selectedSection && sections.length > 0 ? (
-                      (() => {
-                        const selected = sections.find(s => s.id === selectedSection);
-                        return selected ? `${gradeLevelLabels[selected.gradeLevel]} - ${selected.name}` : 'Select section';
-                      })()
-                    ) : 'Select section'}
+                    {(() => {
+                      const sec = sections.find((s) => s.id === selectedSection);
+                      return sec ? `${gradeLevelLabels[sec.gradeLevel]} - ${sec.name}` : "Select section";
+                    })()}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -361,77 +440,214 @@ export default function AttendanceReports() {
           </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
+          {loading || loadingDaily ? (
+            <div className="flex items-center justify-center py-24">
               <div className="text-center">
                 <div
                   className="w-12 h-12 mx-auto mb-4 border-[3px] border-t-transparent rounded-full animate-spin"
                   style={{ borderColor: colors.primary, borderTopColor: "transparent" }}
                 />
-                <p className="text-gray-500">Loading report...</p>
+                <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Compiling SF2 Daily Grid...</p>
               </div>
             </div>
           ) : summary.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>LRN</TableHead>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead className="text-center">Present</TableHead>
-                    <TableHead className="text-center">Absent</TableHead>
-                    <TableHead className="text-center">Late</TableHead>
-                    <TableHead className="text-center">Excused</TableHead>
-                    <TableHead className="text-center">Total Days</TableHead>
-                    <TableHead className="text-center">Attendance Rate</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {summary.map((student) => (
-                    <TableRow key={student.studentId}>
-                      <TableCell className="font-mono text-sm">{student.lrn}</TableCell>
-                      <TableCell className="font-medium">
-                        {student.lastName}, {student.firstName} {student.middleName?.[0]}.
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge className="bg-green-100 text-green-700 border-green-200">
-                          {student.present}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge className="bg-red-100 text-red-700 border-red-200">
-                          {student.absent}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge className="bg-amber-100 text-amber-700 border-amber-200">
-                          {student.late}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-                          {student.excused}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center font-semibold">{student.total}</TableCell>
-                      <TableCell className="text-center">
-                        <span
-                          className={`font-bold ${
-                            parseFloat(getAttendanceRate(student.present, student.total)) >= 90
-                              ? "text-green-600"
-                              : parseFloat(getAttendanceRate(student.present, student.total)) >= 75
-                              ? "text-amber-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {getAttendanceRate(student.present, student.total)}%
-                        </span>
+            (() => {
+              const dateList = getDatesInRange(startDate, endDate);
+              const getIsActiveDay = (date: string) => {
+                return Object.values(dailyRecords).some((records) =>
+                  records.some((r) => r.date.split("T")[0] === date)
+                );
+              };
+              const activeSchoolDays = dateList.filter(date => getIsActiveDay(date));
+
+              const getDailyAttendanceStats = (date: string) => {
+                let presentCount = 0;
+                summary.forEach((student) => {
+                  const records = dailyRecords[student.studentId] || [];
+                  const recordForDate = records.find((r) => r.date.split("T")[0] === date);
+                  if (!recordForDate || recordForDate.status === "PRESENT" || recordForDate.status === "LATE") {
+                    presentCount++;
+                  }
+                });
+                return presentCount;
+              };
+
+              const getHasConsecutiveAbsences = (studentId: string) => {
+                const records = dailyRecords[studentId] || [];
+                const sorted = [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                let maxConsec = 0;
+                let currentConsec = 0;
+                for (const r of sorted) {
+                  if (r.status === "ABSENT") {
+                    currentConsec++;
+                    if (currentConsec > maxConsec) maxConsec = currentConsec;
+                  } else {
+                    currentConsec = 0;
+                  }
+                }
+                return maxConsec >= 5;
+              };
+
+              const males = summary.filter((s) => studentGenders[s.studentId] === "MALE").sort((a, b) => a.lastName.localeCompare(b.lastName));
+              const females = summary.filter((s) => studentGenders[s.studentId] === "FEMALE").sort((a, b) => a.lastName.localeCompare(b.lastName));
+              const unclassified = summary.filter((s) => studentGenders[s.studentId] !== "MALE" && studentGenders[s.studentId] !== "FEMALE").sort((a, b) => a.lastName.localeCompare(b.lastName));
+
+              const renderRosterRows = (studentList: AttendanceSummary[], groupLabel: string) => {
+                if (studentList.length === 0) return null;
+                return (
+                  <>
+                    {/* Gender Group Divider */}
+                    <TableRow className="bg-slate-100/60 hover:bg-slate-100/60">
+                      <TableCell colSpan={activeSchoolDays.length + 8} className="py-2.5 px-6 text-[10px] font-black text-slate-500 tracking-widest uppercase">
+                        {groupLabel} ({studentList.length} Learners)
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                    {studentList.map((student) => {
+                      const records = dailyRecords[student.studentId] || [];
+                      const hasConsecAbsence = getHasConsecutiveAbsences(student.studentId);
+                      
+                      return (
+                        <TableRow key={student.studentId} className="hover:bg-slate-50/50 transition-all border-slate-100 group">
+                          {/* LRN - Sticky left */}
+                          <TableCell className="font-mono text-xs text-slate-400 font-bold group-hover:text-slate-900 transition-colors border-r border-slate-100 px-4">
+                            {student.lrn}
+                          </TableCell>
+                          
+                          {/* Learner Name - Sticky left */}
+                          <TableCell className="font-bold text-slate-900 tracking-tight border-r border-slate-100 whitespace-nowrap min-w-[200px] px-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <span>{student.lastName}, {student.firstName}</span>
+                              {hasConsecAbsence && (
+                                <Badge className="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse shrink-0">
+                                  ⚠️ 5+ Abs
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+
+                          {/* Daily Columns */}
+                          {activeSchoolDays.map((date) => {
+                            const record = records.find((r) => r.date.split("T")[0] === date);
+                            const status = record?.status || "PRESENT";
+                            
+                            return (
+                              <TableCell 
+                                key={date} 
+                                className="text-center font-black text-xs border-r border-slate-100 p-0 w-10 min-w-[40px] max-w-[40px]"
+                              >
+                                {status === "ABSENT" ? (
+                                  <span className="text-rose-600 bg-rose-50 w-full h-full flex items-center justify-center py-2">X</span>
+                                ) : status === "LATE" ? (
+                                  <span className="text-amber-600 bg-amber-50 w-full h-full flex items-center justify-center py-2">/</span>
+                                ) : status === "EXCUSED" ? (
+                                  <span className="text-indigo-600 bg-indigo-50 w-full h-full flex items-center justify-center py-2">E</span>
+                                ) : (
+                                  <span className="text-emerald-500 font-normal opacity-30">•</span>
+                                )}
+                              </TableCell>
+                            );
+                          })}
+
+                          {/* Right Summaries */}
+                          <TableCell className="text-center font-black text-xs text-emerald-600 border-r border-slate-100">{student.present}</TableCell>
+                          <TableCell className="text-center font-black text-xs text-rose-600 border-r border-slate-100">{student.absent}</TableCell>
+                          <TableCell className="text-center font-black text-xs text-amber-600 border-r border-slate-100">{student.late}</TableCell>
+                          <TableCell className="text-center font-black text-xs text-indigo-600 border-r border-slate-100">{student.excused}</TableCell>
+                          <TableCell className="text-center font-bold text-xs text-slate-500 border-r border-slate-100">{student.total}</TableCell>
+                          <TableCell className="text-center border-r border-slate-100 px-3">
+                            <span
+                              className={`font-black text-xs ${
+                                parseFloat(getAttendanceRate(student.present, student.total)) >= 90
+                                  ? "text-emerald-600"
+                                  : parseFloat(getAttendanceRate(student.present, student.total)) >= 75
+                                  ? "text-amber-600"
+                                  : "text-rose-600"
+                              }`}
+                            >
+                              {getAttendanceRate(student.present, student.total)}%
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </>
+                );
+              };
+
+              return (
+                <div className="overflow-x-auto border border-slate-150 rounded-[1.5rem]">
+                  <Table className="border-collapse table-fixed min-w-full">
+                    <TableHeader>
+                      <TableRow className="bg-slate-50 border-b border-slate-200">
+                        <TableHead className="w-36 text-[10px] font-black text-slate-400 uppercase tracking-widest border-r border-slate-200 px-4">LRN</TableHead>
+                        <TableHead className="w-56 text-[10px] font-black text-slate-400 uppercase tracking-widest border-r border-slate-200 px-4">Student Name</TableHead>
+                        
+                        {/* Daily Columns Headers */}
+                        {activeSchoolDays.map((date) => (
+                          <TableHead 
+                            key={date} 
+                            className="w-10 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0"
+                            title={date}
+                          >
+                            {new Date(date).getDate()}
+                          </TableHead>
+                        ))}
+
+                        <TableHead className="w-12 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">P</TableHead>
+                        <TableHead className="w-12 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">A</TableHead>
+                        <TableHead className="w-12 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">L</TableHead>
+                        <TableHead className="w-12 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">E</TableHead>
+                        <TableHead className="w-16 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">Total</TableHead>
+                        <TableHead className="w-20 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center px-2">Rate %</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {renderRosterRows(males, "Male")}
+                      {renderRosterRows(females, "Female")}
+                      {renderRosterRows(unclassified, "Unclassified")}
+
+                      {/* Bottom SF2 Stats Calculations */}
+                      {activeSchoolDays.length > 0 && (
+                        <>
+                          {/* Daily Present count */}
+                          <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 font-bold border-t-2 border-slate-200">
+                            <TableCell colSpan={2} className="text-right text-[10px] font-black uppercase text-slate-400 tracking-wider px-4 py-3">
+                              Daily Attendance count
+                            </TableCell>
+                            {activeSchoolDays.map((date) => {
+                              const presentCount = getDailyAttendanceStats(date);
+                              return (
+                                <TableCell key={`cnt-${date}`} className="text-center font-black text-slate-800 text-xs py-3 border-r border-slate-100">
+                                  {presentCount}
+                                </TableCell>
+                              );
+                            })}
+                            <TableCell colSpan={6} className="bg-slate-50/30" />
+                          </TableRow>
+
+                          {/* Daily Attendance Rate % */}
+                          <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 font-bold">
+                            <TableCell colSpan={2} className="text-right text-[10px] font-black uppercase text-slate-400 tracking-wider px-4 py-3">
+                              Daily Attendance Rate %
+                            </TableCell>
+                            {activeSchoolDays.map((date) => {
+                              const presentCount = getDailyAttendanceStats(date);
+                              const rate = summary.length > 0 ? (presentCount / summary.length) * 100 : 0;
+                              return (
+                                <TableCell key={`rate-${date}`} className="text-center font-black text-indigo-600 text-[10px] py-3 border-r border-slate-100">
+                                  {rate.toFixed(0)}%
+                                </TableCell>
+                              );
+                            })}
+                            <TableCell colSpan={6} className="bg-slate-50/50" />
+                          </TableRow>
+                        </>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              );
+            })()
           ) : (
             <div className="text-center py-12 text-gray-500">
               <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-300" />
