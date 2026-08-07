@@ -21,6 +21,7 @@ import { syncEnrollProBranding } from './enrollproBrandingSync';
 import { broadcastSyncStatus } from './sseManager';
 import { prisma } from './prisma';
 import { invalidateAllCaches } from './syncCache';
+import { logger } from './logger';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -202,7 +203,7 @@ export async function runUnifiedSync(options?: {
   const startedAt = new Date();
   const startTime = Date.now();
 
-  console.log(`\n[SyncCoordinator] ===== Sync cycle #${syncCycleCount} started (${source}) ${new Date().toISOString()} =====`);
+  logger.debug(`[SyncCoordinator] Sync cycle #${syncCycleCount} started (${source}) ${new Date().toISOString()}`);
 
   // Broadcast start event to SSE clients
   broadcastSyncStatus({
@@ -220,7 +221,7 @@ export async function runUnifiedSync(options?: {
     // ── Step 1: EnrollPro Sync ──────────────────────────────────────────
     // Must run first — Atlas depends on sections and teachers from EnrollPro.
     try {
-      console.log('[SyncCoordinator] Step 1/3: EnrollPro sync...');
+      logger.debug('[SyncCoordinator] Step 1/3: EnrollPro sync...');
       const epResult = await runEnrollProSync();
       if (epResult) {
         enrollproResult = {
@@ -234,7 +235,7 @@ export async function runUnifiedSync(options?: {
         };
       }
     } catch (err: any) {
-      console.error('[SyncCoordinator] EnrollPro sync failed:', err.message);
+      logger.error('[SyncCoordinator] EnrollPro sync failed:', err.message);
       enrollproResult = {
         advisoriesSynced: 0,
         studentsFetched: 0,
@@ -249,7 +250,7 @@ export async function runUnifiedSync(options?: {
     // ── Step 2: Atlas Sync ──────────────────────────────────────────────
     // Teaching load — depends on sections existing in SMART DB.
     try {
-      console.log('[SyncCoordinator] Step 2/3: Atlas sync...');
+      logger.debug('[SyncCoordinator] Step 2/3: Atlas sync...');
       const atResult = await runAtlasSync();
       if (atResult) {
         atlasResult = {
@@ -261,7 +262,7 @@ export async function runUnifiedSync(options?: {
         };
       }
     } catch (err: any) {
-      console.error('[SyncCoordinator] Atlas sync failed:', err.message);
+      logger.error('[SyncCoordinator] Atlas sync failed:', err.message);
       atlasResult = { matched: 0, created: 0, deleted: 0, teachersWithLoads: 0, errors: [err.message] };
     }
 
@@ -270,19 +271,19 @@ export async function runUnifiedSync(options?: {
     const shouldSyncBranding = options?.forceBranding || (syncCycleCount % BRANDING_SYNC_EVERY_N_CYCLES === 0);
     if (shouldSyncBranding) {
       try {
-        console.log('[SyncCoordinator] Step 3/3: Branding sync...');
+        logger.debug('[SyncCoordinator] Step 3/3: Branding sync...');
         await syncEnrollProBranding();
         brandingSynced = true;
       } catch (err: any) {
-        console.error('[SyncCoordinator] Branding sync failed:', err.message);
+        logger.error('[SyncCoordinator] Branding sync failed:', err.message);
       }
     } else {
-      console.log(`[SyncCoordinator] Step 3/3: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
+      logger.debug(`[SyncCoordinator] Step 3/3: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
     }
 
   } catch (err: any) {
     error = err.message;
-    console.error('[SyncCoordinator] Fatal error:', err.message);
+    logger.error('[SyncCoordinator] Fatal error:', err.message);
   } finally {
     syncRunning = false;
     invalidateAllCaches(); // Force fresh reads on next request
@@ -300,13 +301,11 @@ export async function runUnifiedSync(options?: {
     ...(error ? { error } : {}),
   };
 
-  console.log(
-    `[SyncCoordinator] ===== Sync cycle #${syncCycleCount} complete in ${durationMs}ms =====\n` +
-    `  EnrollPro: ${enrollproResult?.studentsFetched ?? 0} fetched, ${enrollproResult?.studentsSynced ?? 0} updated, ` +
-    `${enrollproResult?.studentsSkipped ?? 0} unchanged, ${enrollproResult?.studentsDropped ?? 0} dropped, ` +
-    `${enrollproResult?.advisoriesSynced ?? 0} advisories\n` +
-    `  Atlas:     ${atlasResult?.created ?? 0} assignments created, ${atlasResult?.matched ?? 0} teachers matched\n` +
-    `  Branding:  ${brandingSynced ? 'synced' : 'skipped'}\n`
+  logger.info(
+    `[SyncCoordinator] ✔ Sync cycle #${syncCycleCount} complete in ${durationMs}ms | ` +
+    `EnrollPro: ${enrollproResult?.studentsFetched ?? 0} learners, ${enrollproResult?.advisoriesSynced ?? 0} advisories | ` +
+    `ATLAS: ${atlasResult?.matched ?? 0} teachers matched | ` +
+    `Branding: ${brandingSynced ? 'synced' : 'skipped'}`
   );
 
   // Broadcast completion to all SSE clients

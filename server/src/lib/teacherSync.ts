@@ -15,6 +15,7 @@
 
 import http from 'http';
 import { prisma } from './prisma';
+import { logger } from './logger';
 import {
   findEnrollProTeacherByEmployeeId,
   findIntegrationV1FacultyByEmployeeId,
@@ -218,11 +219,11 @@ export async function syncTeacherOnLogin(
     const resolvedSY = await getCachedSchoolYear(preferredLabel);
     schoolYearId = resolvedSY.id;
     schoolYearLabel = resolvedSY.yearLabel;
-    console.log(
+    logger.debug(
       `[TeacherSync] Using school year ${schoolYearLabel} (id=${schoolYearId}) from ${resolvedSY.source}`,
     );
   } catch {
-    console.warn('[TeacherSync] Could not resolve school year from EnrollPro, using defaults');
+    logger.warn('[TeacherSync] Could not resolve school year from EnrollPro, using defaults');
   }
 
   // epTeacherId is the EnrollPro integer teacherId — used to match Atlas externalId

@@ -9,6 +9,7 @@
 
 import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { logger } from '../lib/logger';
 import { authenticateToken, AuthRequest, authorizeRoles } from '../middleware/auth';
 import {
   getEnrollProTeachers,
@@ -88,7 +89,7 @@ router.post('/enrollpro-webhook', async (req, res) => {
 const handleSmartSectionSyncGrades = async (req: any, res: any) => {
   try {
     const sectionId = req.params.sectionId;
-    console.log(`[SmartIntegration] EnrollPro requested SMART grade outcomes sync for sectionId: ${sectionId}`);
+    logger.info(`[SmartIntegration] ✔ Grade outcomes requested for Section #${sectionId}`);
 
     // Fetch section enrollments
     const enrollments = await prisma.enrollment.findMany({
