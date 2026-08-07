@@ -27,9 +27,9 @@ import {
   HOMEROOM_GUIDANCE_MINUTES,
 } from './atlasUtils';
 
-const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'http://100.88.55.125:5001/api/v1').replace(/\/$/, '');
-const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1'); // ATLAS internal schoolId (EnrollPro uses schoolId=5 but ATLAS stores as 1)
-const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '8', 10);
+const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
+const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1'); // ATLAS internal schoolId
+const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '1', 10);
 const DEFAULT_SCHOOL_YEAR_LABEL = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
 
 function normalizeAtlasSubjectCode(code: string | null | undefined): string {
