@@ -26,6 +26,7 @@ import {
   resolveEnrollProSchoolYear,
 } from './enrollproClient';
 import { prisma } from './prisma';
+import { logger } from './logger';
 import bcrypt from 'bcryptjs';
 import type { GradeLevel } from '@prisma/client';
 import { broadcastSyncStatus } from './sseManager';
@@ -124,7 +125,7 @@ export async function runEnrollProSync() {
     const resolvedSY = await resolveEnrollProSchoolYear(preferredLabel);
     const schoolYearId = resolvedSY.id;
     const schoolYearLabel = resolvedSY.yearLabel;
-    console.log(
+    logger.debug(
       `[EnrollProSync] Using school year ${schoolYearLabel} (id=${schoolYearId}) from ${resolvedSY.source}`,
     );
 
@@ -133,7 +134,7 @@ export async function runEnrollProSync() {
     const epTeacherIdToEmpId = new Map<number, string>(
       epTeachers.map((t: any) => [Number(t.id ?? t.teacherId), String(t.employeeId)])
     );
-    console.log(`[EnrollProSync] Loaded ${epTeachers.length} teachers from EnrollPro`);
+    logger.debug(`[EnrollProSync] Loaded ${epTeachers.length} teachers from EnrollPro`);
 
     // 3. Build & Upsert SMART teachers for all EnrollPro faculty
     const empIdToSmartTeacherId = new Map<string, string>();
@@ -182,11 +183,11 @@ export async function runEnrollProSync() {
         errors.push(`Teacher ${epTeacher.employeeId}: ${tErr.message}`);
       }
     }
-    console.log(`[EnrollProSync] Synced ${empIdToSmartTeacherId.size} SMART teachers`);
+    logger.debug(`[EnrollProSync] Synced ${empIdToSmartTeacherId.size} SMART teachers`);
 
     // 4. Fetch ALL sections from EnrollPro integration v1 (paginated — fixes 50-section cap)
     const epSections = await getAllIntegrationV1Sections(schoolYearId);
-    console.log(`[EnrollProSync] Loaded ${epSections.length} sections from EnrollPro`);
+    logger.debug(`[EnrollProSync] Loaded ${epSections.length} sections from EnrollPro`);
 
     // 5. Upsert ALL sections into SMART
     const epSectionKeyToSmartSectionId = new Map<string, string>();
@@ -236,28 +237,28 @@ export async function runEnrollProSync() {
         errors.push(`Section "${epSection.name}": ${err.message}`);
       }
     }
-    console.log(`[EnrollProSync] Sections upserted: ${epSectionKeyToSmartSectionId.size}`);
+    logger.debug(`[EnrollProSync] Sections upserted: ${epSectionKeyToSmartSectionId.size}`);
 
     // 6. Fetch ALL enrolled learners
-    console.log(`[EnrollProSync] Fetching all learners from Integration v1...`);
+    logger.debug(`[EnrollProSync] Fetching all learners from Integration v1...`);
     let allLearners: any[] = [];
     let updatedSince: string | undefined;
     try {
       updatedSince = await getLastSuccessfulSyncTimestamp();
       if (updatedSince) {
-        console.log(`[EnrollProSync] Delta mode enabled: updatedSince=${updatedSince}`);
+        logger.debug(`[EnrollProSync] Delta mode enabled: updatedSince=${updatedSince}`);
       }
 
       try {
         allLearners = await getAllIntegrationV1Learners(schoolYearId, updatedSince);
       } catch (deltaError: any) {
         if (!updatedSince) throw deltaError;
-        console.warn(`[EnrollProSync] Delta fetch failed, retrying full pull: ${deltaError.message}`);
+        logger.warn(`[EnrollProSync] Delta fetch failed, retrying full pull: ${deltaError.message}`);
         updatedSince = undefined; 
         allLearners = await getAllIntegrationV1Learners(schoolYearId);
       }
 
-      console.log(`[EnrollProSync] Fetched ${allLearners.length} learners`);
+      logger.debug(`[EnrollProSync] Fetched ${allLearners.length} learners`);
     } catch (err: any) {
       errors.push(`Integration v1 learners fetch failed: ${err.message}`);
     }
@@ -444,7 +445,7 @@ export async function runEnrollProSync() {
                 data: { status: 'DROPPED' },
               });
               studentsDropped += toDropIds.length;
-              console.log(
+              logger.debug(
                 `[EnrollProSync] Marked ${toDropIds.length} stale enrollment(s) as DROPPED for sectionId=${sectionId}`,
               );
             }
@@ -456,7 +457,7 @@ export async function runEnrollProSync() {
         errors.push(`Stale enrollment cleanup global: ${err.message}`);
       }
     } else {
-      console.log(`[EnrollProSync] Delta sync enabled — skipping full roster stale enrollment cleanup.`);
+      logger.debug(`[EnrollProSync] Delta sync enabled — skipping full roster stale enrollment cleanup.`);
     }
 
     // 9. Drop enrollments in orphaned sections
@@ -526,7 +527,7 @@ export async function runEnrollProSync() {
       });
     } catch { /* ignore if settings missing */ }
 
-    console.log(
+    logger.debug(
       `[EnrollProSync] ✓ Done: advisories=${advisoriesSynced}, learners=${studentsFetched} fetched, ` +
       `${studentsSynced} updated, ${studentsSkipped} unchanged, ${studentsDropped} dropped, ` +
       `matched=${teachersMatched}, errors=${errors.length}`

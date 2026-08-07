@@ -15,6 +15,7 @@ import http from 'http';
 import https from 'https';
 import type { GradeLevel } from '@prisma/client';
 import { prisma } from './prisma';
+import { logger } from './logger';
 import { getEnrollProTeachers, getAllIntegrationV1Sections, resolveEnrollProSchoolYear } from './enrollproClient';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import { setCachedAtlasFaculty } from './syncCache';
@@ -129,7 +130,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const atlasSchoolYearId = Number.isFinite(DEFAULT_ATLAS_SCHOOL_YEAR_ID)
       ? DEFAULT_ATLAS_SCHOOL_YEAR_ID
       : 8;
-    console.log(
+    logger.debug(
       `[AtlasSync] Using EnrollPro SY ${schoolYearLabel} (id=${enrollProSchoolYearId}, source=${resolvedSY.source}) and Atlas SY id=${atlasSchoolYearId}`,
     );
 
@@ -523,14 +524,14 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           await syncAdvisoryWorkloadEntry({ teacherId: tid, sectionId: sec.id, schoolYear: schoolYearLabel });
         }
       }
-      console.log(`[AtlasSync] Advisers synced: ${atlasAdvisers.length} from ATLAS`);
+      logger.debug(`[AtlasSync] Advisers synced: ${atlasAdvisers.length} from ATLAS`);
     } catch (advErr: any) {
-      console.warn('[AtlasSync] Adviser sync failed:', advErr.message);
+      logger.warn('[AtlasSync] Adviser sync failed:', advErr.message);
     }
 
     lastSyncResult = { matched, created, deleted, teachersWithLoads, errors };
     lastSyncAt = new Date();
-    console.log(`[AtlasSync] ✔ Done: matched=${matched}, created=${created}, deleted=${deleted}, teachers=${teachersWithLoads}, errors=${errors.length}`);
+    logger.debug(`[AtlasSync] ✔ Done: matched=${matched}, created=${created}, deleted=${deleted}, teachers=${teachersWithLoads}, errors=${errors.length}`);
   } catch (err: any) {
     console.error('[AtlasSync] ✗ Sync failed:', err.message);
     errors.push(err.message);
