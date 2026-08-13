@@ -875,7 +875,7 @@ router.delete(
   authorizeRoles("TEACHER"),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-      const assignmentId = req.params.id;
+      const assignmentId = req.params.id as string;
 
       const teacher = await prisma.teacher.findUnique({
         where: { userId: req.user?.id },

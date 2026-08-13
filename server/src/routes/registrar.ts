@@ -1510,10 +1510,10 @@ router.get("/applications", authenticateToken, async (req: AuthRequest, res: Res
       };
       console.log(`[registrar/applications] cache populated successfully with ${allApps.length} applications`);
     } else {
-      console.log(`[registrar/applications] serving from in-memory cache (age: ${Math.round((now - applicationsCache.timestamp) / 1000)}s)`);
+      console.log(`[registrar/applications] serving from in-memory cache (age: ${Math.round((now - applicationsCache!.timestamp) / 1000)}s)`);
     }
 
-    let filteredApps = [...applicationsCache.applications];
+    let filteredApps = [...applicationsCache!.applications];
 
     // 1. Filter by status
     if (status && status !== "all") {
