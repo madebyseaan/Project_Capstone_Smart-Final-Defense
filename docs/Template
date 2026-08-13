@@ -1,0 +1,18 @@
+# TASK OBJECTIVE
+I want to work on: Adding a POST /api/signup endpoint that uses Nodemailer to send a welcome email to the user.
+
+# EXECUTION CONSTRAINTS (TOKEN EFFICIENCY PROTOCOL)
+To minimize token usage and unnecessary background tool iterations, you must strictly follow this workflow:
+
+1. DO NOT touch, modify, or create any code files yet. 
+2. DO NOT run any multi-file codebase scans or background planning agents.
+3. Instead, review only the immediate files needed for this task and create a single file named `IMPLEMENTATION_PLAN.md` in the project root.
+
+# SPECIFICATIONS FOR THE .MD FILE
+Inside `IMPLEMENTATION_PLAN.md`, write out a complete blueprint containing:
+- **Scope & Context:** A bulleted list of only the files you will need to read or edit.
+- **Proposed Changes:** High-level pseudocode or concrete Markdown blocks showing exactly what code will be added or modified, and where.
+- **Token Efficiency Check:** Explicitly note if there are any repetitive tasks we can compress to save compute.
+
+# STOP RULE
+Once `IMPLEMENTATION_PLAN.md` is successfully created and written to disk, STOP immediately. Do not execute any further loops or code modifications until I review the file and give you the explicit command to execute it.

@@ -7,7 +7,7 @@ import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 import { createAuditLog } from "../lib/audit";
 import { validateEnrollProTeacherCredentials } from "../lib/enrollproClient";
-import { runEnrollProSync } from "../lib/enrollproSync";
+import { triggerImmediateSync } from "../lib/syncCoordinator";
 
 const router = Router();
 
@@ -27,56 +27,63 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     let user = null;
     let isValidPassword = false;
     let epAuthResult = null;
+    let isEpServiceReachable = false;
 
     // 1. Prioritize live EnrollPro authentication (EnrollPro is SSOT for accounts)
     try {
       epAuthResult = await validateEnrollProTeacherCredentials(email, password);
+      isEpServiceReachable = epAuthResult.isReachable;
     } catch (epErr: any) {
       console.warn(`[Auth] EnrollPro auth service unreachable for "${email}":`, epErr.message);
+      isEpServiceReachable = false;
     }
 
-    if (epAuthResult?.user) {
-      const epUser = epAuthResult.user;
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const empId = String(epUser.employeeId ?? epUser.accountName ?? email).trim();
-      const userEmail = epUser.email ?? (email.includes('@') ? email : `${empId}@deped.gov.ph`);
+    if (isEpServiceReachable) {
+      if (epAuthResult?.user) {
+        const epUser = epAuthResult.user;
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const empId = String(epUser.employeeId ?? epUser.accountName ?? email).trim();
+        const userEmail = epUser.email ?? (email.includes('@') ? email : `${empId}@deped.gov.ph`);
 
-      const rolesList: string[] = Array.isArray(epUser.roles) ? epUser.roles : [epUser.role].filter(Boolean);
-      const isAdminRole = rolesList.some((r) => ['ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'].includes(String(r).toUpperCase()));
-      const isRegistrarRole = rolesList.some((r) => ['REGISTRAR', 'HEAD_REGISTRAR', 'SCHOOL_REGISTRAR', 'REGISTRATION_OFFICER'].includes(String(r).toUpperCase()));
-      const assignedRole = isAdminRole ? 'ADMIN' : (isRegistrarRole ? 'REGISTRAR' : 'TEACHER');
+        const rolesList: string[] = Array.isArray(epUser.roles) ? epUser.roles : [epUser.role].filter(Boolean);
+        const isAdminRole = rolesList.some((r) => ['ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'].includes(String(r).toUpperCase()));
+        const isRegistrarRole = rolesList.some((r) => ['REGISTRAR', 'HEAD_REGISTRAR', 'SCHOOL_REGISTRAR', 'REGISTRATION_OFFICER'].includes(String(r).toUpperCase()));
+        const assignedRole = isAdminRole ? 'ADMIN' : (isRegistrarRole ? 'REGISTRAR' : 'TEACHER');
 
-      // Find local user by username or email
-      let existingUser = await prisma.user.findFirst({
-        where: { OR: [{ username: empId }, { email: userEmail }, { email }] },
-      });
-
-      if (!existingUser) {
-        user = await prisma.user.create({
-          data: {
-            username: empId,
-            email: userEmail,
-            password: hashedPassword,
-            role: assignedRole,
-            firstName: epUser.firstName ?? '',
-            lastName: epUser.lastName ?? '',
-          },
+        // Find local user by username or email
+        let existingUser = await prisma.user.findFirst({
+          where: { OR: [{ username: empId }, { email: userEmail }, { email }] },
         });
+
+        if (!existingUser) {
+          user = await prisma.user.create({
+            data: {
+              username: empId,
+              email: userEmail,
+              password: hashedPassword,
+              role: assignedRole,
+              firstName: epUser.firstName ?? '',
+              lastName: epUser.lastName ?? '',
+            },
+          });
+        } else {
+          user = await prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              username: empId,
+              password: hashedPassword,
+              role: assignedRole,
+              firstName: epUser.firstName ?? existingUser.firstName,
+              lastName: epUser.lastName ?? existingUser.lastName,
+            },
+          });
+        }
+
+        isValidPassword = true;
+        console.log(`[Auth] Authenticated & synced user "${empId}" (${assignedRole}) via EnrollPro live SSOT.`);
       } else {
-        user = await prisma.user.update({
-          where: { id: existingUser.id },
-          data: {
-            username: empId,
-            password: hashedPassword,
-            role: assignedRole,
-            firstName: epUser.firstName ?? existingUser.firstName,
-            lastName: epUser.lastName ?? existingUser.lastName,
-          },
-        });
+        console.warn(`[Auth] EnrollPro live SSOT rejected login attempt for "${email}".`);
       }
-
-      isValidPassword = true;
-      console.log(`[Auth] Authenticated & synced user "${empId}" (${assignedRole}) via EnrollPro live SSOT.`);
     } else {
       // 2. Offline fallback ONLY if EnrollPro service was unreachable (not for invalid credentials)
       let localUser = null;
@@ -109,7 +116,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
           update: { userId: user.id },
           create: { employeeId: empId, userId: user.id },
         });
-        runEnrollProSync().catch((e) => console.warn('[Auth] Background sync on login error:', e.message));
+        triggerImmediateSync('login');
       } catch (tErr: any) {
         console.warn(`[Auth] Failed to upsert Teacher record for ${empId}:`, tErr.message);
       }

@@ -58,7 +58,7 @@ app.get("*splat", (_req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  // Unified sync scheduler disabled to isolate local environment
-  // startUnifiedSyncScheduler();
+  // Start unified sync scheduler to periodically sync EnrollPro and ATLAS
+  startUnifiedSyncScheduler();
 });
 

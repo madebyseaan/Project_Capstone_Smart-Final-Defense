@@ -30,7 +30,7 @@ import {
 
 const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
 const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1'); // ATLAS internal schoolId
-const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '1', 10);
+const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '6', 10);
 const DEFAULT_SCHOOL_YEAR_LABEL = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
 
 function normalizeAtlasSubjectCode(code: string | null | undefined): string {
@@ -165,8 +165,11 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       const externalTeacherId = externalMatch?.employeeId
         ? smartTeacherIdByEmployeeId.get(String(externalMatch.employeeId).trim())
         : undefined;
+      const directEmployeeIdMatch = af.employeeId
+        ? smartTeacherIdByEmployeeId.get(String(af.employeeId).trim())
+        : undefined;
       const emailMatch = smartTeacherIdByEmail.get(normalizeEmail(af.contactInfo));
-      const tid = externalTeacherId ?? emailMatch;
+      const tid = externalTeacherId ?? directEmployeeIdMatch ?? emailMatch;
       if (tid) {
         atlasIdToSmartTeacherId.set(af.id, tid);
         matched++;
@@ -265,12 +268,34 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     for (const af of atlasFaculty) {
       try {
-        const detail = await get(
+        let detail = await get(
           `${ATLAS_BASE}/faculty-assignments/${af.id}?schoolYearId=${atlasSchoolYearId}`,
           authHeader,
         );
-        const assignmentsPayload = detail?.assignments ?? detail?.data ?? detail ?? [];
-        const assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
+        let assignmentsPayload = detail?.assignments ?? detail?.data ?? detail ?? [];
+        let assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
+
+        // Fallback: If primary schoolYearId returned no sectionIds, try alternate active schoolYearId (e.g. 6 or 1)
+        const hasDirectSections = assignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0));
+        if (!hasDirectSections) {
+          const fallbackSYs = [6, 1, 8].filter(id => id !== atlasSchoolYearId);
+          for (const fallbackSY of fallbackSYs) {
+            try {
+              const fbDetail = await get(
+                `${ATLAS_BASE}/faculty-assignments/${af.id}?schoolYearId=${fallbackSY}`,
+                authHeader,
+              );
+              const fbPayload = fbDetail?.assignments ?? fbDetail?.data ?? fbDetail ?? [];
+              const fbAssignments: any[] = Array.isArray(fbPayload) ? fbPayload : [];
+              if (fbAssignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0))) {
+                assignments = fbAssignments;
+                break;
+              }
+            } catch {
+              // Ignore fallback errors
+            }
+          }
+        }
 
         const smartTeacherId = atlasIdToSmartTeacherId.get(af.id);
         if (!smartTeacherId) continue;

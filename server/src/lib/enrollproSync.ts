@@ -259,6 +259,7 @@ export async function runEnrollProSync() {
       }
 
       logger.debug(`[EnrollProSync] Fetched ${allLearners.length} learners`);
+      studentsFetched = allLearners.length;
     } catch (err: any) {
       errors.push(`Integration v1 learners fetch failed: ${err.message}`);
     }

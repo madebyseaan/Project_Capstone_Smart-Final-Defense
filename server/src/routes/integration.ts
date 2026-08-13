@@ -82,6 +82,38 @@ router.post('/enrollpro-webhook', async (req, res) => {
 });
 
 /**
+ * POST /api/integration/atlas-webhook
+ * Webhook endpoint for ATLAS to notify SMART of schedule or teaching load changes.
+ */
+router.post('/atlas-webhook', async (req, res) => {
+  const apiKey = req.headers['x-api-key'];
+  if (process.env.ATLAS_WEBHOOK_KEY && apiKey !== process.env.ATLAS_WEBHOOK_KEY) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  console.log('[Webhook] Received notification from ATLAS. Triggering sync...');
+  triggerImmediateSync('atlas-webhook');
+
+  res.json({ success: true, message: 'Sync triggered' });
+});
+
+/**
+ * POST /api/integration/aims-webhook
+ * Webhook endpoint for AIMS to notify SMART of data updates.
+ */
+router.post('/aims-webhook', async (req, res) => {
+  const apiKey = req.headers['x-api-key'];
+  if (process.env.AIMS_WEBHOOK_KEY && apiKey !== process.env.AIMS_WEBHOOK_KEY) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  console.log('[Webhook] Received notification from AIMS. Triggering sync...');
+  triggerImmediateSync('aims-webhook');
+
+  res.json({ success: true, message: 'Sync triggered' });
+});
+
+/**
  * POST /api/integration/smart/sections/:sectionId/sync-grades
  * POST /api/integration/sections/:sectionId/sync-grades
  * Endpoint called by EnrollPro during EOSY rollover validation to verify/pull final SMART outcomes.
@@ -136,10 +168,12 @@ router.post('/sections/:sectionId/sync-grades', handleSmartSectionSyncGrades);
 // System Status
 // ---------------------------------------------------------------------------
 
+const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
+
 router.get('/status', authenticateToken, async (_req: AuthRequest, res: Response): Promise<void> => {
   const results = await Promise.allSettled([
     checkEnrollProHealth(),
-    fetch('http://100.88.55.125:5001/api/v1/health').then((r) => r.ok),
+    fetch(`${ATLAS_BASE}/health`, { signal: AbortSignal.timeout(5000) }).then((r) => r.ok),
     checkAimsHealth(),
   ]);
 

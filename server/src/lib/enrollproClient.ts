@@ -388,7 +388,7 @@ export async function resolveEnrollProSchoolYear(
   }
 
   return {
-    id: Number.isFinite(envId) ? envId : 38,
+    id: Number.isFinite(envId) ? envId : 3,
     yearLabel: envLabel,
     source: 'env-fallback',
   };
@@ -439,7 +439,7 @@ export async function getAllIntegrationV1Learners(schoolYearId?: number, updated
   let page = 1;
   const limit = 200;
 
-  let targetSY = schoolYearId;
+  let targetSY: number | undefined = schoolYearId;
   if (!targetSY) {
     try {
       const active = await getIntegrationV1ActiveSchoolYear();
@@ -447,13 +447,28 @@ export async function getAllIntegrationV1Learners(schoolYearId?: number, updated
     } catch { /* ignore */ }
   }
 
-  if (!targetSY) return [];
-
-  while (true) {
-    const { data, meta } = await getIntegrationV1LearnersPage(targetSY, page, limit, updatedSince);
-    all.push(...data);
-    if (page >= meta.totalPages || data.length === 0) break;
-    page++;
+  try {
+    while (true) {
+      const { data, meta } = await getIntegrationV1LearnersPage(targetSY ?? 3, page, limit, updatedSince);
+      all.push(...data);
+      if (page >= meta.totalPages || data.length === 0) break;
+      page++;
+    }
+  } catch (err: any) {
+    // If scoped schoolYearId query failed (e.g. School year not found), fallback to unscoped learners query
+    console.warn(`[EnrollProClient] Scoped learners query for SY=${targetSY} failed (${err.message}). Retrying unscoped...`);
+    all.length = 0;
+    page = 1;
+    while (true) {
+      const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (updatedSince) query.set('updatedSince', updatedSince);
+      const result = await fetchJSON(`${getEnrollProBase()}/integration/v1/learners?${query.toString()}`);
+      const data = result?.data ?? [];
+      const meta = result?.meta ?? { totalPages: 1 };
+      all.push(...data);
+      if (page >= meta.totalPages || data.length === 0) break;
+      page++;
+    }
   }
 
   return all;
@@ -586,6 +601,13 @@ export async function getAllIntegrationV1SectionLearners(sectionId: number, upda
   return all;
 }
 
+export interface EnrollProAuthResult {
+  token?: string;
+  user?: any;
+  isReachable: boolean;
+  invalidCredentials?: boolean;
+}
+
 /**
  * Validate teacher credentials against EnrollPro's auth endpoint.
  * POST /api/auth/login { accountName, password }
@@ -593,17 +615,19 @@ export async function getAllIntegrationV1SectionLearners(sectionId: number, upda
 export async function validateEnrollProTeacherCredentials(
   accountName: string,
   password: string,
-): Promise<{ token: string; user: any } | null> {
+): Promise<EnrollProAuthResult> {
   try {
     const result = await fetchJSON(`${getEnrollProBase()}/auth/login`, {
       method: 'POST',
       body: JSON.stringify({ accountName, password }),
     });
-    if (result?.token) return { token: result.token, user: result.user };
-    return null;
+    if (result?.token) {
+      return { token: result.token, user: result.user, isReachable: true };
+    }
+    return { isReachable: true, invalidCredentials: true };
   } catch (err: any) {
     if (err.message?.includes('HTTP 401') || err.message?.includes('HTTP 400')) {
-      return null;
+      return { isReachable: true, invalidCredentials: true };
     }
     throw err;
   }
