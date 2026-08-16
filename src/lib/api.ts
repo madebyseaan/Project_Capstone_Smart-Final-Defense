@@ -5,29 +5,63 @@ const API_URL = "/api";
 // Export server URL for constructing upload URLs
 export const SERVER_URL = "";
 
-// Create axios instance with auth header
+// Create axios instance with cookie-based auth
 const api = axios.create({
   baseURL: API_URL,
+  withCredentials: true, // Send cookies cross-origin
 });
 
-// Add auth token to requests
-api.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Track refresh state to avoid multiple simultaneous refresh calls
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+}> = [];
 
-// Handle 401 responses
+const processQueue = (error: unknown, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) prom.reject(error);
+    else prom.resolve(token);
+  });
+  failedQueue = [];
+};
+
+// Handle 401 responses — attempt refresh before redirecting to login
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      sessionStorage.removeItem("token");
-      sessionStorage.removeItem("user");
-      window.location.href = "/login";
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Skip refresh for login/refresh endpoints to avoid loops
+    const skipRefreshPaths = ["/auth/login", "/auth/refresh"];
+    const isSkipPath = skipRefreshPaths.some((path) => originalRequest.url?.includes(path));
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isSkipPath) {
+      if (isRefreshing) {
+        // Queue this request until refresh completes
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(() => api(originalRequest));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        // Refresh token is in httpOnly cookie, sent automatically
+        await api.post("/auth/refresh");
+        processQueue(null, "refreshed");
+        return api(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        // Redirect to login on failed refresh
+        window.location.href = "/login";
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
     }
+
     return Promise.reject(error);
   }
 );
@@ -70,6 +104,10 @@ export interface Subject {
   writtenWorkWeight: number;
   perfTaskWeight: number;
   quarterlyAssessWeight: number;
+  // Atlas rotation metadata — null = non-rotating subject
+  rotationTermGroupId?: string | null;
+  rotationTermRank?: number | null;
+  rotationOutputLabel?: string | null;
 }
 
 export interface Section {
@@ -156,13 +194,14 @@ export interface GradeDeadlineInfo {
 
 // Auth API
 export const authApi = {
-  login: (username: string, password: string) =>
+  login: (email: string, password: string) =>
     api.post<{ token: string; user: User; message: string }>("/auth/login", {
-      username,
+      email,
       password,
     }),
   me: () => api.get<User>("/auth/me"),
   logout: () => api.post("/auth/logout"),
+  refresh: () => api.post<{ token: string }>("/auth/refresh"),
 };
 
 // Grades API
@@ -621,6 +660,7 @@ export interface SF9Data {
   subjectGrades: {
     subjectCode: string;
     subjectName: string;
+    teacher?: string;
     T1?: number;
     T2?: number;
     T3?: number;
@@ -708,6 +748,15 @@ export const registrarApi = {
 
   getSF10: (studentId: string) =>
     api.get<SF10Data>(`/registrar/forms/sf10/${studentId}`),
+
+  getSF5: (sectionId: string, schoolYear?: string) =>
+    api.get(`/registrar/forms/sf5/${sectionId}`, { params: { schoolYear } }),
+
+  getSF1: (sectionId: string, schoolYear?: string) =>
+    api.get(`/registrar/forms/sf1/${sectionId}`, { params: { schoolYear } }),
+
+  getAttendanceSummary: (sectionId: string, startDate?: string, endDate?: string) =>
+    api.get(`/attendance/summary/${sectionId}`, { params: { startDate, endDate } }),
 
   getSections: (params?: { schoolYear?: string; gradeLevel?: string }) =>
     api.get<Section[]>("/registrar/sections", { params }),

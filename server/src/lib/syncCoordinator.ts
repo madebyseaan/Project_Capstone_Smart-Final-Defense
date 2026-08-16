@@ -35,7 +35,7 @@ const SYNC_INTERVAL_MINUTES = Math.round(SYNC_INTERVAL_MS / 60000);
 const BRANDING_SYNC_EVERY_N_CYCLES = parseInt(process.env.BRANDING_SYNC_EVERY_N_CYCLES ?? '12', 10); // 12 × 5min = 60min
 const INITIAL_DELAY_MS = parseInt(process.env.SYNC_INITIAL_DELAY_MS ?? '5000', 10); // 5s after boot
 const ENROLLPRO_BASE = (process.env.ENROLLPRO_URL ?? process.env.ENROLLPRO_BASE_URL ?? 'https://dev-jegs.buru-degree.ts.net/api').replace(/\/$/, '');
-const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'http://100.88.55.125:5001/api/v1').replace(/\/$/, '');
+const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD = parseInt(process.env.SYNC_CIRCUIT_BREAKER_FAILURE_THRESHOLD ?? '3', 10);
 const CIRCUIT_BREAKER_COOLDOWN_MS = parseInt(process.env.SYNC_CIRCUIT_BREAKER_COOLDOWN_MS ?? '300000', 10);
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Download, Calendar, Filter, FileSpreadsheet, Eye } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,12 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 import axios from "axios";
+
+// ── Local date helper (fixes UTC timezone bug) ─────────────────────────────
+function getLocalDateStr(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
 
 interface Section {
   id: string;
@@ -55,7 +61,7 @@ export default function AttendanceReports() {
   const [sections, setSections] = useState<Section[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [endDate, setEndDate] = useState<string>(getLocalDateStr());
   const [summary, setSummary] = useState<AttendanceSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -65,12 +71,15 @@ export default function AttendanceReports() {
 
   const getDatesInRange = (startStr: string, endStr: string) => {
     const dates: string[] = [];
-    const curr = new Date(startStr);
-    const end = new Date(endStr);
+    const curr = new Date(startStr + "T00:00:00");
+    const end = new Date(endStr + "T00:00:00");
     while (curr <= end) {
       const day = curr.getDay();
       if (day >= 1 && day <= 5) {
-        dates.push(curr.toISOString().split("T")[0]);
+        const y = curr.getFullYear();
+        const m = String(curr.getMonth() + 1).padStart(2, "0");
+        const d = String(curr.getDate()).padStart(2, "0");
+        dates.push(`${y}-${m}-${d}`);
       }
       curr.setDate(curr.getDate() + 1);
     }
@@ -95,87 +104,55 @@ export default function AttendanceReports() {
         setStudentGenders(gendersMap);
         return;
       }
-
-      const classRes = await axios.get(`${SERVER_URL}/api/grades/my-classes`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const assignment = classRes.data.find((c: any) => c.section.id === sectionId);
-      if (assignment) {
-        const recordRes = await axios.get(`${SERVER_URL}/api/grades/class-record/${assignment.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const records = recordRes.data?.classRecord || [];
-        records.forEach((r: any) => {
-          if (r.student?.gender) {
-            gendersMap[r.student.id] = r.student.gender.toUpperCase();
-          }
-        });
-      }
       setStudentGenders(gendersMap);
     } catch (err) {
       console.error("Error fetching genders:", err);
     }
   };
 
-  // Fetch sections on mount
-  useState(() => {
-    const fetchSections = async () => {
+  // Auto-load advisory section on mount
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAdvisory = async () => {
       try {
         const token = sessionStorage.getItem("token");
-        const [classResponse, advisoryResponse] = await Promise.all([
-          axios.get(`${SERVER_URL}/api/grades/my-classes`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
+        const advisoryResponse = await axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-        const sectionsMap = new Map<string, Section>();
-
-        if (Array.isArray(classResponse.data)) {
-          classResponse.data.forEach((assignment: any) => {
-            if (assignment.section && !sectionsMap.has(assignment.section.id)) {
-              sectionsMap.set(assignment.section.id, {
-                id: assignment.section.id,
-                name: assignment.section.name,
-                gradeLevel: assignment.section.gradeLevel,
-              });
-            }
-          });
-        }
-
-        if (advisoryResponse.data?.hasAdvisory && advisoryResponse.data?.section) {
+        if (!cancelled && advisoryResponse.data?.hasAdvisory && advisoryResponse.data?.section) {
           const advisorySection = advisoryResponse.data.section;
-          if (!sectionsMap.has(advisorySection.id)) {
-            sectionsMap.set(advisorySection.id, {
-              id: advisorySection.id,
-              name: advisorySection.name,
-              gradeLevel: advisorySection.gradeLevel,
-            });
-          }
+          setSections([{
+            id: advisorySection.id,
+            name: advisorySection.name,
+            gradeLevel: advisorySection.gradeLevel,
+          }]);
+          setSelectedSection(advisorySection.id);
+
+          // Auto-set date range to current month
+          const now = new Date();
+          const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+          const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          const startStr = `${firstDay.getFullYear()}-${String(firstDay.getMonth() + 1).padStart(2, "0")}-${String(firstDay.getDate()).padStart(2, "0")}`;
+          const endStr = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`;
+          setStartDate(startStr);
+          setEndDate(endStr);
         }
-
-        const sectionsList = Array.from(sectionsMap.values());
-        setSections(sectionsList);
-
-        if (advisoryResponse.data?.hasAdvisory && advisoryResponse.data?.section) {
-          setSelectedSection(advisoryResponse.data.section.id);
-        } else if (sectionsList.length > 0) {
-          setSelectedSection(sectionsList[0].id);
-        }
-
-        // Set default start date to 30 days ago
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        setStartDate(thirtyDaysAgo.toISOString().split("T")[0]);
       } catch (error) {
-        console.error("Error fetching sections:", error);
+        if (!cancelled) console.error("Error fetching advisory section:", error);
       }
     };
 
-    fetchSections();
-  });
+    fetchAdvisory();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Auto-fetch report when section and dates are ready
+  useEffect(() => {
+    if (selectedSection && startDate && endDate) {
+      fetchReport();
+    }
+  }, [selectedSection, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchReport = async () => {
     if (!selectedSection || !startDate || !endDate) return;
@@ -228,10 +205,14 @@ export default function AttendanceReports() {
     setDownloading(true);
     try {
       const token = sessionStorage.getItem("token");
+      const d = new Date(startDate + "T00:00:00");
+      const month = d.getMonth() + 1;
+      const year = d.getFullYear();
+      
       const response = await axios.get(
         `${SERVER_URL}/api/attendance/export/${selectedSection}`,
         {
-          params: { startDate, endDate },
+          params: { month, year },
           headers: { Authorization: `Bearer ${token}` },
           responseType: "blob",
         }
@@ -244,7 +225,8 @@ export default function AttendanceReports() {
       
       const section = sections.find(s => s.id === selectedSection);
       const sectionName = section ? `${gradeLevelLabels[section.gradeLevel]}-${section.name}` : "Attendance";
-      link.setAttribute("download", `${sectionName}_${startDate}_to_${endDate}.xlsx`);
+      const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      link.setAttribute("download", `SF2_${sectionName}_${monthNames[month - 1]}_${year}.xlsx`);
       
       document.body.appendChild(link);
       link.click();
@@ -277,53 +259,45 @@ export default function AttendanceReports() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="w-5 h-5" />
-            Report Filters
+            Attendance Report
           </CardTitle>
-          <CardDescription>Select section and date range to generate report</CardDescription>
+          <CardDescription>Advisory section — auto-loaded for current month</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="md:col-span-2">
-              <Label htmlFor="section">Section</Label>
-              <Select value={selectedSection} onValueChange={setSelectedSection}>
-                <SelectTrigger id="section" className="w-full truncate">
-                  <SelectValue placeholder="Select section">
-                    {(() => {
-                      const sec = sections.find((s) => s.id === selectedSection);
-                      return sec ? `${gradeLevelLabels[sec.gradeLevel]} - ${sec.name}` : "Select section";
-                    })()}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {sections.map((section) => (
-                    <SelectItem key={section.id} value={section.id}>
-                      {gradeLevelLabels[section.gradeLevel]} - {section.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div>
+              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Advisory Section</Label>
+              <div className="h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center px-4 mt-1">
+                <span className="text-sm font-bold text-slate-900">
+                  {sections.length > 0
+                    ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
+                    : "Loading..."}
+                </span>
+              </div>
             </div>
 
             <div>
-              <Label htmlFor="startDate">Start Date</Label>
+              <Label htmlFor="startDate" className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Start Date</Label>
               <Input
                 id="startDate"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 max={endDate}
+                className="mt-1"
               />
             </div>
 
             <div>
-              <Label htmlFor="endDate">End Date</Label>
+              <Label htmlFor="endDate" className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Date</Label>
               <Input
                 id="endDate"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 min={startDate}
-                max={new Date().toISOString().split("T")[0]}
+                max={getLocalDateStr()}
+                className="mt-1"
               />
             </div>
 
@@ -331,7 +305,7 @@ export default function AttendanceReports() {
               <Button
                 onClick={fetchReport}
                 disabled={!selectedSection || !startDate || !endDate || loading}
-                className="flex-1"
+                className="flex-1 h-10 rounded-xl font-bold text-[10px] tracking-widest uppercase"
                 style={{ backgroundColor: colors.primary }}
               >
                 {loading ? (
@@ -342,7 +316,7 @@ export default function AttendanceReports() {
                 ) : (
                   <>
                     <Eye className="w-4 h-4 mr-2" />
-                    View Report
+                    VIEW REPORT
                   </>
                 )}
               </Button>

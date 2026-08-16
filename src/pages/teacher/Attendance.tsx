@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Calendar as CalendarIcon, Users, Check, X, Clock, FileText, Save, CheckCircle2, AlertCircle, ClipboardCheck, RefreshCw } from "lucide-react";
+import { Calendar as CalendarIcon, Users, Check, X, Clock, FileText, Save, CheckCircle2, AlertCircle, ClipboardCheck, RefreshCw, Download } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,34 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 import axios from "axios";
+
+// ── Local date helpers (fixes UTC timezone bug) ─────────────────────────────
+function getLocalDateStr(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function getNextSchoolDay(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() + 1);
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getLocalMonth(): number {
+  return new Date().getMonth() + 1;
+}
+
+function getLocalYear(): number {
+  return new Date().getFullYear();
+}
+
+const MONTH_NAMES = [
+  "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+  "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
+];
 
 interface Student {
   studentId: string;
@@ -58,7 +86,7 @@ export default function Attendance() {
   const { colors } = useTheme();
   const [sections, setSections] = useState<Section[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>("");
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateStr());
   const [attendanceData, setAttendanceData] = useState<AttendanceData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -70,6 +98,9 @@ export default function Attendance() {
     consecutiveAbsenceFlags: Record<string, boolean>;
   } | null>(null);
   const [loadingMonthly, setLoadingMonthly] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<number>(getLocalMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(getLocalYear());
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
 
   const fetchMonthlySF2Stats = async (sectionId: string, dateStr: string) => {
     setLoadingMonthly(true);
@@ -157,64 +188,34 @@ export default function Attendance() {
     }
   };
 
-  // Fetch teacher's sections
+  // Fetch teacher's advisory section
   useEffect(() => {
+    let cancelled = false;
     const fetchSections = async () => {
       try {
         const token = sessionStorage.getItem("token");
         
-        // Get class assignments
-        const classResponse = await axios.get(`${SERVER_URL}/api/grades/my-classes`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        // Get advisory section
+        // Get advisory section only
         const advisoryResponse = await axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        const sectionsMap = new Map<string, Section>();
-
-        // Add sections from class assignments (API returns array directly)
-        if (Array.isArray(classResponse.data)) {
-          classResponse.data.forEach((assignment: any) => {
-            if (assignment.section && !sectionsMap.has(assignment.section.id)) {
-              sectionsMap.set(assignment.section.id, {
-                id: assignment.section.id,
-                name: assignment.section.name,
-                gradeLevel: assignment.section.gradeLevel,
-              });
-            }
-          });
-        }
-
-        // Add advisory section if exists (API returns object with section property)
-        if (advisoryResponse.data?.hasAdvisory && advisoryResponse.data?.section) {
+        if (!cancelled && advisoryResponse.data?.hasAdvisory && advisoryResponse.data?.section) {
           const advisorySection = advisoryResponse.data.section;
-          if (!sectionsMap.has(advisorySection.id)) {
-            sectionsMap.set(advisorySection.id, {
-              id: advisorySection.id,
-              name: advisorySection.name,
-              gradeLevel: advisorySection.gradeLevel,
-            });
-          }
-        }
-
-        const sectionsList = Array.from(sectionsMap.values());
-        setSections(sectionsList);
-
-        // Auto-select advisory section if available
-        if (advisoryResponse.data?.hasAdvisory && advisoryResponse.data?.section) {
-          setSelectedSection(advisoryResponse.data.section.id);
-        } else if (sectionsList.length > 0) {
-          setSelectedSection(sectionsList[0].id);
+          setSections([{
+            id: advisorySection.id,
+            name: advisorySection.name,
+            gradeLevel: advisorySection.gradeLevel,
+          }]);
+          setSelectedSection(advisorySection.id);
         }
       } catch (error) {
-        console.error("Error fetching sections:", error);
+        if (!cancelled) console.error("Error fetching advisory section:", error);
       }
     };
 
     fetchSections();
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch attendance when section or date changes
@@ -223,7 +224,7 @@ export default function Attendance() {
       fetchAttendance();
       fetchMonthlySF2Stats(selectedSection, selectedDate);
     }
-  }, [selectedSection, selectedDate]);
+  }, [selectedSection, selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchAttendance = async () => {
     setLoading(true);
@@ -274,6 +275,40 @@ export default function Attendance() {
     });
   };
 
+  const clearAttendance = () => {
+    setShowConfirmClear(true);
+  };
+
+  const confirmClear = async () => {
+    if (!attendanceData) return;
+    
+    // Delete attendance records from database for this date
+    try {
+      const token = sessionStorage.getItem("token");
+      await axios.post(
+        `${SERVER_URL}/api/attendance/clear`,
+        { sectionId: selectedSection, date: selectedDate },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (error) {
+      console.error("Error deleting attendance records:", error);
+    }
+
+    // Reset UI to all present
+    setAttendanceData({
+      ...attendanceData,
+      attendance: attendanceData.attendance.map((student) => ({
+        ...student,
+        status: "PRESENT",
+        remarks: "",
+      })),
+    });
+    setShowConfirmClear(false);
+    setMessage({ type: "success", text: "Attendance records deleted — all students reset" });
+    fetchMonthlySF2Stats(selectedSection, selectedDate);
+    setTimeout(() => setMessage(null), 2000);
+  };
+
   const saveAttendance = async () => {
     if (!attendanceData) return;
 
@@ -301,6 +336,34 @@ export default function Attendance() {
       setMessage({ type: "error", text: error.response?.data?.message || "Failed to save attendance" });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveAndNextDay = async () => {
+    await saveAttendance();
+    setSelectedDate(getNextSchoolDay(selectedDate));
+  };
+
+  const downloadExcel = async () => {
+    if (!selectedSection) return;
+    try {
+      const token = sessionStorage.getItem("token");
+      const response = await axios.get(
+        `${SERVER_URL}/api/attendance/export/${selectedSection}?month=${selectedMonth}&year=${selectedYear}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: "blob",
+        }
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `SF2_${MONTH_NAMES[selectedMonth - 1]}_${selectedYear}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error: any) {
+      setMessage({ type: "error", text: "Failed to download Excel" });
     }
   };
 
@@ -334,26 +397,16 @@ export default function Attendance() {
       {/* Control Panel - Refined Glass Style */}
       <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden bg-white/90 backdrop-blur-md">
         <CardContent className="p-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
             <div className="space-y-2">
-              <Label htmlFor="section" className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Target Section</Label>
-              <Select value={selectedSection} onValueChange={setSelectedSection}>
-                <SelectTrigger id="section" className="w-full">
-                  <SelectValue placeholder="Select section">
-                    {(() => {
-                      const sec = sections.find((s) => s.id === selectedSection);
-                      return sec ? `${gradeLevelLabels[sec.gradeLevel]} - ${sec.name}` : "Select section";
-                    })()}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="shadow-xl">
-                  {sections.map((section) => (
-                    <SelectItem key={section.id} value={section.id} className="text-xs font-bold">
-                      {gradeLevelLabels[section.gradeLevel]} - {section.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Advisory Section</Label>
+              <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center px-4">
+                <span className="text-sm font-bold text-slate-900">
+                  {sections.length > 0
+                    ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
+                    : "Loading..."}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -364,14 +417,14 @@ export default function Attendance() {
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  max={new Date().toISOString().split("T")[0]}
+                  max={getLocalDateStr()}
                   className="h-12 bg-slate-50 border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all pl-10"
                 />
                 <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
             </div>
 
-            <div className="md:col-span-2 flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 onClick={markAllPresent}
                 variant="outline"
@@ -379,22 +432,30 @@ export default function Attendance() {
                 disabled={!attendanceData || loading}
               >
                 <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500" />
-                MARK ALL PRESENT
+                MARK ALL
               </Button>
               <Button
-                onClick={saveAttendance}
+                onClick={clearAttendance}
+                variant="outline"
+                className="h-12 rounded-xl border-slate-200 text-slate-500 hover:bg-slate-50 font-bold transition-all px-4"
+                disabled={!attendanceData || loading}
+              >
+                CLEAR
+              </Button>
+              <Button
+                onClick={saveAndNextDay}
                 disabled={saving || !attendanceData}
-                className="flex-1 h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-200 font-black text-[10px] tracking-widest uppercase transition-all"
+                className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl font-bold text-[10px] tracking-widest uppercase transition-all"
               >
                 {saving ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    SYNCING...
+                    SAVING...
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4 mr-2" />
-                    COMMIT CHANGES
+                    SAVE & NEXT DAY
                   </>
                 )}
               </Button>
@@ -472,6 +533,58 @@ export default function Attendance() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* SF2 Download Section */}
+      {attendanceData && (
+        <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-3xl bg-white overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-slate-900">SF2 Export</p>
+                  <p className="text-[10px] text-slate-400 font-medium">Download Daily Attendance Record (Excel)</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(parseInt(v))}>
+                  <SelectTrigger className="w-[140px] h-10 rounded-xl text-xs font-bold">
+                    <SelectValue>{MONTH_NAMES[selectedMonth - 1]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MONTH_NAMES.map((name, i) => (
+                      <SelectItem key={i + 1} value={String(i + 1)} className="text-xs font-bold">
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+                  <SelectTrigger className="w-[100px] h-10 rounded-xl text-xs font-bold">
+                    <SelectValue>{selectedYear}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[selectedYear - 1, selectedYear, selectedYear + 1].map((y) => (
+                      <SelectItem key={y} value={String(y)} className="text-xs font-bold">
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={downloadExcel}
+                  className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] tracking-widest uppercase transition-all"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  DOWNLOAD SF2
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Main Table - Modern Corporate List */}
@@ -580,6 +693,38 @@ export default function Attendance() {
           )}
         </CardContent>
       </Card>
+
+      {/* Clear Confirmation Dialog */}
+      {showConfirmClear && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-xl bg-amber-100">
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Reset Attendance?</h3>
+            </div>
+            <p className="text-sm text-slate-500 mb-6">
+              This will <strong>delete all saved attendance records</strong> for this date from the database. All students will reset to Present.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => setShowConfirmClear(false)}
+                variant="outline"
+                className="flex-1 rounded-xl font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmClear}
+                className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold"
+              >
+                Reset All
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

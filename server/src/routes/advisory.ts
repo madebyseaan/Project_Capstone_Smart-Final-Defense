@@ -57,6 +57,14 @@ function toDisplayName(value: string | null | undefined): string {
     .join(' ');
 }
 
+function toTitleCase(value: string | null | undefined): string {
+  return normalizeWhitespace(value ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function subjectDedupKey(subjectCode: string, subjectName: string): string {
   return `${normalizeWhitespace(subjectCode).toUpperCase()}::${normalizeWhitespace(subjectName).toUpperCase()}`;
 }
@@ -435,14 +443,82 @@ router.get(
           grades: gradesByTerm,
           finalGrade,
           remarks: finalGrade ? (finalGrade >= 75 ? "PASSED" : "FAILED") : null,
+          rotationTermGroupId: (ca.subject as any).rotationTermGroupId ?? null,
+          rotationTermRank: (ca.subject as any).rotationTermRank ?? null,
+          rotationOutputLabel: (ca.subject as any).rotationOutputLabel ?? null,
         };
       });
 
+      // Merge rotating sub-subjects (e.g. Science-Biology, Science-Chemistry, Science-EarthScience)
+      // into a single row where T1/T2/T3 each hold one sub-subject's grade.
+      const rotationGroups: Record<string, typeof subjectGrades> = {};
+      const standaloneRows: typeof subjectGrades = [];
+
+      for (const row of subjectGrades) {
+        if (row.rotationTermGroupId) {
+          if (!rotationGroups[row.rotationTermGroupId]) {
+            rotationGroups[row.rotationTermGroupId] = [];
+          }
+          rotationGroups[row.rotationTermGroupId].push(row);
+        } else {
+          standaloneRows.push(row);
+        }
+      }
+
+      const mergedRotationRows: typeof subjectGrades = [];
+      for (const [, groupRows] of Object.entries(rotationGroups)) {
+        const sorted = [...groupRows].sort((a, b) => (a.rotationTermRank ?? 0) - (b.rotationTermRank ?? 0));
+
+        // Build merged grades: each sub-subject occupies its rotation term slot
+        const mergedGrades: typeof subjectGrades[0]['grades'] = { T1: null, T2: null, T3: null };
+        for (const sub of sorted) {
+          if (!sub.rotationTermRank) continue;
+          const termKey = `T${sub.rotationTermRank}` as 'T1' | 'T2' | 'T3';
+          // Use the sub-subject's grade for its assigned term
+          const subGrade = sub.grades[termKey];
+          if (subGrade) {
+            mergedGrades[termKey] = subGrade;
+          } else {
+            // Fallback: use whichever term has a grade
+            for (const t of ['T1', 'T2', 'T3'] as const) {
+              if (sub.grades[t]) {
+                mergedGrades[t] = sub.grades[t];
+                break;
+              }
+            }
+          }
+        }
+
+        // Calculate final grade from available term grades
+        const termGradeValues = Object.values(mergedGrades)
+          .filter((g): g is NonNullable<typeof g> => g?.quarterlyGrade !== null && g?.quarterlyGrade !== undefined)
+          .map((g) => g.quarterlyGrade as number);
+        const finalGrade = termGradeValues.length > 0
+          ? Math.round(termGradeValues.reduce((a, b) => a + b, 0) / termGradeValues.length)
+          : null;
+
+        mergedRotationRows.push({
+          subjectId: sorted[0].subjectId,
+          subjectCode: sorted[0].rotationOutputLabel ?? sorted[0].subjectCode,
+          subjectName: toTitleCase(sorted[0].rotationOutputLabel ?? sorted[0].subjectName),
+          subjectType: sorted[0].subjectType,
+          teacher: sorted.map(r => r.teacher).filter(Boolean).join(' / '),
+          grades: mergedGrades,
+          finalGrade,
+          remarks: finalGrade ? (finalGrade >= 75 ? "PASSED" : "FAILED") : null,
+          rotationTermGroupId: sorted[0].rotationTermGroupId,
+          rotationTermRank: null,
+          rotationOutputLabel: sorted[0].rotationOutputLabel,
+        });
+      }
+
+      const mergedSubjectGrades = [...standaloneRows, ...mergedRotationRows];
+
       // Calculate General Average
-      const finalGrades = subjectGrades
+      const finalGrades = mergedSubjectGrades
         .filter((s) => s.finalGrade !== null)
         .map((s) => s.finalGrade as number);
-      const academicSubjects = subjectGrades;
+      const academicSubjects = mergedSubjectGrades;
       
       const generalAverage = finalGrades.length > 0
         ? Math.round((finalGrades.reduce((a, b) => a + b, 0) / finalGrades.length) * 100) / 100
@@ -489,7 +565,7 @@ router.get(
           schoolYear: currentEnrollment.schoolYear,
           status: currentEnrollment.status,
         },
-        subjectGrades,
+        subjectGrades: mergedSubjectGrades,
         summary: {
           generalAverage,
           honors,
@@ -559,9 +635,7 @@ router.get(
         },
         include: {
           subject: { select: { code: true } },
-          grades: {
-            where: { term: "T1" }, // Current term
-          },
+          grades: true, // Fetch all terms to compute final rating from available grades
         },
       }) as (ClassAssignment & { subject: { code: string }; grades: Grade[] })[];
 
@@ -583,17 +657,19 @@ router.get(
       const studentAverages: StudentAverage[] = await Promise.all(
         advisorySection.enrollments.map(async (enrollment: EnrollmentWithStudent) => {
           const academicSubjects = classAssignments;
-          const academicSubjectCount = academicSubjects.length;
 
-          const academicQuarterlyGrades = academicSubjects.flatMap((ca) => {
-            return ca.grades
-              .filter((g: Grade) => g.studentId === enrollment.studentId)
-              .map((g: Grade) => g.quarterlyGrade)
-              .filter((g): g is number => g !== null);
-          });
+          // Compute per-subject final grade from available terms, then average across subjects
+          const subjectFinals = academicSubjects.map((ca) => {
+            const termGrades = ca.grades
+              .filter((g: Grade) => g.studentId === enrollment.studentId && g.quarterlyGrade !== null)
+              .map((g: Grade) => g.quarterlyGrade as number);
+            return termGrades.length > 0
+              ? Math.round(termGrades.reduce((a, b) => a + b, 0) / termGrades.length)
+              : null;
+          }).filter((g): g is number => g !== null);
 
-          const average = academicQuarterlyGrades.length > 0
-            ? academicQuarterlyGrades.reduce((a, b) => a + b, 0) / academicQuarterlyGrades.length
+          const average = subjectFinals.length > 0
+            ? subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length
             : null;
 
           return {
@@ -602,8 +678,8 @@ router.get(
             lrn: enrollment.student.lrn,
             gender: enrollment.student.gender,
             average,
-            gradedSubjects: academicQuarterlyGrades.length,
-            totalSubjects: academicSubjectCount,
+            gradedSubjects: subjectFinals.length,
+            totalSubjects: academicSubjects.length,
           };
         })
       );

@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Download, Upload } from "lucide-react";
+import { ArrowLeft, Download, Upload, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,7 @@ interface ClassRecordHeroProps {
   onOpenImport: () => void;
   onImportSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onStartTour?: () => void;
 }
 
 export function ClassRecordHero({
@@ -41,13 +42,14 @@ export function ClassRecordHero({
   onOpenImport,
   onImportSelect,
   fileInputRef,
+  onStartTour,
 }: ClassRecordHeroProps) {
   return (
     <>
-      <div className="relative overflow-hidden bg-white border border-slate-100 p-8 shadow-xl shadow-slate-200/50">
+      <div className="relative overflow-hidden bg-white border border-slate-100 p-8 shadow-xl shadow-slate-200/50 rounded-[2rem]">
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-          <div className="flex items-center gap-6">
+          <div id="tutorial-hero-info" className="flex items-center gap-6">
             <Link to="/teacher/classes">
               <Button variant="ghost" size="icon" className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:bg-indigo-600 hover:text-white transition-all border border-slate-100 shadow-sm">
                 <ArrowLeft className="w-6 h-6" />
@@ -73,8 +75,20 @@ export function ClassRecordHero({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {onStartTour && (
+              <Button
+                variant="outline"
+                onClick={onStartTour}
+                className="h-12 px-5 rounded-2xl border-amber-200 bg-amber-50/80 text-amber-900 hover:bg-amber-100 font-black text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-2 hover:scale-[1.02] active:scale-95"
+                title="Start Step-by-Step Interactive Tutorial"
+              >
+                <Sparkles className="w-4 h-4 text-amber-600 animate-pulse" />
+                <span>Tutorial</span>
+              </Button>
+            )}
+
             {!isHGClass ? (
-              <>
+              <div id="tutorial-ecr-actions" className="flex items-center gap-3">
                 <Button
                   variant="outline"
                   className="h-12 px-6 rounded-2xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all shadow-sm"
@@ -90,7 +104,7 @@ export function ClassRecordHero({
                   <Upload className="w-4 h-4 mr-3" />IMPORT ECR
                 </Button>
                 <input type="file" ref={fileInputRef} onChange={onImportSelect} accept=".xlsx,.xls" className="hidden" />
-              </>
+              </div>
             ) : (
               <Badge className="h-9 px-4 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold">
                 Qualitative Grading Mode

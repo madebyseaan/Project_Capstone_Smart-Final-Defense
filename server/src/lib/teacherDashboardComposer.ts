@@ -8,9 +8,9 @@ import {
   resolveEnrollProSchoolYear,
 } from './enrollproClient';
 
-const ATLAS_BASE = process.env.ATLAS_BASE_URL ?? 'http://100.88.55.125:5001/api/v1';
+const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
 const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1');
-const ATLAS_SCHOOL_YEAR_ID = Number(process.env.ATLAS_SCHOOL_YEAR_ID ?? '8');
+const ATLAS_SCHOOL_YEAR_ID = Number(process.env.ATLAS_SCHOOL_YEAR_ID ?? '3');
 
 export interface TeacherDashboardSnapshot {
   teacher: {
@@ -68,6 +68,7 @@ export interface TeacherDashboardSnapshot {
 type AtlasFaculty = {
   id: number;
   externalId?: number | null;
+  employeeId?: string | number | null;
   contactInfo?: string | null;
 };
 
@@ -126,12 +127,36 @@ async function fetchAtlasFaculty(atlasToken: string): Promise<AtlasFaculty[]> {
 }
 
 async function fetchAtlasAssignments(atlasFacultyId: number, atlasToken: string): Promise<AtlasAssignment[]> {
-  const result = await fetchJSON(
-    `${ATLAS_BASE}/faculty-assignments/${atlasFacultyId}?schoolYearId=${ATLAS_SCHOOL_YEAR_ID}`,
-    { Authorization: `Bearer ${atlasToken}` },
-  );
-  const payload = result?.assignments ?? result?.data ?? result ?? [];
-  return Array.isArray(payload) ? (payload as AtlasAssignment[]) : [];
+  try {
+    const result = await fetchJSON(
+      `${ATLAS_BASE}/faculty-assignments/${atlasFacultyId}?schoolYearId=${ATLAS_SCHOOL_YEAR_ID}`,
+      { Authorization: `Bearer ${atlasToken}` },
+    );
+    const payload = result?.assignments ?? result?.data ?? result ?? [];
+    let items = Array.isArray(payload) ? (payload as AtlasAssignment[]) : [];
+
+    const hasSections = items.some(a => (a?.sections && a.sections.length > 0) || a?.sectionId);
+    if (!hasSections) {
+      const fallbackSYs = [3, 6, 1, 8].filter(id => id !== ATLAS_SCHOOL_YEAR_ID);
+      for (const fallbackSY of fallbackSYs) {
+        try {
+          const fbRes = await fetchJSON(
+            `${ATLAS_BASE}/faculty-assignments/${atlasFacultyId}?schoolYearId=${fallbackSY}`,
+            { Authorization: `Bearer ${atlasToken}` },
+          );
+          const fbPayload = fbRes?.assignments ?? fbRes?.data ?? fbRes ?? [];
+          const fbItems = Array.isArray(fbPayload) ? (fbPayload as AtlasAssignment[]) : [];
+          if (fbItems.some(a => (a?.sections && a.sections.length > 0) || a?.sectionId)) {
+            items = fbItems;
+            break;
+          }
+        } catch {}
+      }
+    }
+    return items;
+  } catch {
+    return [];
+  }
 }
 
 export async function buildTeacherDashboardSnapshot(params: {
@@ -166,6 +191,7 @@ export async function buildTeacherDashboardSnapshot(params: {
     Promise.resolve(
       atlasFaculty.find(
         (faculty) =>
+          String(faculty.employeeId ?? '').trim() === String(params.employeeId).trim() ||
           faculty.externalId === epTeacher?.id ||
           faculty.contactInfo?.toLowerCase() === params.email.toLowerCase(),
       ) ?? null,

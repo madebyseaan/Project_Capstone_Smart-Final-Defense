@@ -14,7 +14,7 @@ export function ClassRecordStats({ avg, passed, total, highest }: ClassRecordSta
   const passingRate = total > 0 ? `${Math.round((passed / total) * 100)}%` : "0%";
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div id="tutorial-stats-overview" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {[
         { label: "Class Average", value: avg.toFixed(1), icon: Target, bg: "bg-indigo-50", fg: "text-indigo-600" },
         { label: "Passing Rate", value: passingRate, icon: TrendingUp, bg: "bg-emerald-50", fg: "text-emerald-600" },

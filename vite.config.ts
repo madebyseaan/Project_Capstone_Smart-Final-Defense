@@ -18,8 +18,20 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:5003',
-      '/uploads': 'http://localhost:5003',
+      '/api': {
+        target: 'http://localhost:5003',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', () => {}); // Suppress startup race condition errors
+        },
+      },
+      '/uploads': {
+        target: 'http://localhost:5003',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', () => {}); // Suppress startup race condition errors
+        },
+      },
     },
   },
 })

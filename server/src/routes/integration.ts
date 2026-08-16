@@ -116,42 +116,186 @@ router.post('/aims-webhook', async (req, res) => {
 /**
  * POST /api/integration/smart/sections/:sectionId/sync-grades
  * POST /api/integration/sections/:sectionId/sync-grades
- * Endpoint called by EnrollPro during EOSY rollover validation to verify/pull final SMART outcomes.
+ *
+ * EnrollPro calls this to pull final grades for all students in a section.
+ * Returns per-subject final ratings, general average, remarks, and promotion status.
+ *
+ * Auth: x-api-key header matching ENROLLPRO_WEBHOOK_KEY
  */
 const handleSmartSectionSyncGrades = async (req: any, res: any) => {
   try {
-    const sectionId = req.params.sectionId;
-    logger.info(`[SmartIntegration] ✔ Grade outcomes requested for Section #${sectionId}`);
+    // API-key auth (same pattern as webhooks)
+    const apiKey = req.headers['x-api-key'];
+    if (process.env.ENROLLPRO_WEBHOOK_KEY && apiKey !== process.env.ENROLLPRO_WEBHOOK_KEY) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
 
-    // Fetch section enrollments
-    const enrollments = await prisma.enrollment.findMany({
+    const sectionId = req.params.sectionId as string;
+    const { schoolYear: querySY } = req.query;
+    logger.info(`[SmartIntegration] Grade outcomes requested for Section #${sectionId}`);
+
+    // Resolve school year
+    const settings = await prisma.systemSettings.findUnique({
+      where: { id: 'main' },
+      select: { currentSchoolYear: true },
+    });
+    const schoolYear = (querySY as string) || settings?.currentSchoolYear || '2026-2027';
+
+    // Find section
+    const section = await prisma.section.findFirst({
       where: {
         OR: [
-          { sectionId: String(sectionId) },
-          { section: { name: { contains: String(sectionId), mode: 'insensitive' } } },
+          { id: sectionId },
+          { name: { equals: sectionId, mode: 'insensitive' } },
         ],
+        schoolYear,
       },
       include: {
-        student: true,
+        adviser: { include: { user: true } },
       },
     });
 
+    if (!section) {
+      return res.status(404).json({ success: false, error: `Section not found for school year ${schoolYear}` });
+    }
+
+    // Get all enrollments
+    const enrollments = await prisma.enrollment.findMany({
+      where: { sectionId: section.id, schoolYear, status: 'ENROLLED' },
+      include: { student: true },
+    });
+
+    // Get all class assignments for this section
+    const classAssignments = await prisma.classAssignment.findMany({
+      where: { sectionId: section.id, schoolYear, isActive: true },
+      include: { subject: true, teacher: { include: { user: true } } },
+    });
+
+    // Get all grades for this section
+    const grades = await prisma.grade.findMany({
+      where: {
+        classAssignment: { sectionId: section.id, schoolYear, isActive: true },
+      },
+      include: {
+        classAssignment: { include: { subject: true, teacher: { include: { user: true } } } },
+      },
+    });
+
+    // Helper: skip Homeroom Guidance
+    const isHG = (code: string) => code.toUpperCase().startsWith('HG');
+
+    // Helper: subject canonical key (dedup)
+    const canonicalKey = (code: string, name: string) => `${code}::${name}`.toUpperCase();
+
+    // Build per-student results
     const outcomes = enrollments.map((enr) => {
-      const gAver = 88;
+      const studentGrades = grades.filter((g) => g.studentId === enr.student.id);
+
+      // Build subject rows (deduplicated by canonical key)
+      const subjectMap: Record<string, {
+        subjectCode: string;
+        subjectName: string;
+        teacher: string;
+        T1: number | null;
+        T2: number | null;
+        T3: number | null;
+        finalRating: number | null;
+        remarks: string | null;
+        status: 'GRADED' | 'PARTIAL' | 'NG';
+      }> = {};
+
+      // Initialize from class assignments
+      for (const ca of classAssignments) {
+        if (isHG(ca.subject.code)) continue;
+        const key = canonicalKey(ca.subject.code, ca.subject.name);
+        if (!subjectMap[key]) {
+          subjectMap[key] = {
+            subjectCode: ca.subject.code,
+            subjectName: ca.subject.name,
+            teacher: ca.teacher?.user
+              ? `${ca.teacher.user.firstName ?? ''} ${ca.teacher.user.lastName ?? ''}`.trim()
+              : '',
+            T1: null, T2: null, T3: null,
+            finalRating: null,
+            remarks: null,
+            status: 'NG',
+          };
+        }
+      }
+
+      // Populate grades
+      for (const grade of studentGrades) {
+        const ca = grade.classAssignment;
+        if (isHG(ca.subject.code)) continue;
+        const key = canonicalKey(ca.subject.code, ca.subject.name);
+        if (!subjectMap[key]) {
+          subjectMap[key] = {
+            subjectCode: ca.subject.code,
+            subjectName: ca.subject.name,
+            teacher: ca.teacher?.user
+              ? `${ca.teacher.user.firstName ?? ''} ${ca.teacher.user.lastName ?? ''}`.trim()
+              : '',
+            T1: null, T2: null, T3: null,
+            finalRating: null,
+            remarks: null,
+            status: 'NG',
+          };
+        }
+        const termKey = grade.term as 'T1' | 'T2' | 'T3';
+        if (grade.quarterlyGrade !== null && subjectMap[key][termKey] === null) {
+          subjectMap[key][termKey] = grade.quarterlyGrade;
+        }
+      }
+
+      // Compute final rating per subject (average of available terms)
+      const allRows = Object.values(subjectMap);
+      for (const row of allRows) {
+        const terms = [row.T1, row.T2, row.T3].filter((v): v is number => v !== null);
+        if (terms.length === 3) {
+          row.status = 'GRADED';
+        } else if (terms.length > 0) {
+          row.status = 'PARTIAL';
+        } else {
+          row.status = 'NG';
+        }
+        if (terms.length > 0) {
+          row.finalRating = Math.round(terms.reduce((a, b) => a + b, 0) / terms.length);
+          row.remarks = row.finalRating >= 75 ? 'Passed' : 'Failed';
+        }
+      }
+
+      // General average
+      const finals = allRows.map((r) => r.finalRating).filter((g): g is number => g !== null);
+      const generalAverage = finals.length > 0
+        ? Math.round(finals.reduce((a, b) => a + b, 0) / finals.length)
+        : null;
+
+      // Promotion: all subjects must be >= 75 or null (no grade yet)
+      const hasFailing = allRows.some((r) => r.finalRating !== null && r.finalRating < 75);
+      const promotionStatus = generalAverage !== null
+        ? (hasFailing ? 'Retained' : 'Promoted')
+        : null;
+
       return {
         lrn: enr.student.lrn,
         studentName: `${enr.student.lastName}, ${enr.student.firstName}`,
-        finalGeneralAverage: gAver,
-        finalOutcome: 'PROMOTED',
-        publishedAt: new Date().toISOString(),
-        revision: 1,
+        subjectGrades: allRows.sort((a, b) => a.subjectName.localeCompare(b.subjectName)),
+        generalAverage,
+        remarks: generalAverage !== null ? (generalAverage >= 75 ? 'Passed' : 'Failed') : null,
+        promotionStatus,
       };
     });
 
     res.json({
       success: true,
       ready: true,
-      sectionId,
+      sectionId: section.id,
+      sectionName: section.name,
+      gradeLevel: section.gradeLevel,
+      schoolYear,
+      adviser: section.adviser
+        ? `${section.adviser.user.firstName ?? ''} ${section.adviser.user.lastName ?? ''}`.trim()
+        : null,
       outcomesSynced: outcomes.length,
       outcomes,
     });

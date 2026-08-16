@@ -7,12 +7,6 @@ import {
   getLastUnifiedSyncResult,
   triggerImmediateSync,
 } from '../lib/syncCoordinator';
-import {
-  syncTeachersFromEnrollProForSchoolYear,
-  syncStudentsFromEnrollProForSchoolYear,
-  syncEnrollmentsFromEnrollProForSchoolYear,
-  checkSyncConnectivity,
-} from '../services/syncService';
 import { runAtlasSync } from '../lib/atlasSync';
 import { prisma } from '../lib/prisma';
 
@@ -56,43 +50,11 @@ router.get('/status', authenticateToken, requireAdmin, async (_req: AuthRequest,
       liveCounts: { studentCount, enrollmentCount, sectionCount, assignmentCount },
       sources: {
         enrollpro: process.env.ENROLLPRO_URL || process.env.ENROLLPRO_BASE_URL || 'https://dev-jegs.buru-degree.ts.net/api',
-        atlas: process.env.ATLAS_URL || process.env.ATLAS_BASE_URL || 'http://100.88.55.125:5001/api/v1',
+        atlas: process.env.ATLAS_URL || process.env.ATLAS_BASE_URL || 'https://njgrm.buru-degree.ts.net/api/v1',
       },
     });
   } catch (error: any) {
     res.status(500).json({ message: 'Failed to fetch status', error: error?.message ?? String(error) });
-  }
-});
-
-// GET /api/sync/ping — Check if EnrollPro and Atlas are reachable
-router.get('/ping', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const result = await checkSyncConnectivity();
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ message: 'Ping failed', error: error?.message ?? String(error) });
-  }
-});
-
-// POST /api/sync/enrollpro — Sync teachers + students + enrollments from EnrollPro only
-router.post('/enrollpro', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const schoolYear = (req.query.schoolYear as string) || undefined;
-    const teachers = await syncTeachersFromEnrollProForSchoolYear(schoolYear);
-    const students = await syncStudentsFromEnrollProForSchoolYear(schoolYear);
-    const enrollments = await syncEnrollmentsFromEnrollProForSchoolYear(schoolYear);
-    res.json({
-      message: 'EnrollPro sync complete',
-      result: {
-        timestamp: new Date().toISOString(),
-        schoolYear: schoolYear ?? process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? process.env.SYNC_SCHOOL_YEAR ?? '2025-2026',
-        teachers,
-        students,
-        enrollments,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: 'EnrollPro sync failed', error: error?.message ?? String(error) });
   }
 });
 

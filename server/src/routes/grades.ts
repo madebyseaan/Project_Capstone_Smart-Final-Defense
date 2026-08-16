@@ -1190,6 +1190,7 @@ router.get(
 
         return {
           id: ca.id,
+          subjectCode: ca.subject.code,
           subjectName: ca.subject.name,
           sectionName: ca.section.name,
           gradeLevel: ca.section.gradeLevel,
@@ -1216,7 +1217,10 @@ router.get(
       const overallPassingRate = totalGraded > 0 
         ? Math.round(classStats.reduce((sum: number, cs: any) => sum + (cs.passingRate * cs.gradedCount), 0) / totalGraded)
         : 0;
-      const gradeSubmissionRate = totalStudents > 0 ? Math.round((totalGraded / totalStudents) * 100) : 0;
+      const academicClassStats = classStats.filter((cs: any) => !cs.subjectCode?.toUpperCase().startsWith('HG'));
+      const gradeSubmissionRate = academicClassStats.length > 0
+        ? Math.round(academicClassStats.filter((cs: any) => cs.gradedCount >= cs.totalStudents).length / academicClassStats.length * 100)
+        : 0;
 
       const gradeDeadline = await resolveTermDeadline(teacher.id, currentSY);
 

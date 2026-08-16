@@ -171,6 +171,7 @@ const LedgerRow = React.memo(
 
     return (
       <TableRow
+        id={isHps ? "tutorial-hps-row" : undefined}
         className={
           isHps
             ? "bg-slate-800 text-white h-9 hover:bg-slate-800 transition-none group/hps sticky z-15"
@@ -182,8 +183,8 @@ const LedgerRow = React.memo(
         <TableCell
           className={`text-center font-bold text-[11px] border-r border-b border-slate-200 w-10 min-w-[40px] max-w-[40px] sticky left-0 p-1 transition-colors ${
             isHps
-              ? "text-indigo-300 z-[18] bg-slate-800 border-y border-l border-slate-700 bg-clip-padding"
-              : "text-slate-300 z-10 bg-white group-hover:bg-slate-50/80"
+              ? "text-indigo-300 z-[22] bg-slate-800 border-y border-l border-slate-700 bg-clip-padding"
+              : "text-slate-300 z-[15] bg-white group-hover:bg-slate-50"
           }`}
           style={rowStyle}
         >
@@ -194,8 +195,8 @@ const LedgerRow = React.memo(
         <TableCell
           className={`font-mono text-[11px] font-medium border-r border-b border-slate-200 px-1 truncate w-32 min-w-[128px] max-w-[128px] sticky left-[40px] transition-colors ${
             isHps
-              ? "text-slate-500 z-[18] bg-slate-800 border-y border-slate-700 bg-clip-padding"
-              : "text-slate-400 z-10 bg-white group-hover:bg-slate-50/80"
+              ? "text-slate-500 z-[22] bg-slate-800 border-y border-slate-700 bg-clip-padding"
+              : "text-slate-400 z-[15] bg-white group-hover:bg-slate-50"
           }`}
           style={rowStyle}
         >
@@ -204,10 +205,10 @@ const LedgerRow = React.memo(
 
         {/* Full Name */}
         <TableCell
-          className={`border-r border-b border-slate-200 px-2 min-w-[256px] sticky left-[168px] transition-colors ${
+          className={`border-r border-b border-slate-200 px-2 w-64 min-w-[256px] max-w-[256px] sticky left-[168px] transition-colors ${
             isHps
-              ? "z-[18] bg-slate-800 border-y border-slate-700 bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.35)]"
-              : "z-10 bg-white group-hover:bg-slate-50/80 shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]"
+              ? "z-[22] bg-slate-800 border-y border-slate-700 bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.35)]"
+              : "z-[15] bg-white group-hover:bg-slate-50 shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]"
           }`}
           style={rowStyle}
         >
@@ -217,11 +218,11 @@ const LedgerRow = React.memo(
         </TableCell>
 
         {/* WW score cells */}
-        {/* WW score cells */}
         {Array.from({ length: wwCount }).map((_, i) => (
           <TableCell
             key={`ww-${i}`}
-            className={`${cellClass} border-b border-slate-200 ${isHps ? "sticky z-15 bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
+            id={!isHps && idx === 0 && i === 0 ? "tutorial-cell-example" : isHps && i === 0 ? "tutorial-hps-cell" : undefined}
+            className={`${cellClass} border-b border-slate-200 ${isHps ? "bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
             style={rowStyle}
           >
             {(() => {
@@ -280,7 +281,7 @@ const LedgerRow = React.memo(
         {/* WW TOTAL */}
         <TableCell
           className={`text-center text-[11px] font-black border-r border-b border-slate-200 ${
-            isHps ? "bg-slate-700 sticky z-15 border-y border-slate-600 bg-clip-padding text-indigo-200" : "bg-slate-50/50 text-slate-500"
+            isHps ? "bg-slate-700 border-y border-slate-600 bg-clip-padding text-indigo-200" : "bg-slate-50/50 text-slate-500"
           }`}
           style={rowStyle}
         >
@@ -289,7 +290,7 @@ const LedgerRow = React.memo(
         {/* WW PS */}
         <TableCell
           className={`text-center font-black text-[11px] border-r border-b border-slate-200 ${
-            isHps ? "bg-indigo-900/60 sticky z-15 border-y border-slate-700 bg-clip-padding text-indigo-300" : "bg-indigo-50/10 text-indigo-600"
+            isHps ? "bg-indigo-900/60 border-y border-slate-700 bg-clip-padding text-indigo-300" : "bg-indigo-50/10 text-indigo-600"
           }`}
           style={rowStyle}
         >
@@ -298,7 +299,7 @@ const LedgerRow = React.memo(
         {/* WW WS */}
         <TableCell
           className={`text-center font-black text-[11px] border-r border-b border-slate-200 ${
-            isHps ? "bg-indigo-900/80 sticky z-15 border-y border-slate-700 bg-clip-padding text-indigo-200" : "bg-indigo-50/20 text-indigo-700"
+            isHps ? "bg-indigo-900/80 border-y border-slate-700 bg-clip-padding text-indigo-200" : "bg-indigo-50/20 text-indigo-700"
           }`}
           style={rowStyle}
         >
@@ -309,7 +310,7 @@ const LedgerRow = React.memo(
         {Array.from({ length: ptCount }).map((_, i) => (
           <TableCell
             key={`pt-${i}`}
-            className={`${cellClass} border-b border-slate-200 ${isHps ? "sticky z-15 bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
+            className={`${cellClass} border-b border-slate-200 ${isHps ? "bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
             style={rowStyle}
           >
             {(() => {
@@ -368,7 +369,7 @@ const LedgerRow = React.memo(
         {/* PT TOTAL */}
         <TableCell
           className={`text-center text-[11px] font-black border-r border-b border-slate-200 ${
-            isHps ? "bg-slate-700 sticky z-15 border-y border-slate-600 bg-clip-padding text-purple-200" : "bg-slate-50/50 text-slate-500"
+            isHps ? "bg-slate-700 border-y border-slate-600 bg-clip-padding text-purple-200" : "bg-slate-50/50 text-slate-500"
           }`}
           style={rowStyle}
         >
@@ -377,7 +378,7 @@ const LedgerRow = React.memo(
         {/* PT PS */}
         <TableCell
           className={`text-center font-black text-[11px] border-r border-b border-slate-200 ${
-            isHps ? "bg-purple-900/60 sticky z-15 border-y border-slate-700 bg-clip-padding text-purple-300" : "bg-purple-50/10 text-purple-600"
+            isHps ? "bg-purple-900/60 border-y border-slate-700 bg-clip-padding text-purple-300" : "bg-purple-50/10 text-purple-600"
           }`}
           style={rowStyle}
         >
@@ -386,7 +387,7 @@ const LedgerRow = React.memo(
         {/* PT WS */}
         <TableCell
           className={`text-center font-black text-[11px] border-r border-b border-slate-200 ${
-            isHps ? "bg-purple-900/80 sticky z-15 border-y border-slate-700 bg-clip-padding text-purple-200" : "bg-purple-50/20 text-purple-700"
+            isHps ? "bg-purple-900/80 border-y border-slate-700 bg-clip-padding text-purple-200" : "bg-purple-50/20 text-purple-700"
           }`}
           style={rowStyle}
         >
@@ -395,7 +396,7 @@ const LedgerRow = React.memo(
 
         {/* QA SCORE */}
         <TableCell
-          className={`${cellClass} border-b border-slate-200 ${isHps ? "sticky z-15 bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
+          className={`${cellClass} border-b border-slate-200 ${isHps ? "bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
           style={rowStyle}
         >
           {(() => {
@@ -452,7 +453,7 @@ const LedgerRow = React.memo(
         {/* QA PS */}
         <TableCell
           className={`text-center font-black text-[11px] border-r border-b border-slate-200 ${
-            isHps ? "bg-amber-900/60 sticky z-15 border-y border-slate-700 bg-clip-padding text-amber-300" : "bg-amber-50/10 text-amber-600"
+            isHps ? "bg-amber-900/60 border-y border-slate-700 bg-clip-padding text-amber-300" : "bg-amber-50/10 text-amber-600"
           }`}
           style={rowStyle}
         >
@@ -461,7 +462,7 @@ const LedgerRow = React.memo(
         {/* QA WS */}
         <TableCell
           className={`text-center font-black text-[11px] border-r border-b border-slate-200 ${
-            isHps ? "bg-amber-900/80 sticky z-15 border-y border-slate-700 bg-clip-padding text-amber-200" : "bg-amber-50/20 text-amber-700"
+            isHps ? "bg-amber-900/80 border-y border-slate-700 bg-clip-padding text-amber-200" : "bg-amber-50/20 text-amber-700"
           }`}
           style={rowStyle}
         >
@@ -471,7 +472,7 @@ const LedgerRow = React.memo(
         {/* INITIAL */}
         <TableCell
           className={`text-center font-black text-[11px] border-r border-b border-slate-200 ${
-            isHps ? "bg-emerald-900/60 sticky z-15 border-y border-slate-700 bg-clip-padding text-emerald-300" : "bg-emerald-50/10 text-emerald-600"
+            isHps ? "bg-emerald-900/60 border-y border-slate-700 bg-clip-padding text-emerald-300" : "bg-emerald-50/10 text-emerald-600"
           }`}
           style={rowStyle}
         >
@@ -481,7 +482,7 @@ const LedgerRow = React.memo(
         <TableCell
           className={`text-center font-black text-xs border-r border-b border-slate-200 w-16 min-w-[64px] max-w-[64px] ${
             isHps
-              ? "text-white bg-slate-900 sticky z-15 border-y border-r border-slate-700 bg-clip-padding"
+              ? "text-white bg-slate-900 border-y border-r border-slate-700 bg-clip-padding"
               : `bg-emerald-50/30 ${getGradeColor(displayQuarterlyGrade)}`
           }`}
           style={rowStyle}
@@ -506,6 +507,11 @@ interface ClassRecordTableProps {
   } | null;
   selectedTerm: string;
   onTermChange: (term: string) => void;
+  /**
+   * When set (e.g. "T1"), this subject is a rotating subject and the teacher
+   * may only enter grades for this specific term. Other terms are disabled.
+   */
+  lockedTerm?: string | null;
   separateByGender: boolean;
   onSeparateByGenderChange: (value: boolean) => void;
   showAssessmentDetails: boolean;
@@ -538,6 +544,7 @@ export function ClassRecordTable({
   effectiveWeights,
   selectedTerm,
   onTermChange,
+  lockedTerm,
   separateByGender,
   onSeparateByGenderChange,
   showAssessmentDetails,
@@ -623,31 +630,26 @@ export function ClassRecordTable({
 
   const renderColGroup = () => (
     <colgroup>
-      {/* Learner Info */}
       <col style={{ width: "40px", minWidth: "40px", maxWidth: "40px" }} />
       <col style={{ width: "128px", minWidth: "128px", maxWidth: "128px" }} />
-      <col style={{ minWidth: "256px" }} />
-      {/* WW */}
+      <col style={{ width: "256px", minWidth: "256px", maxWidth: "256px" }} />
       {Array.from({ length: wwCount }).map((_, i) => (
         <col key={`col-ww-${i}`} style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
       ))}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* Total */}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* PS */}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* WS */}
-      {/* PT */}
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
       {Array.from({ length: ptCount }).map((_, i) => (
         <col key={`col-pt-${i}`} style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
       ))}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* Total */}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* PS */}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* WS */}
-      {/* QA */}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* Score */}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* PS */}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} /> {/* WS */}
-      {/* Summary */}
-      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} /> {/* Initial */}
-      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} /> {/* Final */}
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
     </colgroup>
   );
 
@@ -660,6 +662,11 @@ export function ClassRecordTable({
         className="sticky z-[29] bg-white border-x border-t border-slate-200/60 rounded-t-2xl shadow-sm isolate"
         style={{ top: `${topNavHeight}px` }}
       >
+        {/* Top & corner background masks: prevents scrolled table rows from peeking through rounded-t-2xl corners */}
+        <div className="absolute -top-6 -left-3 -right-3 h-6 bg-slate-100 -z-10 pointer-events-none" />
+        <div className="absolute top-0 -left-3 w-5 h-5 bg-slate-100 -z-10 pointer-events-none" />
+        <div className="absolute top-0 -right-3 w-5 h-5 bg-slate-100 -z-10 pointer-events-none" />
+
         {/* Card Header bar */}
         <div
           ref={ledgerHeaderRef}
@@ -667,7 +674,7 @@ export function ClassRecordTable({
         >
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">Class Ledger</h2>
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner">
+            <div id="tutorial-gender-toggle" className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner">
               <Button
                 variant="ghost"
                 onClick={() => onSeparateByGenderChange(false)}
@@ -691,6 +698,7 @@ export function ClassRecordTable({
 
           <div className="flex items-center gap-3">
             <Button
+              id="tutorial-optional-details"
               variant="outline"
               size="sm"
               className={`h-8 rounded-xl border-slate-200 font-bold text-[11px] transition-all ${
@@ -702,39 +710,62 @@ export function ClassRecordTable({
             >
               Optional Assessment Details
             </Button>
-            {onClearScores && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearClick}
-                className={`h-8 rounded-xl border font-bold text-[11px] uppercase tracking-widest transition-all gap-1.5 ${
-                  confirmingClear
-                    ? "bg-rose-500 text-white border-rose-500 hover:bg-rose-600 hover:text-white"
-                    : "text-rose-500 hover:text-rose-600 hover:bg-rose-50 border-rose-100"
-                }`}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                {confirmingClear ? "Confirm Clear?" : "Clear Scores"}
-              </Button>
-            )}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Period:</span>
-              <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)}>
-                <SelectTrigger className="w-24 font-bold" size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="shadow-2xl">
-                  {terms.map((q) => (
-                    <SelectItem
-                      key={q}
-                      value={q}
-                      className="text-[11px] font-bold"
-                    >
-                      { q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3" }
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div id="tutorial-period-controls" className="flex items-center gap-3">
+              {onClearScores && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearClick}
+                  className={`h-8 rounded-xl border font-bold text-[11px] uppercase tracking-widest transition-all gap-1.5 ${
+                    confirmingClear
+                      ? "bg-rose-500 text-white border-rose-500 hover:bg-rose-600 hover:text-white"
+                      : "text-rose-500 hover:text-rose-600 hover:bg-rose-50 border-rose-100"
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {confirmingClear ? "Confirm Clear?" : "Clear Scores"}
+                </Button>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Period:</span>
+                {lockedTerm && (
+                  <span
+                    className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-2 py-0.5 flex items-center gap-1"
+                    title={`This is a rotating subject. You may only enter grades for ${lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'}.`}
+                  >
+                    🔒 Rotating — {lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'} only
+                  </span>
+                )}
+                <Select
+                  value={selectedTerm}
+                  onValueChange={(val) => {
+                    if (val && (!lockedTerm || val === lockedTerm)) onTermChange(val);
+                  }}
+                >
+                  <SelectTrigger className="w-24 font-bold" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="shadow-2xl">
+                    {terms.map((q) => {
+                      const isLocked = !!lockedTerm && q !== lockedTerm;
+                      return (
+                        <SelectItem
+                          key={q}
+                          value={q}
+                          disabled={isLocked}
+                          className={`text-[11px] font-bold ${
+                            isLocked ? "opacity-40 cursor-not-allowed" : ""
+                          }`}
+                          title={isLocked ? `This rotating subject is only taught in ${lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'}` : undefined}
+                        >
+                          {q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3"}
+                          {isLocked ? " 🔒" : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </div>
@@ -754,10 +785,10 @@ export function ClassRecordTable({
               {renderColGroup()}
               <TableHeader>
                 {/* ── Row 1: Category group headers ── */}
-                <TableRow ref={groupRowRef} className="hover:bg-transparent border-0 h-9 transition-none">
+                <TableRow id="tutorial-task-controls" ref={groupRowRef} className="hover:bg-transparent border-0 h-9 transition-none">
                   <TableHead
                     colSpan={3}
-                    className={`${thBase} border-l border-r text-slate-500 bg-slate-55 min-w-[424px] left-0 z-[25]`}
+                    className={`${thBase} border-l border-r border-b border-slate-200 text-slate-500 bg-slate-50 w-[424px] min-w-[424px] max-w-[424px] sticky left-0 z-[28] shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]`}
                   >
                     Learner Information
                   </TableHead>
@@ -825,28 +856,28 @@ export function ClassRecordTable({
                 <TableRow ref={subRowRef} className="hover:bg-transparent border-0 h-9 bg-white transition-none">
                   <TableHead className="w-10 min-w-[40px] max-w-[40px] text-center text-[11px] font-black text-slate-400 uppercase border-l border-r border-b border-slate-200 bg-white sticky left-0 z-[25] bg-clip-padding">#</TableHead>
                   <TableHead className="w-32 min-w-[128px] max-w-[128px] text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 px-1 bg-white sticky left-[40px] z-[25] bg-clip-padding">LRN</TableHead>
-                  <TableHead className="min-w-[256px] text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 px-2 bg-white sticky left-[168px] z-[25] bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]">Full Name</TableHead>
+                  <TableHead className="w-64 min-w-[256px] max-w-[256px] text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 px-2 bg-white sticky left-[168px] z-[25] bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]">Full Name</TableHead>
 
                   {Array.from({ length: wwCount }).map((_, i) => (
-                    <TableHead key={`h-ww-${i}`} className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 bg-white bg-clip-padding sticky z-20 cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors" onClick={() => onCellFocus("WW", i)}>{i + 1}</TableHead>
+                    <TableHead key={`h-ww-${i}`} className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 bg-white bg-clip-padding cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors" onClick={() => onCellFocus("WW", i)}>{i + 1}</TableHead>
                   ))}
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding sticky z-20">Total</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-indigo-600 uppercase border-r border-b border-slate-200 bg-indigo-50 bg-clip-padding sticky z-20">PS</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-indigo-700 uppercase border-r border-b border-slate-200 bg-indigo-100 bg-clip-padding sticky z-20">WS</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding">Total</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-indigo-600 uppercase border-r border-b border-slate-200 bg-indigo-50 bg-clip-padding">PS</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-indigo-700 uppercase border-r border-b border-slate-200 bg-indigo-100 bg-clip-padding">WS</TableHead>
 
                   {Array.from({ length: ptCount }).map((_, i) => (
-                    <TableHead key={`h-pt-${i}`} className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 bg-white bg-clip-padding sticky z-20 cursor-pointer hover:bg-purple-50 hover:text-purple-600 transition-colors" onClick={() => onCellFocus("PT", i)}>{i + 1}</TableHead>
+                    <TableHead key={`h-pt-${i}`} className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-400 uppercase border-r border-b border-slate-200 bg-white bg-clip-padding cursor-pointer hover:bg-purple-50 hover:text-purple-600 transition-colors" onClick={() => onCellFocus("PT", i)}>{i + 1}</TableHead>
                   ))}
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding sticky z-20">Total</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-purple-600 uppercase border-r border-b border-slate-200 bg-purple-50 bg-clip-padding sticky z-20">PS</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-purple-700 uppercase border-r border-b border-slate-200 bg-purple-100 bg-clip-padding sticky z-20">WS</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding">Total</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-purple-600 uppercase border-r border-b border-slate-200 bg-purple-50 bg-clip-padding">PS</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-purple-700 uppercase border-r border-b border-slate-200 bg-purple-100 bg-clip-padding">WS</TableHead>
 
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding sticky z-20 cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => onCellFocus("QA", 0)}>Score</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding sticky z-20">PS</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-amber-700 uppercase border-r border-b border-slate-200 bg-amber-100 bg-clip-padding sticky z-20">WS</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => onCellFocus("QA", 0)}>Score</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding">PS</TableHead>
+                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-black text-amber-700 uppercase border-r border-b border-slate-200 bg-amber-100 bg-clip-padding">WS</TableHead>
 
-                  <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-black text-emerald-600 uppercase border-r border-b border-slate-200 bg-emerald-50 bg-clip-padding sticky z-20">Initial</TableHead>
-                  <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-black text-slate-900 uppercase bg-emerald-100 bg-clip-padding border-r border-b border-slate-200 sticky z-20">Grade</TableHead>
+                  <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-black text-emerald-600 uppercase border-r border-b border-slate-200 bg-emerald-50 bg-clip-padding">Initial</TableHead>
+                  <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-black text-slate-900 uppercase bg-emerald-100 bg-clip-padding border-r border-b border-slate-200">Grade</TableHead>
                 </TableRow>
 
                 {/* ── Row 3: HPS (MAX) Row ── */}
@@ -875,6 +906,7 @@ export function ClassRecordTable({
 
       {/* ── Scrollable Table Body Area (horizontal scrolling only, natural vertical height) ── */}
       <div
+        id="tutorial-ledger-scores"
         ref={bodyScrollRef}
         onScroll={handleBodyScroll}
         className="w-full overflow-x-auto overflow-y-clip relative z-10 bg-white rounded-b-2xl border-x border-b border-slate-200/60 shadow-sm scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100"
@@ -892,7 +924,7 @@ export function ClassRecordTable({
                     rows.push(
                       <TableRow key="male-sep" className="bg-blue-50/60 hover:bg-blue-50/60 border-y border-blue-100/60 h-7">
                         <TableCell colSpan={wwCount + ptCount + 14} className="py-0.5 px-4">
-                          <span className="text-[11px] font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                          <span className="sticky left-4 text-[11px] font-black text-blue-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                             Male Learners ({maleRecords.length})
                           </span>
@@ -909,7 +941,7 @@ export function ClassRecordTable({
                     rows.push(
                       <TableRow key="female-sep" className="bg-pink-50/60 hover:bg-pink-50/60 border-y border-pink-100/60 h-7">
                         <TableCell colSpan={wwCount + ptCount + 14} className="py-0.5 px-4">
-                          <span className="text-[11px] font-black text-pink-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                          <span className="sticky left-4 text-[11px] font-black text-pink-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
                             <div className="w-1.5 h-1.5 rounded-full bg-pink-500" />
                             Female Learners ({femaleRecords.length})
                           </span>

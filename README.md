@@ -136,16 +136,30 @@ cd ..
 
 ### 4. Running the Development Stack
 
-Launch both frontend and backend development servers:
+**Option A: Standard (terminal must stay open)**
 
 ```bash
-# Terminal 1: Backend Server (Port 5003)
-cd server
-npm run dev
-
-# Terminal 2: Frontend Client (Port 5173)
+# Run both frontend and backend
 npm run dev
 ```
+
+**Option B: PM2 (survives terminal close — recommended)**
+
+```bash
+# Install PM2 globally (one-time setup)
+npm install -g pm2
+
+# Start both server and client in background
+npm run pm2:start
+
+# Useful commands
+npm run pm2:logs      # View logs
+npm run pm2:list      # See running processes
+npm run pm2:stop      # Stop all
+npm run pm2:restart   # Restart all
+```
+
+> **Note:** PM2 is a development tool only. It does not affect deployment or production.
 
 ---
 

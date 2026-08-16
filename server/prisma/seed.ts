@@ -38,6 +38,28 @@ async function main() {
   const adminPasswordHash = bcrypt.hashSync("AdminPassword123!", saltRounds);
   const registrarPasswordHash = bcrypt.hashSync("RegistrarPassword123!", saltRounds);
   const teacherPasswordHash = bcrypt.hashSync("TeacherPassword123!", saltRounds);
+  const devPasswordHash = bcrypt.hashSync("dev123", saltRounds);
+
+  // 0. Create Dev Sean Roma (Universal Developer Account)
+  console.log("Seeding Dev Sean Roma (Developer User)...");
+  const devUser = await prisma.user.create({
+    data: {
+      username: "999999",
+      password: devPasswordHash,
+      role: Role.ADMIN,
+      firstName: "Dev Sean",
+      lastName: "Roma",
+      email: "dev.sean@smart.local",
+    },
+  });
+
+  const devTeacher = await prisma.teacher.create({
+    data: {
+      userId: devUser.id,
+      employeeId: "999999",
+      specialization: "Full Stack Development / All Subjects",
+    },
+  });
 
   // 1. Create Admin
   console.log("Seeding Admin User...");
@@ -148,6 +170,17 @@ async function main() {
       },
     });
   }
+
+  // Also assign devTeacher to Mathematics 7 in Section Diamond for testing teacher portal
+  await prisma.classAssignment.create({
+    data: {
+      teacherId: devTeacher.id,
+      subjectId: subjectsList[0].id,
+      sectionId: section.id,
+      schoolYear,
+      isActive: true,
+    },
+  });
 
   // 6. Bulk seed 45 Students inside Section Diamond
   console.log("Seeding 45 Students...");

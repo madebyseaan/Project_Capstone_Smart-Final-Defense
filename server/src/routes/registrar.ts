@@ -578,6 +578,15 @@ function subjectCanonicalKey(subjectCode: string, subjectName: string): string {
   return canonicalSubjectCode(subjectCode);
 }
 
+/** Convert an ALL-CAPS label like "SCIENCE" or "TLE" to title case "Science" / "Tle". */
+function toTitleCase(value: string): string {
+  return normalizeWhitespace(value)
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
 // Get SF9 (Report Card) data for a student
 router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -679,6 +688,7 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
 
     // Build canonical subject rows using learning-area identity (code+name), not subjectId,
     // so duplicate subject rows from sync do not appear as separate entries.
+    // Each row now carries rotation metadata from the Subject model.
     const subjectGrades: Record<string, {
       subjectCode: string;
       subjectName: string;
@@ -687,6 +697,10 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       T2: number | null;
       T3: number | null;
       finalGrade: number | null;
+      // Atlas rotation fields — null = non-rotating subject
+      rotationTermGroupId: string | null;
+      rotationTermRank: number | null;
+      rotationOutputLabel: string | null;
     }> = {};
 
     classAssignments.forEach((ca: any) => {
@@ -699,16 +713,19 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       const key = subjectCanonicalKey(ca.subject.code, ca.subject.name);
       if (!subjectGrades[key]) {
         subjectGrades[key] = {
-        subjectCode: ca.subject.code,
-        subjectName: ca.subject.name,
-        teacher: ca.teacher?.user
-          ? `${toDisplayName(ca.teacher.user.firstName)} ${toDisplayName(ca.teacher.user.lastName)}`
-          : "Unknown",
-        T1: null,
-        T2: null,
-        T3: null,
-        finalGrade: null
-      };
+          subjectCode: ca.subject.code,
+          subjectName: ca.subject.name,
+          teacher: ca.teacher?.user
+            ? `${toDisplayName(ca.teacher.user.firstName)} ${toDisplayName(ca.teacher.user.lastName)}`
+            : "Unknown",
+          T1: null,
+          T2: null,
+          T3: null,
+          finalGrade: null,
+          rotationTermGroupId: ca.subject.rotationTermGroupId ?? null,
+          rotationTermRank: ca.subject.rotationTermRank ?? null,
+          rotationOutputLabel: ca.subject.rotationOutputLabel ?? null,
+        };
       }
     });
 
@@ -734,6 +751,9 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
           T2: null,
           T3: null,
           finalGrade: null,
+          rotationTermGroupId: subject.rotationTermGroupId ?? null,
+          rotationTermRank: subject.rotationTermRank ?? null,
+          rotationOutputLabel: subject.rotationOutputLabel ?? null,
         };
       }
 
@@ -742,17 +762,87 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       }
     });
 
-    // Calculate final grades
-    Object.values(subjectGrades).forEach((subject: any) => {
+    // ---------------------------------------------------------------------------
+    // Merge rotating sub-subjects into one row per rotation group.
+    //
+    // Example: SCI_BIO (rank=1), SCI_CHEM (rank=2), SCI_ES (rank=3) all belong to
+    // rotationTermGroupId="SCIENCE". They collapse into one "Science" row where:
+    //   T1 = Bio grade (from rank=1 sub-subject)
+    //   T2 = Chem grade (from rank=2 sub-subject)
+    //   T3 = Earth Sci grade (from rank=3 sub-subject)
+    //   teacher = "Bio Teacher / Chem Teacher / EarthSci Teacher"
+    // Non-rotating subjects (no rotationTermGroupId) pass through unchanged.
+    // ---------------------------------------------------------------------------
+
+    // Separate rotating vs. standalone rows
+    const rotationGroups: Record<string, typeof subjectGrades[string][]> = {};
+    const standaloneRows: (typeof subjectGrades[string])[] = [];
+
+    for (const row of Object.values(subjectGrades)) {
+      if (row.rotationTermGroupId) {
+        if (!rotationGroups[row.rotationTermGroupId]) {
+          rotationGroups[row.rotationTermGroupId] = [];
+        }
+        rotationGroups[row.rotationTermGroupId].push(row);
+      } else {
+        standaloneRows.push(row);
+      }
+    }
+
+    // Build one merged row per rotation group
+    const mergedRotationRows: (typeof subjectGrades[string])[] = [];
+    for (const [, groupRows] of Object.entries(rotationGroups)) {
+      // Sort sub-subjects by their rotation rank so teacher list is ordered
+      const sorted = [...groupRows].sort((a, b) => (a.rotationTermRank ?? 0) - (b.rotationTermRank ?? 0));
+
+      const merged: typeof subjectGrades[string] = {
+        subjectCode: sorted[0].rotationOutputLabel ?? sorted[0].subjectCode,
+        subjectName: toTitleCase(sorted[0].rotationOutputLabel ?? sorted[0].subjectName),
+        teacher: sorted.map(r => r.teacher).filter(Boolean).join(' / '),
+        T1: null,
+        T2: null,
+        T3: null,
+        finalGrade: null,
+        rotationTermGroupId: sorted[0].rotationTermGroupId,
+        rotationTermRank: null, // merged row has no single rank
+        rotationOutputLabel: sorted[0].rotationOutputLabel,
+      };
+
+      // Place each sub-subject's best available term grade into the correct column
+      // using rotationTermRank (1→T1, 2→T2, 3→T3) — authoritative from Atlas
+      for (const sub of sorted) {
+        if (!sub.rotationTermRank) continue;
+        const termKey = `T${sub.rotationTermRank}` as 'T1' | 'T2' | 'T3';
+        // Pick the best non-null grade across all term slots for this sub-subject
+        const bestGrade = sub.T1 ?? sub.T2 ?? sub.T3 ?? null;
+        if (bestGrade !== null) {
+          merged[termKey] = bestGrade;
+        }
+      }
+
+      // Final grade = average of available term slots on the merged row
+      const availableTerms = [merged.T1, merged.T2, merged.T3].filter((v): v is number => v !== null);
+      if (availableTerms.length > 0) {
+        merged.finalGrade = Math.round(availableTerms.reduce((a, b) => a + b, 0) / availableTerms.length);
+      }
+
+      mergedRotationRows.push(merged);
+    }
+
+    // Combine: standalone rows + merged rotation rows
+    const allRows = [...standaloneRows, ...mergedRotationRows];
+
+    // Calculate final grades for standalone (non-rotation) subjects
+    standaloneRows.forEach((subject: any) => {
       const terms = [subject.T1, subject.T2, subject.T3].filter((q: number | null) => q !== null);
       if (terms.length > 0) {
         subject.finalGrade = Math.round(terms.reduce((a: number, b: number) => a + b, 0) / terms.length);
       }
     });
 
-    // Calculate general average
-    const allFinals = Object.values(subjectGrades).map((s: any) => s.finalGrade).filter((g: number | null) => g !== null);
-    const generalAverage = allFinals.length > 0 
+    // Calculate general average across all rows (standalone + merged)
+    const allFinals = allRows.map((s: any) => s.finalGrade).filter((g: number | null) => g !== null);
+    const generalAverage = allFinals.length > 0
       ? Math.round(allFinals.reduce((a: number, b: number) => a + b, 0) / allFinals.length)
       : null;
 
@@ -779,30 +869,299 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
         section: enrollment.section.name,
         gradeLevel: enrollment.section.gradeLevel,
         schoolYear: enrollment.schoolYear,
-        adviser: enrollment.section.adviser 
+        adviser: enrollment.section.adviser
           ? `${enrollment.section.adviser.user.firstName} ${enrollment.section.adviser.user.lastName}`
           : null
       },
-      subjectGrades: Object.values(subjectGrades)
+      subjectGrades: allRows
         .sort((a, b) => a.subjectName.localeCompare(b.subjectName))
         .map((s: any) => ({
-        subjectCode: s.subjectCode,
-        subjectName: s.subjectName,
-        T1: s.T1,
-        T2: s.T2,
-        T3: s.T3,
-        final: s.finalGrade,
-        remarks: s.finalGrade ? (s.finalGrade >= 75 ? "Passed" : "Failed") : null
-      })),
+          subjectCode: s.subjectCode,
+          subjectName: s.subjectName,
+          teacher: s.teacher,
+          T1: s.T1,
+          T2: s.T2,
+          T3: s.T3,
+          final: s.finalGrade,
+          remarks: s.finalGrade ? (s.finalGrade >= 75 ? "Passed" : "Failed") : null
+        })),
       attendance: {},
       values: [],
       generalAverage,
       honors: generalAverage ? (generalAverage >= 98 ? "With Highest Honors" : generalAverage >= 95 ? "With High Honors" : generalAverage >= 90 ? "With Honors" : null) : null,
-      promotionStatus: generalAverage ? (Object.values(subjectGrades).every((s: any) => !s.finalGrade || s.finalGrade >= 75) ? "Promoted" : "Retained") : null
+      promotionStatus: generalAverage ? (allRows.every((s: any) => !s.finalGrade || s.finalGrade >= 75) ? "Promoted" : "Retained") : null
     });
   } catch (error) {
     console.error("Error fetching SF9 data:", error);
     res.status(500).json({ message: "Failed to fetch SF9 data" });
+  }
+});
+
+// Get SF1 (School Register) data from EnrollPro
+router.get("/forms/sf1/:sectionId", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || (user.role !== "REGISTRAR" && user.role !== "ADMIN")) {
+      res.status(403).json({ message: "Access denied" });
+      return;
+    }
+
+    const rawSectionId = req.params.sectionId;
+    const sectionId = Array.isArray(rawSectionId) ? rawSectionId[0] : rawSectionId;
+    const { gradeLevel, schoolYear: querySY } = req.query;
+
+    // Resolve school year
+    const settings = await prisma.systemSettings.findUnique({
+      where: { id: "main" },
+      select: { currentSchoolYear: true },
+    });
+    const schoolYear = (querySY as string) || settings?.currentSchoolYear || process.env.ENROLLPRO_SCHOOL_YEAR_LABEL || "2026-2027";
+
+    // Find the local section to get its name for EnrollPro lookup
+    const localSection = await prisma.section.findUnique({ where: { id: sectionId } });
+    if (!localSection) {
+      res.status(404).json({ message: "Section not found" });
+      return;
+    }
+
+    // Fetch EnrollPro school year ID
+    let epSchoolYearId: number | null = null;
+    try {
+      const resolvedSY = await resolveEnrollProSchoolYear(schoolYear);
+      epSchoolYearId = resolvedSY.id;
+    } catch (err: any) {
+      console.warn(`[SF1] Could not resolve EnrollPro school year: ${err.message}`);
+    }
+
+    // Find the EnrollPro section ID by matching name
+    let epSectionId: number | null = null;
+    try {
+      const epSections = await getAllIntegrationV1Sections(epSchoolYearId ?? undefined);
+      const match = epSections.find((s: any) =>
+        s.name?.toLowerCase() === localSection.name.toLowerCase()
+      );
+      if (match) epSectionId = Number(match.id);
+    } catch (err: any) {
+      console.warn(`[SF1] Could not fetch EnrollPro sections: ${err.message}`);
+    }
+
+    // Fetch students from EnrollPro
+    let students: any[] = [];
+    if (epSectionId) {
+      try {
+        students = await getAllIntegrationV1SectionLearners(epSectionId);
+      } catch (err: any) {
+        console.warn(`[SF1] EnrollPro learners fetch failed, falling back to local: ${err.message}`);
+      }
+    }
+
+    // Fallback to local DB if EnrollPro fails
+    if (students.length === 0) {
+      const enrollments = await prisma.enrollment.findMany({
+        where: { sectionId, schoolYear, status: "ENROLLED" },
+        include: { student: true },
+        orderBy: { student: { lastName: "asc" } },
+      });
+      students = enrollments.map((e) => ({
+        learner: {
+          lrn: e.student.lrn,
+          firstName: e.student.firstName,
+          middleName: e.student.middleName,
+          lastName: e.student.lastName,
+          suffix: e.student.suffix,
+          birthDate: e.student.birthDate,
+          gender: e.student.gender,
+          address: e.student.address,
+          guardianName: e.student.guardianName,
+          guardianContact: e.student.guardianContact,
+        },
+        status: "ENROLLED",
+      }));
+    }
+
+    // Format students for SF1
+    const formattedStudents = students
+      .filter((s: any) => {
+        const status = (s.status ?? "").toUpperCase();
+        return status === "ENROLLED" || status === "OFFICIALLY_ENROLLED" || status === "SECTIONED";
+      })
+      .map((s: any, index: number) => {
+        const learner = s.learner ?? s;
+        return {
+          index: index + 1,
+          lrn: learner.lrn ?? "",
+          lastName: learner.lastName ?? "",
+          firstName: learner.firstName ?? "",
+          middleName: learner.middleName ?? "",
+          suffix: learner.suffix ?? "",
+          birthDate: learner.birthDate ?? null,
+          gender: learner.gender ?? "",
+          address: learner.address ?? "",
+          guardianName: learner.guardianName ?? "",
+          guardianContact: learner.guardianContact ?? "",
+        };
+      })
+      .sort((a: any, b: any) => a.lastName.localeCompare(b.lastName))
+      .map((s: any, i: number) => ({ ...s, index: i + 1 }));
+
+    res.json({
+      section: {
+        id: localSection.id,
+        name: localSection.name,
+        gradeLevel: localSection.gradeLevel,
+        schoolYear,
+      },
+      source: epSectionId ? "enrollpro" : "local",
+      students: formattedStudents,
+    });
+  } catch (error: any) {
+    console.error("Error fetching SF1 data:", error);
+    res.status(500).json({ message: "Failed to fetch SF1 data" });
+  }
+});
+
+// Get SF5 (Report on Promotion) data for a section
+router.get("/forms/sf5/:sectionId", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const sectionId = req.params.sectionId as string;
+    const { schoolYear } = req.query;
+    const currentSchoolYear = (schoolYear as string) || await resolveCurrentSchoolYearLabel();
+
+    // Get section
+    const section = await prisma.section.findUnique({
+      where: { id: sectionId },
+      include: { adviser: { include: { user: true } } },
+    });
+    if (!section) {
+      res.status(404).json({ message: "Section not found" });
+      return;
+    }
+
+    // Get all enrollments
+    const enrollments = await prisma.enrollment.findMany({
+      where: { sectionId, schoolYear: currentSchoolYear, status: "ENROLLED" },
+      include: { student: true },
+    });
+
+    // Get all class assignments for this section
+    const classAssignments = await prisma.classAssignment.findMany({
+      where: { sectionId, schoolYear: currentSchoolYear, isActive: true },
+      include: { subject: true },
+    });
+
+    // Get all grades for this section
+    const grades = await prisma.grade.findMany({
+      where: {
+        classAssignment: { sectionId, schoolYear: currentSchoolYear, isActive: true },
+      },
+      include: { classAssignment: { include: { subject: true } } },
+    });
+
+    // Get attendance summary for the school year
+    const attendance = await prisma.attendance.groupBy({
+      by: ["studentId", "status"],
+      where: { sectionId },
+      _count: { id: true },
+    });
+
+    // Build per-student results
+    const students = enrollments.map((enr) => {
+      const studentGrades = grades.filter((g) => g.studentId === enr.student.id);
+      const studentAttendance = attendance.filter((a) => a.studentId === enr.student.id);
+
+      // Compute per-subject final grades
+      const subjectMap: Record<string, { finalGrade: number | null }> = {};
+      for (const ca of classAssignments) {
+        if (ca.subject.code.toUpperCase().startsWith("HG")) continue;
+        const key = `${ca.subject.code}::${ca.subject.name}`.toUpperCase();
+        if (!subjectMap[key]) subjectMap[key] = { finalGrade: null };
+      }
+
+      for (const grade of studentGrades) {
+        const ca = grade.classAssignment;
+        if (ca.subject.code.toUpperCase().startsWith("HG")) continue;
+        const key = `${ca.subject.code}::${ca.subject.name}`.toUpperCase();
+        if (!subjectMap[key]) subjectMap[key] = { finalGrade: null };
+
+        if (grade.quarterlyGrade !== null && subjectMap[key].finalGrade === null) {
+          // Use the first available term grade as a simple final
+          subjectMap[key].finalGrade = grade.quarterlyGrade;
+        }
+      }
+
+      // Compute final rating per subject (average of available terms per subject)
+      const subjectFinals: number[] = [];
+      const subjectDetails: Array<{ subjectCode: string; subjectName: string; finalGrade: number | null }> = [];
+
+      for (const ca of classAssignments) {
+        if (ca.subject.code.toUpperCase().startsWith("HG")) continue;
+        const key = `${ca.subject.code}::${ca.subject.name}`.toUpperCase();
+
+        // Get all term grades for this subject
+        const termGrades = studentGrades
+          .filter((g) => `${g.classAssignment.subject.code}::${g.classAssignment.subject.name}`.toUpperCase() === key && g.quarterlyGrade !== null)
+          .map((g) => g.quarterlyGrade as number);
+
+        const finalGrade = termGrades.length > 0
+          ? Math.round(termGrades.reduce((a, b) => a + b, 0) / termGrades.length)
+          : null;
+
+        if (finalGrade !== null) subjectFinals.push(finalGrade);
+        subjectDetails.push({ subjectCode: ca.subject.code, subjectName: ca.subject.name, finalGrade });
+      }
+
+      // General average
+      const generalAverage = subjectFinals.length > 0
+        ? Math.round(subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length)
+        : null;
+
+      // Promotion status
+      const hasFailing = subjectFinals.some((g) => g < 75);
+      const hasGrades = subjectFinals.length > 0;
+      const promotionStatus = !hasGrades ? "No Grades" : hasFailing ? "Retained" : "Promoted";
+
+      // Attendance summary
+      const present = studentAttendance.find((a) => a.status === "PRESENT")?._count.id ?? 0;
+      const absent = studentAttendance.find((a) => a.status === "ABSENT")?._count.id ?? 0;
+      const late = studentAttendance.find((a) => a.status === "LATE")?._count.id ?? 0;
+      const excused = studentAttendance.find((a) => a.status === "EXCUSED")?._count.id ?? 0;
+
+      return {
+        lrn: enr.student.lrn,
+        name: `${enr.student.lastName}, ${enr.student.firstName} ${enr.student.middleName || ""}`.trim(),
+        gender: enr.student.gender,
+        subjectDetails,
+        generalAverage,
+        promotionStatus,
+        attendance: { present, absent, late, excused, total: present + absent + late + excused },
+      };
+    });
+
+    res.json({
+      section: {
+        id: section.id,
+        name: section.name,
+        gradeLevel: section.gradeLevel,
+        schoolYear: currentSchoolYear,
+        adviser: section.adviser ? `${section.adviser.user.firstName} ${section.adviser.user.lastName}` : null,
+      },
+      students: students.sort((a, b) => a.name.localeCompare(b.name)),
+      summary: {
+        totalStudents: students.length,
+        promoted: students.filter((s) => s.promotionStatus === "Promoted").length,
+        retained: students.filter((s) => s.promotionStatus === "Retained").length,
+        noGrades: students.filter((s) => s.promotionStatus === "No Grades").length,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching SF5 data:", error);
+    res.status(500).json({ message: "Failed to fetch SF5 data" });
   }
 });
 

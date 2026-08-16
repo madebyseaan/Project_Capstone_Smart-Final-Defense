@@ -2,16 +2,14 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   FolderOpen,
   FileText,
-  BookOpen,
+  Users,
+  Clock,
+  CheckCircle2,
   Printer,
   Eye,
   Search,
-  Users,
   ArrowLeft,
   ChevronRight,
-  Clock,
-  CheckCircle2,
-  FileCheck,
   Loader2,
   AlertCircle,
   MoreVertical,
@@ -76,7 +74,7 @@ const schoolForms: SchoolForm[] = [
     description: "Master list of enrolled students.",
     icon: Users,
     color: "gray",
-    status: "dev",
+    status: "active",
   },
   {
     id: "SF2",
@@ -85,25 +83,7 @@ const schoolForms: SchoolForm[] = [
     description: "Daily attendance tracking.",
     icon: Clock,
     color: "gray",
-    status: "dev",
-  },
-  {
-    id: "SF3",
-    name: "Books Issued",
-    fullName: "School Form 3 - Books Issued and Returned",
-    description: "Textbook and material tracking.",
-    icon: BookOpen,
-    color: "gray",
-    status: "dev",
-  },
-  {
-    id: "SF4",
-    name: "Monthly Movement",
-    fullName: "School Form 4 - Monthly Learner's Movement and Attendance",
-    description: "Enrollment and dropout summary.",
-    icon: FileText,
-    color: "gray",
-    status: "dev",
+    status: "active",
   },
   {
     id: "SF5",
@@ -112,34 +92,7 @@ const schoolForms: SchoolForm[] = [
     description: "Final academic performance.",
     icon: CheckCircle2,
     color: "gray",
-    status: "dev",
-  },
-  {
-    id: "SF6",
-    name: "Promotion Summary",
-    fullName: "School Form 6 - Summarized Report on Promotion",
-    description: "Consolidated promotion summary.",
-    icon: FileCheck,
-    color: "gray",
-    status: "dev",
-  },
-  {
-    id: "SF7",
-    name: "Personnel List",
-    fullName: "School Form 7 - School Personnel Assignment List",
-    description: "Staff and teaching assignments.",
-    icon: Users,
-    color: "gray",
-    status: "dev",
-  },
-  {
-    id: "SF8",
-    name: "Health Profile",
-    fullName: "School Form 8 - Learner's Basic Health Profile",
-    description: "BMI and nutritional status.",
-    icon: BookOpen,
-    color: "rose",
-    status: "dev",
+    status: "active",
   },
   {
     id: "SF9",
@@ -169,7 +122,7 @@ const formatGradeLevel = (gradeLevel: string) => {
   return gradeLevel;
 };
 
-type ViewMode = "list" | "sf8" | "sf9" | "sf10" | "bulk_sf9" | "bulk_sf10";
+type ViewMode = "list" | "sf1" | "sf2" | "sf5" | "sf9" | "sf10" | "bulk_sf9" | "bulk_sf10";
 
 export default function SchoolForms() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -203,7 +156,9 @@ export default function SchoolForms() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   
   // Form data states
-  const [sf8Data, setSf8Data] = useState<any>(null);
+  const [sf1Data, setSf1Data] = useState<any>(null);
+  const [sf2Data, setSf2Data] = useState<any>(null);
+  const [sf5Data, setSf5Data] = useState<any>(null);
   const [sf9Data, setSf9Data] = useState<any>(null);
   const [sf10Data, setSf10Data] = useState<any>(null);
   const [bulkSf9Data, setBulkSf9Data] = useState<SF9Data[]>([]);
@@ -309,20 +264,6 @@ export default function SchoolForms() {
     window.print();
   };
 
-  const handleViewSF8 = async () => {
-    if (!selectedSection) return;
-    setLoading(true);
-    try {
-      const response = await registrarApi.getSF8(selectedSection, schoolYear);
-      setSf8Data(response.data);
-      setViewMode("sf8");
-    } catch (error) {
-      console.error("Error loading SF8:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleViewSF9 = async (studentId?: string) => {
     const id = studentId || selectedStudent;
     if (!id) return;
@@ -353,9 +294,53 @@ export default function SchoolForms() {
     }
   };
 
+  const handleViewSF1 = async () => {
+    if (!selectedSection) return;
+    setLoading(true);
+    try {
+      const response = await registrarApi.getSF1(selectedSection, schoolYear);
+      setSf1Data(response.data);
+      setViewMode("sf1");
+    } catch (error) {
+      console.error("Error loading SF1:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewSF2 = async () => {
+    if (!selectedSection) return;
+    setLoading(true);
+    try {
+      const response = await registrarApi.getAttendanceSummary(selectedSection);
+      setSf2Data(response.data);
+      setViewMode("sf2");
+    } catch (error) {
+      console.error("Error loading SF2:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewSF5 = async () => {
+    if (!selectedSection) return;
+    setLoading(true);
+    try {
+      const response = await registrarApi.getSF5(selectedSection, schoolYear);
+      setSf5Data(response.data);
+      setViewMode("sf5");
+    } catch (error) {
+      console.error("Error loading SF5:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBack = () => {
     setViewMode("list");
-    setSf8Data(null);
+    setSf1Data(null);
+    setSf2Data(null);
+    setSf5Data(null);
     setSf9Data(null);
     setSf10Data(null);
     setBulkSf9Data([]);
@@ -1037,13 +1022,21 @@ export default function SchoolForms() {
                   </p>
                   
                   <div className="flex mt-auto">
-                    {(form.id === "SF9" || form.id === "SF10") && !isDev ? (
+                    {(form.id === "SF1" || form.id === "SF2" || form.id === "SF5" || form.id === "SF9" || form.id === "SF10") && !isDev ? (
                       <Button
-                        onClick={() => form.id === "SF9" ? handleViewSF9() : handleViewSF10()}
-                        disabled={!selectedStudent}
+                        onClick={() => {
+                          if (form.id === "SF1") handleViewSF1();
+                          else if (form.id === "SF2") handleViewSF2();
+                          else if (form.id === "SF5") handleViewSF5();
+                          else if (form.id === "SF9") handleViewSF9();
+                          else if (form.id === "SF10") handleViewSF10();
+                        }}
+                        disabled={
+                          (form.id === "SF1" || form.id === "SF2" || form.id === "SF5") && !selectedSection
+                          || (form.id === "SF9" || form.id === "SF10") && !selectedStudent
+                        }
                         className="rounded-xl w-full text-white"
                         style={{ backgroundColor: themeColors.primary }}
-                        title={!selectedStudent ? "Select a student first" : undefined}
                       >
                         <Eye className="w-4 h-4 mr-2" />
                         View
@@ -1051,13 +1044,11 @@ export default function SchoolForms() {
                     ) : (
                       <Button
                         onClick={() => {
-                          if (form.id === "SF8") handleViewSF8();
-                          else if (form.id === "SF9") handleViewSF9();
+                          if (form.id === "SF9") handleViewSF9();
                           else if (form.id === "SF10") handleViewSF10();
                         }}
                         disabled={
                           isDev ||
-                          (form.id === "SF8" && !selectedSection) ||
                           ((form.id === "SF9" || form.id === "SF10") && !selectedStudent)
                         }
                         className="rounded-xl w-full"
@@ -1246,41 +1237,6 @@ export default function SchoolForms() {
     );
   }
 
-  // SF8 View - Health and Nutrition Form
-  if (viewMode === "sf8" && sf8Data) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-        </div>
-
-        <Card className="border-0 shadow-lg rounded-2xl p-0">
-          <CardContent className="p-12">
-            <div className="text-center">
-              <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: `${themeColors.primary}15` }}>
-                <BookOpen className="w-10 h-10" style={{ color: themeColors.primary }} />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">SF8 - School Health and Nutrition Form</h2>
-              <p className="text-gray-600 mb-6">
-                This form is currently not available. The SF8 health and nutrition records will be implemented in a future update.
-              </p>
-              <div className="rounded-xl p-4 text-sm text-left max-w-md mx-auto border" style={{ backgroundColor: `${themeColors.primary}10`, borderColor: `${themeColors.primary}30` }}>
-                <p className="font-medium mb-2" style={{ color: themeColors.primary }}>What is SF8?</p>
-                <p style={{ color: `${themeColors.primary}bb` }}>
-                  SF8 (School Form 8) is the School Health and Nutrition Form that records student health information, 
-                  immunizations, medical history, nutritional status, and health-related interventions.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   if (viewMode === "bulk_sf9" && bulkSf9Data.length > 0) {
     return (
       <div className="space-y-6 animate-fade-in max-w-[860px] mx-auto">
@@ -1323,6 +1279,190 @@ export default function SchoolForms() {
             <div key={`${item.student.lrn}-${idx}`}>{renderSF10Content(item)}</div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // SF1 View - School Register
+  if (viewMode === "sf1" && sf1Data) {
+    const students = sf1Data.students || [];
+    const section = sf1Data.section || {};
+    const source = sf1Data.source || "local";
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">SF1 - School Register</h2>
+            <p className="text-sm text-gray-500">{section.name} ({section.gradeLevel}) - {section.schoolYear}</p>
+            <p className="text-xs text-gray-400">Source: {source === "enrollpro" ? "EnrollPro" : "Local Database"}</p>
+          </div>
+        </div>
+        <Card className="border-0 shadow-lg rounded-2xl">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-4 py-3 text-left font-semibold">#</th>
+                    <th className="px-4 py-3 text-left font-semibold">LRN</th>
+                    <th className="px-4 py-3 text-left font-semibold">Last Name</th>
+                    <th className="px-4 py-3 text-left font-semibold">First Name</th>
+                    <th className="px-4 py-3 text-left font-semibold">Middle Name</th>
+                    <th className="px-4 py-3 text-left font-semibold">Gender</th>
+                    <th className="px-4 py-3 text-left font-semibold">Birth Date</th>
+                    <th className="px-4 py-3 text-left font-semibold">Address</th>
+                    <th className="px-4 py-3 text-left font-semibold">Guardian</th>
+                    <th className="px-4 py-3 text-left font-semibold">Contact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((s: any) => (
+                    <tr key={s.index} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3">{s.index}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{s.lrn}</td>
+                      <td className="px-4 py-3 font-medium">{s.lastName}</td>
+                      <td className="px-4 py-3">{s.firstName}</td>
+                      <td className="px-4 py-3">{s.middleName || "-"}</td>
+                      <td className="px-4 py-3">{s.gender || "-"}</td>
+                      <td className="px-4 py-3">{s.birthDate ? new Date(s.birthDate).toLocaleDateString() : "-"}</td>
+                      <td className="px-4 py-3 text-xs max-w-[150px] truncate" title={s.address}>{s.address || "-"}</td>
+                      <td className="px-4 py-3 text-xs">{s.guardianName || "-"}</td>
+                      <td className="px-4 py-3 text-xs">{s.guardianContact || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // SF2 View - Daily Attendance
+  if (viewMode === "sf2" && sf2Data) {
+    const summary = Array.isArray(sf2Data) ? sf2Data : (sf2Data?.data || []);
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">SF2 - Daily Attendance Report</h2>
+            <p className="text-sm text-gray-500">Attendance summary per student</p>
+          </div>
+        </div>
+        <Card className="border-0 shadow-lg rounded-2xl">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-4 py-3 text-left font-semibold">Student</th>
+                    <th className="px-4 py-3 text-center font-semibold">Present</th>
+                    <th className="px-4 py-3 text-center font-semibold">Absent</th>
+                    <th className="px-4 py-3 text-center font-semibold">Late</th>
+                    <th className="px-4 py-3 text-center font-semibold">Excused</th>
+                    <th className="px-4 py-3 text-center font-semibold">Total Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.map((s: any, i: number) => (
+                    <tr key={s.studentId || i} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{s.studentName || s.name || "-"}</td>
+                      <td className="px-4 py-3 text-center text-green-600">{s.present ?? 0}</td>
+                      <td className="px-4 py-3 text-center text-red-600">{s.absent ?? 0}</td>
+                      <td className="px-4 py-3 text-center text-yellow-600">{s.late ?? 0}</td>
+                      <td className="px-4 py-3 text-center text-blue-600">{s.excused ?? 0}</td>
+                      <td className="px-4 py-3 text-center font-semibold">{(s.present ?? 0) + (s.absent ?? 0) + (s.late ?? 0) + (s.excused ?? 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // SF5 View - Promotion Report
+  if (viewMode === "sf5" && sf5Data) {
+    const students = sf5Data.students || [];
+    const section = sf5Data.section || {};
+    const summary = sf5Data.summary || {};
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">SF5 - Report on Promotion</h2>
+            <p className="text-sm text-gray-500">{section.name} ({section.gradeLevel}) - {section.schoolYear}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-green-600">{summary.promoted || 0}</p>
+              <p className="text-sm text-gray-500">Promoted</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-red-600">{summary.retained || 0}</p>
+              <p className="text-sm text-gray-500">Retained</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-gray-400">{summary.noGrades || 0}</p>
+              <p className="text-sm text-gray-500">No Grades</p>
+            </CardContent>
+          </Card>
+        </div>
+        <Card className="border-0 shadow-lg rounded-2xl">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-4 py-3 text-left font-semibold">LRN</th>
+                    <th className="px-4 py-3 text-left font-semibold">Name</th>
+                    <th className="px-4 py-3 text-center font-semibold">General Average</th>
+                    <th className="px-4 py-3 text-center font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((s: any, i: number) => (
+                    <tr key={i} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 font-mono text-xs">{s.lrn}</td>
+                      <td className="px-4 py-3 font-medium">{s.name}</td>
+                      <td className="px-4 py-3 text-center font-semibold">{s.generalAverage ?? "-"}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          s.promotionStatus === "Promoted" ? "bg-green-100 text-green-700" :
+                          s.promotionStatus === "Retained" ? "bg-red-100 text-red-700" :
+                          "bg-gray-100 text-gray-500"
+                        }`}>
+                          {s.promotionStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

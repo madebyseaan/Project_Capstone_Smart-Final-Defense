@@ -185,6 +185,58 @@ export async function runEnrollProSync() {
     }
     logger.debug(`[EnrollProSync] Synced ${empIdToSmartTeacherId.size} SMART teachers`);
 
+    // 3b. Deactivate teachers no longer in EnrollPro
+    const epEmpIds = new Set(epTeachers.map((t: any) => String(t.employeeId).trim()).filter(Boolean));
+    const localTeachers = await prisma.teacher.findMany({
+      where: { user: { role: 'TEACHER', status: 'ACTIVE' } },
+      include: { user: true },
+    });
+    let deactivatedCount = 0;
+    for (const localTeacher of localTeachers) {
+      if (!epEmpIds.has(localTeacher.employeeId)) {
+        try {
+          await prisma.user.update({
+            where: { id: localTeacher.userId },
+            data: { status: 'SUSPENDED' },
+          });
+          // Deactivate class assignments for suspended teacher
+          await prisma.classAssignment.updateMany({
+            where: { teacherId: localTeacher.id, isActive: true },
+            data: { isActive: false, archivedAt: new Date(), archivedReason: 'Teacher removed from EnrollPro' },
+          });
+          deactivatedCount++;
+        } catch (err: any) {
+          errors.push(`Deactivate teacher ${localTeacher.employeeId}: ${err.message}`);
+        }
+      }
+    }
+    if (deactivatedCount > 0) {
+      logger.info(`[EnrollProSync] Deactivated ${deactivatedCount} teachers no longer in EnrollPro`);
+    }
+
+    // 3c. Reactivate teachers who reappeared in EnrollPro
+    const suspendedTeachers = await prisma.teacher.findMany({
+      where: { user: { status: 'SUSPENDED', role: 'TEACHER' } },
+      include: { user: true },
+    });
+    let reactivatedCount = 0;
+    for (const suspendedTeacher of suspendedTeachers) {
+      if (epEmpIds.has(suspendedTeacher.employeeId)) {
+        try {
+          await prisma.user.update({
+            where: { id: suspendedTeacher.userId },
+            data: { status: 'ACTIVE', suspendedAt: null, suspendedBy: null, suspensionReason: null },
+          });
+          reactivatedCount++;
+        } catch (err: any) {
+          errors.push(`Reactivate teacher ${suspendedTeacher.employeeId}: ${err.message}`);
+        }
+      }
+    }
+    if (reactivatedCount > 0) {
+      logger.info(`[EnrollProSync] Reactivated ${reactivatedCount} teachers who reappeared in EnrollPro`);
+    }
+
     // 4. Fetch ALL sections from EnrollPro integration v1 (paginated — fixes 50-section cap)
     const epSections = await getAllIntegrationV1Sections(schoolYearId);
     logger.debug(`[EnrollProSync] Loaded ${epSections.length} sections from EnrollPro`);

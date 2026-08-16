@@ -11,26 +11,25 @@
  * What it does NOT sync (separate concern):
  *  - Students/Enrollments from EnrollPro (enrollment opens June 1)
  */
-import http from 'http';
-import https from 'https';
 import type { GradeLevel } from '@prisma/client';
 import { prisma } from './prisma';
 import { logger } from './logger';
 import { getEnrollProTeachers, getAllIntegrationV1Sections, resolveEnrollProSchoolYear } from './enrollproClient';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import { setCachedAtlasFaculty } from './syncCache';
+import { atlasGet, ATLAS_BASE, ATLAS_SCHOOL_ID } from './sync/httpClient';
 import {
   mapGradeLevel,
   resolveSubjectCode,
+  resolveSubjectName,
+  sanitizeSubjectName,
   normalizeSubjectLabel,
   ensureHomeroomGuidanceLabel,
   HOMEROOM_GUIDANCE_LABEL,
   HOMEROOM_GUIDANCE_MINUTES,
 } from './atlasUtils';
 
-const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
-const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1'); // ATLAS internal schoolId
-const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '6', 10);
+const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '3', 10);
 const DEFAULT_SCHOOL_YEAR_LABEL = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
 
 function normalizeAtlasSubjectCode(code: string | null | undefined): string {
@@ -55,51 +54,6 @@ let lastSyncResult: {
   teachersWithLoads: number; errors: string[];
 } | null = null;
 
-// -- HTTP helpers -----------------------------------------------------------
-function get(url: string, headers: Record<string, string> = {}): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const lib = url.startsWith('https') ? https : http;
-    (lib as any).get(url, { headers }, (res: any) => {
-      let body = '';
-      res.on('data', (c: any) => body += c);
-      res.on('end', () => {
-        if (res.statusCode >= 400) {
-          return reject(new Error(`HTTP ${res.statusCode} ${url}: ${body.substring(0, 200)}`));
-        }
-        try { resolve(JSON.parse(body)); }
-        catch { reject(new Error(`JSON parse error from ${url}`)); }
-      });
-    }).on('error', reject)
-      .setTimeout(20000, function (this: any) { this.destroy(); reject(new Error(`Timeout: ${url}`)); });
-  });
-}
-
-function post(url: string, body: any): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const lib = url.startsWith('https') ? https : http;
-    const data = JSON.stringify(body);
-    const u = new URL(url);
-    const req = (lib as any).request({
-      hostname: u.hostname,
-      port: u.port || (url.startsWith('https') ? 443 : 80),
-      path: u.pathname,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-    }, (res: any) => {
-      let r = '';
-      res.on('data', (c: any) => r += c);
-      res.on('end', () => {
-        try { resolve(JSON.parse(r)); }
-        catch { reject(new Error(`JSON parse error`)); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('POST timeout')); });
-    req.write(data);
-    req.end();
-  });
-}
-
 // -- Core sync logic --------------------------------------------------------
 export async function runAtlasSync(): Promise<typeof lastSyncResult> {
   if (syncRunning) {
@@ -116,7 +70,6 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     if (!atlasToken) {
       throw new Error('ATLAS_SYSTEM_TOKEN not set in environment');
     }
-    const authHeader = { Authorization: `Bearer ${atlasToken}` };
 
     const settings = await prisma.systemSettings.findUnique({
       where: { id: 'main' },
@@ -135,7 +88,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     );
 
     // 1. Get all faculty from ATLAS
-    const facultyData = await get(`${ATLAS_BASE}/faculty?schoolId=${ATLAS_SCHOOL_ID}`, authHeader);
+    const facultyData = await atlasGet(`/faculty?schoolId=${ATLAS_SCHOOL_ID}`);
     const atlasFaculty: any[] = facultyData.faculty ?? [];
     // Populate the in-memory cache so teacherSync reads from cache on teacher login
     if (atlasFaculty.length > 0) setCachedAtlasFaculty(atlasFaculty);
@@ -222,41 +175,85 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     // IMPORTANT: Do NOT overwrite existing subject names — SMART names are authoritative.
     // Atlas often sends abbreviated names (e.g. "Sci Bio" instead of "Science - Biology").
     // Only create brand-new subjects that don't already exist in any form (raw or grade-suffixed).
+    // Rotation metadata (rotationTermGroupId, rotationTermRank, rotationOutputLabel) IS always
+    // kept up-to-date from Atlas since names are not affected.
     try {
-      const atlasSubjectsData = await get(`${ATLAS_BASE}/subjects?schoolId=${ATLAS_SCHOOL_ID}`, authHeader);
+      const atlasSubjectsData = await atlasGet(`/subjects?schoolId=${ATLAS_SCHOOL_ID}`);
       const atlasSubjects: any[] = atlasSubjectsData.subjects ?? [];
       // Pre-load existing subjects to check for grade-suffixed duplicates
       const existingSubjects = await prisma.subject.findMany({ select: { code: true } });
       const existingCodes = new Set(existingSubjects.map(s => s.code));
       let subjectsCreated = 0;
+      let rotationUpdated = 0;
       for (const atlasSubj of atlasSubjects) {
         if (!atlasSubj.code || !atlasSubj.name) continue;
         const code = normalizeAtlasSubjectCode(atlasSubj.code);
-        // Skip if a grade-suffixed version already exists (e.g. SCI_BIO7 exists, don't create SCI_BIO)
+
+        // Extract rotation metadata from Atlas subject
+        const rotationTermGroupId: string | null = atlasSubj.rotationTermGroupId ?? null;
+        const rotationTermRank: number | null = atlasSubj.rotationTermRank ?? null;
+        const rotationOutputLabel: string | null = atlasSubj.outputLabel ?? null;
+        const rotationData = { rotationTermGroupId, rotationTermRank, rotationOutputLabel };
+
+        // Check if a grade-suffixed version already exists (e.g. SCI_BIO7 exists, don't create SCI_BIO)
         const hasGradeSuffixed = ['7', '8', '9', '10'].some(g => existingCodes.has(code + g));
         if (hasGradeSuffixed) {
-          // Grade-suffixed subjects are already in SMART — don't create a raw-code duplicate
+          // Propagate rotation fields to all grade-suffixed variants that exist in SMART
+          if (rotationTermGroupId) {
+            for (const g of ['7', '8', '9', '10']) {
+              const suffixedCode = code + g;
+              if (existingCodes.has(suffixedCode)) {
+                await prisma.subject.update({
+                  where: { code: suffixedCode },
+                  data: rotationData,
+                }).catch(() => { /* subject may not exist */ });
+              }
+            }
+            rotationUpdated++;
+          }
           continue;
         }
+
         if (existingCodes.has(code)) {
           // Subject already exists — do NOT overwrite its name (SMART names are authoritative)
+          // But DO update rotation fields from Atlas (these are Atlas-authoritative)
+          if (rotationTermGroupId) {
+            await prisma.subject.update({
+              where: { code },
+              data: rotationData,
+            }).catch(() => { /* ignore if missing */ });
+            rotationUpdated++;
+          }
           continue;
         }
-        // Brand new subject — create it
+
+        // Brand new subject — create it with proper display name (not ATLAS abbreviation)
+        const properName = resolveSubjectName(code);
         await prisma.subject.create({
-          data: { code, name: atlasSubj.name, type: 'CORE' },
+          data: { code, name: properName, type: 'CORE', ...rotationData },
         }).catch(() => { /* already exists via race condition */ });
         existingCodes.add(code);
         subjectsCreated++;
       }
-      console.log(`[AtlasSync] Processed ${atlasSubjects.length} Atlas subjects, created ${subjectsCreated} new`);
+      logger.debug(`[AtlasSync] Processed ${atlasSubjects.length} Atlas subjects, created ${subjectsCreated} new, rotation-updated ${rotationUpdated}`);
     } catch (err: any) {
-      console.warn(`[AtlasSync] Failed to fetch subjects from ATLAS: ${err.message}`);
+      logger.warn(`[AtlasSync] Failed to fetch subjects from ATLAS: ${err.message}`);
     }
+
 
     const allSubjects = await prisma.subject.findMany();
     const subjectByCode = new Map(allSubjects.map(s => [s.code, s]));
     const homeroomLabelUpdated = new Set<string>();
+
+    // 4.5 Batch-fix any bad subject names that slipped through previous syncs
+    for (const subj of allSubjects) {
+      const fixedName = sanitizeSubjectName(subj.name, subj.code);
+      if (fixedName !== subj.name) {
+        await prisma.subject.update({ where: { id: subj.id }, data: { name: fixedName } }).catch(() => {});
+        subj.name = fixedName;
+        logger.debug(`[AtlasSync] Fixed bad name: "${subj.code}" "${subj.name}" → "${fixedName}"`);
+      }
+    }
 
     // 5. Fetch teaching loads from ATLAS per faculty
     const loads: Array<{ smartTeacherId: string; subjectCode: string; sectionName: string; gradeLevel: GradeLevel }> = [];
@@ -268,9 +265,8 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     for (const af of atlasFaculty) {
       try {
-        let detail = await get(
-          `${ATLAS_BASE}/faculty-assignments/${af.id}?schoolYearId=${atlasSchoolYearId}`,
-          authHeader,
+        let detail = await atlasGet(
+          `/faculty-assignments/${af.id}?schoolYearId=${atlasSchoolYearId}`,
         );
         let assignmentsPayload = detail?.assignments ?? detail?.data ?? detail ?? [];
         let assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
@@ -278,12 +274,11 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         // Fallback: If primary schoolYearId returned no sectionIds, try alternate active schoolYearId (e.g. 6 or 1)
         const hasDirectSections = assignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0));
         if (!hasDirectSections) {
-          const fallbackSYs = [6, 1, 8].filter(id => id !== atlasSchoolYearId);
+          const fallbackSYs = [3, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
           for (const fallbackSY of fallbackSYs) {
             try {
-              const fbDetail = await get(
-                `${ATLAS_BASE}/faculty-assignments/${af.id}?schoolYearId=${fallbackSY}`,
-                authHeader,
+              const fbDetail = await atlasGet(
+                `/faculty-assignments/${af.id}?schoolYearId=${fallbackSY}`,
               );
               const fbPayload = fbDetail?.assignments ?? fbDetail?.data ?? fbDetail ?? [];
               const fbAssignments: any[] = Array.isArray(fbPayload) ? fbPayload : [];
@@ -309,7 +304,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           const pubEntries: any[] = (!hasSectionIds)
           ? await (async () => {
               try {
-                const pubData = await get(`${ATLAS_BASE}/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`, authHeader);
+                const pubData = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`);
                 return Array.isArray(pubData?.entries) ? pubData.entries : [];
               } catch (error: any) {
                 errors.push(`Faculty ${af.firstName} ${af.lastName} published schedule: ${error?.message ?? error}`);
@@ -359,7 +354,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
             let sections: any[] = a.sections ?? [];
 
             if (sections.length > MAX_SANE_SECTIONS) {
-              console.warn(`[AtlasSync] Rejecting broad nested assignment for ${subjectCode} (${sections.length} sections)`);
+              logger.warn(`[AtlasSync] Rejecting broad nested assignment for ${subjectCode} (${sections.length} sections)`);
               continue;
             }
 
@@ -450,14 +445,14 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       if (!subject) {
         const autoName = smartSubjectCode.startsWith('HG')
           ? HOMEROOM_GUIDANCE_LABEL
-          : load.subjectCode.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+          : resolveSubjectName(smartSubjectCode, section.gradeLevel);
         subject = await prisma.subject.upsert({
           where: { code: smartSubjectCode },
           update: {},
           create: { code: smartSubjectCode, name: autoName, type: 'CORE' },
         });
         subjectByCode.set(smartSubjectCode, subject);
-        console.log(`[AtlasSync] Auto-created subject "${smartSubjectCode}" ("${autoName}")`);
+        logger.debug(`[AtlasSync] Auto-created subject "${smartSubjectCode}" ("${autoName}")`);
       }
 
       await ensureHomeroomGuidanceLabel(subject, homeroomLabelUpdated);
@@ -528,7 +523,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     // 7. Sync section advisers from ATLAS /faculty/advisers
     try {
-      const advisersData = await get(`${ATLAS_BASE}/faculty/advisers?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${atlasSchoolYearId}`, authHeader);
+      const advisersData = await atlasGet(`/faculty/advisers?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${atlasSchoolYearId}`);
       const atlasAdvisers: any[] = advisersData.advisers ?? [];
       const facultyEmailById = new Map<number, string>(atlasFaculty.map(f => [f.id, (f.contactInfo ?? '').toLowerCase()]));
       const emailToTeacherIdForAdviser = new Map<string, string>();
@@ -588,11 +583,8 @@ export function getSyncStatus() {
 export async function getAtlasTeachingLoadSummary(
   atlasSchoolYearId?: number,
 ): Promise<any> {
-  const atlasToken = process.env.ATLAS_SYSTEM_TOKEN;
-  if (!atlasToken) throw new Error('ATLAS_SYSTEM_TOKEN not configured');
   const syId = atlasSchoolYearId ?? DEFAULT_ATLAS_SCHOOL_YEAR_ID;
-  const url = `${ATLAS_BASE}/faculty-assignments/summary?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${syId}`;
-  return get(url, { Authorization: `Bearer ${atlasToken}` });
+  return atlasGet(`/faculty-assignments/summary?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${syId}`);
 }
 
 /**
@@ -601,10 +593,7 @@ export async function getAtlasTeachingLoadSummary(
  * Requires ATLAS_SYSTEM_TOKEN.
  */
 export async function getAtlasSubjectStats(): Promise<any> {
-  const atlasToken = process.env.ATLAS_SYSTEM_TOKEN;
-  if (!atlasToken) throw new Error('ATLAS_SYSTEM_TOKEN not configured');
-  const url = `${ATLAS_BASE}/subjects/stats/${ATLAS_SCHOOL_ID}`;
-  return get(url, { Authorization: `Bearer ${atlasToken}` });
+  return atlasGet(`/subjects/stats/${ATLAS_SCHOOL_ID}`);
 }
 
 // NOTE: Scheduling is now handled by syncCoordinator.ts.

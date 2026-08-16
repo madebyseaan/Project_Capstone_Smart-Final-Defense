@@ -13,7 +13,6 @@
  * See DATA_ALIGNMENT.md for full field mapping documentation.
  */
 
-import http from 'http';
 import { prisma } from './prisma';
 import { logger } from './logger';
 import {
@@ -40,136 +39,19 @@ import {
   HOMEROOM_GUIDANCE_LABEL,
   HOMEROOM_GUIDANCE_MINUTES,
 } from './atlasUtils';
+import { atlasGet, ATLAS_SCHOOL_ID } from './sync/httpClient';
+import {
+  upsertLearner,
+  dropStaleEnrollments,
+  upsertSection,
+} from './sync/utils';
 
-const ATLAS_BASE = 'http://100.88.55.125:5001/api/v1';
-const ATLAS_SCHOOL_ID = 1;
 const DEFAULT_SCHOOL_YEAR = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
 const DEFAULT_ENROLLPRO_SCHOOL_YEAR_ID = parseInt(process.env.ENROLLPRO_SCHOOL_YEAR_ID ?? '38', 10);
-const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '8', 10);
-
-// ---------------------------------------------------------------------------
-// Atlas HTTP helper
-// ---------------------------------------------------------------------------
-function atlasGet(path: string, token: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const url = new URL(`${ATLAS_BASE}${path}`);
-    const req = http.request(
-      {
-        hostname: url.hostname,
-        port: parseInt(url.port) || 80,
-        path: url.pathname + url.search,
-        method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
-      },
-      (res) => {
-        let b = '';
-        res.on('data', (c) => (b += c));
-        res.on('end', () => {
-          if (res.statusCode === 404) { resolve(null); return; }
-          if (res.statusCode && res.statusCode >= 400) {
-            // Resolve with null rather than rejecting — 404/403 are not fatal
-            resolve(null);
-            return;
-          }
-          try { resolve(JSON.parse(b)); }
-          catch { reject(new Error(`Atlas JSON parse error ${path}`)); }
-        });
-      },
-    );
-    req.on('error', reject);
-    req.setTimeout(15000, () => req.destroy(new Error(`Atlas timeout ${path}`)));
-    req.end();
-  });
-}
+const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '3', 10);
 
 // ---------------------------------------------------------------------------
 // Upsert a learner (student + enrollment) into SMART
-// ---------------------------------------------------------------------------
-async function upsertLearner(
-  learner: any,
-  sectionId: string,
-  schoolYear: string,
-): Promise<boolean> {
-  if (!learner?.lrn) return false;
-  const student = await prisma.student.upsert({
-    where: { lrn: learner.lrn },
-    update: {
-      firstName: learner.firstName,
-      lastName: learner.lastName,
-      middleName: learner.middleName ?? null,
-      gender: learner.sex ?? null,
-      birthDate: learner.birthdate ? new Date(learner.birthdate) : undefined,
-    },
-    create: {
-      lrn: learner.lrn,
-      firstName: learner.firstName,
-      lastName: learner.lastName,
-      middleName: learner.middleName ?? null,
-      suffix: learner.extensionName ?? null,
-      gender: learner.sex ?? null,
-      birthDate: learner.birthdate ? new Date(learner.birthdate) : null,
-    },
-  });
-  await prisma.enrollment.upsert({
-    where: { studentId_sectionId_schoolYear: { studentId: student.id, sectionId, schoolYear } },
-    update: { status: 'ENROLLED' },
-    create: { studentId: student.id, sectionId, schoolYear, status: 'ENROLLED' },
-  });
-  return true;
-}
-
-// ---------------------------------------------------------------------------
-// Upsert a section in SMART (create from Atlas/EnrollPro data if missing)
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Drop stale advisory enrollments for a section after a fresh sync.
-// Any student currently ENROLLED in the section who is NOT in the new
-// learner list (identified by LRN) gets marked as DROPPED.
-// ---------------------------------------------------------------------------
-async function dropStaleEnrollments(
-  sectionId: string,
-  schoolYear: string,
-  freshLearners: any[],
-): Promise<number> {
-  // Build the set of LRNs that are still active according to EnrollPro.
-  const freshLRNs = new Set<string>(
-    freshLearners
-      .map((rec) => (rec.learner ?? rec)?.lrn)
-      .filter((lrn): lrn is string => Boolean(lrn)),
-  );
-
-  // Load all students currently enrolled so we can compare.
-  const currentlyEnrolled = await prisma.enrollment.findMany({
-    where: { sectionId, schoolYear, status: 'ENROLLED' },
-    select: { id: true, student: { select: { lrn: true } } },
-  });
-
-  const toDropIds = currentlyEnrolled
-    .filter((e) => !freshLRNs.has(e.student.lrn))
-    .map((e) => e.id);
-
-  if (toDropIds.length > 0) {
-    await prisma.enrollment.updateMany({
-      where: { id: { in: toDropIds } },
-      data: { status: 'DROPPED' },
-    });
-  }
-  return toDropIds.length;
-}
-
-async function upsertSection(
-  name: string,
-  gradeLevel: GradeLevel,
-  schoolYear: string,
-  adviserId?: string,
-): Promise<any> {
-  return (prisma.section as any).upsert({
-    where: { name_gradeLevel_schoolYear: { name, gradeLevel, schoolYear } },
-    update: adviserId ? { adviserId } : {},
-    create: { name, gradeLevel, schoolYear, ...(adviserId ? { adviserId } : {}) },
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Main per-teacher sync
 // ---------------------------------------------------------------------------
@@ -275,7 +157,7 @@ export async function syncTeacherOnLogin(
 
       const learners = await getAllIntegrationV1SectionLearners(Number(mySection.id));
       totalLearners.push(...learners);
-      console.log(`[TeacherSync] Advisory "${mySection.name}" (EP id=${mySection.id}): ${learners.length} learners`);
+      logger.debug(`[TeacherSync] Advisory "${mySection.name}" (EP id=${mySection.id}): ${learners.length} learners`);
 
       for (const rec of learners) {
         const learner = rec.learner ?? rec;
@@ -294,7 +176,7 @@ export async function syncTeacherOnLogin(
     if (advisorySectionSmartId) {
       try {
         const dropped = await dropStaleEnrollments(advisorySectionSmartId, schoolYearLabel, totalLearners);
-        if (dropped > 0) console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${result.advisorySection}"`);
+        if (dropped > 0) logger.debug(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${result.advisorySection}"`);
       } catch (err: any) {
         result.errors.push(`Stale enrollment cleanup: ${err.message}`);
       }
@@ -321,7 +203,7 @@ export async function syncTeacherOnLogin(
           const gradeLevel = mapGradeLevel(gradeLevelRaw);
           result.advisorySection = epFaculty.advisorySectionName;
 
-          console.log(`[TeacherSync] Advisory: ${epFaculty.advisorySectionName} gl=${gradeLevel ?? 'unknown'}`);
+          logger.debug(`[TeacherSync] Advisory: ${epFaculty.advisorySectionName} gl=${gradeLevel ?? 'unknown'}`);
 
           if (gradeLevel) {
             // Upsert the section in SMART and mark this teacher as adviser
@@ -336,7 +218,7 @@ export async function syncTeacherOnLogin(
 
             const learners = await getAllIntegrationV1SectionLearners(epFaculty.advisorySectionId);
             result.studentsFound = learners.length;
-            console.log(`[TeacherSync] Advisory "${section.name}": ${learners.length} learners`);
+            logger.debug(`[TeacherSync] Advisory "${section.name}": ${learners.length} learners`);
 
             for (const rec of learners) {
               const learner = rec.learner ?? rec;
@@ -351,7 +233,7 @@ export async function syncTeacherOnLogin(
             // Drop students who are no longer in EnrollPro for this section.
             try {
               const dropped = await dropStaleEnrollments(section.id, schoolYearLabel, learners);
-              if (dropped > 0) console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${section.name}"`);
+              if (dropped > 0) logger.debug(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${section.name}"`);
             } catch (err: any) {
               result.errors.push(`Stale enrollment cleanup: ${err.message}`);
             }
@@ -359,11 +241,11 @@ export async function syncTeacherOnLogin(
             result.errors.push(`Could not determine grade level for "${epFaculty.advisorySectionName}"`);
           }
         } else {
-          console.log(`[TeacherSync] No advisory for employeeId=${employeeId}`);
+          logger.debug(`[TeacherSync] No advisory for employeeId=${employeeId}`);
           result.errors.push('EnrollPro faculty record has no advisory assignment for current school year');
         }
       } else {
-        console.log(`[TeacherSync] Teacher not found in EnrollPro faculty feed for employeeId=${employeeId}`);
+        logger.debug(`[TeacherSync] Teacher not found in EnrollPro faculty feed for employeeId=${employeeId}`);
         result.errors.push('Teacher not found in EnrollPro integration faculty feed for current school year');
       }
     }
@@ -426,23 +308,23 @@ export async function syncTeacherOnLogin(
           if (advisorySectionSmartId) {
             try {
               const dropped = await dropStaleEnrollments(advisorySectionSmartId, schoolYearLabel, totalLearners);
-              if (dropped > 0) console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${result.advisorySection}" (fallback)`);
+              if (dropped > 0) logger.debug(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for "${result.advisorySection}" (fallback)`);
             } catch (err: any) {
               result.errors.push(`Stale enrollment cleanup fallback: ${err.message}`);
             }
           }
         } else {
-          console.log(`[TeacherSync] Advisory fallback: no section found for EP teacherId=${epTeacher.id}`);
+          logger.debug(`[TeacherSync] Advisory fallback: no section found for EP teacherId=${epTeacher.id}`);
           result.errors.push('EnrollPro sections feed has no advisory section mapped to this teacher for current school year');
         }
       } else {
-        console.log(`[TeacherSync] Advisory fallback: no EnrollPro teacher record for employeeId=${employeeId}`);
+        logger.debug(`[TeacherSync] Advisory fallback: no EnrollPro teacher record for employeeId=${employeeId}`);
         result.errors.push('Teacher not found in EnrollPro teachers endpoint by employee ID');
       }
     }
   } catch (err: any) {
     result.errors.push(`EnrollPro advisory sync failed: ${err.message}`);
-    console.error(`[TeacherSync] EnrollPro error: ${err.message}`);
+    logger.error(`[TeacherSync] EnrollPro error: ${err.message}`);
   }
 
   // Keep adviser assignment in SMART aligned with current EnrollPro state.
@@ -473,64 +355,84 @@ export async function syncTeacherOnLogin(
     }
   } catch (err: any) {
     result.errors.push(`Advisory cleanup failed: ${err.message}`);
-    console.error(`[TeacherSync] Advisory cleanup error: ${err.message}`);
+    logger.error(`[TeacherSync] Advisory cleanup error: ${err.message}`);
   }
 
   // ── 3. Atlas: Get teaching load (subject + section assignments) ─────────
   try {
-    const atlasToken = process.env.ATLAS_SYSTEM_TOKEN;
-    if (!atlasToken) throw new Error('ATLAS_SYSTEM_TOKEN not set');
+    if (!process.env.ATLAS_SYSTEM_TOKEN) throw new Error('ATLAS_SYSTEM_TOKEN not set');
 
 // Use cached Atlas faculty list if available (populated by background sync)
         // Fall back to a live fetch on cache miss so login always works.
         let atlasFaculty: any[] = getCachedAtlasFaculty() ?? [];
         if (atlasFaculty.length === 0) {
-          const facultyData = await atlasGet(`/faculty?schoolId=${ATLAS_SCHOOL_ID}`, atlasToken);
+          const facultyData = await atlasGet(`/faculty?schoolId=${ATLAS_SCHOOL_ID}`);
           atlasFaculty = facultyData?.faculty ?? [];
           if (atlasFaculty.length > 0) setCachedAtlasFaculty(atlasFaculty);
         }
 
     // Identity resolution policy:
-    // 1) Prefer exact Atlas email match to guarantee user ownership.
-    // 2) Fall back to externalId only when email match is unavailable.
+    // 1) Match direct employeeId (e.g. "1000018") - strongest cross-system link
+    // 2) Exact Atlas contactInfo / email match to user email
+    // 3) Match externalId against EnrollPro teacher ID
+    // 4) Exact name match
+    const cleanEmpId = String(employeeId || '').trim();
+    const atlasByEmpId = cleanEmpId
+      ? atlasFaculty.find((f) => String(f.employeeId ?? '').trim() === cleanEmpId)
+      : undefined;
     const atlasByEmail = atlasFaculty.find(
-      (f) => (f.contactInfo ?? '').toLowerCase() === email.toLowerCase(),
+      (f) => (f.contactInfo ?? '').toLowerCase() === email.toLowerCase() ||
+             (f.email ?? '').toLowerCase() === email.toLowerCase(),
     );
     const atlasByExternalId = epTeacherId != null
-      ? atlasFaculty.find((f) => f.externalId === epTeacherId)
+      ? atlasFaculty.find((f) => Number(f.externalId) === Number(epTeacherId))
       : undefined;
 
-    let atlasMember = atlasByEmail ?? atlasByExternalId;
+    let atlasMember = atlasByEmpId ?? atlasByEmail ?? atlasByExternalId;
 
-    if (atlasByEmail && atlasByExternalId && atlasByEmail.id !== atlasByExternalId.id) {
-      console.warn(
-        `[TeacherSync] Atlas identity mismatch: email matched id=${atlasByEmail.id} but externalId=${epTeacherId} matched id=${atlasByExternalId.id}. Using email match.`,
-      );
-    }
-
-    if (atlasByEmail) {
-      console.log(`[TeacherSync] Atlas: matched via email id=${atlasByEmail.id}`);
+    if (atlasByEmpId) {
+      logger.debug(`[TeacherSync] Atlas: matched via employeeId=${employeeId} -> atlas.id=${atlasByEmpId.id}`);
+    } else if (atlasByEmail) {
+      logger.debug(`[TeacherSync] Atlas: matched via email id=${atlasByEmail.id}`);
     } else if (atlasByExternalId) {
-      console.log(`[TeacherSync] Atlas: matched via externalId=${epTeacherId} -> atlas.id=${atlasByExternalId.id}`);
+      logger.debug(`[TeacherSync] Atlas: matched via externalId=${epTeacherId} -> atlas.id=${atlasByExternalId.id}`);
     }
 
     if (!atlasMember) {
-      console.log(`[TeacherSync] Atlas: no faculty match for employeeId=${employeeId} email=${email}`);
+      logger.debug(`[TeacherSync] Atlas: no faculty match for employeeId=${employeeId} email=${email}`);
     } else {
-      console.log(`[TeacherSync] Atlas: matched faculty id=${atlasMember.id}`);
+      logger.debug(`[TeacherSync] Atlas: matched faculty id=${atlasMember.id}`);
 
       // Try 1: faculty-assignments (subject-grade assignments, may have section info)
-      const assignmentsData = await atlasGet(
+      let assignmentsData = await atlasGet(
         `/faculty-assignments/${atlasMember.id}?schoolYearId=${DEFAULT_ATLAS_SCHOOL_YEAR_ID}`,
-        atlasToken,
       );
-      const assignmentsPayload = assignmentsData?.assignments ?? assignmentsData?.data ?? assignmentsData ?? [];
-      const flatAssignments: any[] = Array.isArray(assignmentsPayload)
-        ? assignmentsPayload.filter((a) => a && (a.subjectCode || a.sectionId))
-        : [];
-      const nestedAssignments: any[] = Array.isArray(assignmentsPayload)
-        ? assignmentsPayload.filter((a) => a && (a.subject?.code || a.sections))
-        : [];
+      let assignmentsPayload = assignmentsData?.assignments ?? assignmentsData?.data ?? assignmentsData ?? [];
+      let assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
+
+      // Fallback: If primary schoolYearId returned no sectionIds/sections, try alternate active schoolYearIds
+      const hasDirectSections = assignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0));
+      if (!hasDirectSections) {
+        const fallbackSYs = [3, 6, 1, 8].filter(id => id !== DEFAULT_ATLAS_SCHOOL_YEAR_ID);
+        for (const fallbackSY of fallbackSYs) {
+          try {
+            const fbDetail = await atlasGet(
+              `/faculty-assignments/${atlasMember.id}?schoolYearId=${fallbackSY}`,
+            );
+            const fbPayload = fbDetail?.assignments ?? fbDetail?.data ?? fbDetail ?? [];
+            const fbAssignments: any[] = Array.isArray(fbPayload) ? fbPayload : [];
+            if (fbAssignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0))) {
+              assignments = fbAssignments;
+              break;
+            }
+          } catch {
+            // Ignore fallback errors
+          }
+        }
+      }
+
+      const flatAssignments: any[] = assignments.filter((a) => a && (a.subjectCode || a.sectionId));
+      const nestedAssignments: any[] = assignments.filter((a) => a && (a.subject?.code || a.sections));
 
       // Always try published schedule first. It is the most specific source for
       // actual teacher-to-section assignments and avoids broad over-assignment.
@@ -538,11 +440,10 @@ export async function syncTeacherOnLogin(
       try {
         const pubData = await atlasGet(
           `/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${atlasMember.id}`,
-          atlasToken,
         );
         pubEntries = pubData?.entries ?? [];
       } catch (e: any) {
-        console.warn(`[TeacherSync] Atlas published schedule lookup failed: ${e?.message ?? e}`);
+        logger.warn(`[TeacherSync] Atlas published schedule lookup failed: ${e?.message ?? e}`);
       }
 
       const homeroomLabelUpdated = new Set<string>();
@@ -552,7 +453,7 @@ export async function syncTeacherOnLogin(
       };
 
       if (pubEntries.length > 0) {
-        console.log(`[TeacherSync] Atlas published: ${pubEntries.length} schedule entries`);
+        logger.debug(`[TeacherSync] Atlas published: ${pubEntries.length} schedule entries`);
         result.classAssignmentsFromAtlas = pubEntries.length;
 
         // Build subject + section lookups
@@ -608,7 +509,7 @@ export async function syncTeacherOnLogin(
         }
       } else if (nestedAssignments.length > 0) {
         // assignments have subject + specific sections array
-        console.log(`[TeacherSync] Atlas assignments: ${nestedAssignments.length} subject-section assignments`);
+        logger.debug(`[TeacherSync] Atlas assignments: ${nestedAssignments.length} subject-section assignments`);
         result.classAssignmentsFromAtlas = nestedAssignments.length;
 
         const allSubjectsA = await prisma.subject.findMany();
@@ -643,7 +544,7 @@ export async function syncTeacherOnLogin(
               }).filter(Boolean);
               
               if (atlasSections.length > 0) {
-                console.log(`[TeacherSync] Fallback: recovered ${atlasSections.length} section(s) for ${atlasCode} from facultySubjects`);
+                logger.debug(`[TeacherSync] Fallback: recovered ${atlasSections.length} section(s) for ${atlasCode} from facultySubjects`);
               }
             }
           }
@@ -654,10 +555,10 @@ export async function syncTeacherOnLogin(
             const advisoryName = result.advisorySection;
             const capped = atlasSections.filter((s: any) => s.name === advisoryName);
             if (capped.length > 0) {
-              console.log(`[TeacherSync] Broad Atlas assignment for ${atlasCode} (${atlasSections.length} sections) capped to advisory section "${advisoryName}"`);
+              logger.debug(`[TeacherSync] Broad Atlas assignment for ${atlasCode} (${atlasSections.length} sections) capped to advisory section "${advisoryName}"`);
               atlasSections = capped;
             } else {
-              console.warn(`[TeacherSync] Rejecting broad Atlas assignment for ${atlasCode}: ${atlasSections.length} sections. Threshold is ${MAX_SANE_SECTIONS}.`);
+              logger.warn(`[TeacherSync] Rejecting broad Atlas assignment for ${atlasCode}: ${atlasSections.length} sections. Threshold is ${MAX_SANE_SECTIONS}.`);
               result.errors.push(`Broad Atlas assignment rejected for ${atlasCode} (${atlasSections.length} sections). Please use published schedule.`);
               continue;
             }
@@ -669,7 +570,7 @@ export async function syncTeacherOnLogin(
               mapGradeLevel(atlasSection.gradeLevelName) ??
               mapGradeLevel(atlasSection.name);
             if (!gradeLevel) {
-              console.log(`[TeacherSync] Assignments: cannot map grade level for "${atlasSection.name}"`);
+              logger.debug(`[TeacherSync] Assignments: cannot map grade level for "${atlasSection.name}"`);
               continue;
             }
 
@@ -680,7 +581,7 @@ export async function syncTeacherOnLogin(
               if (section) {
                 sectionByKeyA.set(`${atlasSection.name?.trim()}:${gradeLevel}`, section);
               }
-              console.log(`[TeacherSync] Created missing section "${atlasSection.name}"`);
+              logger.debug(`[TeacherSync] Created missing section "${atlasSection.name}"`);
             }
             if (!section) continue;
 
@@ -708,12 +609,12 @@ export async function syncTeacherOnLogin(
                 create: { teacherId: smartTeacherId, subjectId: subject.id, sectionId: section.id, schoolYear: schoolYearLabel, teachingMinutes, isActive: true },
               });
               result.classAssignmentsCreated++;
-              console.log(`[TeacherSync] Upserted: ${subject.code} -> ${section.name}`);
+              logger.debug(`[TeacherSync] Upserted: ${subject.code} -> ${section.name}`);
             } catch { /* concurrent duplicate */ }
           }
         }
       } else if (flatAssignments.length > 0) {
-        console.log(`[TeacherSync] Atlas assignments: ${flatAssignments.length} subject-section assignments (flat)`);
+        logger.debug(`[TeacherSync] Atlas assignments: ${flatAssignments.length} subject-section assignments (flat)`);
         result.classAssignmentsFromAtlas = flatAssignments.length;
 
         // Trust Gate: Group by subject to detect broad over-assignment in flat payload
@@ -744,7 +645,7 @@ export async function syncTeacherOnLogin(
             const epSection = epSectionByIdF.get(sectionId);
             const advisoryName = result.advisorySection;
             if (advisoryName && epSection?.name === advisoryName) {
-              console.log(`[TeacherSync] Broad flat assignment for ${atlasCode} capped to advisory "${advisoryName}"`);
+              logger.debug(`[TeacherSync] Broad flat assignment for ${atlasCode} capped to advisory "${advisoryName}"`);
             } else {
               // Skip if not advisory and too broad
               continue;
@@ -762,7 +663,7 @@ export async function syncTeacherOnLogin(
 
           const gradeLevel = mapGradeLevel(epSection.gradeLevel?.name ?? epSection.gradeLevelName ?? epSection.name);
           if (!gradeLevel) {
-            console.log(`[TeacherSync] Assignments: cannot map grade level for "${epSection.name}"`);
+            logger.debug(`[TeacherSync] Assignments: cannot map grade level for "${epSection.name}"`);
             continue;
           }
 
@@ -799,7 +700,7 @@ export async function syncTeacherOnLogin(
           } catch { /* concurrent duplicate */ }
         }
       } else {
-        console.log(`[TeacherSync] Atlas: no assignments or published schedule for this teacher yet`);
+        logger.debug(`[TeacherSync] Atlas: no assignments or published schedule for this teacher yet`);
       }
 
       // IMPORTANT DATA-SAFETY POLICY:
@@ -826,14 +727,30 @@ export async function syncTeacherOnLogin(
       // ATLAS is authoritative for advisory assignments and must not be ignored.
       if (!advisorySectionSmartId) {
         try {
-          const advisersData = await atlasGet(
+          let advisersData = await atlasGet(
             `/faculty/advisers?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${DEFAULT_ATLAS_SCHOOL_YEAR_ID}`,
-            atlasToken,
           );
-          const atlasAdvisers: any[] = advisersData?.advisers ?? advisersData?.data ?? [];
-          const thisAdviser = atlasAdvisers.find(
+          let atlasAdvisers: any[] = advisersData?.advisers ?? advisersData?.data ?? [];
+          let thisAdviser = atlasAdvisers.find(
             (a: any) => String(a.facultyId ?? a.teacherId ?? '') === String(atlasMember!.id),
           );
+
+          if (!thisAdviser) {
+            const fallbackSYs = [3, 6, 1, 8].filter(id => id !== DEFAULT_ATLAS_SCHOOL_YEAR_ID);
+            for (const fallbackSY of fallbackSYs) {
+              try {
+                const fbAdvisers = await atlasGet(
+                  `/faculty/advisers?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${fallbackSY}`,
+                );
+                const list = fbAdvisers?.advisers ?? fbAdvisers?.data ?? [];
+                const match = list.find((a: any) => String(a.facultyId ?? a.teacherId ?? '') === String(atlasMember!.id));
+                if (match) {
+                  thisAdviser = match;
+                  break;
+                }
+              } catch {}
+            }
+          }
 
           if (thisAdviser) {
             const sectionName: string = thisAdviser.sectionName ?? thisAdviser.advisorySectionName ?? '';
@@ -889,7 +806,7 @@ export async function syncTeacherOnLogin(
             );
           }
         } catch (advErr: any) {
-          console.warn(`[TeacherSync] ATLAS advisers fallback error: ${advErr.message}`);
+          logger.warn(`[TeacherSync] ATLAS advisers fallback error: ${advErr.message}`);
         }
       }
 
@@ -903,7 +820,7 @@ export async function syncTeacherOnLogin(
     }
   } catch (err: any) {
     result.errors.push(`Atlas sync failed: ${err.message}`);
-    console.error(`[TeacherSync] Atlas error: ${err.message}`);
+    logger.error(`[TeacherSync] Atlas error: ${err.message}`);
   }
 
   // ── 4. EnrollPro: Sync students in teaching sections ───────────────────
@@ -949,7 +866,7 @@ export async function syncTeacherOnLogin(
         const compositeKey = `${smartSection.name.trim()}:${smartSection.gradeLevel}`;
         const candidates = epSectionsByKey.get(compositeKey) ?? [];
         if (candidates.length === 0) {
-          console.log(`[TeacherSync] Teaching section "${smartSection.name}" (${smartSection.gradeLevel}) not found in EnrollPro`);
+          logger.debug(`[TeacherSync] Teaching section "${smartSection.name}" (${smartSection.gradeLevel}) not found in EnrollPro`);
           continue;
         }
 
@@ -989,7 +906,7 @@ export async function syncTeacherOnLogin(
         try {
           const dropped = await dropStaleEnrollments(smartSection.id, schoolYearLabel, allLearnersForSection);
           if (dropped > 0) {
-            console.log(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for teaching section "${smartSection.name}"`);
+            logger.debug(`[TeacherSync] Dropped ${dropped} stale enrollment(s) for teaching section "${smartSection.name}"`);
           }
         } catch (err: any) {
           result.errors.push(`Teaching section cleanup "${smartSection.name}": ${err.message}`);
@@ -998,7 +915,7 @@ export async function syncTeacherOnLogin(
     }
   } catch (err: any) {
     result.errors.push(`Teaching sections sync failed: ${err.message}`);
-    console.error(`[TeacherSync] Teaching sections error: ${err.message}`);
+    logger.error(`[TeacherSync] Teaching sections error: ${err.message}`);
   }
 
   // ── 5. Advisory class assignments: ATLAS authority only ─────────────────────
@@ -1042,7 +959,7 @@ export async function syncTeacherOnLogin(
     }
   } catch (err: any) {
     result.errors.push(`Advisory assignment sync failed: ${err.message}`);
-    console.error(`[TeacherSync] Advisory assignment error: ${err.message}`);
+    logger.error(`[TeacherSync] Advisory assignment error: ${err.message}`);
   }
 
   console.log(

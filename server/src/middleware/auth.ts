@@ -1,19 +1,25 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { prisma } from "../lib/prisma";
+import { verifyAccessToken } from "../lib/tokens";
+import { isDevelopment } from "../config/env";
 
 export interface AuthRequest extends Request {
   user?: {
     id: string;
     username: string;
     role: string;
+    email?: string;
+    isDeveloper?: boolean;
+    status?: string;
   };
 }
 
-export const authenticateToken = (
+export const authenticateToken = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
-): void => {
+): Promise<void> => {
   const authHeader = req.headers["authorization"];
   // Also accept token as query param (needed for EventSource/SSE which can't set headers)
   const token = (authHeader && authHeader.split(" ")[1]) || (req.query.token as string | undefined);
@@ -23,17 +29,25 @@ export const authenticateToken = (
     return;
   }
 
-  try {
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || "fallback-secret"
-    ) as { id: string; username: string; role: string };
-
-    req.user = decoded;
-    next();
-  } catch (error) {
+  const decoded = verifyAccessToken(token);
+  if (!decoded) {
     res.status(403).json({ message: "Invalid or expired token" });
+    return;
   }
+
+  // Check user status in database — ensures suspended users are blocked immediately
+  const dbUser = await prisma.user.findUnique({
+    where: { id: decoded.id },
+    select: { id: true, status: true },
+  });
+
+  if (!dbUser || dbUser.status !== "ACTIVE") {
+    res.status(403).json({ message: "Account is not active. Contact administration." });
+    return;
+  }
+
+  req.user = { ...decoded, status: dbUser.status };
+  next();
 };
 
 export const authorizeRoles = (...allowedRoles: string[]) => {
@@ -41,6 +55,11 @@ export const authorizeRoles = (...allowedRoles: string[]) => {
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
+    }
+
+    // Developer bypass: only active in development mode
+    if (isDevelopment() && req.user.isDeveloper) {
+      return next();
     }
 
     if (!allowedRoles.includes(req.user.role)) {

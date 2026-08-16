@@ -20,6 +20,7 @@ import { AssessmentHeader } from "./components/AssessmentHeader";
 import { ClassRecordHero } from "./components/ClassRecordHero";
 import { ClassRecordStats } from "./components/ClassRecordStats";
 import { EcrGenerationDialog } from "./components/EcrGenerationDialog";
+import { ClassRecordTour } from "./components/ClassRecordTour";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
 import { HGDescriptorPanel } from "./components/HGDescriptorPanel";
 import {
@@ -79,10 +80,16 @@ export default function ClassRecordView() {
   const [mobileEditorStudentId, setMobileEditorStudentId] = useState<string | null>(null);
   const [mobileEditorTab, setMobileEditorTab] = useState<'WW' | 'PT' | 'QA' | 'HG'>('WW');
   const [mobileScoreDraft, setMobileScoreDraft] = useState<Record<string, string>>({});
+  const [isTourOpen, setIsTourOpen] = useState(false);
 
   const [separateByGender, setSeparateByGender] = useState(false);
   const ecrFileInputRef = useRef<HTMLInputElement>(null);
   const isHGClass = (classAssignment?.subject?.code ?? '').startsWith('HG');
+  // If the subject is a rotating subject (e.g. SCI_BIO = Term 1 only),
+  // lock the term selector so the teacher can't accidentally enter grades in the wrong term.
+  const lockedTerm: string | null = classAssignment?.subject?.rotationTermRank
+    ? `T${classAssignment.subject.rotationTermRank}`
+    : null;
   const ledgerHeaderRef = useRef<HTMLDivElement | null>(null);
   const [ledgerHeaderHeight, setLedgerHeaderHeight] = useState(0);
   const assessmentDetailsRef = useRef<HTMLDivElement | null>(null);
@@ -510,8 +517,13 @@ export default function ClassRecordView() {
       // Align initial term to system current term to avoid saving/viewing grades in the wrong term.
       if (!termInitialized && response.data.currentTerm) {
         setTermInitialized(true);
-        if (response.data.currentTerm !== selectedTerm) {
-          setSelectedTerm(response.data.currentTerm);
+        // For rotating subjects, always force the locked term regardless of currentTerm
+        const forcedTerm = classAssignment?.subject?.rotationTermRank
+          ? `T${classAssignment.subject.rotationTermRank}`
+          : null;
+        const termToSet = forcedTerm ?? response.data.currentTerm;
+        if (termToSet !== selectedTerm) {
+          setSelectedTerm(termToSet);
           return;
         }
       }
@@ -889,6 +901,7 @@ export default function ClassRecordView() {
         onOpenImport={() => ecrFileInputRef.current?.click()}
         onImportSelect={handleEcrFileSelect}
         fileInputRef={ecrFileInputRef}
+        onStartTour={() => setIsTourOpen(true)}
       />
 
       {isHGClass && (
@@ -941,6 +954,7 @@ export default function ClassRecordView() {
             effectiveWeights={effectiveWeights}
             selectedTerm={selectedTerm}
             onTermChange={setSelectedTerm}
+            lockedTerm={lockedTerm}
             separateByGender={separateByGender}
             onSeparateByGenderChange={setSeparateByGender}
             showAssessmentDetails={showAssessmentDetails}
@@ -1024,6 +1038,17 @@ export default function ClassRecordView() {
         open={showEcrGenerationDialog}
         percentage={ecrPercentage}
         progress={ecrProgress}
+      />
+
+      <ClassRecordTour
+        isOpen={isTourOpen}
+        onClose={() => {
+          setIsTourOpen(false);
+          setShowAssessmentDetails(false);
+          setSelectedColumn(null);
+        }}
+        setShowAssessmentDetails={setShowAssessmentDetails}
+        setSelectedColumn={setSelectedColumn}
       />
     </div>
   );

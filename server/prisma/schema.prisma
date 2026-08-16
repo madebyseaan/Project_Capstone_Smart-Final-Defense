@@ -11,6 +11,13 @@ model User {
   username             String          @unique
   password             String
   role                 Role
+  status               UserStatus      @default(ACTIVE)
+  suspendedAt          DateTime?
+  suspendedBy          String?
+  suspensionReason     String?
+  deactivatedAt        DateTime?
+  deactivatedBy        String?
+  deactivationReason   String?
   firstName            String?
   lastName             String?
   email                String?
@@ -19,6 +26,7 @@ model User {
   auditLogs            AuditLog[]      @relation("AuditLogUser")
   uploadedEcrTemplates ECRTemplate[]   @relation("ECRTemplateUploader")
   uploadedExcelForms   ExcelTemplate[] @relation("ExcelTemplateUploader")
+  refreshTokens        RefreshToken[]
   teacher              Teacher?
 }
 
@@ -33,6 +41,21 @@ model Teacher {
   workloadEntries  WorkloadEntry[]
   advisorySections Section[]         @relation("SectionAdviser")
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
 }
 
 model Student {
@@ -83,6 +106,10 @@ model Subject {
   writtenWorkWeight     Int               @default(20)
   perfTaskWeight        Int               @default(50)
   quarterlyAssessWeight Int               @default(30)
+  // Atlas rotation metadata — null = non-rotating subject
+  rotationTermGroupId   String?           // e.g. "SCIENCE", "TLE_EXPLORATORY"
+  rotationTermRank      Int?              // 1, 2, or 3 — maps to T1, T2, T3 on SF9
+  rotationOutputLabel   String?           // Atlas outputLabel e.g. "SCIENCE", "TLE"
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   classAssignments      ClassAssignment[]
@@ -345,6 +372,12 @@ enum Role {
   TEACHER
   ADMIN
   REGISTRAR
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
 }
 
 enum Term {

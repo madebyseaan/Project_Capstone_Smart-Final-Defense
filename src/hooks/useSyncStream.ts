@@ -71,8 +71,8 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
     let cancelled = false;
 
     const connect = async () => {
-      const token = sessionStorage.getItem('token');
-      if (!token) {
+      const userData = sessionStorage.getItem('user');
+      if (!userData) {
         // Not authenticated — don't attempt connection.
         return;
       }
@@ -82,7 +82,7 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
 
       try {
         const response = await fetch(SSE_URL, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
           signal: controller.signal,
         });
 

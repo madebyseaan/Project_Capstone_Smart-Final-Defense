@@ -2,7 +2,7 @@ import { prisma } from './prisma';
 import { getSyncCircuitBreakerStatus, getUnifiedSyncStatus } from './syncCoordinator';
 
 const ENROLLPRO_BASE = (process.env.ENROLLPRO_URL ?? process.env.ENROLLPRO_BASE_URL ?? 'https://dev-jegs.buru-degree.ts.net/api').replace(/\/$/, '');
-const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'http://100.88.55.125:5001/api/v1').replace(/\/$/, '');
+const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
 const AIMS_BASE = (process.env.AIMS_URL ?? process.env.AIMS_BASE_URL ?? 'http://100.92.245.14:5000/api/v1').replace(/\/$/, '');
 
 export interface ExternalHealthCheck {

@@ -374,6 +374,7 @@ router.get("/users", authenticateToken, requireAdmin, async (req: AuthRequest, r
         id: true,
         username: true,
         role: true,
+        status: true,
         firstName: true,
         lastName: true,
         email: true,
@@ -421,7 +422,7 @@ router.get("/users", authenticateToken, requireAdmin, async (req: AuthRequest, r
         teacher: user.teacher
           ? { ...user.teacher, employeeId: resolvedEmployeeId }
           : { employeeId: resolvedEmployeeId },
-        status: "Active", // In production, this would come from a field in the database
+        status: user.status || "Active",
         lastActive: user.updatedAt.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
@@ -652,6 +653,101 @@ router.delete("/users/:id", authenticateToken, requireAdmin, async (req: AuthReq
   }
 });
 
+// Suspend user
+router.post("/users/:id/suspend", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const { reason } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+    if (user.id === req.user!.id) {
+      res.status(400).json({ message: "Cannot suspend your own account" });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: {
+        status: 'SUSPENDED',
+        suspendedAt: new Date(),
+        suspendedBy: req.user!.id,
+        suspensionReason: reason || null,
+      },
+    });
+
+    // Revoke all refresh tokens for immediate lockout
+    await prisma.refreshToken.deleteMany({ where: { userId: id } });
+
+    // Deactivate class assignments
+    const teacher = await prisma.teacher.findUnique({ where: { userId: id } });
+    if (teacher) {
+      await prisma.classAssignment.updateMany({
+        where: { teacherId: teacher.id, isActive: true },
+        data: { isActive: false, archivedAt: new Date(), archivedReason: 'Teacher suspended' },
+      });
+    }
+
+    await createAuditLog(
+      AuditAction.UPDATE,
+      req.user!,
+      "User Account",
+      "User",
+      `Suspended user: ${user.firstName} ${user.lastName} (${user.username})${reason ? ` — Reason: ${reason}` : ''}`,
+      req.ip,
+      AuditSeverity.WARNING,
+      id
+    );
+
+    res.json({ message: "User suspended successfully" });
+  } catch (error) {
+    console.error("Error suspending user:", error);
+    res.status(500).json({ message: "Failed to suspend user" });
+  }
+});
+
+// Reactivate user
+router.post("/users/:id/reactivate", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: {
+        status: 'ACTIVE',
+        suspendedAt: null,
+        suspendedBy: null,
+        suspensionReason: null,
+      },
+    });
+
+    await createAuditLog(
+      AuditAction.UPDATE,
+      req.user!,
+      "User Account",
+      "User",
+      `Reactivated user: ${user.firstName} ${user.lastName} (${user.username})`,
+      req.ip,
+      AuditSeverity.INFO,
+      id
+    );
+
+    res.json({ message: "User reactivated successfully" });
+  } catch (error) {
+    console.error("Error reactivating user:", error);
+    res.status(500).json({ message: "Failed to reactivate user" });
+  }
+});
+
 // ============================================
 // AUDIT LOG ENDPOINTS
 // ============================================
@@ -791,8 +887,8 @@ router.get("/logs/export", authenticateToken, requireAdmin, async (req: AuthRequ
 // SYSTEM SETTINGS ENDPOINTS
 // ============================================
 
-// Get system settings (readable by all authenticated users for theme/branding)
-router.get("/settings", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+// Get system settings (public — theme data needed on login page)
+router.get("/settings", async (req: Request, res: Response): Promise<void> => {
   try {
     let settings = await prisma.systemSettings.findUnique({
       where: { id: "main" },

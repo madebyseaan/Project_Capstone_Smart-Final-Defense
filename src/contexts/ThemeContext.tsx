@@ -169,9 +169,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   const refreshTheme = async () => {
     try {
-      const token = sessionStorage.getItem("token");
       const response = await axios.get<{ settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string } }>(SETTINGS_URL, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        withCredentials: true,
       });
       const settings = response.data.settings;
       

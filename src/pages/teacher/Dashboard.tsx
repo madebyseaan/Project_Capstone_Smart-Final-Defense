@@ -67,6 +67,7 @@ interface DashboardData {
 
 interface ClassStats {
   id: string;
+  subjectCode: string;
   subjectName: string;
   sectionName: string;
   gradeLevel: string;
@@ -469,7 +470,7 @@ export default function TeacherDashboard() {
           </CardHeader>
           <CardContent className="p-8 pt-0 flex-1">
             <div className="h-[320px] w-full mt-6">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 800, height: 320 }}>
                 <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                   <defs>
                     {chartData.map((entry, index) => (
@@ -580,8 +581,9 @@ export default function TeacherDashboard() {
 
       {/* ── Academic Honors ── Full Width with Safety Guard */}
       {(() => {
-        const isGradingComplete = stats?.classStats && stats.classStats.length > 0
-          ? stats.classStats.every(c => c.totalStudents > 0 && c.gradedCount === c.totalStudents) && stats.summary.gradeSubmissionRate === 100
+        const academicClassStats = stats?.classStats?.filter((c: any) => !c.subjectCode?.toUpperCase().startsWith('HG')) ?? [];
+        const isGradingComplete = academicClassStats.length > 0
+          ? academicClassStats.every((c: any) => c.totalStudents > 0 && c.gradedCount >= c.totalStudents) && (stats?.summary.gradeSubmissionRate ?? 0) >= 100
           : false;
 
         if (!isGradingComplete) return null;
