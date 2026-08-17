@@ -59,6 +59,7 @@ export default function LoginPage() {
       }
 
       sessionStorage.setItem("user", JSON.stringify(response.data.user));
+      sessionStorage.setItem("token", response.data.token);
 
       setSuccess(response.data);
 

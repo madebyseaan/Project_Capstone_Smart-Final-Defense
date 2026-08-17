@@ -57,8 +57,9 @@ function hashStudentFields(data: {
   birthDate: Date | null;
   address: string | null;
   guardianName: string | null;
+  suffix?: string | null;
 }): string {
-  const raw = `${data.firstName}|${data.lastName}|${data.middleName ?? ''}|${data.gender ?? ''}|${data.birthDate?.toISOString() ?? ''}|${data.address ?? ''}|${data.guardianName ?? ''}`;
+  const raw = `${data.firstName}|${data.lastName}|${data.middleName ?? ''}|${data.gender ?? ''}|${data.birthDate?.toISOString() ?? ''}|${data.address ?? ''}|${data.guardianName ?? ''}|${data.suffix ?? ''}`;
   return createHash('sha256').update(raw).digest('hex').slice(0, 16);
 }
 
@@ -70,6 +71,7 @@ let lastSyncAt: Date | null = null;
 let lastSyncResult: {
   advisoriesSynced: number;
   studentsFetched: number;
+  studentsEnrolled: number;
   studentsSynced: number;
   studentsSkipped: number;
   studentsDropped: number;
@@ -111,6 +113,7 @@ export async function runEnrollProSync() {
   const errors: string[] = [];
   let advisoriesSynced = 0;
   let studentsFetched = 0;
+  let studentsEnrolled = 0;
   let studentsSynced = 0;
   let studentsSkipped = 0;
   let teachersMatched = 0;
@@ -320,6 +323,23 @@ export async function runEnrollProSync() {
     // Track which studentIds were synced per section so we can drop stale enrollments afterwards.
     const syncedStudentsPerSection = new Map<string, Set<string>>();
 
+    // 7.1 Pre-fetch all existing students into a Map for O(1) lookup (reduces N queries to 1)
+    const existingStudentsByLrn = new Map<string, { id: string; firstName: string; lastName: string; middleName: string | null; gender: string | null; birthDate: Date | null; address: string | null; guardianName: string | null; suffix: string | null }>();
+    try {
+      const allExistingStudents = await prisma.student.findMany({
+        select: {
+          lrn: true, id: true, firstName: true, lastName: true, middleName: true,
+          gender: true, birthDate: true, address: true, guardianName: true, suffix: true,
+        },
+      });
+      for (const s of allExistingStudents) {
+        existingStudentsByLrn.set(s.lrn, s);
+      }
+      logger.debug(`[EnrollProSync] Pre-fetched ${allExistingStudents.length} existing students for O(1) lookup`);
+    } catch (err: any) {
+      logger.warn({ err: err.message }, 'Failed to pre-fetch existing students, falling back to per-record lookup');
+    }
+
     for (const record of allLearners) {
       const statusUpper = String(record.status ?? '').toUpperCase();
       if (statusUpper !== 'ENROLLED' && statusUpper !== 'OFFICIALLY_ENROLLED' && statusUpper !== 'SECTIONED') continue;
@@ -348,7 +368,9 @@ export async function runEnrollProSync() {
           });
           epSectionKeyToSmartSectionId.set(key, sec.id);
           resolvedSectionId = sec.id;
-        } catch { /* ignore */ }
+        } catch (err: any) {
+          logger.warn({ err: err.message, sectionName, gradeLevel }, 'Section upsert failed during learner sync');
+        }
       }
 
       if (!resolvedSectionId) continue;
@@ -366,17 +388,24 @@ export async function runEnrollProSync() {
           birthDate: incomingBirthDate,
           address: incomingAddress,
           guardianName: incomingGuardian,
+          suffix: learner.extensionName ?? null,
         });
 
         // Upsert the student record keyed by LRN.
-        const existing = await prisma.student.findUnique({
-          where: { lrn: learner.lrn },
-          select: {
-            id: true,
-            firstName: true, lastName: true, middleName: true,
-            gender: true, birthDate: true, address: true, guardianName: true,
-          },
-        });
+        // Use pre-fetched Map for O(1) lookup, fallback to DB query if not in Map
+        const cached = existingStudentsByLrn.get(learner.lrn);
+        let existing: { id: string; firstName: string; lastName: string; middleName: string | null; gender: string | null; birthDate: Date | null; address: string | null; guardianName: string | null; suffix: string | null } | null = cached ?? null;
+        if (cached === undefined) {
+          existing = await prisma.student.findUnique({
+            where: { lrn: learner.lrn },
+            select: {
+              id: true,
+              firstName: true, lastName: true, middleName: true,
+              gender: true, birthDate: true, address: true, guardianName: true,
+              suffix: true,
+            },
+          });
+        }
 
         let studentId: string;
 
@@ -398,6 +427,18 @@ export async function runEnrollProSync() {
           });
           studentId = created.id;
           studentsSynced++;
+          // Update the Map so subsequent lookups in this sync cycle are fast
+          existingStudentsByLrn.set(learner.lrn, {
+            id: created.id,
+            firstName: learner.firstName ?? '',
+            lastName: learner.lastName ?? '',
+            middleName: learner.middleName ?? null,
+            gender: learner.sex ?? null,
+            birthDate: incomingBirthDate,
+            address: incomingAddress,
+            guardianName: incomingGuardian,
+            suffix: learner.extensionName ?? null,
+          });
         } else {
           // Existing student — update only if fields changed
           const existingHash = hashStudentFields({
@@ -408,6 +449,7 @@ export async function runEnrollProSync() {
             birthDate: existing.birthDate,
             address: existing.address,
             guardianName: existing.guardianName,
+            suffix: existing.suffix,
           });
 
           if (existingHash !== incomingHash) {
@@ -425,6 +467,18 @@ export async function runEnrollProSync() {
               },
             });
             studentsSynced++;
+            // Update the Map so subsequent lookups in this sync cycle are fast
+            existingStudentsByLrn.set(learner.lrn, {
+              id: existing.id,
+              firstName: learner.firstName ?? '',
+              lastName: learner.lastName ?? '',
+              middleName: learner.middleName ?? null,
+              gender: learner.sex ?? null,
+              birthDate: incomingBirthDate,
+              address: incomingAddress,
+              guardianName: incomingGuardian,
+              suffix: learner.extensionName ?? null,
+            });
           } else {
             studentsSkipped++;
           }
@@ -557,11 +611,13 @@ export async function runEnrollProSync() {
       }
     }
 
-    studentsFetched = allLearners.filter((row: any) => String(row?.status ?? '').toUpperCase() === 'ENROLLED').length;
+    studentsFetched = allLearners.length;
+    studentsEnrolled = allLearners.filter((row: any) => String(row?.status ?? '').toUpperCase() === 'ENROLLED').length;
 
     lastSyncResult = {
       advisoriesSynced,
       studentsFetched,
+      studentsEnrolled,
       studentsSynced,
       studentsSkipped,
       studentsDropped,
@@ -578,7 +634,9 @@ export async function runEnrollProSync() {
           currentSchoolYear: schoolYearLabel,
         }
       });
-    } catch { /* ignore if settings missing */ }
+    } catch (err: any) {
+      logger.warn({ err: err.message }, 'Failed to update system settings after sync');
+    }
 
     logger.debug(
       `[EnrollProSync] ✓ Done: advisories=${advisoriesSynced}, learners=${studentsFetched} fetched, ` +
@@ -599,6 +657,7 @@ export async function runEnrollProSync() {
     lastSyncResult = {
       advisoriesSynced,
       studentsFetched,
+      studentsEnrolled: 0,
       studentsSynced,
       studentsSkipped,
       studentsDropped: 0,

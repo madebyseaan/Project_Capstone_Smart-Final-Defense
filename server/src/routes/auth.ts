@@ -12,6 +12,7 @@ import {
   signAccessToken,
   generateRefreshTokenPair,
   REFRESH_COOKIE_OPTIONS,
+  ACCESS_COOKIE_OPTIONS,
   hashToken,
 } from "../lib/tokens";
 
@@ -202,6 +203,8 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
 
     // Set refresh token as httpOnly cookie
     res.cookie("refreshToken", refreshRaw, REFRESH_COOKIE_OPTIONS);
+    // Set access token as cookie (readable by Axios for auth)
+    res.cookie("accessToken", accessToken, ACCESS_COOKIE_OPTIONS);
 
     // Log successful login
     await createAuditLog(
@@ -316,6 +319,8 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
     });
 
     res.cookie("refreshToken", newRefreshRaw, REFRESH_COOKIE_OPTIONS);
+    // Set new access token as cookie
+    res.cookie("accessToken", newAccessTokenFinal, ACCESS_COOKIE_OPTIONS);
     res.json({ token: newAccessTokenFinal });
   } catch (error) {
     console.error("Refresh error:", error);
@@ -379,6 +384,13 @@ router.post("/logout", authenticateToken, async (req: AuthRequest, res: Response
       sameSite: "lax",
       path: "/api/auth",
     });
+    // Clear the access token cookie
+    res.clearCookie("accessToken", {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    });
 
     if (req.user) {
       const user = await prisma.user.findUnique({
@@ -418,6 +430,12 @@ router.post("/logout-all", authenticateToken, async (req: AuthRequest, res: Resp
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/api/auth",
+    });
+    res.clearCookie("accessToken", {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
     });
 
     res.json({ message: "Logged out from all devices" });

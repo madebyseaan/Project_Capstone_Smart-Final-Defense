@@ -131,6 +131,7 @@ export default function TeacherDashboard() {
   const [selectedSection, setSelectedSection] = useState<string>("all");
   const [attentionSectionFilter, setAttentionSectionFilter] = useState<string>("all");
   const [attentionSubjectFilter, setAttentionSubjectFilter] = useState<string>("all");
+  const [showAllGrading, setShowAllGrading] = useState(false);
 
   // Fetch mastery distribution with filters
   const fetchMasteryDistribution = async (gradeLevel?: string, sectionId?: string) => {
@@ -517,67 +518,87 @@ export default function TeacherDashboard() {
         </Card>
 
       {/* ── Grading Status ── Full Width Big Card */}
-      <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
-        <CardHeader className="p-8 pb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-slate-100 text-slate-900">
-              <FileCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900">Grading Status</h2>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Submission progress per class</p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-8 pt-0">
-            {stats?.classStats && stats.classStats.length > 0 ? (
-              <ScrollArea className="max-h-[520px] pr-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-6">
-                  {stats.classStats.map((classStat, idx) => {
-                    const percentage = classStat.totalStudents > 0
-                      ? Math.round((classStat.gradedCount / classStat.totalStudents) * 100)
-                      : 0;
-                    const barColorList = [colors.primary, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-                    const barColor = barColorList[idx % barColorList.length];
-                    return (
-                      <div key={classStat.id} className="p-6 rounded-3xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-all">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <p className="text-sm font-black text-slate-900 leading-tight">{classStat.sectionName}</p>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{classStat.subjectName}</p>
-                          </div>
-                          <span className="text-xl font-black" style={{ color: barColor }}>{percentage}%</span>
-                        </div>
-                        <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
-                          <div
-                            className="h-full rounded-full transition-all duration-1000 ease-out"
-                            style={{ width: `${percentage}%`, backgroundColor: barColor }}
-                          />
-                        </div>
-                        <div className="flex justify-between mt-3">
-                          <p className="text-[9px] font-bold text-slate-400">{classStat.gradedCount} graded</p>
-                          <p className="text-[9px] font-bold text-slate-400">{classStat.totalStudents} total</p>
-                        </div>
-                      </div>
-                    );
-                  })}
+      {(() => {
+        const INITIAL_COUNT = 6;
+        const classStats = stats?.classStats ?? [];
+        const visibleStats = showAllGrading ? classStats : classStats.slice(0, INITIAL_COUNT);
+        const remaining = classStats.length - INITIAL_COUNT;
+
+        return (
+          <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
+            <CardHeader className="p-8 pb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-slate-100 text-slate-900">
+                  <FileCheck className="w-5 h-5" />
                 </div>
-              </ScrollArea>
-            ) : (
-              <div className="py-16 text-center text-slate-300">
-                <FileCheck className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="font-black text-sm uppercase tracking-widest">No class records found</p>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">Grading Status</h2>
+                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Submission progress per class</p>
+                </div>
               </div>
-            )}
-            <div className="mt-8">
-              <Link to="/teacher/classes">
-                <Button className="w-full h-14 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-200 transition-all font-black text-[10px] tracking-[0.2em] uppercase">
-                  VIEW DETAILED REPORTS
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="p-8 pt-0">
+              {classStats.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {visibleStats.map((classStat, idx) => {
+                      const percentage = classStat.totalStudents > 0
+                        ? Math.round((classStat.gradedCount / classStat.totalStudents) * 100)
+                        : 0;
+                      const barColorList = [colors.primary, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+                      const barColor = barColorList[idx % barColorList.length];
+                      return (
+                        <div key={classStat.id} className="p-6 rounded-3xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-all">
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <p className="text-sm font-black text-slate-900 leading-tight">{classStat.sectionName}</p>
+                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{classStat.subjectName}</p>
+                            </div>
+                            <span className="text-xl font-black" style={{ color: barColor }}>{percentage}%</span>
+                          </div>
+                          <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
+                            <div
+                              className="h-full rounded-full transition-all duration-1000 ease-out"
+                              style={{ width: `${percentage}%`, backgroundColor: barColor }}
+                            />
+                          </div>
+                          <div className="flex justify-between mt-3">
+                            <p className="text-[9px] font-bold text-slate-400">{classStat.gradedCount} graded</p>
+                            <p className="text-[9px] font-bold text-slate-400">{classStat.totalStudents} total</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {classStats.length > INITIAL_COUNT && !showAllGrading && (
+                    <div className="mt-6">
+                      <Button
+                        onClick={() => setShowAllGrading(true)}
+                        variant="outline"
+                        className="w-full h-12 rounded-2xl border-dashed border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 font-black text-[10px] tracking-[0.2em] uppercase transition-all"
+                      >
+                        Show {remaining} more {remaining === 1 ? 'class' : 'classes'}
+                      </Button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="py-16 text-center text-slate-300">
+                  <FileCheck className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="font-black text-sm uppercase tracking-widest">No class records found</p>
+                </div>
+              )}
+              <div className="mt-8">
+                <Link to="/teacher/classes">
+                  <Button className="w-full h-14 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-200 transition-all font-black text-[10px] tracking-[0.2em] uppercase">
+                    VIEW DETAILED REPORTS
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* ── Academic Honors ── Full Width with Safety Guard */}
       {(() => {

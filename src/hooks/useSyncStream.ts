@@ -20,6 +20,7 @@ import { useState, useEffect, useRef } from 'react';
 // Constants
 // ---------------------------------------------------------------------------
 const SSE_URL = '/api/integration/sync/stream';
+const AUTH_REFRESH_URL = '/api/auth/refresh';
 const INITIAL_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 30_000;
 
@@ -77,16 +78,41 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
         return;
       }
 
+      const token = sessionStorage.getItem('token');
       const controller = new AbortController();
       abortRef.current = controller;
 
       try {
-        const response = await fetch(SSE_URL, {
+        // Pass token as query param (SSE can't set headers) + cookies as fallback
+        const url = token ? `${SSE_URL}?token=${encodeURIComponent(token)}` : SSE_URL;
+        const response = await fetch(url, {
           credentials: 'include',
           signal: controller.signal,
         });
 
         if (!response.ok || !response.body) {
+          // 403 = expired token — attempt refresh before giving up
+          if (response.status === 403) {
+            try {
+              const refreshRes = await fetch(AUTH_REFRESH_URL, {
+                method: 'POST',
+                credentials: 'include',
+              });
+              if (refreshRes.ok) {
+                const data = await refreshRes.json();
+                if (data.token) {
+                  sessionStorage.setItem('token', data.token);
+                  backoffRef.current = INITIAL_BACKOFF_MS;
+                  connect();
+                  return;
+                }
+              }
+            } catch {
+              // Refresh failed — fall through to redirect
+            }
+            window.location.href = '/login';
+            return;
+          }
           throw new Error(`SSE connect failed: ${response.status}`);
         }
 

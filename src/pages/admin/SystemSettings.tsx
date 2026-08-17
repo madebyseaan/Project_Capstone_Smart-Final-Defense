@@ -221,22 +221,43 @@ export default function SystemSettings() {
     const token = sessionStorage.getItem("token");
     if (!token) return;
 
-    const url = `/api/admin/settings/stream`;
-    const es = new EventSource(url + `?token=${encodeURIComponent(token)}`);
+    let es: EventSource | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let backoffMs = 2000;
+    let cancelled = false;
 
-    es.onmessage = (event) => {
-      const updatedSettings = JSON.parse(event.data);
-      setSettings(updatedSettings);
-      // Also refresh theme to update sidebar/header
-      refreshTheme();
-    };
+    function connect() {
+      if (cancelled) return;
+      const url = `/api/admin/settings/stream?token=${encodeURIComponent(token)}`;
+      es = new EventSource(url);
 
-    es.onerror = () => {
-      es.close();
-    };
+      es.onmessage = (event) => {
+        const updatedSettings = JSON.parse(event.data);
+        setSettings(updatedSettings);
+        refreshTheme();
+      };
+
+      es.onopen = () => {
+        backoffMs = 2000;
+      };
+
+      es.onerror = () => {
+        es?.close();
+        if (!cancelled) {
+          reconnectTimeout = setTimeout(() => {
+            backoffMs = Math.min(backoffMs * 2, 30000);
+            connect();
+          }, backoffMs);
+        }
+      };
+    }
+
+    connect();
 
     return () => {
-      es.close();
+      cancelled = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      es?.close();
     };
   }, [refreshTheme]);
 

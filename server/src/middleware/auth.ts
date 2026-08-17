@@ -22,7 +22,10 @@ export const authenticateToken = async (
 ): Promise<void> => {
   const authHeader = req.headers["authorization"];
   // Also accept token as query param (needed for EventSource/SSE which can't set headers)
-  const token = (authHeader && authHeader.split(" ")[1]) || (req.query.token as string | undefined);
+  // Also accept accessToken from cookie (Axios sends cookies via withCredentials)
+  const token = (authHeader && authHeader.split(" ")[1])
+    || (req.query.token as string | undefined)
+    || (req as any).cookies?.accessToken;
 
   if (!token) {
     res.status(401).json({ message: "Access token required" });

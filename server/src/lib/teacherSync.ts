@@ -456,6 +456,15 @@ export async function syncTeacherOnLogin(
         logger.debug(`[TeacherSync] Atlas published: ${pubEntries.length} schedule entries`);
         result.classAssignmentsFromAtlas = pubEntries.length;
 
+        // Filter out entries with missing sectionId before processing
+        const validEntries = pubEntries.filter((e: any) => e.sectionId != null);
+        const skippedMissingSectionId = pubEntries.length - validEntries.length;
+        if (skippedMissingSectionId > 0) {
+          logger.warn(
+            `[TeacherSync] Skipped ${skippedMissingSectionId} ATLAS schedule entr${skippedMissingSectionId === 1 ? 'y' : 'ies'} with missing sectionId`,
+          );
+        }
+
         // Build subject + section lookups
         const allSubjectsP = await prisma.subject.findMany();
         const subjectByCodeP = new Map(allSubjectsP.map((s) => [s.code, s]));
@@ -466,15 +475,23 @@ export async function syncTeacherOnLogin(
           epSectionsP = await getCachedIntegrationV1Sections();
         }
         const epSectionByIdP = new Map<number, any>(epSectionsP.map((s: any) => [Number(s.id), s]));
+        // Build name-based lookup for fallback (ATLAS and EP use different integer IDs)
+        const epSectionByNameP = new Map<string, any>();
+        for (const s of epSectionsP) {
+          if (s?.name) epSectionByNameP.set(s.name.trim().toLowerCase(), s);
+        }
 
-        for (const entry of pubEntries) {
+        for (const entry of validEntries) {
           const atlasCode = normalizeSubjectLabel(entry.subjectCode ?? '');
-          const epSection = epSectionByIdP.get(Number(entry.sectionId));
+          let epSection = epSectionByIdP.get(Number(entry.sectionId));
+          // Fallback: ATLAS and EnrollPro use different integer IDs for same section — match by name
+          if (!epSection && (entry?.sectionName || entry?.section?.name)) {
+            const sectionName = (entry?.sectionName || entry?.section?.name || '').trim().toLowerCase();
+            epSection = epSectionByNameP.get(sectionName) ?? null;
+          }
           if (!epSection) {
-            console.warn(
-              `[TeacherSync] System ID Mismatch: ATLAS published schedule entry has sectionId=${entry.sectionId} ` +
-              `but this ID was not found in EnrollPro /integration/v1/sections. ` +
-              `ATLAS sectionId and EnrollPro sectionId must be identical.`,
+            logger.warn(
+              `[TeacherSync] System ID Mismatch: ATLAS sectionId=${entry.sectionId} not found in EnrollPro sections`,
             );
             result.errors.push(
               `System ID Mismatch: ATLAS sectionId=${entry.sectionId} not found in EnrollPro sections`,
@@ -629,6 +646,11 @@ export async function syncTeacherOnLogin(
           epSectionsF = await getCachedIntegrationV1Sections();
         }
         const epSectionByIdF = new Map<number, any>(epSectionsF.map((s: any) => [Number(s.id), s]));
+        // Build name-based lookup for fallback (ATLAS and EP use different integer IDs)
+        const epSectionByNameF = new Map<string, any>();
+        for (const s of epSectionsF) {
+          if (s?.name) epSectionByNameF.set(s.name.trim().toLowerCase(), s);
+        }
         const allSubjectsF = await prisma.subject.findMany();
         const subjectByCodeF = new Map(allSubjectsF.map((s) => [s.code, s]));
         const allSectionsF = await prisma.section.findMany({ where: { schoolYear: schoolYearLabel } });
@@ -642,7 +664,11 @@ export async function syncTeacherOnLogin(
           // Trust Gate: Cap to advisory if broad
           const MAX_SANE_SECTIONS = 10;
           if ((flatBySubject.get(atlasCode) || 0) > MAX_SANE_SECTIONS) {
-            const epSection = epSectionByIdF.get(sectionId);
+            let epSection = epSectionByIdF.get(sectionId);
+            if (!epSection && (assignment?.sectionName || assignment?.section?.name)) {
+              const sectionName = (assignment?.sectionName || assignment?.section?.name || '').trim().toLowerCase();
+              epSection = epSectionByNameF.get(sectionName) ?? null;
+            }
             const advisoryName = result.advisorySection;
             if (advisoryName && epSection?.name === advisoryName) {
               logger.debug(`[TeacherSync] Broad flat assignment for ${atlasCode} capped to advisory "${advisoryName}"`);
@@ -652,7 +678,12 @@ export async function syncTeacherOnLogin(
             }
           }
 
-          const epSection = epSectionByIdF.get(sectionId);
+          let epSection = epSectionByIdF.get(sectionId);
+          // Fallback: ATLAS and EnrollPro use different integer IDs for same section — match by name
+          if (!epSection && (assignment?.sectionName || assignment?.section?.name)) {
+            const sectionName = (assignment?.sectionName || assignment?.section?.name || '').trim().toLowerCase();
+            epSection = epSectionByNameF.get(sectionName) ?? null;
+          }
           if (!epSection) {
             console.warn(
               `[TeacherSync] System ID Mismatch: ATLAS assignment sectionId=${sectionId} not found in EnrollPro sections`,

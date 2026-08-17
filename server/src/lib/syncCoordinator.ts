@@ -364,6 +364,10 @@ export function triggerImmediateSync(source = 'manual'): void {
  * Start the unified sync scheduler. Call ONCE on server boot.
  * Replaces startAtlasSyncScheduler, startEnrollProSyncScheduler,
  * startEnrollProBrandingSyncScheduler, and the autoSync setInterval.
+ *
+ * Uses a self-rescheduling pattern instead of setInterval to prevent
+ * timer-drift storms after machine sleep (setInterval fires all missed
+ * ticks at once on wake, hammering external services and DB).
  */
 export function startUnifiedSyncScheduler(): void {
   if (_schedulerTimer) {
@@ -386,12 +390,32 @@ export function startUnifiedSyncScheduler(): void {
     });
   }, INITIAL_DELAY_MS);
 
-  // Recurring sync
-  _schedulerTimer = setInterval(() => {
-    runUnifiedSync({ source: 'scheduled' }).catch((err) => {
-      console.error('[SyncCoordinator] Scheduled sync failed:', err);
-    });
-  }, SYNC_INTERVAL_MS);
+  // Self-rescheduling loop — avoids setInterval drift storms
+  let lastRunAt = Date.now();
+  const scheduleNext = () => {
+    _schedulerTimer = setTimeout(() => {
+      const now = Date.now();
+      const elapsed = now - lastRunAt;
+
+      // If more than 2× the interval has elapsed, the machine likely
+      // slept and woke — skip this catch-up tick to avoid hammering.
+      if (elapsed > intervalMs * 2) {
+        console.warn(
+          `[SyncCoordinator] Timer drift detected (${Math.round(elapsed / 1000)}s since last run). ` +
+          `Skipping catch-up tick to avoid overload.`
+        );
+      }
+
+      lastRunAt = now;
+      runUnifiedSync({ source: 'scheduled' }).catch((err) => {
+        console.error('[SyncCoordinator] Scheduled sync failed:', err);
+      });
+
+      scheduleNext();
+    }, intervalMs) as unknown as NodeJS.Timeout;
+  };
+
+  scheduleNext();
 }
 
 /**
@@ -399,7 +423,7 @@ export function startUnifiedSyncScheduler(): void {
  */
 export function stopUnifiedSyncScheduler(): void {
   if (_schedulerTimer) {
-    clearInterval(_schedulerTimer);
+    clearTimeout(_schedulerTimer);
     _schedulerTimer = null;
     console.log('[SyncCoordinator] Scheduler stopped.');
   }

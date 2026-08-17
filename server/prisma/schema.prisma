@@ -39,6 +39,7 @@ model Teacher {
   updatedAt        DateTime          @updatedAt
   classAssignments ClassAssignment[]
   workloadEntries  WorkloadEntry[]
+  scheduleEntries  ScheduleEntry[]
   advisorySections Section[]         @relation("SectionAdviser")
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -90,6 +91,7 @@ model Section {
   attendance       Attendance[]
   classAssignments ClassAssignment[]
   workloadEntries  WorkloadEntry[]
+  scheduleEntries  ScheduleEntry[]
   enrollments      Enrollment[]
   adviser          Teacher?          @relation("SectionAdviser", fields: [adviserId], references: [id])
 
@@ -113,6 +115,7 @@ model Subject {
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   classAssignments      ClassAssignment[]
+  scheduleEntries       ScheduleEntry[]
 }
 
 model ClassAssignment {
@@ -137,6 +140,26 @@ model ClassAssignment {
 
   @@unique([teacherId, subjectId, sectionId, schoolYear])
   @@index([schoolYear])
+}
+
+model ScheduleEntry {
+  id           String   @id @default(cuid())
+  teacherId    String
+  subjectId    String
+  sectionId    String
+  schoolYear   String
+  day          String
+  startTime    String
+  endTime      String
+  roomId       Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject      Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  section      Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId, sectionId, schoolYear, day, startTime])
+  @@index([teacherId, schoolYear])
 }
 
 model Enrollment {

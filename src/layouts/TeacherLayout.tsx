@@ -10,6 +10,7 @@ import {
   Users,
   ClipboardCheck,
   FileText,
+  CalendarDays,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getAcronym } from "@/lib/utils";
@@ -32,6 +33,7 @@ const navigationGroups = [
     title: "OPERATIONS",
     items: [
       { name: "Dashboard", href: "/teacher", icon: LayoutDashboard },
+      { name: "Schedule", href: "/teacher/schedule", icon: CalendarDays },
     ]
   },
   {
@@ -89,6 +91,24 @@ export default function TeacherLayout() {
     setSidebarCollapsed(newState);
     localStorage.setItem('teacherSidebarCollapsed', String(newState));
   };
+
+  // Collapse sidebar when tutorial opens, restore when it closes
+  useEffect(() => {
+    const savedState = localStorage.getItem('teacherSidebarCollapsed');
+    const handleTourStart = () => {
+      setSidebarCollapsed(true);
+    };
+    const handleTourEnd = () => {
+      const restored = savedState === 'true';
+      setSidebarCollapsed(restored);
+    };
+    window.addEventListener("tour:start", handleTourStart);
+    window.addEventListener("tour:end", handleTourEnd);
+    return () => {
+      window.removeEventListener("tour:start", handleTourStart);
+      window.removeEventListener("tour:end", handleTourEnd);
+    };
+  }, []);
 
   const getCurrentPageTitle = () => {
     // Check for specific record view routes

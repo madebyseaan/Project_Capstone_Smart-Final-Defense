@@ -20,6 +20,7 @@ const MyAdvisory = lazy(() => import('./pages/teacher/MyAdvisory'))
 const StudentGradeProfile = lazy(() => import('./pages/teacher/StudentGradeProfile'))
 const Attendance = lazy(() => import('./pages/teacher/Attendance'))
 const AttendanceReports = lazy(() => import('./pages/teacher/AttendanceReports'))
+const TeacherSchedule = lazy(() => import('./pages/teacher/Schedule'))
 
 // Registrar pages
 const RegistrarDashboard = lazy(() => import('./pages/registrar/Dashboard'))
@@ -71,6 +72,7 @@ function App() {
         <Route path="advisory/student/:studentId" element={<StudentGradeProfile />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="attendance-reports" element={<AttendanceReports />} />
+        <Route path="schedule" element={<TeacherSchedule />} />
       </Route>
 
       {/* Registrar routes */}

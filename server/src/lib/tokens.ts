@@ -72,3 +72,15 @@ export const REFRESH_COOKIE_OPTIONS = {
   path: "/api/auth",
   maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
 };
+
+/**
+ * Cookie configuration for access token.
+ * NOT httpOnly — must be readable by JavaScript for Axios interceptor.
+ */
+export const ACCESS_COOKIE_OPTIONS = {
+  httpOnly: false,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: 15 * 60 * 1000, // 15 minutes
+};

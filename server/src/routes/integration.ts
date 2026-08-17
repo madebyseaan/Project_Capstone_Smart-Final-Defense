@@ -71,6 +71,9 @@ router.get('/sync/stream', authenticateToken, (req: AuthRequest, res: Response):
  */
 router.post('/enrollpro-webhook', async (req, res) => {
   const apiKey = req.headers['x-api-key'];
+  if (!process.env.ENROLLPRO_WEBHOOK_KEY) {
+    logger.warn('[Webhook] ENROLLPRO_WEBHOOK_KEY not set — webhook is UNPROTECTED');
+  }
   if (process.env.ENROLLPRO_WEBHOOK_KEY && apiKey !== process.env.ENROLLPRO_WEBHOOK_KEY) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
@@ -87,6 +90,9 @@ router.post('/enrollpro-webhook', async (req, res) => {
  */
 router.post('/atlas-webhook', async (req, res) => {
   const apiKey = req.headers['x-api-key'];
+  if (!process.env.ATLAS_WEBHOOK_KEY) {
+    logger.warn('[Webhook] ATLAS_WEBHOOK_KEY not set — webhook is UNPROTECTED');
+  }
   if (process.env.ATLAS_WEBHOOK_KEY && apiKey !== process.env.ATLAS_WEBHOOK_KEY) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
@@ -103,6 +109,9 @@ router.post('/atlas-webhook', async (req, res) => {
  */
 router.post('/aims-webhook', async (req, res) => {
   const apiKey = req.headers['x-api-key'];
+  if (!process.env.AIMS_WEBHOOK_KEY) {
+    logger.warn('[Webhook] AIMS_WEBHOOK_KEY not set — webhook is UNPROTECTED');
+  }
   if (process.env.AIMS_WEBHOOK_KEY && apiKey !== process.env.AIMS_WEBHOOK_KEY) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
@@ -492,6 +501,127 @@ router.get(
       res.json({ success: true, data: gradebook });
     } catch (err: any) {
       res.status(502).json({ success: false, error: 'AIMS Gradebook Error' });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Teacher Schedule (from ATLAS published schedule)
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/integration/schedule
+ * Returns the logged-in teacher's schedule entries for the current school year,
+ * grouped by day for easy frontend rendering.
+ */
+router.get(
+  '/schedule',
+  authenticateToken,
+  authorizeRoles('TEACHER'),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+      const teacher = await prisma.teacher.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (!teacher) { res.status(404).json({ error: 'Teacher profile not found' }); return; }
+
+      const settings = await prisma.systemSettings.findUnique({
+        where: { id: 'main' },
+        select: { currentSchoolYear: true },
+      });
+      const schoolYear = settings?.currentSchoolYear ?? process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
+
+      const entries = await prisma.scheduleEntry.findMany({
+        where: { teacherId: teacher.id, schoolYear },
+        include: {
+          subject: { select: { code: true, name: true } },
+          section: { select: { name: true, gradeLevel: true } },
+        },
+        orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
+      });
+
+      // Group by day
+      const byDay: Record<string, typeof entries> = {
+        MONDAY: [], TUESDAY: [], WEDNESDAY: [], THURSDAY: [], FRIDAY: [],
+      };
+      for (const entry of entries) {
+        const day = entry.day.toUpperCase();
+        if (byDay[day]) byDay[day].push(entry);
+      }
+
+      res.json({
+        schoolYear,
+        entries,
+        byDay,
+        count: entries.length,
+      });
+    } catch (err: any) {
+      logger.error('[Schedule] Failed to fetch schedule:', err.message);
+      res.status(500).json({ error: 'Failed to fetch schedule' });
+    }
+  }
+);
+
+/**
+ * POST /api/integration/schedule/refresh
+ * Triggers an immediate background sync and returns the schedule.
+ * The frontend should listen for SYNC_COMPLETE SSE event for final data.
+ */
+router.post(
+  '/schedule/refresh',
+  authenticateToken,
+  authorizeRoles('TEACHER'),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      triggerImmediateSync('teacher-schedule-refresh');
+
+      // Return current data immediately — SSE will push fresh data when sync completes
+      const userId = req.user?.id;
+      if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+      const teacher = await prisma.teacher.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (!teacher) { res.status(404).json({ error: 'Teacher profile not found' }); return; }
+
+      const settings = await prisma.systemSettings.findUnique({
+        where: { id: 'main' },
+        select: { currentSchoolYear: true },
+      });
+      const schoolYear = settings?.currentSchoolYear ?? process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
+
+      const entries = await prisma.scheduleEntry.findMany({
+        where: { teacherId: teacher.id, schoolYear },
+        include: {
+          subject: { select: { code: true, name: true } },
+          section: { select: { name: true, gradeLevel: true } },
+        },
+        orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
+      });
+
+      const byDay: Record<string, typeof entries> = {
+        MONDAY: [], TUESDAY: [], WEDNESDAY: [], THURSDAY: [], FRIDAY: [],
+      };
+      for (const entry of entries) {
+        const day = entry.day.toUpperCase();
+        if (byDay[day]) byDay[day].push(entry);
+      }
+
+      res.json({
+        schoolYear,
+        entries,
+        byDay,
+        count: entries.length,
+        syncTriggered: true,
+      });
+    } catch (err: any) {
+      logger.error('[Schedule] Failed to refresh schedule:', err.message);
+      res.status(500).json({ error: 'Failed to refresh schedule' });
     }
   }
 );

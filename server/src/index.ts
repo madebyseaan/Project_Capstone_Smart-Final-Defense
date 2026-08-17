@@ -9,6 +9,18 @@ import { validateEnv } from "./config/env";
 // Validate environment variables — crashes if critical vars are missing
 validateEnv();
 
+// ── Global error handlers — prevent silent crashes ────────────────────────
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[FATAL] Unhandled Promise Rejection:", reason);
+  // Don't exit — let the server keep running
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught Exception:", err.message);
+  console.error(err.stack);
+  // Don't exit — ts-node-dev will respawn if needed
+});
+
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";

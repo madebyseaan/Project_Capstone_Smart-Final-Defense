@@ -140,43 +140,66 @@ export default function AuditLogs() {
     const token = sessionStorage.getItem("token");
     if (!token) return;
 
-    const url = `/api/admin/logs/stream`;
-    const es = new EventSource(url + `?token=${encodeURIComponent(token)}`);
-    eventSourceRef.current = es;
+    let es: EventSource | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let backoffMs = 2000;
+    let cancelled = false;
 
-    es.onmessage = (event) => {
-      const newLog: AdminAuditLog = JSON.parse(event.data);
-      setLogs((prev) => {
-        // Only prepend if not filtered out by current filters
-        const actionMatch = selectedAction === "all" || newLog.action === selectedAction;
-        const severityMatch = selectedSeverity === "all" || newLog.severity === selectedSeverity;
-        const searchMatch = !searchQuery || 
-          newLog.user?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          newLog.target?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          newLog.details?.toLowerCase().includes(searchQuery.toLowerCase());
-        if (actionMatch && severityMatch && searchMatch) {
-          return [newLog, ...prev];
+    function connect() {
+      if (cancelled) return;
+      const url = `/api/admin/logs/stream?token=${encodeURIComponent(token)}`;
+      es = new EventSource(url);
+      eventSourceRef.current = es;
+
+      es.onmessage = (event) => {
+        const newLog: AdminAuditLog = JSON.parse(event.data);
+        setLogs((prev) => {
+          // Only prepend if not filtered out by current filters
+          const actionMatch = selectedAction === "all" || newLog.action === selectedAction;
+          const severityMatch = selectedSeverity === "all" || newLog.severity === selectedSeverity;
+          const searchMatch = !searchQuery || 
+            newLog.user?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            newLog.target?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            newLog.details?.toLowerCase().includes(searchQuery.toLowerCase());
+          if (actionMatch && severityMatch && searchMatch) {
+            return [newLog, ...prev];
+          }
+          return prev;
+        });
+        setCounts((prev) => ({
+          ...prev,
+          total: prev.total + 1,
+          creates: newLog.action === "create" ? prev.creates + 1 : prev.creates,
+          updates: newLog.action === "update" ? prev.updates + 1 : prev.updates,
+          deletes: newLog.action === "delete" ? prev.deletes + 1 : prev.deletes,
+          logins: (newLog.action === "login" || newLog.action === "logout") ? prev.logins + 1 : prev.logins,
+          critical: newLog.severity === "critical" ? prev.critical + 1 : prev.critical,
+        }));
+        setLiveCount((n) => n + 1);
+      };
+
+      es.onopen = () => {
+        backoffMs = 2000;
+      };
+
+      es.onerror = () => {
+        es?.close();
+        eventSourceRef.current = null;
+        if (!cancelled) {
+          reconnectTimeout = setTimeout(() => {
+            backoffMs = Math.min(backoffMs * 2, 30000);
+            connect();
+          }, backoffMs);
         }
-        return prev;
-      });
-      setCounts((prev) => ({
-        ...prev,
-        total: prev.total + 1,
-        creates: newLog.action === "create" ? prev.creates + 1 : prev.creates,
-        updates: newLog.action === "update" ? prev.updates + 1 : prev.updates,
-        deletes: newLog.action === "delete" ? prev.deletes + 1 : prev.deletes,
-        logins: (newLog.action === "login" || newLog.action === "logout") ? prev.logins + 1 : prev.logins,
-        critical: newLog.severity === "critical" ? prev.critical + 1 : prev.critical,
-      }));
-      setLiveCount((n) => n + 1);
-    };
+      };
+    }
 
-    es.onerror = () => {
-      es.close();
-    };
+    connect();
 
     return () => {
-      es.close();
+      cancelled = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      es?.close();
       eventSourceRef.current = null;
     };
   }, [selectedAction, selectedSeverity, searchQuery]);

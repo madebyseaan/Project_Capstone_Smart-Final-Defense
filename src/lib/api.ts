@@ -49,7 +49,11 @@ api.interceptors.response.use(
 
       try {
         // Refresh token is in httpOnly cookie, sent automatically
-        await api.post("/auth/refresh");
+        const refreshResponse = await api.post("/auth/refresh");
+        // Store new token in sessionStorage so SSE hook picks it up
+        if (refreshResponse.data?.token) {
+          sessionStorage.setItem("token", refreshResponse.data.token);
+        }
         processQueue(null, "refreshed");
         return api(originalRequest);
       } catch (refreshError) {
@@ -804,6 +808,14 @@ export const registrarApi = {
 
   getAtlasSubjectCoverage: () =>
     api.get("/registrar/atlas/subject-coverage"),
+};
+
+// ============================================
+// SCHEDULE API
+// ============================================
+export const scheduleApi = {
+  getMySchedule: () => api.get("/integration/schedule"),
+  refreshSchedule: () => api.post("/integration/schedule/refresh"),
 };
 
 // ============================================

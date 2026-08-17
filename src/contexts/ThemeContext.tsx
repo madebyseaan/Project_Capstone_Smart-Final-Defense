@@ -249,25 +249,46 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const token = sessionStorage.getItem("token");
     if (!token) return;
 
-    const url = `/api/admin/settings/stream?token=${encodeURIComponent(token)}`;
-    const es = new EventSource(url);
+    let es: EventSource | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let backoffMs = 2000;
+    let cancelled = false;
 
-    es.onmessage = (event) => {
-      try {
-        const updatedSettings = JSON.parse(event.data);
-        applySettingsUpdate(updatedSettings);
-      } catch (err) {
-        console.error("Failed to parse settings update:", err);
-      }
-    };
+    function connect() {
+      if (cancelled) return;
+      const url = `/api/admin/settings/stream?token=${encodeURIComponent(token)}`;
+      es = new EventSource(url);
 
-    es.onerror = () => {
-      // SSE connection failed, just close and rely on manual refreshes
-      es.close();
-    };
+      es.onmessage = (event) => {
+        try {
+          const updatedSettings = JSON.parse(event.data);
+          applySettingsUpdate(updatedSettings);
+        } catch (err) {
+          console.error("Failed to parse settings update:", err);
+        }
+      };
+
+      es.onopen = () => {
+        backoffMs = 2000;
+      };
+
+      es.onerror = () => {
+        es?.close();
+        if (!cancelled) {
+          reconnectTimeout = setTimeout(() => {
+            backoffMs = Math.min(backoffMs * 2, 30000);
+            connect();
+          }, backoffMs);
+        }
+      };
+    }
+
+    connect();
 
     return () => {
-      es.close();
+      cancelled = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      es?.close();
     };
   }, []);
 

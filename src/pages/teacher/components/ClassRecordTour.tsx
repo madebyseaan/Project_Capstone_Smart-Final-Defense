@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Sparkles,
   ChevronRight,
@@ -214,27 +215,23 @@ const TOUR_STEPS: TourStep[] = [
   },
   {
     id: "cell-example",
-    targetId: "tutorial-task-controls",
-    title: "Live Example: How to Grade a Single Cell",
+    targetId: "tutorial-cell-example",
+    title: "How Grading Works",
     category: "Grading Example",
     icon: HelpCircle,
     badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
     content:
-      "Here is a complete walkthrough for entering scores into the ledger grid:",
+      "Just type a student's raw score into any cell. SMART auto-calculates the Percentage Score and Weighted Score instantly.",
     exampleBox: {
-      title: "Cell Grading Formula Example",
+      title: "What to Type in a Cell",
       items: [
-        { label: "1. HPS Max Score", value: "20 pts (in MAX Row)", color: "text-indigo-700" },
-        { label: "2. Student Raw Score", value: "Type '18' into cell", color: "text-slate-900" },
-        { label: "3. Percentage Score (PS)", value: "90.0% ((18 ÷ 20) × 100)", color: "text-indigo-600" },
-        { label: "4. Weighted Score (WS)", value: "18.00 (90% × 20% weight)", color: "text-purple-600" },
-        { label: "5. Excused Absence", value: "Type 'E' (No grade penalty)", color: "text-blue-600" },
-        { label: "6. Unexcused Absent", value: "Type 'A' (Counted as 0)", color: "text-rose-600" },
+        { label: "Score", value: "e.g. 18, 20, 15", color: "text-slate-900" },
+        { label: "Excused", value: "Type 'E'", color: "text-blue-600" },
+        { label: "Absent", value: "Type 'A' (counts as 0)", color: "text-rose-600" },
       ],
-      notes: "Scores auto-save immediately to the server on Enter or when moving away!",
     },
     devTip:
-      "Pressing Enter auto-commits the score and jumps straight down to the next student in the same column!",
+      "Press Enter to commit and jump to the next student. Scores save automatically!",
     action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
       setShowAssessmentDetails(false);
       setSelectedColumn(null);
@@ -276,6 +273,25 @@ export function ClassRecordTour({
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
+  // Reset to step 1 when tour closes & manage scroll lock
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentStepIndex(0);
+    }
+    // Lock/unlock scroll during tour
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    } else {
+      document.body.style.removeProperty("overflow");
+      document.documentElement.style.removeProperty("overflow");
+    }
+    return () => {
+      document.body.style.removeProperty("overflow");
+      document.documentElement.style.removeProperty("overflow");
+    };
+  }, [isOpen]);
+
   const step = TOUR_STEPS[currentStepIndex];
 
   // Execute step-specific action (e.g. open panel or quick editor)
@@ -299,25 +315,20 @@ export function ClassRecordTour({
 
       const el = document.getElementById(step.targetId);
       if (el) {
-        if (step.id === "cell-example") {
-          // Scroll so student 1 row is cleanly visible directly below the sticky HPS row
-          const ledgerContainer = document.getElementById("tutorial-ledger-scores");
-          const ledgerTop = ledgerContainer ? ledgerContainer.getBoundingClientRect().top + window.pageYOffset : 0;
-          const targetScroll = Math.max(0, ledgerTop - 380);
-
-          window.scrollTo({
-            top: targetScroll,
-            behavior: "smooth",
-          });
+        // Step 1: custom scroll to show banner with header space above
+        if (step.id === "hero-info") {
+          const elTop = el.getBoundingClientRect().top + window.pageYOffset;
+          window.scrollTo({ top: Math.max(0, elTop - 80), behavior: "smooth" });
+        } else if (step.id === "assessment-panel") {
+          // Step 6: scroll up extra to make room for card above
+          const elTop = el.getBoundingClientRect().top + window.pageYOffset;
+          window.scrollTo({ top: Math.max(0, elTop - 500), behavior: "smooth" });
+        } else if (step.id === "column-quick-meta") {
+          // Step 7: scroll down to show card below the quick meta editor
+          const elTop = el.getBoundingClientRect().top + window.pageYOffset;
+          window.scrollTo({ top: Math.max(0, elTop - 120), behavior: "smooth" });
         } else {
-          const yOffset = -90;
-          const elementPosition = el.getBoundingClientRect().top + window.pageYOffset;
-          const offsetPosition = Math.max(0, elementPosition + yOffset);
-
-          window.scrollTo({
-            top: offsetPosition,
-            behavior: "smooth",
-          });
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
         }
 
         // Set bounding rect after scroll settles
@@ -329,7 +340,8 @@ export function ClassRecordTour({
         };
 
         updateRect();
-        setTimeout(updateRect, 200);
+        setTimeout(updateRect, 300);
+        setTimeout(updateRect, 600);
       } else {
         setTargetRect(null);
       }
@@ -342,14 +354,12 @@ export function ClassRecordTour({
     if (isOpen) {
       updatePosition();
       const handleResize = () => {
-        const el = document.getElementById(step?.targetId || "");
-        if (el) setTargetRect(el.getBoundingClientRect());
+        // Recalculate on resize for responsive updates
+        updatePosition();
       };
       window.addEventListener("resize", handleResize);
-      window.addEventListener("scroll", handleResize, true);
       return () => {
         window.removeEventListener("resize", handleResize);
-        window.removeEventListener("scroll", handleResize, true);
       };
     }
   }, [isOpen, currentStepIndex, updatePosition, step?.targetId]);
@@ -392,52 +402,212 @@ export function ClassRecordTour({
   let transform: string = "translateX(-50%)";
 
   const isDesktop = typeof window !== "undefined" && window.innerWidth >= 1024;
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+  // Responsive card dimensions
+  const getCardDimensions = () => {
+    const vw = window.innerWidth;
+    if (isMobile) {
+      // Mobile: smaller cards, full width minus padding
+      const mobileWidth = Math.min(vw - 32, 400);
+      return {
+        standardWidth: mobileWidth,
+        standardHeight: 320,
+        compactWidth: mobileWidth,
+        compactHeight: step.id === "assessment-panel" ? 360 : 280,
+      };
+    }
+    if (vw < 1024) {
+      // Tablet
+      const tabletWidth = Math.min(vw - 48, 520);
+      return {
+        standardWidth: tabletWidth,
+        standardHeight: 380,
+        compactWidth: Math.min(vw - 48, 680),
+        compactHeight: step.id === "assessment-panel" ? 380 : 300,
+      };
+    }
+    // Desktop: original sizes
+    return {
+      standardWidth: 448,
+      standardHeight: 420,
+      compactWidth: step.id === "task-controls" ? 640 : step.id === "assessment-panel" ? 780 : 680,
+      compactHeight: step.id === "hps-row" ? 320 : step.id === "task-controls" ? 320 : step.id === "assessment-panel" ? 400 : 280,
+    };
+  };
+
+  const dimensions = getCardDimensions();
+
+  // Compact wide layout for steps that overlap their highlight target
+  const isCompactStep = step.id === "assessment-panel" || step.id === "hps-row" || step.id === "task-controls";
+  const isCompactAbove = step.id === "hps-row" || step.id === "task-controls" || step.id === "assessment-panel";
+  const compactHeight = dimensions.compactHeight;
+  const compactWidth = dimensions.compactWidth;
+  const cardMaxHeight = isCompactStep ? compactHeight : undefined;
 
   if (targetRect) {
-    const cardEstimatedHeight = 420;
+    const cardEstimatedHeight = isCompactStep ? compactHeight : dimensions.standardHeight;
+    const cardWidth = isCompactStep ? compactWidth : dimensions.standardWidth;
     const vh = window.innerHeight;
+    const vw = window.innerWidth;
 
-    if ((step.placement === "right" || step.id === "assessment-panel" || step.id === "column-quick-meta") && isDesktop) {
-      // Place floating on the right side of the screen, perfectly alongside the target on the left
-      modalLeft = undefined;
-      modalRight = "28px";
-      transform = "none";
-      modalTop = Math.max(76, Math.min(vh - 440, 100));
-      modalBottom = undefined;
+    if (isMobile) {
+      // Mobile: always centered horizontally, above or below target
+      modalLeft = "50%";
+      modalRight = undefined;
+      transform = "translateX(-50%)";
+
+      const spaceBelow = vh - targetRect.bottom - 20;
+      const spaceAbove = targetRect.top - 60; // Account for header
+
+      if (isCompactAbove && spaceAbove >= cardEstimatedHeight + 24) {
+        modalTop = Math.max(16, targetRect.top - cardEstimatedHeight - 24);
+        modalBottom = undefined;
+      } else if (spaceBelow >= cardEstimatedHeight + 24) {
+        modalTop = targetRect.bottom + 24;
+        modalBottom = undefined;
+      } else if (spaceAbove >= cardEstimatedHeight + 24) {
+        modalTop = Math.max(16, targetRect.top - cardEstimatedHeight - 24);
+        modalBottom = undefined;
+      } else {
+        // Fallback: center on screen
+        modalTop = Math.max(16, (vh - cardEstimatedHeight) / 2);
+        modalBottom = undefined;
+      }
+    } else if (isCompactStep) {
+      // Compact steps: centered horizontally, placed above or below target
+      modalLeft = "50%";
+      modalRight = undefined;
+      transform = "translateX(-50%)";
+
+      if (isCompactAbove) {
+        const topOffset = step.id === "hps-row" ? 24 : 16;
+        modalTop = Math.max(16, targetRect.top - cardEstimatedHeight - topOffset);
+        modalBottom = undefined;
+      } else {
+        const spaceBelow = vh - targetRect.bottom - 20;
+        if (spaceBelow >= cardEstimatedHeight + 16) {
+          modalTop = targetRect.bottom + 16;
+          modalBottom = undefined;
+        } else {
+          modalTop = Math.max(16, (vh - cardEstimatedHeight) / 2);
+          modalBottom = undefined;
+        }
+      }
+    } else if ((step.placement === "right" || step.id === "column-quick-meta" || step.id === "cell-example" || step.id === "gender-toggle") && isDesktop) {
+      // Place floating on the right side, relative to the target element
+      const cardGap = 16;
+      const cardLeft = targetRect.right + cardGap;
+      const rightPlacementClear = cardLeft > 16 && vw - cardLeft > cardWidth + 16;
+
+      if (rightPlacementClear) {
+        modalLeft = `${cardLeft}px`;
+        modalRight = undefined;
+        transform = "none";
+
+        const targetMiddle = targetRect.top + targetRect.height / 2;
+        let candidateTop = targetMiddle - cardEstimatedHeight / 2;
+        candidateTop = Math.max(16, candidateTop);
+        candidateTop = Math.min(vh - cardEstimatedHeight - 16, candidateTop);
+
+        modalTop = candidateTop;
+        modalBottom = undefined;
+
+        if (modalTop + cardEstimatedHeight > vh - 16) {
+          modalTop = undefined;
+          modalBottom = 16;
+        }
+      } else {
+        // Fallback to centered below/above
+        modalLeft = "50%";
+        modalRight = undefined;
+        transform = "translateX(-50%)";
+
+        const spaceBelow = vh - targetRect.bottom - 20;
+        const spaceAbove = targetRect.top - 20;
+
+        if (spaceBelow >= cardEstimatedHeight) {
+          modalTop = targetRect.bottom + 16;
+          modalBottom = undefined;
+        } else if (spaceAbove >= cardEstimatedHeight) {
+          modalTop = Math.max(16, targetRect.top - cardEstimatedHeight - 16);
+          modalBottom = undefined;
+        } else {
+          modalTop = undefined;
+          modalBottom = 16;
+        }
+      }
+    } else if (step.id === "optional-details-btn" && isDesktop) {
+      // Step 5: place card to the LEFT of target, vertically centered with it
+      const cardGap = 20;
+      const cardLeft = targetRect.left - cardWidth - cardGap;
+
+      if (cardLeft >= 16) {
+        modalLeft = `${cardLeft}px`;
+        modalRight = undefined;
+        transform = "none";
+
+        const targetMiddle = targetRect.top + targetRect.height / 2;
+        let candidateTop = targetMiddle - cardEstimatedHeight / 2;
+        candidateTop = Math.max(16, candidateTop);
+        candidateTop = Math.min(vh - cardEstimatedHeight - 16, candidateTop);
+        modalTop = candidateTop;
+        modalBottom = undefined;
+      } else {
+        modalLeft = "50%";
+        modalRight = undefined;
+        transform = "translateX(-50%)";
+        modalTop = Math.max(16, targetRect.top - cardEstimatedHeight - 24);
+        modalBottom = undefined;
+      }
     } else {
+      // Default: place below or above the target, centered horizontally
+      modalLeft = "50%";
+      modalRight = undefined;
+      transform = "translateX(-50%)";
+
       const spaceBelow = vh - targetRect.bottom - 20;
       const spaceAbove = targetRect.top - 20;
 
-      if (spaceBelow >= 300) {
-        // Room below target: place with comfortable 16px clearance
+      if (spaceBelow >= cardEstimatedHeight) {
         modalTop = targetRect.bottom + 16;
         modalBottom = undefined;
-      } else if (spaceAbove >= 300) {
-        // Room above target: place with comfortable 16px clearance
-        modalTop = Math.max(16, targetRect.top - 340);
+      } else if (spaceAbove >= cardEstimatedHeight) {
+        modalTop = Math.max(16, targetRect.top - cardEstimatedHeight - 16);
         modalBottom = undefined;
       } else {
-        // Fallback: Dock safely to the bottom of viewport
         modalTop = undefined;
         modalBottom = 16;
       }
     }
 
     // Viewport bottom safety clamp
-    if (modalTop !== undefined && modalTop + 320 > vh - 16) {
+    if (modalTop !== undefined && modalTop + cardEstimatedHeight > vh - 16) {
       modalTop = undefined;
       modalBottom = 16;
+    }
+
+    // Viewport top safety clamp
+    if (modalTop !== undefined && modalTop < 16) {
+      modalTop = 16;
     }
   } else {
     modalTop = 120;
   }
 
-  return (
-    <div className="fixed inset-0 z-[100] overflow-hidden pointer-events-auto">
+  return createPortal(
+    <div 
+      className="fixed inset-0 overflow-hidden pointer-events-auto" 
+      style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }}
+    >
       {/* Invisible backdrop for outside clicks */}
-      <div className="fixed inset-0 z-[99]" onClick={onClose} />
+      <div 
+        className="fixed inset-0" 
+        onClick={onClose} 
+        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9998 }} 
+      />
 
-      {/* Target element spotlight cutout with crystal-clear interior and dark outer backdrop */}
+      {/* Target element spotlight cutout - the box-shadow creates the dark overlay covering everything */}
       {targetRect ? (
         <div
           className="fixed pointer-events-none transition-all duration-300 ease-out rounded-2xl ring-4 ring-amber-400 ring-offset-2 ring-offset-amber-400/20"
@@ -447,26 +617,32 @@ export function ClassRecordTour({
             width: `${targetRect.width + 12}px`,
             height: `${targetRect.height + 12}px`,
             boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.78), 0 0 35px rgba(251, 191, 36, 0.45)",
-            zIndex: 100,
+            zIndex: 9999,
           }}
         />
       ) : (
-        <div className="fixed inset-0 bg-slate-950/75 pointer-events-none z-[100]" />
+        <div 
+          className="fixed inset-0 bg-slate-950/75 pointer-events-none" 
+          style={{ zIndex: 9997 }} 
+        />
       )}
 
       {/* Floating Tutorial Dialog Card */}
       <div
         ref={cardRef}
-        className="fixed z-[102] w-[92vw] max-w-lg transition-all duration-300 ease-out"
+        className="fixed transition-all duration-300 ease-out"
         style={{
+          zIndex: 10000,
           top: modalTop !== undefined ? `${modalTop}px` : undefined,
           bottom: modalBottom !== undefined ? `${modalBottom}px` : undefined,
           left: modalLeft,
           right: modalRight,
           transform: transform,
+          width: isCompactStep ? `min(92vw, ${compactWidth}px)` : `min(92vw, ${dimensions.standardWidth}px)`,
+          maxHeight: "calc(100vh - 32px)",
         }}
       >
-        <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden ring-1 ring-slate-900/10 max-h-[82vh] flex flex-col">
+        <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden ring-1 ring-slate-900/10 flex flex-col" style={{ maxHeight: cardMaxHeight ? `min(${cardMaxHeight}px, calc(100vh - 32px))` : "min(82vh, calc(100vh - 32px))" }}>
           {/* Header Bar */}
           <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-5 py-3 text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
@@ -503,7 +679,7 @@ export function ClassRecordTour({
           </div>
 
           {/* Body Content (Scrollable if needed on small viewports) */}
-          <div className="p-4 sm:p-5 space-y-3 overflow-y-auto">
+          <div className={cn("overflow-y-auto", isCompactStep ? "px-5 py-3 space-y-2" : "p-4 sm:p-5 space-y-3")}>
             {/* Step Title & Icon */}
             <div className="flex items-start gap-3">
               <div
@@ -632,6 +808,7 @@ export function ClassRecordTour({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

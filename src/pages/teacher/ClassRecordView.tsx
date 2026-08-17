@@ -5,6 +5,7 @@ import {
   CheckCircle,
   Loader2,
   X,
+  Monitor,
 } from "lucide-react";
 import {
   gradesApi,
@@ -21,6 +22,8 @@ import { ClassRecordHero } from "./components/ClassRecordHero";
 import { ClassRecordStats } from "./components/ClassRecordStats";
 import { EcrGenerationDialog } from "./components/EcrGenerationDialog";
 import { ClassRecordTour } from "./components/ClassRecordTour";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
 import { HGDescriptorPanel } from "./components/HGDescriptorPanel";
 import {
@@ -81,6 +84,7 @@ export default function ClassRecordView() {
   const [mobileEditorTab, setMobileEditorTab] = useState<'WW' | 'PT' | 'QA' | 'HG'>('WW');
   const [mobileScoreDraft, setMobileScoreDraft] = useState<Record<string, string>>({});
   const [isTourOpen, setIsTourOpen] = useState(false);
+  const [showMobileWarning, setShowMobileWarning] = useState(false);
 
   const [separateByGender, setSeparateByGender] = useState(false);
   const ecrFileInputRef = useRef<HTMLInputElement>(null);
@@ -901,7 +905,16 @@ export default function ClassRecordView() {
         onOpenImport={() => ecrFileInputRef.current?.click()}
         onImportSelect={handleEcrFileSelect}
         fileInputRef={ecrFileInputRef}
-        onStartTour={() => setIsTourOpen(true)}
+        onStartTour={() => {
+          // Check if on mobile or tablet
+          const isMobileOrTablet = window.innerWidth < 1024;
+          if (isMobileOrTablet) {
+            setShowMobileWarning(true);
+          } else {
+            setIsTourOpen(true);
+            window.dispatchEvent(new Event("tour:start"));
+          }
+        }}
       />
 
       {isHGClass && (
@@ -1046,10 +1059,44 @@ export default function ClassRecordView() {
           setIsTourOpen(false);
           setShowAssessmentDetails(false);
           setSelectedColumn(null);
+          window.dispatchEvent(new Event("tour:end"));
         }}
         setShowAssessmentDetails={setShowAssessmentDetails}
         setSelectedColumn={setSelectedColumn}
       />
+
+      {/* Mobile/Tablet Tutorial Warning Dialog */}
+      <Dialog open={showMobileWarning} onOpenChange={setShowMobileWarning}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="p-2 bg-amber-100 rounded-xl">
+                <Monitor className="w-5 h-5 text-amber-600" />
+              </div>
+              Desktop Recommended
+            </DialogTitle>
+            <DialogDescription className="text-slate-600 pt-2">
+              The interactive tutorial is optimized for desktop screens (1024px and wider).
+              For the best experience, we recommend using a laptop or desktop computer
+              the first time you go through the tutorial.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 my-2">
+            <p className="text-sm text-amber-800 font-medium">
+              <strong>Why desktop?</strong> The tutorial highlights specific UI elements
+              and may not display correctly on smaller screens.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              onClick={() => setShowMobileWarning(false)}
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
+              Got it, I'll use Desktop
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

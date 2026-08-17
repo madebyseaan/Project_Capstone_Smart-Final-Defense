@@ -41,9 +41,7 @@ function normalizeEmail(email: string | null | undefined): string {
   return email.toLowerCase()
     .trim()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/├æ/g, 'n')
-    .replace(/ñ/g, 'n');
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 // -- State ------------------------------------------------------------------
@@ -131,6 +129,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     // 3.1 Build EnrollPro sectionId → section details map for ATLAS assignments
     let epSectionById = new Map<number, any>();
+    const epSectionByName = new Map<string, any>();
     try {
       let epSections = await getAllIntegrationV1Sections(enrollProSchoolYearId);
       let unscopedSections: any[] = [];
@@ -157,6 +156,11 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       }
 
       epSectionById = mergedSections;
+
+      // Build name-based lookup for fallback (ATLAS and EP use different integer IDs)
+      for (const [, s] of epSectionById) {
+        if (s?.name) epSectionByName.set(s.name.trim().toLowerCase(), s);
+      }
 
       if (unscopedSections.length > 0) {
         const mergedExtra = Math.max(0, epSectionById.size - epSections.length);
@@ -263,7 +267,16 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     // from the stale check so their existing assignments are not incorrectly archived.
     const teacherIdsWithLoads = new Set<string>();
 
-    for (const af of atlasFaculty) {
+    // 5.1 Pre-fetch all faculty assignments in parallel (with concurrency limit)
+    const CONCURRENT_LIMIT = 5;
+    type FacultyAssignmentResult = {
+      af: any;
+      detail: any;
+      pubEntries: any[];
+      error?: string;
+    };
+
+    async function fetchFacultyAssignment(af: any): Promise<FacultyAssignmentResult> {
       try {
         let detail = await atlasGet(
           `/faculty-assignments/${af.id}?schoolYearId=${atlasSchoolYearId}`,
@@ -293,30 +306,55 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         }
 
         const smartTeacherId = atlasIdToSmartTeacherId.get(af.id);
-        if (!smartTeacherId) continue;
+        if (!smartTeacherId) return { af, detail: null, pubEntries: [] };
 
         const flatAssignments = assignments.filter((a) => a && (a.subjectCode || a.sectionId));
         const nestedAssignments = assignments.filter((a) => a && (a.subject?.code || a.sections));
-          // Fetch published schedule when there are no assignments at all, OR when flat
-          // assignments only have grade-level data (no sectionId) — Atlas /faculty-assignments
-          // returns subject+gradeLevel only; section specifics come from the published schedule.
-          const hasSectionIds = flatAssignments.some((a) => a?.sectionId ?? a?.section?.id);
-          const pubEntries: any[] = (!hasSectionIds)
-          ? await (async () => {
-              try {
-                const pubData = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`);
-                return Array.isArray(pubData?.entries) ? pubData.entries : [];
-              } catch (error: any) {
-                errors.push(`Faculty ${af.firstName} ${af.lastName} published schedule: ${error?.message ?? error}`);
-                return [];
-              }
-            })()
-          : [];
+          // Always fetch published schedule — needed for teaching load fallback AND schedule entries
+          let pubEntries: any[] = [];
+          try {
+            const pubData = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`);
+            pubEntries = Array.isArray(pubData?.entries) ? pubData.entries : [];
+            if (pubEntries.length > 0) {
+              logger.debug(`[AtlasSync] Faculty ${af.firstName} ${af.lastName}: ${pubEntries.length} published schedule entries`);
+            }
+          } catch {
+            // Published schedule may not exist yet — not an error
+          }
 
+        return { af, detail: assignments, pubEntries };
+      } catch (err: any) {
+        return { af, detail: null, pubEntries: [], error: `${af.firstName} ${af.lastName}: ${err.message}` };
+      }
+    }
+
+    // Run with concurrency limit
+    const fetchResults: FacultyAssignmentResult[] = [];
+    for (let i = 0; i < atlasFaculty.length; i += CONCURRENT_LIMIT) {
+      const batch = atlasFaculty.slice(i, i + CONCURRENT_LIMIT);
+      const batchResults = await Promise.all(batch.map(af => fetchFacultyAssignment(af)));
+      fetchResults.push(...batchResults);
+    }
+
+    // 5.2 Process results sequentially (same logic as before)
+    for (const result of fetchResults) {
+      if (result.error) {
+        errors.push(result.error);
+        continue;
+      }
+
+      const { af, detail: assignments, pubEntries } = result;
+      if (!assignments) continue;
+
+      const smartTeacherId = atlasIdToSmartTeacherId.get(af.id);
+      if (!smartTeacherId) continue;
+
+        const flatAssignments = assignments.filter((a: any) => a && (a.subjectCode || a.sectionId));
+        const nestedAssignments = assignments.filter((a: any) => a && (a.subject?.code || a.sections));
         const teacherLoads: Array<{ smartTeacherId: string; subjectCode: string; sectionName: string; gradeLevel: GradeLevel }> = [];
         const MAX_SANE_SECTIONS = 10;
 
-        if (flatAssignments.length > 0 && flatAssignments.some(a => a?.sectionId ?? a?.section?.id)) {
+        if (flatAssignments.length > 0 && flatAssignments.some((a: any) => a?.sectionId ?? a?.section?.id)) {
           // Trust Gate: Group by subject to detect broad over-assignment
           const flatBySubject = new Map<string, number>();
           for (const a of flatAssignments) {
@@ -337,7 +375,12 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
             const sectionId = Number(a?.sectionId ?? a?.section?.id);
             if (!Number.isFinite(sectionId)) continue;
-            const epSection = epSectionById.get(sectionId);
+            let epSection = epSectionById.get(sectionId);
+            // Fallback: ATLAS and EnrollPro use different integer IDs for same section — match by name
+            if (!epSection?.name && (a?.sectionName || a?.section?.name)) {
+              const sectionName = (a?.sectionName || a?.section?.name || '').trim().toLowerCase();
+              epSection = epSectionByName.get(sectionName) ?? null;
+            }
             if (!epSection?.name) {
               errors.push(`ATLAS sectionId=${sectionId} not found in EnrollPro sections`);
               continue;
@@ -347,7 +390,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
               teacherLoads.push({ smartTeacherId, subjectCode, sectionName: epSection.name, gradeLevel });
             }
           }
-        } else if (nestedAssignments.length > 0 && nestedAssignments.some(a => (a.sections ?? []).length > 0)) {
+        } else if (nestedAssignments.length > 0 && nestedAssignments.some((a: any) => (a.sections ?? []).length > 0)) {
           for (const a of nestedAssignments) {
             const subjectCode = normalizeAtlasSubjectCode(a.subject?.code ?? '');
             if (!subjectCode) continue;
@@ -379,7 +422,12 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
             const key = `${subjectCode}:${sectionId}`;
             if (seen.has(key)) continue; // deduplicate time slots
             seen.add(key);
-            const epSection = epSectionById.get(sectionId);
+            let epSection = epSectionById.get(sectionId);
+            // Fallback: ATLAS and EnrollPro use different integer IDs for same section — match by name
+            if (!epSection?.name && (entry?.sectionName || entry?.section?.name)) {
+              const sectionName = (entry?.sectionName || entry?.section?.name || '').trim().toLowerCase();
+              epSection = epSectionByName.get(sectionName) ?? null;
+            }
             if (!epSection?.name) {
               errors.push(`ATLAS published sectionId=${sectionId} not found in EnrollPro sections`);
               continue;
@@ -412,9 +460,6 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         teachersWithLoads++;
         teacherIdsWithLoads.add(smartTeacherId);
         loads.push(...teacherLoads);
-      } catch (err: any) {
-        errors.push(`Faculty ${af.firstName} ${af.lastName}: ${err.message}`);
-      }
     }
 
     // 6. Data-safety note: stale-check runs ONLY for teachers who had ≥1 successfully resolved
@@ -481,7 +526,136 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           },
         });
         created++;
-      } catch { /* duplicate or constraint */ }
+      } catch (err: any) {
+        logger.warn({ err: err.message, teacherId: load.smartTeacherId, subjectCode: load.subjectCode, sectionName: load.sectionName }, 'Class assignment upsert failed');
+      }
+    }
+
+    // 5.3 Persist published schedule entries as ScheduleEntry records
+    // ATLAS published schedule uses NESTED objects: entry.subject.code, entry.section.id, etc.
+    {
+      const allScheduleEntries: Array<{
+        teacherId: string; subjectCode: string; sectionName: string;
+        gradeLevel: GradeLevel; day: string; startTime: string; endTime: string; roomId: number | null;
+      }> = [];
+      let totalPubEntries = 0;
+      let skippedNoDay = 0;
+      let skippedNoSubject = 0;
+      let skippedNoSection = 0;
+      for (const result of fetchResults) {
+        if (result.error || !result.pubEntries?.length) continue;
+        totalPubEntries += result.pubEntries.length;
+        const smartTeacherId = atlasIdToSmartTeacherId.get(result.af.id);
+        if (!smartTeacherId) continue;
+        for (const entry of result.pubEntries) {
+          const day = entry?.day;
+          const startTime = entry?.startTime;
+          const endTime = entry?.endTime;
+          if (!day || !startTime || !endTime) { skippedNoDay++; continue; }
+          // ATLAS nested structure: entry.subject.code (not entry.subjectCode)
+          const subjectCode = normalizeAtlasSubjectCode(entry?.subject?.code ?? entry?.subjectCode);
+          if (!subjectCode) { skippedNoSubject++; continue; }
+          // ATLAS nested structure: entry.section.id (not entry.sectionId)
+          const sectionId = Number(entry?.section?.id ?? entry?.sectionId);
+          if (!Number.isFinite(sectionId)) continue;
+          let epSection = epSectionById.get(sectionId);
+          // Fallback: match by section name from ATLAS nested response
+          if (!epSection?.name) {
+            const atlasSectionName = entry?.section?.name ?? entry?.sectionName;
+            if (atlasSectionName) {
+              epSection = epSectionByName.get(atlasSectionName.trim().toLowerCase()) ?? null;
+            }
+          }
+          if (!epSection?.name) { skippedNoSection++; continue; }
+          // ATLAS nested: entry.section.gradeLevelName or entry.section.gradeLevel (number)
+          const gradeLevelRaw = epSection.gradeLevel?.name ?? epSection.gradeLevelName ?? epSection.name;
+          const gradeLevel = mapGradeLevel(gradeLevelRaw);
+          if (!gradeLevel) continue;
+          // ATLAS nested: entry.room?.id (not entry.roomId)
+          const roomId = entry?.room?.id ?? entry?.roomId ?? null;
+          allScheduleEntries.push({
+            teacherId: smartTeacherId, subjectCode, sectionName: epSection.name,
+            gradeLevel, day, startTime, endTime, roomId: Number.isFinite(Number(roomId)) ? Number(roomId) : null,
+          });
+        }
+      }
+
+      if (allScheduleEntries.length > 0) {
+        let scheduleCreated = 0;
+        let scheduleCleaned = 0;
+        const teacherIdsWithSchedule = new Set(allScheduleEntries.map(e => e.teacherId));
+
+        const existingEntries = await prisma.scheduleEntry.findMany({
+          where: { teacherId: { in: Array.from(teacherIdsWithSchedule) }, schoolYear: schoolYearLabel },
+          select: { id: true, teacherId: true, subjectId: true, sectionId: true, day: true, startTime: true },
+        });
+        const existingByKey = new Map(
+          existingEntries.map(e => [`${e.teacherId}:${e.subjectId}:${e.sectionId}:${e.day}:${e.startTime}`, e.id]),
+        );
+
+        for (const entry of allScheduleEntries) {
+          const smartSubjectCode = resolveSubjectCode(entry.subjectCode, entry.gradeLevel);
+          let subject = subjectByCode.get(smartSubjectCode);
+          if (!subject) {
+            try {
+              subject = await prisma.subject.upsert({
+                where: { code: smartSubjectCode },
+                update: {},
+                create: { code: smartSubjectCode, name: resolveSubjectName(smartSubjectCode, entry.gradeLevel), type: 'CORE' },
+              });
+              subjectByCode.set(smartSubjectCode, subject);
+            } catch { continue; }
+          }
+          if (!subject) continue;
+          const section = sectionByKey.get(`${entry.sectionName.trim()}:${entry.gradeLevel}`);
+          if (!section) continue;
+
+          const dedupKey = `${entry.teacherId}:${subject.id}:${section.id}:${entry.day}:${entry.startTime}`;
+          const existingId = existingByKey.get(dedupKey);
+          if (existingId) {
+            existingByKey.delete(dedupKey);
+            continue;
+          }
+
+          try {
+            await prisma.scheduleEntry.upsert({
+              where: {
+                teacherId_subjectId_sectionId_schoolYear_day_startTime: {
+                  teacherId: entry.teacherId, subjectId: subject.id,
+                  sectionId: section.id, schoolYear: schoolYearLabel,
+                  day: entry.day, startTime: entry.startTime,
+                },
+              },
+              update: { endTime: entry.endTime, roomId: entry.roomId },
+              create: {
+                teacherId: entry.teacherId, subjectId: subject.id,
+                sectionId: section.id, schoolYear: schoolYearLabel,
+                day: entry.day, startTime: entry.startTime,
+                endTime: entry.endTime, roomId: entry.roomId,
+              },
+            });
+            scheduleCreated++;
+          } catch (err: any) {
+            logger.warn(`[AtlasSync] Schedule entry upsert failed: ${err.message}`);
+          }
+        }
+
+        const staleIds = Array.from(existingByKey.values());
+        if (staleIds.length > 0) {
+          await prisma.scheduleEntry.deleteMany({ where: { id: { in: staleIds } } });
+          scheduleCleaned = staleIds.length;
+        }
+
+        if (scheduleCreated > 0 || scheduleCleaned > 0) {
+          console.log(`[AtlasSync] Schedule entries: created=${scheduleCreated}, cleaned=${scheduleCleaned}`);
+        }
+      }
+      // Always log schedule diagnostics
+      if (totalPubEntries > 0) {
+        console.log(`[AtlasSync] Schedule diag: totalPub=${totalPubEntries}, skippedNoDay=${skippedNoDay}, skippedNoSubject=${skippedNoSubject}, skippedNoSection=${skippedNoSection}, resolved=${allScheduleEntries.length}`);
+      } else {
+        console.log(`[AtlasSync] Schedule diag: no published schedule entries found from ATLAS`);
+      }
     }
 
     if (staleCandidateIds.length > 0) {
