@@ -5,10 +5,73 @@ const API_URL = "/api";
 // Export server URL for constructing upload URLs
 export const SERVER_URL = "";
 
+// ─── Multi-session helpers ────────────────────────────────────────
+// Each portal (admin/teacher/registrar) gets its own storage keys
+// so multiple users can be logged in simultaneously.
+export type PortalRole = "admin" | "teacher" | "registrar";
+
+export function getPortalRole(): PortalRole {
+  const path = window.location.pathname;
+  if (path.startsWith("/admin")) return "admin";
+  if (path.startsWith("/registrar")) return "registrar";
+  return "teacher";
+}
+
+export function getTokenKey(role?: PortalRole): string {
+  return `token_${role || getPortalRole()}`;
+}
+
+export function getUserKey(role?: PortalRole): string {
+  return `user_${role || getPortalRole()}`;
+}
+
+export function getPortalToken(): string | null {
+  return sessionStorage.getItem(getTokenKey());
+}
+
+export function getRefreshTokenKey(role?: PortalRole): string {
+  return `refreshToken_${role || getPortalRole()}`;
+}
+
+export function getPortalRefreshToken(): string | null {
+  return sessionStorage.getItem(getRefreshTokenKey());
+}
+
+export function getPortalUser(): Record<string, unknown> | null {
+  try {
+    const raw = sessionStorage.getItem(getUserKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 // Create axios instance with cookie-based auth
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true, // Send cookies cross-origin
+});
+
+// Attach role-specific token as Authorization header (multi-session support)
+api.interceptors.request.use((config) => {
+  const token = getPortalToken();
+  if (token) {
+    config.headers.set("Authorization", `Bearer ${token}`);
+  }
+  return config;
+});
+
+// CSRF: read x-csrf-token cookie and send as header on every request
+api.interceptors.request.use((config) => {
+  const method = config.method?.toUpperCase();
+  if (method && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const csrfToken = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("x-csrf-token="))
+      ?.split("=")[1];
+    if (csrfToken) {
+      config.headers.set("x-csrf-token", csrfToken);
+    }
+  }
+  return config;
 });
 
 // Track refresh state to avoid multiple simultaneous refresh calls
@@ -48,11 +111,17 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        // Refresh token is in httpOnly cookie, sent automatically
-        const refreshResponse = await api.post("/auth/refresh");
-        // Store new token in sessionStorage so SSE hook picks it up
+        // Send role-specific refresh token via header
+        const refreshToken = getPortalRefreshToken();
+        const refreshResponse = await api.post("/auth/refresh", {}, {
+          headers: refreshToken ? { "x-refresh-token": refreshToken } : undefined,
+        });
+        // Store new tokens per role
         if (refreshResponse.data?.token) {
-          sessionStorage.setItem("token", refreshResponse.data.token);
+          sessionStorage.setItem(getTokenKey(), refreshResponse.data.token);
+        }
+        if (refreshResponse.data?.refreshToken) {
+          sessionStorage.setItem(getRefreshTokenKey(), refreshResponse.data.refreshToken);
         }
         processQueue(null, "refreshed");
         return api(originalRequest);
@@ -119,6 +188,7 @@ export interface Section {
   name: string;
   gradeLevel: string;
   schoolYear: string;
+  program?: string;
   adviser?: string;
   enrollProId?: number | null;
   enrollments?: {
@@ -145,12 +215,8 @@ export interface ClassAssignment {
     ww: number;
     pt: number;
     qa: number;
-    source: "subject" | "generic-fallback";
-    hasExactEcrTemplate: boolean;
+    source: "subject-override" | "subject-type" | "generic-fallback";
   };
-  // ECR sync tracking
-  ecrLastSyncedAt?: string | null;
-  ecrFileName?: string | null;
 }
 
 export interface ScoreItem {
@@ -264,8 +330,7 @@ export const gradesApi = {
         ww: number;
         pt: number;
         qa: number;
-        source: "subject" | "generic-fallback";
-        hasExactEcrTemplate: boolean;
+        source: "subject-override" | "subject-type" | "generic-fallback";
       };
     }>(`/grades/class-record/${classAssignmentId}`, {
       params: term ? { term } : {},
@@ -317,84 +382,6 @@ export const gradesApi = {
       hasAdvisory: boolean;
     }>("/grades/advisory-honors", { params: { term } }),
 
-  // ECR (E-Class Record) Import
-  getEcrStatus: (classAssignmentId: string) =>
-    api.get<{
-      hasSynced: boolean;
-      ecrLastSyncedAt: string | null;
-      ecrFileName: string | null;
-    }>(`/grades/ecr/status/${classAssignmentId}`),
-
-  previewEcr: (classAssignmentId: string, file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('classAssignmentId', classAssignmentId);
-    return api.post<{
-      fileName: string;
-      metadata: {
-        gradeSection?: string;
-        teacher?: string;
-        subject?: string;
-      };
-      quarters: {
-        term: string;
-        maxScores: {
-          writtenWork: number[];
-          perfTask: number[];
-          quarterlyAssess: number;
-        };
-        students: {
-          name: string;
-          writtenWorkScores: number[];
-          writtenWorkTotal: number;
-          writtenWorkPS: number;
-          perfTaskScores: number[];
-          perfTaskTotal: number;
-          perfTaskPS: number;
-          quarterlyAssessScore: number;
-          quarterlyAssessPS: number;
-          initialGrade: number;
-          quarterlyGrade: number;
-          matchedStudentId: string | null;
-          matchedStudent: Student | null;
-        }[];
-      }[];
-      stats: {
-        totalStudents: number;
-        matchedStudents: number;
-        unmatchedStudents: number;
-      };
-      classAssignment: {
-        id: string;
-        subject: string;
-        section: string;
-        ecrLastSyncedAt: string | null;
-        ecrFileName: string | null;
-      };
-    }>("/grades/ecr/preview", formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-
-  importEcr: (classAssignmentId: string, file: File, selectedTerms?: string[]) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('classAssignmentId', classAssignmentId);
-    if (selectedTerms) {
-      formData.append('selectedQuarters', JSON.stringify(selectedTerms));
-    }
-    return api.post<{
-      success: boolean;
-      importedGrades: number;
-      skippedStudents: number;
-      quartersImported: string[];
-      ecrLastSyncedAt: string;
-      ecrFileName: string;
-    }>("/grades/ecr/import", formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-
   deleteClassAssignment: (id: string) =>
     api.delete<{ message: string }>(`/grades/class-assignment/${id}`),
 
@@ -403,6 +390,28 @@ export const gradesApi = {
 
   getDeadlineStatus: () =>
     api.get<{ gradeDeadline: GradeDeadlineInfo | null }>("/grades/deadline-status"),
+
+  getTransmutationTable: () =>
+    api.get<Array<{ id: string; minGrade: number; maxGrade: number; transmutedGrade: number }>>("/grades/transmutation-table"),
+
+  // Edit request methods
+  createEditRequest: (data: { term: string; reason: string; classAssignmentId?: string; gradeLevel?: string; section?: string; subject?: string }) =>
+    api.post<{ message: string; request: any }>("/grades/edit-request", data),
+
+  getMyEditRequests: () =>
+    api.get<{ requests: any[] }>("/grades/edit-requests"),
+
+  getAdminEditRequests: (status?: string) =>
+    api.get<{ requests: any[] }>("/grades/admin/edit-requests", { params: status ? { status } : {} }),
+
+  approveEditRequest: (id: string, hours?: number) =>
+    api.post<{ message: string; request: any }>(`/grades/admin/edit-requests/${id}/approve`, { hours }),
+
+  rejectEditRequest: (id: string, reason?: string) =>
+    api.post<{ message: string; request: any }>(`/grades/admin/edit-requests/${id}/reject`, { reason }),
+
+  revokeEditRequest: (id: string) =>
+    api.post<{ message: string; request: any }>(`/grades/admin/edit-requests/${id}/revoke`),
 };
 
 // Advisory API
@@ -418,6 +427,8 @@ export interface AdvisoryStudent {
   address?: string;
   guardianName?: string;
   guardianContact?: string;
+  fatherName?: string;
+  motherName?: string;
   rank?: number;
 }
 
@@ -489,6 +500,19 @@ export interface StudentGradeProfile {
     address?: string;
     guardianName?: string;
     guardianContact?: string;
+    religion?: string;
+    motherTongue?: string;
+    barangay?: string;
+    city?: string;
+    province?: string;
+    fatherName?: string;
+    fatherContact?: string;
+    motherName?: string;
+    motherContact?: string;
+    ipCommunity?: boolean;
+    is4PsBeneficiary?: boolean;
+    disability?: string;
+    isBalikAral?: boolean;
   };
   enrollment: {
     sectionName: string;
@@ -692,6 +716,10 @@ export interface SF10Data {
     id: string;
     lrn: string;
     name: string;
+    firstName?: string;
+    lastName?: string;
+    middleName?: string;
+    nameExtension?: string;
     gender: string;
     birthDate?: string;
     address?: string;
@@ -703,6 +731,11 @@ export interface SF10Data {
     gradeLevel: string;
     section: string;
     school?: string;
+    schoolId?: string;
+    district?: string;
+    division?: string;
+    region?: string;
+    adviserName?: string;
     subjectGrades: {
       subjectCode: string;
       subjectName: string;
@@ -715,7 +748,19 @@ export interface SF10Data {
     generalAverage?: number;
     honors?: string;
     promotionStatus?: string;
+    remedialClasses?: {
+      learningAreas: string;
+      finalRating: string;
+      conductedFrom?: string;
+      remedialClassMark?: string;
+    }[];
   }[];
+  schoolSettings?: {
+    schoolName?: string;
+    schoolId?: string;
+    division?: string;
+    region?: string;
+  };
 }
 
 export const registrarApi = {
@@ -744,6 +789,29 @@ export const registrarApi = {
   getStudent: (studentId: string) =>
     api.get<{ student: RegistrarStudent }>(`/registrar/student/${studentId}`),
 
+  getAlumni: (params?: { search?: string; gradeLevel?: string; status?: string; limit?: number; offset?: number }) =>
+    api.get<{
+      students: Array<{
+        id: string;
+        enrollmentId: string;
+        lrn: string;
+        firstName: string;
+        middleName: string | null;
+        lastName: string;
+        suffix: string | null;
+        gender: string | null;
+        lastGradeLevel: string;
+        lastSection: string;
+        lastSchoolYear: string;
+        lastProgram: string;
+        enrollmentStatus: string;
+      }>;
+      total: number;
+    }>("/registrar/alumni", { params }),
+
+  updateEnrollmentStatus: (enrollmentId: string, status: string) =>
+    api.put<{ enrollment: any }>(`/registrar/enrollment/${enrollmentId}/status`, { status }),
+
   getSF8: (sectionId: string, schoolYear: string) =>
     api.get<SF8Data>("/registrar/forms/sf8", { params: { sectionId, schoolYear } }),
 
@@ -755,6 +823,33 @@ export const registrarApi = {
 
   getSF5: (sectionId: string, schoolYear?: string) =>
     api.get(`/registrar/forms/sf5/${sectionId}`, { params: { schoolYear } }),
+
+  getSF6: (schoolYear?: string) =>
+    api.get<{
+      schoolYear: string;
+      sections: Array<{
+        sectionId: string;
+        sectionName: string;
+        gradeLevel: string;
+        program: string;
+        adviser: string | null;
+        totalStudents: number;
+        promoted: number;
+        retained: number;
+        dropped: number;
+        transferred: number;
+        promotionRate: number;
+      }>;
+      summary: {
+        totalStudents: number;
+        promoted: number;
+        retained: number;
+        dropped: number;
+        transferred: number;
+        overallPromotionRate: number;
+      };
+      byGradeLevel: Record<string, { total: number; promoted: number; retained: number; dropped: number; transferred: number }>;
+    }>("/registrar/forms/sf6", { params: { schoolYear } }),
 
   getSF1: (sectionId: string, schoolYear?: string) =>
     api.get(`/registrar/forms/sf1/${sectionId}`, { params: { schoolYear } }),
@@ -1047,6 +1142,9 @@ export const adminApi = {
   updateSettings: (data: Partial<SystemSettings>) =>
     api.put<{ message: string; settings: SystemSettings }>("/admin/settings", data),
 
+  toggleGradeLock: (locked: boolean) =>
+    api.post<{ message: string; gradeLock: boolean }>("/admin/settings/grade-lock", { locked }),
+
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append("logo", file);
@@ -1112,6 +1210,51 @@ export const adminApi = {
 
   deleteClassAssignment: (id: string) =>
     api.delete<{ message: string }>(`/admin/class-assignments/${id}`),
+
+  // ─── Transmutation Table ─────────────────────────────────────────────────
+  getTransmutationTable: () =>
+    api.get<Array<{ id: string; minGrade: number; maxGrade: number; transmutedGrade: number; isDefault: boolean }>>("/admin/transmutation-table"),
+
+  updateTransmutationTable: (entries: Array<{ minGrade: number; maxGrade: number; transmutedGrade: number }>) =>
+    api.put<Array<{ id: string; minGrade: number; maxGrade: number; transmutedGrade: number; isDefault: boolean }>>("/admin/transmutation-table", { entries }),
+
+  addTransmutationRow: (entry: { minGrade: number; maxGrade: number; transmutedGrade: number }) =>
+    api.post<{ id: string; minGrade: number; maxGrade: number; transmutedGrade: number; isDefault: boolean }>("/admin/transmutation-table/rows", entry),
+
+  updateTransmutationRow: (id: string, entry: { minGrade: number; maxGrade: number; transmutedGrade: number }) =>
+    api.put<{ id: string; minGrade: number; maxGrade: number; transmutedGrade: number }>(`/admin/transmutation-table/${id}`, entry),
+
+  deleteTransmutationRow: (id: string) =>
+    api.delete<{ message: string }>(`/admin/transmutation-table/${id}`),
+
+  resetTransmutationTable: () =>
+    api.post<Array<{ id: string; minGrade: number; maxGrade: number; transmutedGrade: number; isDefault: boolean }>>("/admin/transmutation-table/reset"),
+
+  // ─── Per-Subject Weight Overrides ────────────────────────────────────────
+  getSubjectWeights: () =>
+    api.get<Array<{ id: string; code: string; name: string; type: string; writtenWorkWeight: number | null; perfTaskWeight: number | null; quarterlyAssessWeight: number | null; hasOverride: boolean }>>("/admin/subject-weights"),
+
+  updateSubjectWeight: (subjectId: string, weights: { writtenWorkWeight: number; perfTaskWeight: number; quarterlyAssessWeight: number }) =>
+    api.put<{ id: string }>(`/admin/subject-weights/${subjectId}`, weights),
+
+  clearSubjectWeightOverride: (subjectId: string) =>
+    api.delete<{ id: string }>(`/admin/subject-weights/${subjectId}`),
+
+  bulkUpdateSubjectWeights: (updates: Array<{ subjectId: string; writtenWorkWeight?: number | null; perfTaskWeight?: number | null; quarterlyAssessWeight?: number | null }>) =>
+    api.post<{ message: string }>("/admin/subject-weights/bulk", { updates }),
+
+  // ─── School Years ────────────────────────────────────────────────────────
+  getSchoolYears: () =>
+    api.get<{ schoolYears: Array<{ id: string; label: string; status: string; startDate: string | null; endDate: string | null; archivedAt: string | null; createdAt: string }> }>("/admin/school-years"),
+
+  createSchoolYear: (data: { label: string; startDate?: string; endDate?: string }) =>
+    api.post<{ id: string; label: string; status: string }>("/admin/school-years", data),
+
+  updateSchoolYear: (id: string, data: { status?: string; startDate?: string; endDate?: string }) =>
+    api.patch<{ id: string; status: string; archivedAt: string | null }>(`/admin/school-years/${id}`, data),
+
+  deleteSchoolYear: (id: string) =>
+    api.delete<{ message: string }>(`/admin/school-years/${id}`),
 };
 
 export default api;

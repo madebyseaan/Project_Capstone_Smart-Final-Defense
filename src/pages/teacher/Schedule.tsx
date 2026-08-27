@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle } from "lucide-react";
+import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,41 @@ function getGradeColors(gradeLevel: string) {
 function formatGradeShort(gradeLevel: string): string {
   const map: Record<string, string> = { GRADE_7: "G7", GRADE_8: "G8", GRADE_9: "G9", GRADE_10: "G10" };
   return map[gradeLevel] ?? gradeLevel;
+}
+
+const ABBREVIATIONS: Record<string, string> = {
+  "Environmental Science": "Env. Science",
+  "Applied Chemistry": "App. Chemistry",
+  "Physical Science": "Phys. Science",
+  "General Science": "Gen. Science",
+  "Earth Science": "Earth Sci.",
+  "Life Science": "Life Sci.",
+  "Social Studies": "Social Std.",
+  "Filipino": "Filipino",
+  "Araling Panlipunan": "Aral. Pan.",
+  "Edukasyon sa Pagpapakatao": "ESP",
+  "Technology and Livelihood Education": "TLE",
+  "Understanding Culture Society and Politics": "UCSP",
+  "Komunikasyon at Pananaliksik": "Kom. Pan.",
+  "Reading and Writing Skills": "Read & Write",
+  "Contemporary Arts": "Contemp. Arts",
+  "Media and Information Literacy": "MIL",
+  "Physical Education": "P.E.",
+  "Mathematics": "Math",
+  "English": "English",
+  "Science": "Science",
+  "Filipino": "Filipino",
+  "Araling Panlipunan": "Aral. Pan.",
+};
+
+function shortenSubject(name: string): string {
+  if (name.length <= 15) return name;
+  for (const [full, short] of Object.entries(ABBREVIATIONS)) {
+    if (name.startsWith(full)) {
+      return name.replace(full, short);
+    }
+  }
+  return name;
 }
 
 function getDayKey(): string {
@@ -173,6 +208,7 @@ export default function TeacherSchedule() {
   if (!schedule || schedule.count === 0) {
     return (
       <div className="space-y-8 animate-fade-in max-w-7xl mx-auto pb-12">
+        {/* Header */}
         <div className="flex items-center gap-4 mb-2">
           <div className="p-3 rounded-2xl text-white shadow-lg" style={{ backgroundColor: colors.primary }}>
             <CalendarDays className="w-6 h-6" />
@@ -182,15 +218,48 @@ export default function TeacherSchedule() {
             <p className="text-slate-500 text-sm font-semibold mt-1">S.Y. {schedule.schoolYear}</p>
           </div>
         </div>
-        <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] bg-white">
-          <CardContent className="py-32 text-center">
-            <div className="w-24 h-24 bg-slate-100 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8">
-              <CalendarDays className="w-10 h-10 text-slate-300" />
+
+        {/* Empty state card */}
+        <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] bg-white overflow-hidden">
+          <CardContent className="p-10 flex flex-col items-center justify-center text-center">
+            <div className="w-20 h-20 rounded-[1.75rem] bg-slate-100 flex items-center justify-center mb-6">
+              <CalendarClock className="w-9 h-9 text-slate-300" />
             </div>
-            <h3 className="font-black text-slate-900 text-2xl mb-3">No Schedule Published</h3>
-            <p className="text-slate-500 max-w-sm mx-auto font-medium text-lg leading-relaxed">
-              Your schedule hasn&apos;t been published yet. Check back later or contact your administrator.
+            <h3 className="font-black text-slate-900 text-2xl mb-2">No Schedule Published</h3>
+            <p className="text-slate-400 font-medium max-w-sm mx-auto leading-relaxed mb-8 text-center">
+              Your weekly timetable will appear here once your administrator publishes it.
             </p>
+
+            {/* Feature hints */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-xl mx-auto">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                  <CalendarDays className="w-4 h-4 text-emerald-500" />
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-bold text-slate-700">Weekly Grid</p>
+                  <p className="text-[11px] text-slate-400">Mon–Fri timetable</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-4 h-4 text-blue-500" />
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-bold text-slate-700">Time Slots</p>
+                  <p className="text-[11px] text-slate-400">Period-by-period</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                  <Sun className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-bold text-slate-700">Today&apos;s Classes</p>
+                  <p className="text-[11px] text-slate-400">Quick glance at today</p>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -298,9 +367,9 @@ export default function TeacherSchedule() {
                           <div className={`rounded-2xl border ${gc.cell} p-3 transition-all hover:shadow-md hover:-translate-y-0.5 cursor-default h-[88px] flex flex-col justify-between`}>
                             {/* Subject */}
                             <div>
-                              <p className={`text-sm font-black ${gc.text} leading-tight`}>{entry.subject.name}</p>
+                              <p className={`text-[13px] font-black ${gc.text} leading-tight line-clamp-1`} title={entry.subject.name}>{shortenSubject(entry.subject.name)}</p>
                               {/* Section */}
-                              <p className="text-[11px] font-bold text-slate-600 mt-1">{entry.section.name}</p>
+                              <p className="text-[11px] font-bold text-slate-600 mt-0.5 line-clamp-1">{entry.section.name}</p>
                             </div>
                             {/* Room — always at bottom */}
                             <div className="flex items-center gap-1">
@@ -354,7 +423,7 @@ export default function TeacherSchedule() {
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{formatTime12h(entry.startTime)} – {formatTime12h(entry.endTime)}</span>
                     </div>
                     {/* Subject */}
-                    <p className={`text-lg font-black ${gc.text} leading-tight`}>{entry.subject.name}</p>
+                    <p className={`text-lg font-black ${gc.text} leading-tight line-clamp-2`} title={entry.subject.name}>{shortenSubject(entry.subject.name)}</p>
                     {/* Section + Grade */}
                     <div className="flex items-center gap-2 mt-1.5">
                       <Badge variant="secondary" className={`border-0 text-[10px] font-black px-2 py-0.5 rounded-md ${gc.badge} flex-shrink-0`}>

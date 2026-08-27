@@ -10,9 +10,13 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Phone,
   MapPin,
   Medal,
+  Home,
+  Users,
+  Heart,
+  Shield,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +57,22 @@ function formatDate(dateString?: string): string {
     month: "long",
     day: "numeric",
   });
+}
+
+// Extended info row for additional details
+function ExtendedInfoRow({ icon, label, value, color, sub }: { icon: React.ReactNode; label: string; value: string; color: string; sub?: string }) {
+  return (
+    <div className="flex items-start gap-3 group p-2.5 -mx-2.5 rounded-xl transition-colors duration-200 hover:bg-gray-50">
+      <div className="p-2 rounded-xl transition-colors duration-200 group-hover:scale-110" style={{ backgroundColor: `${color}08` }}>
+        <div style={{ color: `${color}aa` }}>{icon}</div>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-0.5">{label}</p>
+        <p className="font-semibold text-gray-800 text-sm leading-snug">{value}</p>
+        {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
 }
 
 export default function StudentGradeProfilePage() {
@@ -126,17 +146,17 @@ export default function StudentGradeProfilePage() {
   const fullName = `${student.lastName}, ${student.firstName} ${student.middleName ? `${student.middleName.charAt(0)}.` : ""} ${student.suffix || ""}`.trim();
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       {/* Header with Back Button */}
       <div className="flex items-center gap-4">
         <Link to="/teacher/advisory">
-          <Button variant="outline" size="icon" className="rounded-xl border-gray-300 hover:bg-gray-100">
-            <ArrowLeft className="w-5 h-5 text-gray-900" />
+          <Button variant="outline" size="icon" className="rounded-xl border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all duration-200">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#111827' }}>Student Grade Profile</h1>
-          <p style={{ color: '#4b5563' }}>Complete academic record</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Student Grade Profile</h1>
+          <p className="text-sm text-gray-500">Complete academic record</p>
         </div>
       </div>
 
@@ -144,24 +164,25 @@ export default function StudentGradeProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Info */}
         <Card className="lg:col-span-2 border-0 shadow-xl shadow-gray-200/50 bg-white overflow-hidden rounded-2xl p-0">
-          <CardHeader className="border-b border-gray-100 px-6 py-5" style={{ backgroundColor: `${colors.primary}08` }}>
+          <CardHeader className="px-6 py-4 relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${colors.primary}12 0%, ${colors.primary}06 100%)` }}>
+            <div className="absolute top-0 right-0 w-32 h-32 opacity-5" style={{ background: `radial-gradient(circle, ${colors.primary} 0%, transparent 70%)` }} />
             <div className="flex items-center gap-4">
               <div 
-                className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-lg"
-                style={{ backgroundColor: colors.primary }}
+                className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-lg ring-2 ring-white/50"
+                style={{ background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primary}dd 100%)` }}
               >
                 {student.lastName.charAt(0)}
               </div>
               <div>
-                <CardTitle className="text-xl font-bold text-gray-900">{fullName}</CardTitle>
+                <CardTitle className="text-lg font-bold text-gray-900 tracking-tight">{fullName}</CardTitle>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}>
+                  <Badge className="font-mono text-[10px]" style={{ backgroundColor: `${colors.primary}12`, color: colors.primary }}>
                     LRN: {student.lrn}
                   </Badge>
-                  <Badge className={`${
+                  <Badge className={`text-[10px] font-medium ${
                     student.gender?.toLowerCase() === "male"
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-pink-100 text-pink-700"
+                      ? "bg-blue-50 text-blue-700 border border-blue-100"
+                      : "bg-pink-50 text-pink-700 border border-pink-100"
                   }`}>
                     {student.gender || "N/A"}
                   </Badge>
@@ -169,128 +190,173 @@ export default function StudentGradeProfilePage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-gray-100">
-                    <GraduationCap className="w-5 h-5 text-gray-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Grade & Section</p>
-                    <p className="font-semibold text-gray-900">
-                      {gradeLevelLabels[enrollment.gradeLevel] || enrollment.gradeLevel} - {enrollment.sectionName}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-gray-100">
-                    <Calendar className="w-5 h-5 text-gray-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">School Year</p>
-                    <p className="font-semibold text-gray-900">{enrollment.schoolYear}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-gray-100">
-                    <Calendar className="w-5 h-5 text-gray-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Birth Date</p>
-                    <p className="font-semibold text-gray-900">{formatDate(student.birthDate)}</p>
-                  </div>
+          <CardContent className="px-6 py-4 pb-3">
+            {/* Compact info pills */}
+            <div className="flex flex-wrap gap-x-5 gap-y-2 mb-4">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="w-4 h-4" style={{ color: `${colors.primary}99` }} />
+                <div>
+                  <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Grade & Section</span>
+                  <p className="text-sm font-semibold text-gray-800 leading-tight">{gradeLevelLabels[enrollment.gradeLevel] || enrollment.gradeLevel} — {enrollment.sectionName}</p>
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" style={{ color: `${colors.primary}99` }} />
+                <div>
+                  <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">School Year</span>
+                  <p className="text-sm font-semibold text-gray-800 leading-tight">{enrollment.schoolYear}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" style={{ color: `${colors.primary}99` }} />
+                <div>
+                  <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Birth Date</span>
+                  <p className="text-sm font-semibold text-gray-800 leading-tight">{formatDate(student.birthDate)}</p>
+                </div>
+              </div>
+            </div>
 
+            {/* Contact strip */}
+            {(student.guardianName || student.guardianContact) && (
+              <div className="flex flex-wrap gap-x-5 gap-y-1 mb-3 text-sm">
+                {student.guardianName && (
+                  <span className="text-gray-600">
+                    <span className="text-gray-400 text-xs">Guardian:</span>{" "}
+                    <span className="font-medium text-gray-800">{student.guardianName}</span>
+                    {student.guardianContact && <span className="text-gray-400 ml-1.5">• {student.guardianContact}</span>}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Extended Profile Section */}
+            <div className="pt-4 mt-2 border-t border-gray-100">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-1 rounded-md" style={{ backgroundColor: `${colors.primary}10` }}>
+                  <Users className="w-3 h-3" style={{ color: colors.primary }} />
+                </div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Additional Information</span>
+              </div>
               <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-gray-100">
-                    <MapPin className="w-5 h-5 text-gray-600" />
-                  </div>
+                {/* Background & Location */}
+                {(student.religion || student.motherTongue || student.barangay || student.city || student.province) && (
                   <div>
-                    <p className="text-sm text-gray-500">Address</p>
-                    <p className="font-semibold text-gray-900">{student.address || "N/A"}</p>
+                    <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-0.5">Background & Location</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {student.religion && <ExtendedInfoRow icon={<Heart className="w-3.5 h-3.5" />} label="Religion" value={student.religion} color={colors.primary} />}
+                      {student.motherTongue && <ExtendedInfoRow icon={<Users className="w-3.5 h-3.5" />} label="Mother Tongue" value={student.motherTongue} color={colors.primary} />}
+                      {student.barangay && <ExtendedInfoRow icon={<Home className="w-3.5 h-3.5" />} label="Barangay" value={student.barangay} color={colors.primary} />}
+                      {student.city && <ExtendedInfoRow icon={<MapPin className="w-3.5 h-3.5" />} label="City/Municipality" value={student.city} color={colors.primary} />}
+                      {student.province && <ExtendedInfoRow icon={<MapPin className="w-3.5 h-3.5" />} label="Province" value={student.province} color={colors.primary} />}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-gray-100">
-                    <User className="w-5 h-5 text-gray-600" />
-                  </div>
+                {/* Family */}
+                {(student.fatherName || student.motherName) && (
                   <div>
-                    <p className="text-sm text-gray-500">Guardian</p>
-                    <p className="font-semibold text-gray-900">{student.guardianName || "N/A"}</p>
+                    <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-0.5">Family</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {student.fatherName && <ExtendedInfoRow icon={<User className="w-3.5 h-3.5" />} label="Father" value={student.fatherName} sub={student.fatherContact} color={colors.primary} />}
+                      {student.motherName && <ExtendedInfoRow icon={<User className="w-3.5 h-3.5" />} label="Mother" value={student.motherName} sub={student.motherContact} color={colors.primary} />}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-gray-100">
-                    <Phone className="w-5 h-5 text-gray-600" />
-                  </div>
+                {/* Status Flags — only show "Yes" values */}
+                {(student.ipCommunity || student.is4PsBeneficiary || student.isBalikAral || student.disability) && (
                   <div>
-                    <p className="text-sm text-gray-500">Contact Number</p>
-                    <p className="font-semibold text-gray-900">{student.guardianContact || "N/A"}</p>
+                    <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-0.5">Status</p>
+                    <div className="flex flex-wrap gap-2">
+                      {student.disability && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-100">
+                          <Shield className="w-3 h-3" />
+                          {student.disability}
+                        </span>
+                      )}
+                      {student.ipCommunity && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                          <Users className="w-3 h-3" />
+                          IP Community
+                        </span>
+                      )}
+                      {student.is4PsBeneficiary && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <CheckCircle2 className="w-3 h-3" />
+                          4Ps Beneficiary
+                        </span>
+                      )}
+                      {student.isBalikAral && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                          <AlertTriangle className="w-3 h-3" />
+                          Balik-Aral
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Summary Card */}
-        <Card className="border-0 shadow-xl shadow-gray-200/50 overflow-hidden rounded-2xl text-white p-0" style={{ backgroundColor: colors.primary }}>
-          <CardContent className="p-6 h-full flex flex-col">
+        <Card className="border-0 shadow-xl shadow-gray-200/50 overflow-hidden rounded-2xl text-white p-0 relative" style={{ background: `linear-gradient(145deg, ${colors.primary} 0%, ${colors.primary}ee 100%)` }}>
+          <div className="absolute top-0 right-0 w-40 h-40 opacity-10" style={{ background: 'radial-gradient(circle at 70% 30%, white 0%, transparent 60%)' }} />
+          <div className="absolute bottom-0 left-0 w-32 h-32 opacity-10" style={{ background: 'radial-gradient(circle at 30% 70%, white 0%, transparent 60%)' }} />
+          <CardContent className="p-6 h-full flex flex-col relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-sm">
                 <Award className="w-5 h-5" />
               </div>
-              <h3 className="font-bold text-lg">Academic Summary</h3>
+              <h3 className="font-bold text-lg tracking-tight">Academic Summary</h3>
             </div>
             
             <div className="space-y-4 flex-1">
-              <div className="p-4 rounded-xl bg-white/10 backdrop-blur-sm">
-                <p className="text-white/70 text-sm mb-1">General Average</p>
-                <p className="text-4xl font-bold">
+              <div className="p-4 rounded-2xl bg-white/10 backdrop-blur-sm">
+                <p className="text-white/60 text-xs font-medium uppercase tracking-wider mb-1">General Average</p>
+                <p className="text-4xl font-bold tracking-tight">
                   {summary.generalAverage !== null ? summary.generalAverage.toFixed(2) : "N/A"}
                 </p>
                 {summary.generalAverage !== null && (
-                  <Badge className={`mt-2 ${getMasteryLevel(summary.generalAverage).bgColor} ${getMasteryLevel(summary.generalAverage).color}`}>
+                  <Badge className={`mt-2.5 ${getMasteryLevel(summary.generalAverage).bgColor} ${getMasteryLevel(summary.generalAverage).color} text-xs`}>
                     {getMasteryLevel(summary.generalAverage).label}
                   </Badge>
                 )}
               </div>
               
               {summary.honors && (
-                <div className="p-4 rounded-xl backdrop-blur-sm border" style={{ backgroundColor: `${colors.accent}30`, borderColor: `${colors.accent}40` }}>
-                  <div className="flex items-center gap-2">
-                    <Medal className="w-5 h-5" style={{ color: colors.accent }} />
-                    <p className="font-bold text-white">{summary.honors}</p>
+                <div className="p-4 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20">
+                  <div className="flex items-center gap-2.5">
+                    <Medal className="w-5 h-5 text-amber-300" />
+                    <p className="font-bold text-white text-sm">{summary.honors}</p>
                   </div>
                 </div>
               )}
               
-              <div className="p-4 rounded-xl bg-white/10 backdrop-blur-sm">
-                <p className="text-white/70 text-sm mb-1">Status</p>
+              <div className="p-4 rounded-2xl bg-white/10 backdrop-blur-sm">
+                <p className="text-white/60 text-xs font-medium uppercase tracking-wider mb-1">Status</p>
                 <Badge className={`${
-                  summary.promotionStatus === "PROMOTED" ? "text-white" :
-                  summary.promotionStatus === "CONDITIONALLY PROMOTED" ? "bg-amber-400/30 text-amber-100" :
-                  summary.promotionStatus === "RETAINED" ? "bg-red-400/30 text-red-100" :
+                  summary.promotionStatus === "PROMOTED" ? "bg-emerald-400/30 text-emerald-100 border border-emerald-300/30" :
+                  summary.promotionStatus === "CONDITIONALLY PROMOTED" ? "bg-amber-400/30 text-amber-100 border border-amber-300/30" :
+                  summary.promotionStatus === "RETAINED" ? "bg-red-400/30 text-red-100 border border-red-300/30" :
                   "bg-gray-400/30 text-gray-100"
-                }`}
-                  style={summary.promotionStatus === "PROMOTED" ? { backgroundColor: `${colors.primary}50`, color: 'white' } : undefined}
-                >
+                }`}>
                   {summary.promotionStatus || "Pending"}
                 </Badge>
               </div>
               
-              <div className="p-4 rounded-xl bg-white/10 backdrop-blur-sm">
-                <p className="text-white/70 text-sm mb-1">Progress</p>
-                <p className="text-lg font-semibold">
-                  {summary.completedSubjects} / {summary.totalSubjects} Subjects Graded
+              <div className="p-4 rounded-2xl bg-white/10 backdrop-blur-sm">
+                <p className="text-white/60 text-xs font-medium uppercase tracking-wider mb-2">Progress</p>
+                <p className="text-lg font-bold">
+                  {summary.completedSubjects} / {summary.totalSubjects} <span className="text-sm font-medium text-white/70">Subjects Graded</span>
                 </p>
+                <div className="mt-2 h-2 bg-white/20 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-white/80 rounded-full transition-all duration-700 ease-out"
+                    style={{ width: `${summary.totalSubjects > 0 ? (summary.completedSubjects / summary.totalSubjects) * 100 : 0}%` }}
+                  />
+                </div>
               </div>
             </div>
           </CardContent>
@@ -298,48 +364,48 @@ export default function StudentGradeProfilePage() {
       </div>
 
       {/* Grades Table */}
-      <Card className="border-0 shadow-xl shadow-gray-200/50 bg-white overflow-hidden rounded-2xl p-0">
-        <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-slate-50 px-6 py-5">
+      <Card className="border-0 shadow-2xl shadow-slate-200/40 bg-white overflow-hidden rounded-[2.5rem] p-0">
+        <CardHeader className="border-b border-slate-50 px-8 py-6" style={{ background: `linear-gradient(135deg, ${colors.primary}06 0%, ${colors.primary}03 100%)` }}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <div 
-                className="p-2.5 rounded-xl text-white shadow-lg"
+                className="p-2.5 rounded-2xl text-white shadow-xl"
                 style={{ backgroundColor: colors.primary }}
               >
                 <BookOpen className="w-5 h-5" />
               </div>
               <div>
-                <CardTitle className="text-lg font-bold text-gray-900">Subject Grades</CardTitle>
-                <CardDescription className="text-gray-500 text-sm">
+                <CardTitle className="text-xl font-black text-slate-900 tracking-tight">Subject Grades</CardTitle>
+                <CardDescription className="text-slate-500 font-sans normal-case font-medium tracking-normal mt-1">
                   Term grades and final rating per subject
                 </CardDescription>
               </div>
             </div>
-            <Badge style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 py-1.5 rounded-full" style={{ backgroundColor: `${colors.primary}10`, color: colors.primary }}>
               S.Y. {enrollment.schoolYear}
-            </Badge>
+            </span>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50/80">
-                  <TableHead className="font-bold text-gray-700 min-w-[200px]">Subject</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center">T1</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center">T2</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center">T3</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center" style={{ backgroundColor: `${colors.primary}08` }}>Final Grade</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-center">Remarks</TableHead>
+                <TableRow className="bg-slate-50/50 hover:bg-transparent border-0">
+                  <TableHead className="text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[200px] px-8">Subject</TableHead>
+                  <TableHead className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">T1</TableHead>
+                  <TableHead className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">T2</TableHead>
+                  <TableHead className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">T3</TableHead>
+                  <TableHead className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center" style={{ backgroundColor: `${colors.primary}06` }}>Final Grade</TableHead>
+                  <TableHead className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Remarks</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {subjectGrades.map((subject) => (
-                  <TableRow key={subject.subjectId} className="hover:bg-gray-50/50">
-                    <TableCell>
+                  <TableRow key={subject.subjectId} className="hover:bg-slate-50/50 transition-all border-slate-50 group">
+                    <TableCell className="px-8">
                       <div>
-                        <p className="font-semibold text-gray-900">{subject.subjectName}</p>
-                        <p className="text-xs text-gray-500">{subject.teacher}</p>
+                        <p className="font-black text-slate-900 tracking-tight">{subject.subjectName}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{subject.teacher}</p>
                       </div>
                     </TableCell>
                     {(["T1", "T2", "T3"] as const).map((term) => {
@@ -349,77 +415,80 @@ export default function StudentGradeProfilePage() {
                       return (
                         <TableCell key={term} className="text-center">
                           {grade !== null && grade !== undefined ? (
-                            <span className={`font-semibold ${grade >= 75 ? "text-gray-900" : "text-red-600"}`}>
+                            <span className={`font-black text-sm ${grade >= 75 ? "text-slate-800" : "text-rose-600"}`}>
                               {grade}
                             </span>
                           ) : isHG && descriptor ? (
-                            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px]">
+                            <span className="text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100">
                               {descriptor}
-                            </Badge>
+                            </span>
                           ) : (
-                            <span className="text-gray-400">-</span>
+                            <span className="text-slate-300 font-medium">-</span>
                           )}
                         </TableCell>
                       );
                     })}
-                    <TableCell className="text-center" style={{ backgroundColor: `${colors.primary}06` }}>
+                    <TableCell className="text-center" style={{ backgroundColor: `${colors.primary}04` }}>
                       {subject.finalGrade !== null ? (
-                        <span className={`text-lg font-bold ${subject.finalGrade >= 75 ? "" : "text-red-600"}`} style={subject.finalGrade >= 75 ? { color: colors.primary } : undefined}>
+                        <span className={`text-xl font-black ${subject.finalGrade >= 75 ? "" : "text-rose-600"}`} style={subject.finalGrade >= 75 ? { color: colors.primary } : undefined}>
                           {subject.finalGrade}
                         </span>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-slate-300 font-medium">-</span>
                       )}
                     </TableCell>
                     <TableCell className="text-center">
                       {subject.remarks ? (
-                        <Badge className={`${
+                        <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full ${
                           subject.remarks === "PASSED" 
-                            ? "bg-emerald-100 text-emerald-700" 
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-100" 
                             : subject.remarks === "QUALITATIVE"
-                            ? "bg-sky-100 text-sky-700"
-                            : "bg-red-100 text-red-700"
+                            ? "bg-sky-50 text-sky-700 border border-sky-100"
+                            : "bg-rose-50 text-rose-700 border border-rose-100"
                         }`}>
                           {subject.remarks === "PASSED" ? (
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            <CheckCircle2 className="w-3 h-3" />
                           ) : subject.remarks === "QUALITATIVE" ? (
-                            <BookOpen className="w-3 h-3 mr-1" />
+                            <BookOpen className="w-3 h-3" />
                           ) : (
-                            <XCircle className="w-3 h-3 mr-1" />
+                            <XCircle className="w-3 h-3" />
                           )}
                           {subject.remarks === "QUALITATIVE" ? "Descriptor-Based" : subject.remarks}
-                        </Badge>
+                        </span>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-500">
-                          <Clock className="w-3 h-3 mr-1" />
+                        <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-slate-100 text-slate-400">
+                          <Clock className="w-3 h-3" />
                           Pending
-                        </Badge>
+                        </span>
                       )}
                     </TableCell>
                   </TableRow>
                 ))}
                 
                 {/* General Average Row */}
-                <TableRow className="border-t-2" style={{ backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }}>
-                  <TableCell colSpan={5} className="font-bold text-right pr-8" style={{ color: colors.primary }}>
-                    General Average:
+                <TableRow className="border-t-2 hover:bg-transparent" style={{ backgroundColor: `${colors.primary}08`, borderColor: `${colors.primary}20` }}>
+                  <TableCell colSpan={4} />
+                  <TableCell className="text-right pr-4 py-4" style={{ backgroundColor: `${colors.primary}06` }}>
+                    <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.primary }}>
+                      General Average:
+                    </span>
                   </TableCell>
-                  <TableCell className="text-center">
-                    <span className="text-2xl font-bold" style={{ color: colors.primary }}>
+                  <TableCell className="text-center py-4">
+                    <span className="text-2xl font-black" style={{ color: colors.primary }}>
                       {summary.generalAverage !== null ? summary.generalAverage.toFixed(2) : "N/A"}
                     </span>
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="text-center py-4">
                     {summary.promotionStatus && (
-                      <Badge className={`${
+                      <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full ${
                         summary.promotionStatus === "PROMOTED" ? "text-white" :
                         summary.promotionStatus === "CONDITIONALLY PROMOTED" ? "bg-amber-500 text-white" :
-                        "bg-red-500 text-white"
+                        "bg-rose-500 text-white"
                       }`}
                         style={summary.promotionStatus === "PROMOTED" ? { backgroundColor: colors.primary } : undefined}
                       >
                         {summary.promotionStatus}
-                      </Badge>
+                      </span>
                     )}
                   </TableCell>
                 </TableRow>
@@ -430,41 +499,41 @@ export default function StudentGradeProfilePage() {
       </Card>
 
       {/* DepEd Grading Legend */}
-      <Card className="border-0 shadow-lg shadow-gray-200/50 bg-white overflow-hidden rounded-2xl p-0">
-        <CardHeader className="border-b border-gray-100 px-6 py-4">
-          <CardTitle className="text-sm font-bold text-gray-700">DepEd Grading Scale</CardTitle>
+      <Card className="border-0 shadow-lg shadow-slate-200/50 bg-white overflow-hidden rounded-[2.5rem] p-0">
+        <CardHeader className="border-b border-slate-50 px-8 py-5" style={{ background: `linear-gradient(135deg, ${colors.primary}05 0%, transparent 100%)` }}>
+          <CardTitle className="text-sm font-black text-slate-600 uppercase tracking-widest">DepEd Grading Scale</CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-8">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {[
               { label: "Outstanding", range: "90-100", opacity: "18" },
               { label: "Very Satisfactory", range: "85-89", opacity: "28" },
               { label: "Satisfactory", range: "80-84", opacity: "38" },
               { label: "Fairly Satisfactory", range: "75-79", opacity: "48" },
-              { label: "Did Not Meet Expectations", range: "Below 75", color: "bg-red-100 text-red-700 border-red-200" },
+              { label: "Did Not Meet Expectations", range: "Below 75", color: "bg-rose-50 text-rose-700 border-rose-200" },
             ].map((level) => (
-              <div key={level.label} className={`p-3 rounded-xl border ${level.color || ''}`}
+              <div key={level.label} className={`p-4 rounded-2xl border ${level.color || ''}`}
                 style={!level.color ? { backgroundColor: `${colors.primary}${level.opacity}`, color: colors.primary, borderColor: `${colors.primary}30` } : undefined}
               >
-                <p className="font-semibold text-sm">{level.label}</p>
-                <p className="text-xs opacity-80">{level.range}</p>
+                <p className="font-black text-sm tracking-tight">{level.label}</p>
+                <p className="text-[10px] font-bold opacity-80 mt-0.5">{level.range}</p>
               </div>
             ))}
           </div>
 
-          <div className="mt-6 pt-6 border-t border-gray-100">
-            <h4 className="font-bold text-gray-700 text-sm mb-3">Academic Honors (Based on General Average):</h4>
+          <div className="mt-8 pt-6 border-t border-slate-100">
+            <h4 className="font-black text-slate-700 text-sm mb-4">Academic Honors (Based on General Average):</h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 { label: "With Highest Honors", range: "98-100", icon: "🏆" },
                 { label: "With High Honors", range: "95-97", icon: "🥇" },
                 { label: "With Honors", range: "90-94", icon: "🥈" },
               ].map((honor) => (
-                <div key={honor.label} className="flex items-center gap-3 p-3 rounded-xl border" style={{ backgroundColor: `${colors.primary}08`, borderColor: `${colors.primary}25` }}>
+                <div key={honor.label} className="flex items-center gap-3 p-4 rounded-2xl border" style={{ backgroundColor: `${colors.primary}06`, borderColor: `${colors.primary}20` }}>
                   <span className="text-2xl">{honor.icon}</span>
                   <div>
-                    <p className="font-semibold text-sm" style={{ color: colors.primary }}>{honor.label}</p>
-                    <p className="text-xs" style={{ color: `${colors.primary}aa` }}>{honor.range}</p>
+                    <p className="font-black text-sm tracking-tight" style={{ color: colors.primary }}>{honor.label}</p>
+                    <p className="text-[10px] font-bold" style={{ color: `${colors.primary}aa` }}>{honor.range}</p>
                   </div>
                 </div>
               ))}

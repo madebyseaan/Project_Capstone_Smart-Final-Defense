@@ -26,6 +26,7 @@ interface ScoreUpdateArgs {
   setInvalidCells: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   fetchClassRecord: (silent?: boolean) => Promise<void>;
+  isViewOnly?: boolean;
 }
 
 interface HpsUpdateArgs {
@@ -40,6 +41,7 @@ interface HpsUpdateArgs {
   setClassRecord: React.Dispatch<React.SetStateAction<ClassRecord[]>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   fetchClassRecord: (silent?: boolean) => Promise<void>;
+  isViewOnly?: boolean;
 }
 
 interface RemoveTaskArgs {
@@ -57,6 +59,7 @@ interface RemoveTaskArgs {
   setSuccess: React.Dispatch<React.SetStateAction<string | null>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   fetchClassRecord: (silent?: boolean) => Promise<void>;
+  isViewOnly?: boolean;
 }
 
 export async function executeScoreUpdate({
@@ -75,7 +78,9 @@ export async function executeScoreUpdate({
   setInvalidCells,
   setError,
   fetchClassRecord,
+  isViewOnly,
 }: ScoreUpdateArgs) {
+  if (isViewOnly) return false;
   if (!classAssignmentId) return;
 
   const key = getCellKey(studentId, category, index);
@@ -110,7 +115,7 @@ export async function executeScoreUpdate({
       const newRecord = { ...record, grades: [...record.grades] };
       const gradeIdx = newRecord.grades.findIndex((g) => g.term === selectedTerm);
 
-      let targetGrade =
+      const targetGrade =
         gradeIdx > -1
           ? { ...newRecord.grades[gradeIdx] }
           : ({
@@ -211,7 +216,9 @@ export async function executeHpsUpdate({
   setClassRecord,
   setError,
   fetchClassRecord,
+  isViewOnly,
 }: HpsUpdateArgs) {
+  if (isViewOnly) return false;
   if (!classAssignmentId || classRecord.length === 0) return;
 
   setClassRecord((prev) =>
@@ -219,7 +226,7 @@ export async function executeHpsUpdate({
       const newRecord = { ...record, grades: [...record.grades] };
       const gradeIdx = newRecord.grades.findIndex((g) => g.term === selectedTerm);
 
-      let targetGrade =
+      const targetGrade =
         gradeIdx > -1
           ? { ...newRecord.grades[gradeIdx] }
           : ({
@@ -307,7 +314,9 @@ export async function executeRemoveTask({
   setSuccess,
   setError,
   fetchClassRecord,
+  isViewOnly,
 }: RemoveTaskArgs) {
+  if (isViewOnly) return false;
   if (!classAssignmentId || classRecord.length === 0) return;
 
   const currentCount = category === "WW" ? wwCount : ptCount;

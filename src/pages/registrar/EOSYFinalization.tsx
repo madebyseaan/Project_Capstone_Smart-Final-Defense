@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GraduationCap, Loader2, AlertTriangle, RefreshCw, CheckCircle, XCircle, Search } from "lucide-react";
+import { GraduationCap, Loader2, AlertTriangle, RefreshCw, CheckCircle, XCircle, Search, FileCheck, FileEdit, Eye } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,9 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { registrarApi } from "@/lib/api";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -35,6 +38,23 @@ export default function EOSYFinalization() {
   const [records, setRecords] = useState<any[]>([]);
   const [sectionMeta, setSectionMeta] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Grade finalization state
+  const [finalizeStatus, setFinalizeStatus] = useState<any[]>([]);
+  const [finalizeLoading, setFinalizeLoading] = useState(false);
+  const [finalizingSubject, setFinalizingSubject] = useState<string | null>(null);
+  const [finalizeMessage, setFinalizeMessage] = useState<string | null>(null);
+  const [currentTerm, setCurrentTerm] = useState<string>("T3");
+  
+  // Local sections for matching EnrollPro to SMART
+  const [localSections, setLocalSections] = useState<any[]>([]);
+
+  // Student grades modal state
+  const [gradesModalOpen, setGradesModalOpen] = useState(false);
+  const [gradesModalStudent, setGradesModalStudent] = useState<any>(null);
+  const [gradesModalData, setGradesModalData] = useState<any>(null);
+  const [gradesModalLoading, setGradesModalLoading] = useState(false);
+  const [gradesModalError, setGradesModalError] = useState<string | null>(null);
 
   const loadSchoolYears = async () => {
     setSchoolYearsLoading(true);
@@ -129,8 +149,237 @@ export default function EOSYFinalization() {
   }, [selectedSchoolYearId]);
 
   useEffect(() => {
-    if (selectedSectionId) void loadRecords(selectedSectionId);
-  }, [selectedSectionId]);
+    if (selectedSectionId) {
+      void loadRecords(selectedSectionId);
+      // Also load finalization status using the matched local section
+      const localSection = localSections.find(
+        (ls) => ls.name?.toUpperCase() === sections.find((s) => String(s.id) === selectedSectionId)?.name?.toUpperCase()
+      );
+      if (localSection) {
+        void loadFinalizeStatus(localSection.id);
+      }
+    }
+  }, [selectedSectionId, localSections, sections]);
+
+  const loadFinalizeStatus = async (sectionId: string) => {
+    setFinalizeLoading(true);
+    try {
+      const token = localStorage.getItem("token_registrar") || sessionStorage.getItem("token_registrar") || "";
+      const csrfCookie = document.cookie.split("; ").find(row => row.startsWith("x-csrf-token="))?.split("=")[1] || "";
+      const res = await fetch(`/api/registrar/finalize-status/${sectionId}/${currentTerm}`, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          "x-csrf-token": csrfCookie,
+        },
+      });
+      const data = await res.json();
+      setFinalizeStatus(data.subjects || []);
+    } catch (err) {
+      console.error("Failed to load finalize status", err);
+    } finally {
+      setFinalizeLoading(false);
+    }
+  };
+
+  const loadLocalSections = async () => {
+    try {
+      // Fetch current school year from settings
+      const token = sessionStorage.getItem("token_registrar") || "";
+      const settingsRes = await fetch("/api/admin/settings", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const settingsData = await settingsRes.json();
+      const currentSY = settingsData?.settings?.currentSchoolYear || "2026-2027";
+      
+      const res = await registrarApi.getSections({ schoolYear: currentSY });
+      const data = res.data as any;
+      setLocalSections(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load local sections", err);
+    }
+  };
+
+  useEffect(() => { void loadLocalSections(); }, []);
+
+  const loadStudentGrades = async (student: any) => {
+    if (!selectedSectionId) return;
+    const epSection = sections.find((s) => String(s.id) === selectedSectionId);
+    const localSection = localSections.find(
+      (ls) => ls.name?.toUpperCase() === epSection?.name?.toUpperCase()
+    );
+    if (!localSection) {
+      setGradesModalError("Section not found in SMART database");
+      return;
+    }
+
+    setGradesModalLoading(true);
+    setGradesModalError(null);
+    setGradesModalData(null);
+    setGradesModalStudent(student);
+    setGradesModalOpen(true);
+
+    try {
+      const token = sessionStorage.getItem("token_registrar") || "";
+      const csrfCookie = document.cookie.split("; ").find(row => row.startsWith("x-csrf-token="))?.split("=")[1] || "";
+      const res = await fetch(`/api/registrar/student-grades/${localSection.id}/${currentTerm}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-csrf-token": csrfCookie,
+        },
+      });
+      if (!res.ok) {
+        throw new Error("Failed to load student grades");
+      }
+      const data = await res.json();
+      // Find the specific student by LRN (EnrollPro learnerId may differ from SMART studentId)
+      const studentData = data.students?.find((s: any) => s.lrn === student.lrn);
+      setGradesModalData(studentData || null);
+    } catch (err: any) {
+      setGradesModalError(err?.message || "Failed to load student grades");
+    } finally {
+      setGradesModalLoading(false);
+    }
+  };
+
+  // Fetch current term from settings
+  useEffect(() => {
+    const fetchCurrentTerm = async () => {
+      try {
+        const token = sessionStorage.getItem("token_registrar") || "";
+        const res = await fetch("/api/admin/settings", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        // EOSY is always Term 3 - that's the final term for the school year
+        setCurrentTerm("T3");
+      } catch (err) {
+        console.error("Failed to fetch current term", err);
+      }
+    };
+    void fetchCurrentTerm();
+  }, []);
+
+  const handleFinalizeAll = async () => {
+    if (!selectedSectionId) return;
+    const epSection = sections.find((s) => String(s.id) === selectedSectionId);
+    const localSection = localSections.find(
+      (ls) => ls.name?.toUpperCase() === epSection?.name?.toUpperCase()
+    );
+    if (!localSection) {
+      setFinalizeMessage("Section not found in SMART database");
+      setTimeout(() => setFinalizeMessage(null), 4000);
+      return;
+    }
+
+    const draftCount = finalizeStatus.filter(s => s.draft > 0).length;
+    if (draftCount === 0) {
+      setFinalizeMessage("All grades are already finalized");
+      setTimeout(() => setFinalizeMessage(null), 4000);
+      return;
+    }
+
+    if (!window.confirm(`Finalize ALL ${draftCount} subjects for ${epSection?.name}? This will lock all Term 3 grades for EnrollPro sync.`)) return;
+
+    setFinalizingSubject("all");
+    setFinalizeMessage(null);
+    try {
+      const token = sessionStorage.getItem("token_registrar") || "";
+      const csrfCookie = document.cookie.split("; ").find(row => row.startsWith("x-csrf-token="))?.split("=")[1] || "";
+
+      // Finalize all draft subjects
+      const draftSubjects = finalizeStatus.filter(s => s.draft > 0);
+      let totalFinalized = 0;
+
+      for (const subject of draftSubjects) {
+        const res = await fetch("/api/registrar/finalize-grades", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "x-csrf-token": csrfCookie,
+          },
+          body: JSON.stringify({
+            sectionId: localSection.id,
+            term: currentTerm,
+            subjectId: subject.subjectId,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          totalFinalized += data.finalizedCount || 0;
+        }
+      }
+
+      setFinalizeMessage(`Finalized ${totalFinalized} grades across ${draftSubjects.length} subjects`);
+      void loadFinalizeStatus(localSection.id);
+      setTimeout(() => setFinalizeMessage(null), 4000);
+    } catch (err) {
+      setFinalizeMessage("Failed to finalize grades");
+    } finally {
+      setFinalizingSubject(null);
+    }
+  };
+
+  const handleUnfinalizeAll = async () => {
+    if (!selectedSectionId) return;
+    const epSection = sections.find((s) => String(s.id) === selectedSectionId);
+    const localSection = localSections.find(
+      (ls) => ls.name?.toUpperCase() === epSection?.name?.toUpperCase()
+    );
+    if (!localSection) {
+      setFinalizeMessage("Section not found in SMART database");
+      setTimeout(() => setFinalizeMessage(null), 4000);
+      return;
+    }
+
+    const finalizedCount = finalizeStatus.filter(s => s.finalized > 0).length;
+    if (finalizedCount === 0) {
+      setFinalizeMessage("No grades to unfinalize");
+      setTimeout(() => setFinalizeMessage(null), 4000);
+      return;
+    }
+
+    if (!window.confirm(`Unfinalize ALL ${finalizedCount} subjects for ${epSection?.name}? Teachers will be able to edit grades again.`)) return;
+
+    setFinalizingSubject("all");
+    setFinalizeMessage(null);
+    try {
+      const token = sessionStorage.getItem("token_registrar") || "";
+      const csrfCookie = document.cookie.split("; ").find(row => row.startsWith("x-csrf-token="))?.split("=")[1] || "";
+
+      // Unfinalize all finalized subjects
+      const finalizedSubjects = finalizeStatus.filter(s => s.finalized > 0);
+      let totalUnfinalized = 0;
+
+      for (const subject of finalizedSubjects) {
+        const res = await fetch("/api/registrar/unfinalize-grades", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "x-csrf-token": csrfCookie,
+          },
+          body: JSON.stringify({
+            sectionId: localSection.id,
+            term: currentTerm,
+            subjectId: subject.subjectId,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          totalUnfinalized += data.unfinalizedCount || 0;
+        }
+      }
+
+      setFinalizeMessage(`Unfinalized ${totalUnfinalized} grades across ${finalizedSubjects.length} subjects`);
+      void loadFinalizeStatus(localSection.id);
+      setTimeout(() => setFinalizeMessage(null), 4000);
+    } catch (err) {
+      setFinalizeMessage("Failed to unfinalize grades");
+    } finally {
+      setFinalizingSubject(null);
+    }
+  };
 
   const filteredRecords = records.filter(r => 
     `${r.firstName} ${r.lastName} ${r.lrn}`.toLowerCase().includes(searchTerm.toLowerCase())
@@ -159,11 +408,11 @@ export default function EOSYFinalization() {
                 </CardDescription>
               </div>
               
-              {/* Read-only notice integrated into header */}
+              {/* Read-only notice */}
               <div className="bg-amber-50/80 border border-amber-100 rounded-lg px-4 py-2 inline-flex items-center gap-3 mt-1 w-fit">
                 <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
                 <p className="text-amber-800 text-xs">
-                  <strong>Read-Only:</strong> SMART displays EOSY data from EnrollPro for reference only. Finalization must be done in EnrollPro directly.
+                  <strong>Read-Only:</strong> SMART displays EOSY data from EnrollPro for reference. Grade finalization is managed here by the registrar.
                 </p>
               </div>
             </div>
@@ -256,6 +505,159 @@ export default function EOSYFinalization() {
             </div>
           </div>
 
+          {/* Grade Finalization Section */}
+          <div className="p-6 border-b border-slate-100 bg-gradient-to-r from-blue-50/50 to-indigo-50/30">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-blue-600" />
+                <h3 className="font-semibold text-gray-900">Grade Finalization (Term 3 - EOSY)</h3>
+              </div>
+              {finalizeMessage && (
+                <span className={`text-sm font-medium px-3 py-1 rounded-full ${finalizeMessage.includes("Failed") ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
+                  {finalizeMessage}
+                </span>
+              )}
+            </div>
+
+            {/* Adviser Display */}
+            {selectedSectionId && (() => {
+              const epSection = sections.find((s) => String(s.id) === selectedSectionId);
+              const localSection = localSections.find(
+                (ls) => ls.name?.toUpperCase() === epSection?.name?.toUpperCase()
+              );
+              const adviserName = localSection?.adviser || null;
+              return adviserName ? (
+                <div className="flex items-center gap-2 mb-3 text-sm">
+                  <span className="text-gray-500">Adviser:</span>
+                  <span className="font-semibold text-gray-900">{adviserName}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mb-3 text-sm">
+                  <span className="text-gray-500">Adviser:</span>
+                  <span className="text-amber-600 italic">Not assigned</span>
+                </div>
+              );
+            })()}
+            <p className="text-sm text-gray-500 mb-4">
+              Finalize grades to lock them from teacher edits and make them visible to EnrollPro sync.
+            </p>
+            
+            {/* Finalize Status - Shows when section is selected */}
+            {selectedSectionId && (
+              <>
+                {currentTerm !== "T3" ? (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-amber-800 text-sm">
+                      <strong>Note:</strong> Grade finalization is only available during Term 3 (EOSY). 
+                      Current term is {currentTerm}. Finalization will be available when Term 3 begins.
+                    </p>
+                  </div>
+                ) : finalizeLoading ? (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Loading finalization status...</span>
+                </div>
+              ) : finalizeStatus.length === 0 ? (
+                <p className="text-sm text-gray-400">No subjects found for this section.</p>
+              ) : (
+                <div className="space-y-4">
+                  {/* Overall Status */}
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-6">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Total Subjects</p>
+                        <p className="text-2xl font-bold text-gray-900">{finalizeStatus.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Draft</p>
+                        <p className="text-2xl font-bold text-amber-600">{finalizeStatus.filter(s => s.draft > 0).length}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Finalized</p>
+                        <p className="text-2xl font-bold text-green-600">{finalizeStatus.filter(s => s.finalized > 0 && s.draft === 0).length}</p>
+                      </div>
+                    </div>
+                    
+                    {/* Single Action Button */}
+                    <div className="flex items-center gap-3">
+                      {finalizeMessage && (
+                        <span className={`text-sm font-medium px-3 py-1 rounded-full ${finalizeMessage.includes("Failed") ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
+                          {finalizeMessage}
+                        </span>
+                      )}
+                      {finalizeStatus.filter(s => s.draft > 0).length > 0 ? (
+                        <Button
+                          onClick={handleFinalizeAll}
+                          disabled={finalizingSubject === "all"}
+                          style={{ backgroundColor: colors.primary }}
+                        >
+                          {finalizingSubject === "all" ? (
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                          ) : (
+                            <FileCheck className="w-4 h-4 mr-2" />
+                          )}
+                          Finalize All ({finalizeStatus.filter(s => s.draft > 0).length} subjects)
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          onClick={handleUnfinalizeAll}
+                          disabled={finalizingSubject === "all"}
+                          className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                        >
+                          {finalizingSubject === "all" ? (
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                          ) : (
+                            <FileEdit className="w-4 h-4 mr-2" />
+                          )}
+                          Unfinalize All
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Subject List (read-only display) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {finalizeStatus.map((subject: any) => {
+                      const isFinalized = subject.finalized > 0 && subject.draft === 0;
+                      return (
+                        <div
+                          key={subject.subjectId}
+                          className={`flex items-center justify-between p-3 rounded-lg border ${
+                            isFinalized 
+                              ? "bg-green-50 border-green-200" 
+                              : "bg-white border-gray-200"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-gray-900 text-sm truncate">{subject.subjectName}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              <span className={subject.draft > 0 ? "text-amber-600 font-medium" : ""}>{subject.draft} draft</span>
+                              {" · "}
+                              <span className={subject.finalized > 0 ? "text-green-600 font-medium" : ""}>{subject.finalized} finalized</span>
+                            </p>
+                          </div>
+                          <div className="ml-2 flex-shrink-0">
+                            {isFinalized ? (
+                              <Badge className="bg-green-100 text-green-700 border-green-200">
+                                <CheckCircle className="w-3 h-3 mr-1" /> Finalized
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                                Draft
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              </>
+            )}
+          </div>
+
           {/* Table Area */}
           {selectedSectionId ? (
             <div className="bg-white">
@@ -310,13 +712,14 @@ export default function EOSYFinalization() {
                           <TableHead className="font-bold text-gray-700">Sex</TableHead>
                           <TableHead className="font-bold text-gray-700">Final Average</TableHead>
                           <TableHead className="font-bold text-gray-700">Status</TableHead>
-                          <TableHead className="font-bold text-gray-700 pr-6">Promoted To</TableHead>
+                          <TableHead className="font-bold text-gray-700">Promoted To</TableHead>
+                          <TableHead className="font-bold text-gray-700 pr-6 text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredRecords.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={7} className="text-center py-20 text-gray-500">
+                            <TableCell colSpan={8} className="text-center py-20 text-gray-500">
                               {searchTerm ? "No learners match your search" : "No EOSY records for this section"}
                             </TableCell>
                           </TableRow>
@@ -369,6 +772,17 @@ export default function EOSYFinalization() {
                                 <TableCell className="text-sm text-gray-600 pr-6">
                                   {rec.promotedToGradeLevel?.name ?? rec.nextGradeLevel?.name ?? "—"}
                                 </TableCell>
+                                <TableCell className="text-right pr-6">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="rounded-lg h-8 text-xs"
+                                    onClick={() => void loadStudentGrades(rec)}
+                                  >
+                                    <Eye className="w-3.5 h-3.5 mr-1" />
+                                    View Grades
+                                  </Button>
+                                </TableCell>
                               </TableRow>
                             );
                           })
@@ -390,6 +804,109 @@ export default function EOSYFinalization() {
           )}
         </CardContent>
       </Card>
+
+      {/* Student Grades Modal */}
+      <Dialog open={gradesModalOpen} onOpenChange={setGradesModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GraduationCap className="w-5 h-5" />
+              Student Grades — {gradesModalStudent?.firstName} {gradesModalStudent?.lastName}
+            </DialogTitle>
+            <DialogDescription>
+              LRN: {gradesModalStudent?.lrn ?? "—"} | Term: {currentTerm}
+            </DialogDescription>
+          </DialogHeader>
+
+          {gradesModalLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+              <span className="ml-2 text-sm text-slate-500">Loading grades...</span>
+            </div>
+          ) : gradesModalError ? (
+            <div className="flex items-center justify-center py-12 text-center">
+              <AlertTriangle className="w-6 h-6 text-amber-500 mr-2" />
+              <span className="text-sm text-red-600">{gradesModalError}</span>
+            </div>
+          ) : gradesModalData ? (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="flex items-center gap-6 p-4 bg-slate-50 rounded-lg">
+                <div>
+                  <p className="text-xs font-medium text-slate-500">Average</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {gradesModalData.average != null ? gradesModalData.average.toFixed(1) : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500">Subjects Graded</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {gradesModalData.gradedSubjects}/{gradesModalData.totalSubjects}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500">Remarks</p>
+                  <Badge className={gradesModalData.average != null && gradesModalData.average >= 75 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}>
+                    {gradesModalData.average != null
+                      ? gradesModalData.average >= 75 ? "PASSED" : "FAILED"
+                      : "No Grade"}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Subject Grades Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b">
+                      <th className="text-left font-semibold text-gray-700 px-4 py-2">Subject</th>
+                      <th className="text-center font-semibold text-gray-700 px-4 py-2">Quarterly Grade</th>
+                      <th className="text-center font-semibold text-gray-700 px-4 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gradesModalData.subjects?.map((subject: any) => (
+                      <tr key={subject.subjectId} className="border-b last:border-b-0 hover:bg-slate-50/50">
+                        <td className="px-4 py-2 font-medium text-gray-900">{subject.subjectName}</td>
+                        <td className="px-4 py-2 text-center">
+                          {subject.quarterlyGrade != null ? (
+                            <span className="font-semibold">{subject.quarterlyGrade}</span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          {subject.status === "FINALIZED" ? (
+                            <Badge className="bg-green-100 text-green-700 border-green-200">
+                              <CheckCircle className="w-3 h-3 mr-1" /> Finalized
+                            </Badge>
+                          ) : subject.status === "DRAFT" ? (
+                            <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                              Draft
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-gray-100 text-gray-500 border-gray-200" variant="outline">
+                              No Grade
+                            </Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="text-xs text-slate-400 text-center">
+                Grades are read-only. Contact the subject teacher to make changes.
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-12 text-slate-400">
+              No grade data available
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

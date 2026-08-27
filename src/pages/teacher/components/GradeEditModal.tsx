@@ -39,6 +39,7 @@ interface GradeEditModalProps {
   onMobileScoreCommit: (record: ClassRecord, category: "WW" | "PT" | "QA", index: number) => void;
   onDescriptorUpdate: (studentId: string, descriptor: string) => void;
   onApplyColumnMeta: (category: "WW" | "PT" | "QA", index: number, description: string, date: string) => void;
+  isViewOnly?: boolean;
 }
 
 export function GradeEditModal({
@@ -65,6 +66,7 @@ export function GradeEditModal({
   onMobileScoreCommit,
   onDescriptorUpdate,
   onApplyColumnMeta,
+  isViewOnly = false,
 }: GradeEditModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,6 +92,7 @@ export function GradeEditModal({
                     if (!value) return;
                     onDescriptorUpdate(selectedRecord.student.id, value);
                   }}
+                  disabled={isViewOnly}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select descriptor" />
@@ -138,15 +141,17 @@ export function GradeEditModal({
                             <input
                               type="text"
                               defaultValue={description}
+                              disabled={isViewOnly}
                               onBlur={(e) => onApplyColumnMeta("WW", i, e.currentTarget.value, date)}
-                              className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                              className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                               placeholder={`WW ${i + 1} description`}
                             />
                             <input
                               type="date"
                               defaultValue={date}
+                              disabled={isViewOnly}
                               onBlur={(e) => onApplyColumnMeta("WW", i, description, e.currentTarget.value)}
-                              className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                              className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                             />
                           </div>
                           <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
@@ -156,9 +161,10 @@ export function GradeEditModal({
                             type="number"
                             inputMode="decimal"
                             value={mobileScoreDraft[key] ?? getScoreFromGrade(selectedRecord, "WW", i)}
+                            disabled={isViewOnly}
                             onChange={(e) => onMobileScoreDraftChange(selectedRecord.student.id, "WW", i, e.target.value)}
                             onBlur={() => onMobileScoreCommit(selectedRecord, "WW", i)}
-                            className="w-full h-12 rounded-xl border border-slate-200 px-4 text-base font-bold text-slate-700 focus:outline-none"
+                            className="w-full h-12 rounded-xl border border-slate-200 px-4 text-base font-bold text-slate-700 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                             style={{ borderColor: invalidCells[getCellKey(selectedRecord.student.id, "WW", i)] ? "#f43f5e" : undefined }}
                             placeholder="0"
                           />
@@ -179,15 +185,17 @@ export function GradeEditModal({
                             <input
                               type="text"
                               defaultValue={description}
+                              disabled={isViewOnly}
                               onBlur={(e) => onApplyColumnMeta("PT", i, e.currentTarget.value, date)}
-                              className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                              className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                               placeholder={`PT ${i + 1} description`}
                             />
                             <input
                               type="date"
                               defaultValue={date}
+                              disabled={isViewOnly}
                               onBlur={(e) => onApplyColumnMeta("PT", i, description, e.currentTarget.value)}
-                              className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                              className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                             />
                           </div>
                           <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
@@ -197,9 +205,10 @@ export function GradeEditModal({
                             type="number"
                             inputMode="decimal"
                             value={mobileScoreDraft[key] ?? getScoreFromGrade(selectedRecord, "PT", i)}
+                            disabled={isViewOnly}
                             onChange={(e) => onMobileScoreDraftChange(selectedRecord.student.id, "PT", i, e.target.value)}
                             onBlur={() => onMobileScoreCommit(selectedRecord, "PT", i)}
-                            className="w-full h-12 rounded-xl border border-slate-200 px-4 text-base font-bold text-slate-700 focus:outline-none"
+                            className="w-full h-12 rounded-xl border border-slate-200 px-4 text-base font-bold text-slate-700 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                             style={{ borderColor: invalidCells[getCellKey(selectedRecord.student.id, "PT", i)] ? "#f43f5e" : undefined }}
                             placeholder="0"
                           />
@@ -212,15 +221,17 @@ export function GradeEditModal({
                       <input
                         type="text"
                         defaultValue={qaMeta.description}
+                        disabled={isViewOnly}
                         onBlur={(e) => onApplyColumnMeta("QA", 0, e.currentTarget.value, qaMeta.date || "")}
-                        className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                        className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                         placeholder="TA description"
                       />
                       <input
                         type="date"
                         defaultValue={qaMeta.date || ""}
+                        disabled={isViewOnly}
                         onBlur={(e) => onApplyColumnMeta("QA", 0, qaMeta.description || "", e.currentTarget.value)}
-                        className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                        className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                       <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
                         TA Score (MAX {getMaxForCell("QA", 0)})
@@ -232,9 +243,10 @@ export function GradeEditModal({
                           mobileScoreDraft[getMobileDraftKey(selectedRecord.student.id, "QA", 0)] ??
                           getScoreFromGrade(selectedRecord, "QA", 0)
                         }
+                        disabled={isViewOnly}
                         onChange={(e) => onMobileScoreDraftChange(selectedRecord.student.id, "QA", 0, e.target.value)}
                         onBlur={() => onMobileScoreCommit(selectedRecord, "QA", 0)}
-                        className="w-full h-12 rounded-xl border border-slate-200 px-4 text-base font-bold text-slate-700 focus:outline-none"
+                        className="w-full h-12 rounded-xl border border-slate-200 px-4 text-base font-bold text-slate-700 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                         style={{ borderColor: invalidCells[getCellKey(selectedRecord.student.id, "QA", 0)] ? "#f43f5e" : undefined }}
                         placeholder="0"
                       />
@@ -245,7 +257,8 @@ export function GradeEditModal({
                 <div className="px-5 pb-5">
                   <Button
                     type="button"
-                    className="w-full h-11 rounded-xl text-xs font-black uppercase tracking-widest"
+                    disabled={isViewOnly}
+                    className="w-full h-11 rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
                     style={{ backgroundColor: "var(--theme-primary)", color: "var(--theme-primary-text)" }}
                     onClick={() => onOpenChange(false)}
                   >

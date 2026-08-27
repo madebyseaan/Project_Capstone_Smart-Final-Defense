@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export function getAcronym(name: string): string {
   // Replace "high school" or "highschool" with a special marker that becomes "HS"
-  let processedName = name.replace(/high\s*school/gi, 'HSPLACEHOLDER');
+  const processedName = name.replace(/high\s*school/gi, 'HSPLACEHOLDER');
   
   const stopWords = new Set(['of', 'the', 'a', 'an', 'and', 'for', 'in', 'on', 'at', 'to', 'by', 'or', 'de', 'del', 'ng', 'sa']);
   const words = processedName.split(/\s+/).filter(w => w.length > 0 && !stopWords.has(w.toLowerCase()));

@@ -67,10 +67,10 @@ const getSeverityBadge = (severity: AdminAuditLog["severity"]) => {
 };
 
 export default function AdminDashboard() {
+  const { colors } = useTheme();
   const [data, setData] = useState<AdminDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { colors } = useTheme();
 
   const fetchDashboard = async (silent = false) => {
     try {

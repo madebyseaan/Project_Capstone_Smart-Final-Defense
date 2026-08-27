@@ -53,13 +53,6 @@ const navigationGroups: NavGroup[] = [
     ]
   },
   {
-    title: "INTAKE & PREPARATION",
-    items: [
-      { name: "Applications", href: "/registrar/applications", icon: ClipboardList },
-      { name: "BOSY Queue", href: "/registrar/bosy", icon: CalendarCheck },
-    ]
-  },
-  {
     title: "OFFICIAL ENROLLMENT",
     items: [
       { name: "Section Roster", href: "/registrar/roster", icon: Layers },
@@ -76,6 +69,7 @@ const navigationGroups: NavGroup[] = [
     title: "MANAGEMENT",
     items: [
       { name: "Student Records", href: "/registrar/students", icon: Users },
+      { name: "Former Students", href: "/registrar/alumni", icon: GraduationCap },
       { name: "Teaching Load", href: "/registrar/teaching-load", icon: BarChart3 },
       { name: "School Forms", href: "/registrar/forms", icon: FolderOpen },
     ]
@@ -91,10 +85,10 @@ export default function RegistrarLayout() {
     const saved = localStorage.getItem('registrarSidebarCollapsed');
     return saved === 'true';
   });
-  const { colors, logoUrl, schoolName } = useTheme();
+  const { colors, logoUrl, schoolName, currentSchoolYear } = useTheme();
 
   useEffect(() => {
-    const userData = sessionStorage.getItem("user");
+    const userData = sessionStorage.getItem("user_registrar");
 
     if (!userData) {
       navigate("/login");
@@ -112,8 +106,12 @@ export default function RegistrarLayout() {
   }, [navigate]);
 
   const handleLogout = () => {
+    sessionStorage.removeItem("user_registrar");
+    sessionStorage.removeItem("token_registrar");
+    sessionStorage.removeItem("refreshToken_registrar");
     sessionStorage.removeItem("user");
-    navigate("/login/registrar");
+    sessionStorage.removeItem("token");
+    navigate("/login");
   };
 
   const toggleSidebarCollapse = () => {
@@ -157,7 +155,7 @@ export default function RegistrarLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           sidebarCollapsed ? "lg:w-[70px] w-[280px]" : "w-[280px]"
         )}
-        style={{ fontFamily: "'Inter', 'Geist Variable', sans-serif" }}
+        style={{ fontFamily: "'Inter', 'Poppins', sans-serif" }}
       >
         {/* Logo Header */}
         <div className={cn(
@@ -362,6 +360,12 @@ export default function RegistrarLayout() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* School Year Badge */}
+              {currentSchoolYear && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-wider px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
+                  S.Y. {currentSchoolYear}
+                </span>
+              )}
               {/* Dev Portal Quick Switcher */}
               <DevPortalSwitcher user={user} />
 

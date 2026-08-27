@@ -61,10 +61,10 @@ export default function TeacherLayout() {
     const saved = localStorage.getItem('teacherSidebarCollapsed');
     return saved === 'true';
   });
-  const { colors, logoUrl, schoolName } = useTheme();
+  const { colors, logoUrl, schoolName, currentSchoolYear } = useTheme();
 
   useEffect(() => {
-    const userData = sessionStorage.getItem("user");
+    const userData = sessionStorage.getItem("user_teacher");
 
     if (!userData) {
       navigate("/login");
@@ -82,7 +82,11 @@ export default function TeacherLayout() {
   }, [navigate]);
 
   const handleLogout = () => {
+    sessionStorage.removeItem("user_teacher");
+    sessionStorage.removeItem("token_teacher");
+    sessionStorage.removeItem("refreshToken_teacher");
     sessionStorage.removeItem("user");
+    sessionStorage.removeItem("token");
     navigate("/login");
   };
 
@@ -153,7 +157,7 @@ export default function TeacherLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           sidebarCollapsed ? "lg:w-[70px] w-[280px]" : "w-[280px]"
         )}
-        style={{ fontFamily: "'Instrument Sans', 'Geist Variable', sans-serif" }}
+        style={{ fontFamily: "'Inter', 'Poppins', sans-serif" }}
       >
         {/* Logo Header */}
         <div className={cn(
@@ -331,6 +335,12 @@ export default function TeacherLayout() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* School Year Badge */}
+              {currentSchoolYear && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-wider px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
+                  S.Y. {currentSchoolYear}
+                </span>
+              )}
               {/* Dev Portal Quick Switcher */}
               <DevPortalSwitcher user={user} />
 

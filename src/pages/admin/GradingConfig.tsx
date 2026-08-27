@@ -15,6 +15,10 @@ import {
   RefreshCw,
   AlertTriangle,
   Calculator,
+  Users,
+  ToggleLeft,
+  ToggleRight,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,30 +29,34 @@ import { adminApi } from "@/lib/api";
 import type { GradingConfig as GradingConfigType } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 
-const subjectTypeInfo: Record<string, { label: string; subjects: string[]; icon: React.ElementType; defaultWeights: string }> = {
+const subjectTypeInfo: Record<string, { label: string; subjects: string[]; icon: React.ElementType; defaultWeights: string; groupWith?: string; followsNote?: string }> = {
   CORE: {
     label: "Core Academic Subjects",
-    subjects: ["English", "Filipino", "Araling Panlipunan", "Edukasyon sa Pagpapakatao"],
+    subjects: ["English", "Filipino", "Araling Panlipunan", "Edukasyon sa Pagpapakatao", "Mathematics", "Science", "GMRC", "Values Education"],
     icon: BookOpen,
     defaultWeights: "20% WW · 50% PT · 30% TA",
+    followsNote: "STE (Science Technology Engineering) subjects also follow this group's weights.",
   },
   MATH_SCIENCE: {
-    label: "Mathematics & Science",
+    label: "Core Academic Subjects",
     subjects: ["Mathematics", "Science"],
     icon: Calculator,
     defaultWeights: "20% WW · 50% PT · 30% TA",
+    groupWith: "CORE",
   },
   MAPEH: {
-    label: "MAPEH",
-    subjects: ["Music", "Arts", "Physical Education", "Health"],
+    label: "MAPEH & TLE (EPP)",
+    subjects: ["Music", "Arts", "Physical Education", "Health", "TLE", "Home Economics", "Industrial Arts", "Computer Education"],
     icon: Music,
     defaultWeights: "20% WW · 60% PT · 20% TA",
+    followsNote: "SPA (Special Program in the Arts) and SPS (Special Program in Sports) subjects also follow this group's weights.",
   },
   TLE: {
-    label: "Technology & Livelihood Education",
+    label: "MAPEH & TLE (EPP)",
     subjects: ["TLE", "Home Economics", "Industrial Arts", "Computer Education"],
     icon: Wrench,
     defaultWeights: "20% WW · 60% PT · 20% TA",
+    groupWith: "MAPEH",
   },
 };
 
@@ -63,6 +71,11 @@ export default function GradingConfig() {
   const [hasChanges, setHasChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [configHistory, setConfigHistory] = useState<Array<{ date: string; user: string; change: string }>>([]);
+
+  // Per-subject weight overrides
+  const [subjectWeights, setSubjectWeights] = useState<Array<{ id: string; code: string; name: string; type: string; writtenWorkWeight: number | null; perfTaskWeight: number | null; quarterlyAssessWeight: number | null; hasOverride: boolean }>>([]);
+  const [subjectWeightsLoading, setSubjectWeightsLoading] = useState(false);
+  const [subjectFilter, setSubjectFilter] = useState<string>("ALL");
 
   const fetchConfigs = async () => {
     try {
@@ -81,7 +94,102 @@ export default function GradingConfig() {
 
   useEffect(() => {
     fetchConfigs();
+    fetchSubjectWeights();
   }, []);
+
+  const fetchSubjectWeights = async () => {
+    try {
+      setSubjectWeightsLoading(true);
+      const res = await adminApi.getSubjectWeights();
+      setSubjectWeights(res.data);
+    } catch (err) {
+      console.error("Failed to fetch subject weights:", err);
+    } finally {
+      setSubjectWeightsLoading(false);
+    }
+  };
+
+  const toggleSubjectOverride = async (subjectId: string) => {
+    const subject = subjectWeights.find(s => s.id === subjectId);
+    if (!subject) return;
+
+    if (subject.hasOverride) {
+      // Turning OFF — immediately clear via API so it persists
+      try {
+        await adminApi.clearSubjectWeightOverride(subjectId);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+        fetchSubjectWeights();
+      } catch (err: any) {
+        alert(err.message || "Failed to clear override");
+      }
+    } else {
+      // Turning ON — just update local state (user can adjust before saving)
+      const groupConfig = configs.find(c => c.subjectType === subject.type);
+      setSubjectWeights(prev => prev.map(s => {
+        if (s.id !== subjectId) return s;
+        return {
+          ...s,
+          hasOverride: true,
+          writtenWorkWeight: groupConfig?.writtenWorkWeight ?? 20,
+          perfTaskWeight: groupConfig?.performanceTaskWeight ?? 50,
+          quarterlyAssessWeight: groupConfig?.quarterlyAssessWeight ?? 30,
+        };
+      }));
+    }
+  };
+
+  const updateSubjectWeight = (subjectId: string, field: "writtenWorkWeight" | "perfTaskWeight" | "quarterlyAssessWeight", value: number) => {
+    setSubjectWeights(prev => prev.map(s => s.id === subjectId ? { ...s, [field]: value } : s));
+  };
+
+  const saveSubjectWeight = async (subjectId: string) => {
+    const subject = subjectWeights.find(s => s.id === subjectId);
+    if (!subject || !subject.hasOverride) return;
+    try {
+      await adminApi.updateSubjectWeight(subjectId, {
+        writtenWorkWeight: subject.writtenWorkWeight ?? 20,
+        perfTaskWeight: subject.perfTaskWeight ?? 50,
+        quarterlyAssessWeight: subject.quarterlyAssessWeight ?? 30,
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      fetchSubjectWeights();
+    } catch (err: any) {
+      alert(err.message || "Failed to save");
+    }
+  };
+
+  const clearSubjectOverride = async (subjectId: string) => {
+    try {
+      await adminApi.clearSubjectWeightOverride(subjectId);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      fetchSubjectWeights();
+    } catch (err: any) {
+      alert(err.message || "Failed to clear");
+    }
+  };
+
+  const clearAllOverrides = async () => {
+    const overrides = subjectWeights.filter(s => s.hasOverride);
+    if (overrides.length === 0) return;
+    if (!confirm(`Clear all ${overrides.length} subject overrides? This will revert them to group defaults.`)) return;
+    try {
+      const updates = overrides.map(s => ({
+        subjectId: s.id,
+        writtenWorkWeight: null,
+        perfTaskWeight: null,
+        quarterlyAssessWeight: null,
+      }));
+      await adminApi.bulkUpdateSubjectWeights(updates);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      fetchSubjectWeights();
+    } catch (err: any) {
+      alert(err.message || "Failed to clear all overrides");
+    }
+  };
 
   // Check if there are changes by comparing configs deeply
   useEffect(() => {
@@ -299,15 +407,21 @@ export default function GradingConfig() {
       {/* Grading Weight Cards */}
       <div className="grid grid-cols-1 gap-6">
         {configs.map((config) => {
+          // Skip TLE if it's grouped with MAPEH (show only once)
+          const info = subjectTypeInfo[config.subjectType];
+          if (info?.groupWith && configs.some(c => c.subjectType === info.groupWith)) {
+            return null;
+          }
+
           const isValid = validateWeights(config);
           const total = config.writtenWorkWeight + config.performanceTaskWeight + config.quarterlyAssessWeight;
-          const info = subjectTypeInfo[config.subjectType] || {
+          const displayInfo = info || {
             label: config.subjectType,
             subjects: [],
             icon: BookOpen,
             defaultWeights: "",
           };
-          const Icon = info.icon;
+          const Icon = displayInfo.icon;
 
           return (
             <Card key={config.id} className="p-0 gap-0 border-0 shadow-lg overflow-hidden bg-white">
@@ -318,14 +432,17 @@ export default function GradingConfig() {
                     <Icon className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-sm" style={{ color: '#111827' }}>{info.label}</h3>
+                    <h3 className="font-semibold text-sm" style={{ color: '#111827' }}>{displayInfo.label}</h3>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {info.subjects.map((subject) => (
+                      {displayInfo.subjects.map((subject) => (
                         <Badge key={subject} variant="outline" className="text-xs py-0 h-5">
                           {subject}
                         </Badge>
                       ))}
                     </div>
+                    {displayInfo.followsNote && (
+                      <p className="text-[11px] text-gray-400 mt-1.5 italic">{displayInfo.followsNote}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -488,6 +605,150 @@ export default function GradingConfig() {
                   <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
                 </div>
               ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Per-Subject Weight Overrides */}
+      <Card className="p-0 gap-0 border-0 shadow-lg bg-white overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: `${colors.primary}06` }}>
+          <div className="flex items-center gap-3">
+            <Users className="w-4 h-4" style={{ color: colors.primary }} />
+            <div>
+              <h3 className="font-semibold text-sm" style={{ color: '#111827' }}>Per-Subject Weight Overrides</h3>
+              <p className="text-xs text-gray-500">Set custom weights for individual subjects (overrides group defaults)</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-medium text-gray-600 bg-white"
+            >
+              <option value="ALL">All Types</option>
+              <option value="CORE">Core (incl. Math & Science)</option>
+              <option value="MAPEH">MAPEH & TLE</option>
+            </select>
+            {subjectWeights.some(s => s.hasOverride) && (
+              <Button variant="ghost" size="sm" onClick={clearAllOverrides} className="h-8 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 gap-1">
+                <Trash2 className="w-3.5 h-3.5" />
+                Clear All
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" onClick={fetchSubjectWeights} className="w-8 h-8 rounded-lg">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+        <CardContent className="p-0">
+          {subjectWeightsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">WW %</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">PT %</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">TA %</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Override</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {(() => {
+                    // Deduplicate subjects by base code (strip trailing numbers like 7, 8, 9, 10)
+                    const seen = new Map<string, typeof subjectWeights[0]>();
+                    const filtered = subjectWeights.filter(s => subjectFilter === "ALL" || s.type === subjectFilter);
+                    for (const s of filtered) {
+                      const baseCode = s.code.replace(/\d+$/, "").replace(/_$/, "").toUpperCase();
+                      if (!seen.has(baseCode)) {
+                        seen.set(baseCode, s);
+                      }
+                    }
+                    return Array.from(seen.values());
+                  })()
+                  .map((subject) => {
+                      const groupConfig = configs.find(c => c.subjectType === subject.type);
+                      const displayWw = subject.hasOverride ? subject.writtenWorkWeight : (groupConfig?.writtenWorkWeight ?? 20);
+                      const displayPt = subject.hasOverride ? subject.perfTaskWeight : (groupConfig?.performanceTaskWeight ?? 50);
+                      const displayQa = subject.hasOverride ? subject.quarterlyAssessWeight : (groupConfig?.quarterlyAssessWeight ?? 30);
+                      return (
+                        <tr key={subject.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-3">
+                            <div className="font-medium text-sm text-gray-900">{subject.name}</div>
+                            <div className="text-xs text-gray-400 font-mono">{subject.code}</div>
+                          </td>
+                          <td className="px-6 py-3">
+                            <Badge className="bg-gray-100 text-gray-600 text-[10px] font-black uppercase tracking-widest">{subject.type}</Badge>
+                          </td>
+                          <td className="px-6 py-3 text-center">
+                            {subject.hasOverride ? (
+                              <Input
+                                type="number"
+                                value={subject.writtenWorkWeight ?? 20}
+                                onChange={(e) => updateSubjectWeight(subject.id, "writtenWorkWeight", parseInt(e.target.value) || 0)}
+                                className="w-16 h-8 rounded-lg border-gray-200 text-sm font-mono text-center mx-auto"
+                              />
+                            ) : (
+                              <span className="text-sm font-mono text-gray-500">{displayWw}</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-3 text-center">
+                            {subject.hasOverride ? (
+                              <Input
+                                type="number"
+                                value={subject.perfTaskWeight ?? 50}
+                                onChange={(e) => updateSubjectWeight(subject.id, "perfTaskWeight", parseInt(e.target.value) || 0)}
+                                className="w-16 h-8 rounded-lg border-gray-200 text-sm font-mono text-center mx-auto"
+                              />
+                            ) : (
+                              <span className="text-sm font-mono text-gray-500">{displayPt}</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-3 text-center">
+                            {subject.hasOverride ? (
+                              <Input
+                                type="number"
+                                value={subject.quarterlyAssessWeight ?? 30}
+                                onChange={(e) => updateSubjectWeight(subject.id, "quarterlyAssessWeight", parseInt(e.target.value) || 0)}
+                                className="w-16 h-8 rounded-lg border-gray-200 text-sm font-mono text-center mx-auto"
+                              />
+                            ) : (
+                              <span className="text-sm font-mono text-gray-500">{displayQa}</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-3 text-center">
+                            <button onClick={() => toggleSubjectOverride(subject.id)} className="inline-flex">
+                              {subject.hasOverride ? (
+                                <ToggleRight className="w-6 h-6 text-indigo-600" />
+                              ) : (
+                                <ToggleLeft className="w-6 h-6 text-gray-300" />
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            {subject.hasOverride && (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => saveSubjectWeight(subject.id)} className="h-7 rounded-lg text-xs font-semibold text-indigo-600 hover:bg-indigo-50">
+                                  Save
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => clearSubjectOverride(subject.id)} className="h-7 rounded-lg text-xs font-semibold text-gray-400 hover:bg-gray-100">
+                                  Clear
+                                </Button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>

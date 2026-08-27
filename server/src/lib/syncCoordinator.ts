@@ -18,6 +18,7 @@
 import { runEnrollProSync, getEnrollProSyncStatus } from './enrollproSync';
 import { runAtlasSync, getSyncStatus as getAtlasSyncStatus } from './atlasSync';
 import { syncEnrollProBranding } from './enrollproBrandingSync';
+import { runStudentProfileSync } from './studentProfileSync';
 import { broadcastSyncStatus } from './sseManager';
 import { prisma } from './prisma';
 import { invalidateAllCaches } from './syncCache';
@@ -33,6 +34,7 @@ const SYNC_INTERVAL_MS = parseInt(process.env.SYNC_INTERVAL_MS ?? '', 10) ||
 
 const SYNC_INTERVAL_MINUTES = Math.round(SYNC_INTERVAL_MS / 60000);
 const BRANDING_SYNC_EVERY_N_CYCLES = parseInt(process.env.BRANDING_SYNC_EVERY_N_CYCLES ?? '12', 10); // 12 × 5min = 60min
+const STUDENT_PROFILE_SYNC_EVERY_N_CYCLES = parseInt(process.env.STUDENT_PROFILE_SYNC_EVERY_N_CYCLES ?? '12', 10); // 12 × 5min = 60min
 const INITIAL_DELAY_MS = parseInt(process.env.SYNC_INITIAL_DELAY_MS ?? '5000', 10); // 5s after boot
 const ENROLLPRO_BASE = (process.env.ENROLLPRO_URL ?? process.env.ENROLLPRO_BASE_URL ?? 'https://dev-jegs.buru-degree.ts.net/api').replace(/\/$/, '');
 const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
@@ -221,7 +223,7 @@ export async function runUnifiedSync(options?: {
     // ── Step 1: EnrollPro Sync ──────────────────────────────────────────
     // Must run first — Atlas depends on sections and teachers from EnrollPro.
     try {
-      logger.debug('[SyncCoordinator] Step 1/3: EnrollPro sync...');
+      logger.debug('[SyncCoordinator] Step 1/4: EnrollPro sync...');
       const epResult = await runEnrollProSync();
       if (epResult) {
         enrollproResult = {
@@ -250,7 +252,7 @@ export async function runUnifiedSync(options?: {
     // ── Step 2: Atlas Sync ──────────────────────────────────────────────
     // Teaching load — depends on sections existing in SMART DB.
     try {
-      logger.debug('[SyncCoordinator] Step 2/3: Atlas sync...');
+      logger.debug('[SyncCoordinator] Step 2/4: Atlas sync...');
       const atResult = await runAtlasSync();
       if (atResult) {
         atlasResult = {
@@ -271,14 +273,31 @@ export async function runUnifiedSync(options?: {
     const shouldSyncBranding = options?.forceBranding || (syncCycleCount % BRANDING_SYNC_EVERY_N_CYCLES === 0);
     if (shouldSyncBranding) {
       try {
-        logger.debug('[SyncCoordinator] Step 3/3: Branding sync...');
+        logger.debug('[SyncCoordinator] Step 3/4: Branding sync...');
         await syncEnrollProBranding();
         brandingSynced = true;
       } catch (err: any) {
         logger.error('[SyncCoordinator] Branding sync failed:', err.message);
       }
     } else {
-      logger.debug(`[SyncCoordinator] Step 3/3: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
+      logger.debug(`[SyncCoordinator] Step 3/4: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
+    }
+
+    // ── Step 4: Student Profile Sync (hourly) ──────────────────────────
+    // Enriches student profile fields from EnrollPro. Runs every Nth cycle.
+    const shouldSyncStudentProfiles = syncCycleCount % STUDENT_PROFILE_SYNC_EVERY_N_CYCLES === 0;
+    if (shouldSyncStudentProfiles) {
+      try {
+        logger.debug('[SyncCoordinator] Step 4/4: Student profile sync...');
+        const profileResult = await runStudentProfileSync();
+        if (profileResult.errors.length > 0) {
+          logger.warn(`[SyncCoordinator] Student profile sync had ${profileResult.errors.length} errors`);
+        }
+      } catch (err: any) {
+        logger.error('[SyncCoordinator] Student profile sync failed:', err.message);
+      }
+    } else {
+      logger.debug(`[SyncCoordinator] Step 4/4: Student profile sync skipped (next at cycle #${Math.ceil(syncCycleCount / STUDENT_PROFILE_SYNC_EVERY_N_CYCLES) * STUDENT_PROFILE_SYNC_EVERY_N_CYCLES})`);
     }
 
   } catch (err: any) {
@@ -490,10 +509,10 @@ function buildUrl(base: string, path: string): string {
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-async function pingUrl(url: string, name: string): Promise<DependencyHealth> {
+async function pingUrl(url: string, name: string, headers?: Record<string, string>): Promise<DependencyHealth> {
   const started = Date.now();
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers });
     return {
       name,
       url,
@@ -515,8 +534,11 @@ async function pingUrl(url: string, name: string): Promise<DependencyHealth> {
 }
 
 async function checkCriticalDependencies(): Promise<DependencyHealthSnapshot> {
+  const epHeaders = process.env.ENROLLPRO_INTEGRATION_KEY
+    ? { 'X-Integration-Key': process.env.ENROLLPRO_INTEGRATION_KEY }
+    : undefined;
   const [enrollpro, atlas] = await Promise.all([
-    pingUrl(buildUrl(ENROLLPRO_BASE, '/integration/v1/health'), 'EnrollPro'),
+    pingUrl(buildUrl(ENROLLPRO_BASE, '/integration/v1/health'), 'EnrollPro', epHeaders),
     pingUrl(buildUrl(ATLAS_BASE, '/health'), 'Atlas'),
   ]);
 

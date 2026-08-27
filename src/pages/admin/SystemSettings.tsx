@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -26,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { adminApi, SERVER_URL } from "@/lib/api";
+import { adminApi, SERVER_URL, getPortalToken } from "@/lib/api";
 import type { SystemSettings as SystemSettingsType } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -195,6 +196,8 @@ export default function SystemSettings() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [schoolYears, setSchoolYears] = useState<Array<{ id: string; label: string; status: string }>>([]);
+  const [gradeLockModalOpen, setGradeLockModalOpen] = useState(false);
   const { refreshTheme, colors: themeColors } = useTheme();
   const hasAutoSyncedRef = useRef(false);
 
@@ -216,9 +219,15 @@ export default function SystemSettings() {
     fetchSettings();
   }, []);
 
+  useEffect(() => {
+    adminApi.getSchoolYears().then((res) => {
+      setSchoolYears(res.data.schoolYears);
+    }).catch(() => {});
+  }, []);
+
   // SSE subscription for realtime settings updates
   useEffect(() => {
-    const token = sessionStorage.getItem("token");
+    const token = getPortalToken();
     if (!token) return;
 
     let es: EventSource | null = null;
@@ -567,6 +576,29 @@ export default function SystemSettings() {
             </div>
           </div>
 
+          {/* Grade Lock Control */}
+          <div className="mb-8 p-4 rounded-xl border border-gray-200 bg-gray-50">
+            <Label className="text-sm font-semibold text-gray-700 mb-2 block">Grade Editing</Label>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">
+                  {settings.gradeLock ? "Grade editing is currently LOCKED. Teachers cannot edit grades." : "Grade editing is open. Teachers can edit grades."}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Lock grades during EOSY processing or after term ends.
+                </p>
+              </div>
+              <Button
+                variant={settings.gradeLock ? "destructive" : "default"}
+                size="sm"
+                disabled={saving}
+                onClick={() => setGradeLockModalOpen(true)}
+              >
+                {settings.gradeLock ? "Unlock Grades" : "Lock Grades"}
+              </Button>
+            </div>
+          </div>
+
           {/* School Logo (read-only) */}
           <div className="mb-8">
             <Label className="text-sm font-semibold text-gray-700 mb-4 block">School Logo</Label>
@@ -664,24 +696,24 @@ export default function SystemSettings() {
               <Label htmlFor="currentSchoolYear" className="text-sm font-semibold text-gray-700">
                 Academic Year
               </Label>
-              <Select value={settings.currentSchoolYear || "2026-2027"} onValueChange={(val) => val && handleChange("currentSchoolYear", val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="2026-2027" />
+              <Select value={settings.currentSchoolYear} disabled>
+                <SelectTrigger className="bg-gray-100 cursor-not-allowed">
+                  <SelectValue placeholder="Select school year" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="2024-2025">2024-2025</SelectItem>
-                  <SelectItem value="2025-2026">2025-2026</SelectItem>
-                  <SelectItem value="2026-2027">2026-2027</SelectItem>
-                  <SelectItem value="2027-2028">2027-2028</SelectItem>
+                  {schoolYears.map((sy) => (
+                    <SelectItem key={sy.id} value={sy.label}>{sy.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-gray-500">Synced from EnrollPro — cannot be changed manually</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="currentTerm" className="text-sm font-semibold text-gray-700">
                 Current Term
               </Label>
-              <Select value={settings.currentTerm || "T1"} onValueChange={(val) => val && handleChange("currentTerm", val)}>
-                <SelectTrigger>
+              <Select value={settings.currentTerm || "T1"} disabled>
+                <SelectTrigger className="bg-gray-100 cursor-not-allowed">
                   <SelectValue placeholder="Term 1" />
                 </SelectTrigger>
                 <SelectContent>
@@ -690,6 +722,7 @@ export default function SystemSettings() {
                   <SelectItem value="T3">Term 3</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-gray-500">Synced from EnrollPro — cannot be changed manually</p>
             </div>
           </div>
 
@@ -700,7 +733,7 @@ export default function SystemSettings() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <Label className="text-sm font-semibold text-gray-700">Academic Calendar</Label>
-                <p className="text-xs text-gray-500 mt-1">Set the start and end dates for each term</p>
+                <p className="text-xs text-gray-500 mt-1">Term dates are synced from EnrollPro and cannot be edited manually</p>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -733,7 +766,7 @@ export default function SystemSettings() {
                     <Input
                       type="date"
                       value={settings.t1StartDate ? new Date(settings.t1StartDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("t1StartDate", e.target.value)}
+                      onChange={(e) => setSettings({ ...settings, t1StartDate: e.target.value || null })}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -742,7 +775,7 @@ export default function SystemSettings() {
                     <Input
                       type="date"
                       value={settings.t1EndDate ? new Date(settings.t1EndDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("t1EndDate", e.target.value)}
+                      onChange={(e) => setSettings({ ...settings, t1EndDate: e.target.value || null })}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -764,7 +797,7 @@ export default function SystemSettings() {
                     <Input
                       type="date"
                       value={settings.t2StartDate ? new Date(settings.t2StartDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("t2StartDate", e.target.value)}
+                      onChange={(e) => setSettings({ ...settings, t2StartDate: e.target.value || null })}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -773,7 +806,7 @@ export default function SystemSettings() {
                     <Input
                       type="date"
                       value={settings.t2EndDate ? new Date(settings.t2EndDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("t2EndDate", e.target.value)}
+                      onChange={(e) => setSettings({ ...settings, t2EndDate: e.target.value || null })}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -795,7 +828,7 @@ export default function SystemSettings() {
                     <Input
                       type="date"
                       value={settings.t3StartDate ? new Date(settings.t3StartDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("t3StartDate", e.target.value)}
+                      onChange={(e) => setSettings({ ...settings, t3StartDate: e.target.value || null })}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -804,7 +837,7 @@ export default function SystemSettings() {
                     <Input
                       type="date"
                       value={settings.t3EndDate ? new Date(settings.t3EndDate).toISOString().split('T')[0] : ""}
-                      onChange={(e) => handleChange("t3EndDate", e.target.value)}
+                      onChange={(e) => setSettings({ ...settings, t3EndDate: e.target.value || null })}
                       className="rounded-lg border-gray-200 text-sm"
                     />
                   </div>
@@ -965,6 +998,50 @@ export default function SystemSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Grade Lock Confirmation Modal */}
+      <Dialog open={gradeLockModalOpen} onOpenChange={setGradeLockModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {settings?.gradeLock ? "Unlock Grade Editing" : "Lock Grade Editing"}
+            </DialogTitle>
+            <DialogDescription>
+              {settings?.gradeLock
+                ? "Are you sure you want to unlock grade editing? Teachers will be able to edit grades again."
+                : "Are you sure you want to lock grade editing? Teachers will no longer be able to edit grades."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setGradeLockModalOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={settings?.gradeLock ? "default" : "destructive"}
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  await adminApi.toggleGradeLock(!settings?.gradeLock);
+                  setSettings({ ...settings!, gradeLock: !settings?.gradeLock });
+                  setGradeLockModalOpen(false);
+                } catch (err) {
+                  console.error("Failed to toggle grade lock:", err);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              {settings?.gradeLock ? "Unlock" : "Lock"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

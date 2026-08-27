@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { Role, SubjectType, AuditAction, AuditSeverity, Term, WorkloadType } from "@prisma/client";
-import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { authenticateToken, authorizeRoles, AuthRequest } from "../middleware/auth";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
@@ -15,6 +15,23 @@ import { getEnrollProSyncStatus, runEnrollProSync } from "../lib/enrollproSync";
 import { getRecentSyncHistory, runUnifiedSync } from "../lib/syncCoordinator";
 import { getSystemHealthSnapshot } from "../lib/systemHealth";
 import { getIntegrationV1ActiveSchoolYear, getIntegrationV1FacultyPage, getIntegrationV1LearnersPage, getEnrollProTeachers } from "../lib/enrollproClient";
+import { getTransmutationTable, invalidateTransmutationCache } from "../lib/transmutationCache";
+import { validateTransmutationEntries, validateTransmutationRowChange } from "../lib/transmutationValidation";
+import { getActiveSchoolYearLabel, invalidateSchoolYearCache } from "../lib/schoolYearResolver";
+import { logger } from "../lib/logger";
+import { validate } from "../middleware/validate";
+import {
+  userCreateSchema,
+  userUpdateSchema,
+  userDeleteSchema,
+  userSuspendSchema,
+  settingsUpdateSchema,
+  colorSettingsSchema,
+  gradeLockSchema,
+  gradingConfigSchema,
+  classAssignmentCreateSchema,
+  archiveYearSchema,
+} from "../schemas/admin";
 
 const router = Router();
 
@@ -98,45 +115,6 @@ function detectSfSheetMappings(filePath: string): Array<{ formType: string; shee
   return mappings;
 }
 
-function deriveEcrSubjectName(fileName: string): string {
-  const withoutExt = fileName.replace(/\.(xlsx|xls)$/i, "");
-  const withoutPrefix = withoutExt.replace(/^ECR_/i, "");
-  const withoutTimestamp = withoutPrefix.replace(/_\d+$/, "");
-  const normalized = withoutTimestamp.replace(/[_-]+/g, " ").trim();
-  const withoutGenericToken = normalized.replace(/\becr\b/gi, " ").replace(/\s+/g, " ").trim();
-
-  if (!withoutGenericToken) {
-    return "Unlabeled Subject";
-  }
-
-  return withoutGenericToken
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-}
-
-function inferEcrSubjectType(subjectName: string, fileName: string): SubjectType | null {
-  const source = `${subjectName} ${fileName}`.toLowerCase();
-
-  if (/(math|algebra|geometry|science|biology|chemistry|physics)/i.test(source)) {
-    return 'MATH_SCIENCE' as SubjectType;
-  }
-
-  if (/(mapeh|music|arts|physical\s*education|pe\b|health)/i.test(source)) {
-    return SubjectType.MAPEH;
-  }
-
-  if (/(tle|technology|livelihood|home\s*economics|ict|cookery|industrial\s*arts|agri|entrepreneurship)/i.test(source)) {
-    return SubjectType.TLE;
-  }
-
-  if (/(english|filipino|esp|edukasyon|araling\s*panlipunan|ap\b|values)/i.test(source)) {
-    return SubjectType.CORE;
-  }
-
-  return null;
-}
-
 // ============================================
 // DASHBOARD ENDPOINTS
 // ============================================
@@ -170,7 +148,7 @@ router.get("/dashboard", authenticateToken, requireAdmin, async (req: AuthReques
         }
       }
     } catch (error: any) {
-      console.warn("[AdminDashboard] Failed to fetch live teacher count from EnrollPro, using local DB.", error.message);
+      logger.warn("[AdminDashboard] Failed to fetch live teacher count from EnrollPro, using local DB.", error.message);
     }
 
     // Count active enrolled students from EnrollPro-synced enrollment records.
@@ -201,7 +179,7 @@ router.get("/dashboard", authenticateToken, requireAdmin, async (req: AuthReques
         studentCountSchoolYear = activeSy.yearLabel;
       }
     } catch (error: any) {
-      console.warn("[AdminDashboard] Failed to fetch live student count from EnrollPro, falling back to local DB.", error.message);
+      logger.warn("[AdminDashboard] Failed to fetch live student count from EnrollPro, falling back to local DB.", error.message);
     }
 
     // Fallback: Use local DB if EnrollPro is unreachable or returned 0
@@ -300,7 +278,7 @@ router.get("/dashboard", authenticateToken, requireAdmin, async (req: AuthReques
         : null,
     });
   } catch (error) {
-    console.error("Error fetching admin dashboard:", error);
+    logger.error("Error fetching admin dashboard:", error);
     res.status(500).json({ message: "Failed to fetch dashboard data" });
   }
 });
@@ -315,7 +293,7 @@ router.get("/system/health", authenticateToken, requireAdmin, async (_req: AuthR
     const health = await getSystemHealthSnapshot();
     res.json(health);
   } catch (error) {
-    console.error("Error fetching system health:", error);
+    logger.error("Error fetching system health:", error);
     res.status(500).json({ message: "Failed to fetch system health" });
   }
 });
@@ -328,7 +306,7 @@ router.get("/system/sync-history", authenticateToken, requireAdmin, async (req: 
     const history = await getRecentSyncHistory(limit);
     res.json({ history, count: history.length });
   } catch (error) {
-    console.error("Error fetching sync history:", error);
+    logger.error("Error fetching sync history:", error);
     res.status(500).json({ message: "Failed to fetch sync history" });
   }
 });
@@ -339,8 +317,8 @@ router.post("/system/sync/run", authenticateToken, requireAdmin, async (_req: Au
     const result = await runUnifiedSync({ source: 'admin-system-health', forceBranding: false });
     res.json({ message: "Unified sync complete", result });
   } catch (error: any) {
-    console.error("Error running unified sync:", error);
-    res.status(500).json({ message: "Failed to run unified sync", error: error?.message ?? String(error) });
+    logger.error("Error running unified sync:", error);
+    res.status(500).json({ message: "Failed to run unified sync" });
   }
 });
 
@@ -394,7 +372,7 @@ router.get("/users", authenticateToken, requireAdmin, async (req: AuthRequest, r
     try {
       enrollProTeachers = await getEnrollProTeachers();
     } catch (err) {
-      console.error("Failed to fetch EnrollPro teachers for user management mapping:", err);
+      logger.error("Failed to fetch EnrollPro teachers for user management mapping:", err);
     }
 
     // Add status (we'll assume all users are active for now - could add isActive field later)
@@ -433,13 +411,13 @@ router.get("/users", authenticateToken, requireAdmin, async (req: AuthRequest, r
 
     res.json({ users: usersWithStatus });
   } catch (error) {
-    console.error("Error fetching users:", error);
+    logger.error("Error fetching users:", error);
     res.status(500).json({ message: "Failed to fetch users" });
   }
 });
 
 // Create new user
-router.post("/users", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post("/users", authenticateToken, requireAdmin, validate(userCreateSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { username, password, role, firstName, lastName, email, employeeId, specialization } = req.body;
 
@@ -503,13 +481,13 @@ router.post("/users", authenticateToken, requireAdmin, async (req: AuthRequest, 
       },
     });
   } catch (error) {
-    console.error("Error creating user:", error);
+    logger.error("Error creating user:", error);
     res.status(500).json({ message: "Failed to create user" });
   }
 });
 
 // Update user
-router.put("/users/:id", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.put("/users/:id", authenticateToken, requireAdmin, validate(userUpdateSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
     const { username, password, role, firstName, lastName, email, employeeId, specialization } = req.body;
@@ -604,13 +582,13 @@ router.put("/users/:id", authenticateToken, requireAdmin, async (req: AuthReques
       },
     });
   } catch (error) {
-    console.error("Error updating user:", error);
+    logger.error("Error updating user:", error);
     res.status(500).json({ message: "Failed to update user" });
   }
 });
 
 // Delete user
-router.delete("/users/:id", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.delete("/users/:id", authenticateToken, requireAdmin, validate(userDeleteSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
 
@@ -648,13 +626,13 @@ router.delete("/users/:id", authenticateToken, requireAdmin, async (req: AuthReq
 
     res.json({ message: "User deleted successfully" });
   } catch (error) {
-    console.error("Error deleting user:", error);
+    logger.error("Error deleting user:", error);
     res.status(500).json({ message: "Failed to delete user" });
   }
 });
 
 // Suspend user
-router.post("/users/:id/suspend", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post("/users/:id/suspend", authenticateToken, requireAdmin, validate(userSuspendSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
     const { reason } = req.body;
@@ -704,7 +682,7 @@ router.post("/users/:id/suspend", authenticateToken, requireAdmin, async (req: A
 
     res.json({ message: "User suspended successfully" });
   } catch (error) {
-    console.error("Error suspending user:", error);
+    logger.error("Error suspending user:", error);
     res.status(500).json({ message: "Failed to suspend user" });
   }
 });
@@ -743,7 +721,7 @@ router.post("/users/:id/reactivate", authenticateToken, requireAdmin, async (req
 
     res.json({ message: "User reactivated successfully" });
   } catch (error) {
-    console.error("Error reactivating user:", error);
+    logger.error("Error reactivating user:", error);
     res.status(500).json({ message: "Failed to reactivate user" });
   }
 });
@@ -832,7 +810,7 @@ router.get("/logs", authenticateToken, requireAdmin, async (req: AuthRequest, re
       },
     });
   } catch (error) {
-    console.error("Error fetching audit logs:", error);
+    logger.error("Error fetching audit logs:", error);
     res.status(500).json({ message: "Failed to fetch audit logs" });
   }
 });
@@ -878,7 +856,7 @@ router.get("/logs/export", authenticateToken, requireAdmin, async (req: AuthRequ
     res.setHeader("Content-Disposition", `attachment; filename="audit-logs-${Date.now()}.csv"`);
     res.send(csv);
   } catch (error) {
-    console.error("Error exporting audit logs:", error);
+    logger.error("Error exporting audit logs:", error);
     res.status(500).json({ message: "Failed to export audit logs" });
   }
 });
@@ -903,13 +881,13 @@ router.get("/settings", async (req: Request, res: Response): Promise<void> => {
 
     res.json({ settings });
   } catch (error) {
-    console.error("Error fetching settings:", error);
+    logger.error("Error fetching settings:", error);
     res.status(500).json({ message: "Failed to fetch settings" });
   }
 });
 
 // Update system settings
-router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.put("/settings", authenticateToken, requireAdmin, validate(settingsUpdateSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const {
       schoolName,
@@ -920,6 +898,7 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
       contactNumber,
       email,
       currentSchoolYear,
+      schoolYearId,
       currentTerm,
       primaryColor,
       secondaryColor,
@@ -949,6 +928,7 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
         contactNumber,
         email,
         currentSchoolYear,
+        schoolYearId: schoolYearId || null,
         currentTerm: currentTerm as Term,
         primaryColor,
         secondaryColor,
@@ -975,6 +955,7 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
         contactNumber,
         email,
         currentSchoolYear,
+        schoolYearId: schoolYearId || null,
         currentTerm: currentTerm as Term,
         primaryColor,
         secondaryColor,
@@ -1009,7 +990,7 @@ router.put("/settings", authenticateToken, requireAdmin, async (req: AuthRequest
 
     res.json({ message: "Settings updated successfully", settings });
   } catch (error) {
-    console.error("Error updating settings:", error);
+    logger.error("Error updating settings:", error);
     res.status(500).json({ message: "Failed to update settings" });
   }
 });
@@ -1041,7 +1022,7 @@ router.post(
           try {
             fs.unlinkSync(oldLogoPath);
           } catch (error) {
-            console.warn("Failed to delete old logo file:", error);
+            logger.warn("Failed to delete old logo file:", error);
             // Continue even if deletion fails
           }
         }
@@ -1050,9 +1031,9 @@ router.post(
       const settings = await prisma.systemSettings.update({
         where: { id: "main" },
         data: { logoUrl },
-      });
+    });
 
-      // Create audit log
+    // Create audit log
       await createAuditLog(
         AuditAction.UPDATE,
         req.user!,
@@ -1068,14 +1049,14 @@ router.post(
 
       res.json({ message: "Logo uploaded successfully", logoUrl });
     } catch (error) {
-      console.error("Error uploading logo:", error);
+      logger.error("Error uploading logo:", error);
       res.status(500).json({ message: "Failed to upload logo" });
     }
   }
 );
 
 // Update color scheme
-router.put("/settings/colors", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.put("/settings/colors", authenticateToken, requireAdmin, validate(colorSettingsSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { primaryColor, secondaryColor, accentColor } = req.body;
 
@@ -1111,8 +1092,33 @@ router.put("/settings/colors", authenticateToken, requireAdmin, async (req: Auth
       },
     });
   } catch (error) {
-    console.error("Error updating color scheme:", error);
+    logger.error("Error updating color scheme:", error);
     res.status(500).json({ message: "Failed to update color scheme" });
+  }
+});
+
+// Toggle grade lock (EOSY lock)
+router.post("/settings/grade-lock", authenticateToken, requireAdmin, validate(gradeLockSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { locked } = req.body;
+    const settings = await prisma.systemSettings.update({
+      where: { id: "main" },
+      data: { gradeLock: Boolean(locked) },
+    });
+    await createAuditLog(
+      AuditAction.CONFIG,
+      req.user!,
+      "Grade Lock",
+      "Config",
+      `Grade editing ${locked ? 'LOCKED' : 'UNLOCKED'} by admin`,
+      req.ip,
+      AuditSeverity.WARNING
+    );
+    broadcastSettingsUpdate(settings);
+    res.json({ message: `Grade editing ${locked ? 'locked' : 'unlocked'}`, gradeLock: settings.gradeLock });
+  } catch (error) {
+    logger.error("Error toggling grade lock:", error);
+    res.status(500).json({ message: "Failed to toggle grade lock" });
   }
 });
 
@@ -1139,10 +1145,9 @@ router.post(
 
       res.json({ message: "Successfully synced from EnrollPro", settings });
     } catch (error) {
-      console.error("Error syncing from EnrollPro:", error instanceof Error ? error.message : error);
+      logger.error("Error syncing from EnrollPro:", error instanceof Error ? error.message : error);
       res.status(500).json({
         message: "Failed to sync from EnrollPro",
-        detail: error instanceof Error ? error.message : String(error),
       });
     }
   }
@@ -1228,13 +1233,13 @@ router.get("/grading-config", authenticateToken, requireAdmin, async (req: AuthR
 
     res.json({ configs });
   } catch (error) {
-    console.error("Error fetching grading configs:", error);
+    logger.error("Error fetching grading configs:", error);
     res.status(500).json({ message: "Failed to fetch grading configurations" });
   }
 });
 
 // Update grading configuration
-router.put("/grading-config/:subjectType", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.put("/grading-config/:subjectType", authenticateToken, requireAdmin, validate(gradingConfigSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { subjectType } = req.params;
     const { writtenWorkWeight, performanceTaskWeight, quarterlyAssessWeight } = req.body;
@@ -1276,7 +1281,7 @@ router.put("/grading-config/:subjectType", authenticateToken, requireAdmin, asyn
 
     res.json({ message: "Grading configuration updated successfully", config });
   } catch (error) {
-    console.error("Error updating grading config:", error);
+    logger.error("Error updating grading config:", error);
     res.status(500).json({ message: "Failed to update grading configuration" });
   }
 });
@@ -1328,7 +1333,7 @@ router.post("/grading-config/reset", authenticateToken, requireAdmin, async (req
 
     res.json({ message: "Grading configurations reset to defaults", configs });
   } catch (error) {
-    console.error("Error resetting grading configs:", error);
+    logger.error("Error resetting grading configs:", error);
     res.status(500).json({ message: "Failed to reset grading configurations" });
   }
 });
@@ -1336,14 +1341,12 @@ router.post("/grading-config/reset", authenticateToken, requireAdmin, async (req
 // ── ATLAS Sync endpoints ─────────────────────────────────────────────────────
 
 // GET /api/admin/atlas-sync/status — current sync state
-router.get("/atlas-sync/status", authenticateToken, async (req: AuthRequest, res: Response) => {
-  if (req.user?.role !== "ADMIN") return res.status(403).json({ message: "Forbidden" });
+router.get("/atlas-sync/status", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response) => {
   res.json(getSyncStatus());
 });
 
 // POST /api/admin/atlas-sync/run — manually trigger sync
-router.post("/atlas-sync/run", authenticateToken, async (req: AuthRequest, res: Response) => {
-  if (req.user?.role !== "ADMIN") return res.status(403).json({ message: "Forbidden" });
+router.post("/atlas-sync/run", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response) => {
   const result = await runAtlasSync();
   res.json({ message: "Sync complete", result });
 });
@@ -1351,14 +1354,12 @@ router.post("/atlas-sync/run", authenticateToken, async (req: AuthRequest, res: 
 // ── EnrollPro Advisory Sync endpoints ────────────────────────────────────────
 
 // GET /api/admin/enrollpro-sync/status
-router.get("/enrollpro-sync/status", authenticateToken, async (req: AuthRequest, res: Response) => {
-  if (req.user?.role !== "ADMIN") return res.status(403).json({ message: "Forbidden" });
+router.get("/enrollpro-sync/status", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response) => {
   res.json(getEnrollProSyncStatus());
 });
 
 // POST /api/admin/enrollpro-sync/run — manually trigger sync
-router.post("/enrollpro-sync/run", authenticateToken, async (req: AuthRequest, res: Response) => {
-  if (req.user?.role !== "ADMIN") return res.status(403).json({ message: "Forbidden" });
+router.post("/enrollpro-sync/run", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response) => {
   const result = await runEnrollProSync();
   res.json({ message: "EnrollPro sync complete", result });
 });
@@ -1368,7 +1369,6 @@ router.post("/templates/reindex", authenticateToken, requireAdmin, async (req: A
   try {
     const target = String(req.body?.target || "all").toLowerCase();
     const includeSf = target === "all" || target === "sf";
-    const includeEcr = target === "all" || target === "ecr";
 
     const result = {
       target,
@@ -1377,12 +1377,6 @@ router.post("/templates/reindex", authenticateToken, requireAdmin, async (req: A
         formsDetected: 0,
         upserted: 0,
         skippedNoMatch: 0,
-      },
-      ecr: {
-        filesScanned: 0,
-        created: 0,
-        updatedExisting: 0,
-        skippedExisting: 0,
       },
     };
 
@@ -1444,69 +1438,6 @@ router.post("/templates/reindex", authenticateToken, requireAdmin, async (req: A
       }
     }
 
-    if (includeEcr) {
-      const ecrDir = path.join(__dirname, "../../uploads/ecr-templates");
-      if (fs.existsSync(ecrDir)) {
-        const ecrFiles = fs
-          .readdirSync(ecrDir)
-          .filter((f) => /\.(xlsx|xls)$/i.test(f));
-
-        for (const fileName of ecrFiles) {
-          result.ecr.filesScanned++;
-          const filePath = path.join(ecrDir, fileName);
-          const inferredSubjectName = deriveEcrSubjectName(fileName);
-          const inferredSubjectType = inferEcrSubjectType(inferredSubjectName, fileName);
-          const existing = await prisma.eCRTemplate.findFirst({ where: { filePath } });
-          if (existing) {
-            const shouldRefreshName =
-              !existing.subjectName ||
-              /^\s*ecr\s*$/i.test(existing.subjectName) ||
-              /^\s*ecr[\s_-]*\d+\s*$/i.test(existing.subjectName);
-
-            const shouldUpdate =
-              shouldRefreshName ||
-              !existing.subjectType ||
-              existing.uploadedByName !== "Admin";
-
-            if (shouldUpdate) {
-              await prisma.eCRTemplate.update({
-                where: { id: existing.id },
-                data: {
-                  ...(shouldRefreshName ? { subjectName: inferredSubjectName } : {}),
-                  ...(!existing.subjectType && inferredSubjectType ? { subjectType: inferredSubjectType } : {}),
-                  uploadedByName: "Admin",
-                  uploadedBy: req.user!.id,
-                  updatedAt: new Date(),
-                } as any,
-              });
-              result.ecr.updatedExisting++;
-            } else {
-              result.ecr.skippedExisting++;
-            }
-            continue;
-          }
-
-          const stat = fs.statSync(filePath);
-          await prisma.eCRTemplate.create({
-            data: {
-              subjectName: inferredSubjectName,
-              subjectType: inferredSubjectType,
-              description: "Re-indexed from uploads/ecr-templates",
-              filePath,
-              fileName,
-              fileSize: Number(stat.size),
-              placeholders: [],
-              instructions: "Re-indexed automatically by admin endpoint",
-              isActive: true,
-              uploadedBy: req.user!.id,
-              uploadedByName: "Admin",
-            } as any,
-          });
-          result.ecr.created++;
-        }
-      }
-    }
-
     await createAuditLog(
       AuditAction.CONFIG,
       req.user!,
@@ -1521,18 +1452,17 @@ router.post("/templates/reindex", authenticateToken, requireAdmin, async (req: A
 
     res.json({ message: "Template re-index completed", result });
   } catch (error: any) {
-    console.error("Error during template re-index:", error);
-    res.status(500).json({ message: "Template re-index failed", error: error.message });
+    logger.error("Error during template re-index:", error);
+    res.status(500).json({ message: "Template re-index failed" });
   }
 });
 
 // ── Class Assignment Management ──────────────────────────────────────────────
 
 // GET /api/admin/class-assignments/options — get teachers, subjects, sections for dropdowns
-router.get("/class-assignments/options", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
-  if (req.user?.role !== "ADMIN") { res.status(403).json({ message: "Forbidden" }); return; }
+router.get("/class-assignments/options", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const schoolYear = (req.query.schoolYear as string) || "2026-2027";
+    const schoolYear = (req.query.schoolYear as string) || await getActiveSchoolYearLabel();
     const [teachers, subjects, sections] = await Promise.all([
       prisma.teacher.findMany({
         include: { user: { select: { firstName: true, lastName: true, email: true } } },
@@ -1546,15 +1476,15 @@ router.get("/class-assignments/options", authenticateToken, async (req: AuthRequ
     ]);
     res.json({ teachers, subjects, sections });
   } catch (err: any) {
-    res.status(500).json({ message: err.message });
+    logger.error("Error fetching class assignment options:", err);
+    res.status(500).json({ message: "Failed to fetch class assignment options" });
   }
 });
 
 // GET /api/admin/class-assignments — list all with teacher/subject/section
-router.get("/class-assignments", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
-  if (req.user?.role !== "ADMIN") { res.status(403).json({ message: "Forbidden" }); return; }
+router.get("/class-assignments", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const schoolYear = (req.query.schoolYear as string) || "2026-2027";
+    const schoolYear = (req.query.schoolYear as string) || await getActiveSchoolYearLabel();
     const assignments = await prisma.classAssignment.findMany({
       where: { schoolYear },
       include: {
@@ -1572,7 +1502,7 @@ router.get("/class-assignments", authenticateToken, async (req: AuthRequest, res
       },
       include: {
         teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
-        section: { select: { id: true, name: true, gradeLevel: true } },
+        section: { select: { id: true, name: true, gradeLevel: true, program: true } },
       },
     });
 
@@ -1656,13 +1586,13 @@ router.get("/class-assignments", authenticateToken, async (req: AuthRequest, res
 
     res.json({ assignments, workloadSummary });
   } catch (err: any) {
-    res.status(500).json({ message: err.message });
+    logger.error("Error fetching class assignments:", err);
+    res.status(500).json({ message: "Failed to fetch class assignments" });
   }
 });
 
 // POST /api/admin/class-assignments — create a class assignment
-router.post("/class-assignments", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
-  if (req.user?.role !== "ADMIN") { res.status(403).json({ message: "Forbidden" }); return; }
+router.post("/class-assignments", authenticateToken, authorizeRoles("ADMIN"), validate(classAssignmentCreateSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { teacherId, subjectId, sectionId, schoolYear } = req.body;
     if (!teacherId || !subjectId || !sectionId || !schoolYear) {
@@ -1697,14 +1627,14 @@ router.post("/class-assignments", authenticateToken, async (req: AuthRequest, re
     if (err.code === "P2002") {
       res.status(409).json({ message: "This teacher is already assigned to that subject and section for this school year." });
     } else {
-      res.status(500).json({ message: err.message });
+      logger.error("Error creating class assignment:", err);
+      res.status(500).json({ message: "Failed to create class assignment" });
     }
   }
 });
 
 // DELETE /api/admin/class-assignments/:id — delete a class assignment
-router.delete("/class-assignments/:id", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
-  if (req.user?.role !== "ADMIN") { res.status(403).json({ message: "Forbidden" }); return; }
+router.delete("/class-assignments/:id", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const assignmentId = String(req.params.id ?? '');
     if (!assignmentId) {
@@ -1725,8 +1655,600 @@ router.delete("/class-assignments/:id", authenticateToken, async (req: AuthReque
     if (err.code === "P2025") {
       res.status(404).json({ message: "Assignment not found" });
     } else {
-      res.status(500).json({ message: err.message });
+      logger.error("Error archiving class assignment:", err);
+      res.status(500).json({ message: "Failed to archive class assignment" });
     }
+  }
+});
+
+// ─── Transmutation Table CRUD ─────────────────────────────────────────────
+
+// GET /api/admin/transmutation-table — fetch all entries
+router.get("/transmutation-table", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const table = await getTransmutationTable();
+    res.json(table);
+  } catch (err: any) {
+    logger.error("Error fetching transmutation table:", err);
+    res.status(500).json({ message: "Failed to fetch transmutation table" });
+  }
+});
+
+// PUT /api/admin/transmutation-table — replace entire table
+router.put("/transmutation-table", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { entries } = req.body;
+    if (!Array.isArray(entries) || entries.length === 0) {
+      res.status(400).json({ message: "entries array is required and must not be empty" });
+      return;
+    }
+
+    const validationError = validateTransmutationEntries(entries);
+    if (validationError) {
+      res.status(400).json({ message: validationError });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.transmutationEntry.deleteMany({});
+      await tx.transmutationEntry.createMany({
+        data: entries.map((e: { minGrade: number; maxGrade: number; transmutedGrade: number }) => ({
+          minGrade: e.minGrade,
+          maxGrade: e.maxGrade,
+          transmutedGrade: e.transmutedGrade,
+          isDefault: true,
+        })),
+      });
+    });
+
+    invalidateTransmutationCache();
+
+    await createAuditLog(
+      AuditAction.UPDATE,
+      { id: req.user?.id, firstName: req.user?.username, lastName: "", role: req.user?.role ?? "ADMIN" },
+      "TransmutationTable",
+      "CONFIG",
+      `Replaced transmutation table with ${entries.length} entries`,
+    );
+
+    const table = await getTransmutationTable();
+    res.json(table);
+  } catch (err: any) {
+    logger.error("Error updating transmutation table:", err);
+    res.status(500).json({ message: "Failed to update transmutation table" });
+  }
+});
+
+// POST /api/admin/transmutation-table/rows — add row(s)
+router.post("/transmutation-table/rows", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { minGrade, maxGrade, transmutedGrade } = req.body;
+    if (minGrade == null || maxGrade == null || transmutedGrade == null) {
+      res.status(400).json({ message: "minGrade, maxGrade, and transmutedGrade are required" });
+      return;
+    }
+
+    const existing = await prisma.transmutationEntry.findMany();
+    const validationError = validateTransmutationRowChange(existing, { minGrade, maxGrade, transmutedGrade });
+    if (validationError) {
+      res.status(400).json({ message: validationError });
+      return;
+    }
+
+    const row = await prisma.transmutationEntry.create({
+      data: { minGrade, maxGrade, transmutedGrade, isDefault: false },
+    });
+
+    invalidateTransmutationCache();
+    res.status(201).json(row);
+  } catch (err: any) {
+    logger.error("Error adding transmutation row:", err);
+    res.status(500).json({ message: "Failed to add transmutation row" });
+  }
+});
+
+// PUT /api/admin/transmutation-table/:id — update single row
+router.put("/transmutation-table/:id", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const { minGrade, maxGrade, transmutedGrade } = req.body;
+
+    if (minGrade == null || maxGrade == null || transmutedGrade == null) {
+      res.status(400).json({ message: "minGrade, maxGrade, and transmutedGrade are required" });
+      return;
+    }
+
+    const existing = await prisma.transmutationEntry.findMany();
+    const validationError = validateTransmutationRowChange(
+      existing,
+      { minGrade, maxGrade, transmutedGrade },
+      id
+    );
+    if (validationError) {
+      res.status(400).json({ message: validationError });
+      return;
+    }
+
+    const row = await prisma.transmutationEntry.update({
+      where: { id },
+      data: { minGrade, maxGrade, transmutedGrade },
+    });
+
+    invalidateTransmutationCache();
+    res.json(row);
+  } catch (err: any) {
+    if (err.code === "P2025") {
+      res.status(404).json({ message: "Entry not found" });
+    } else {
+      logger.error("Error updating transmutation row:", err);
+      res.status(500).json({ message: "Failed to update transmutation row" });
+    }
+  }
+});
+
+// DELETE /api/admin/transmutation-table/:id — remove row
+router.delete("/transmutation-table/:id", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+
+    const existing = await prisma.transmutationEntry.findMany();
+    const validationError = validateTransmutationRowChange(existing, null, id);
+    if (validationError) {
+      res.status(400).json({ message: validationError });
+      return;
+    }
+
+    await prisma.transmutationEntry.delete({ where: { id } });
+    invalidateTransmutationCache();
+    res.json({ message: "Deleted" });
+  } catch (err: any) {
+    if (err.code === "P2025") {
+      res.status(404).json({ message: "Entry not found" });
+    } else {
+      logger.error("Error deleting transmutation row:", err);
+      res.status(500).json({ message: "Failed to delete transmutation row" });
+    }
+  }
+});
+
+// POST /api/admin/transmutation-table/reset — reset to DepEd defaults
+router.post("/transmutation-table/reset", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const defaultEntries = [
+      { minGrade: 99.50, maxGrade: 100.00, transmutedGrade: 100 },
+      { minGrade: 97.50, maxGrade: 99.49, transmutedGrade: 99 },
+      { minGrade: 96.00, maxGrade: 97.49, transmutedGrade: 98 },
+      { minGrade: 95.00, maxGrade: 95.99, transmutedGrade: 97 },
+      { minGrade: 94.00, maxGrade: 94.99, transmutedGrade: 96 },
+      { minGrade: 93.00, maxGrade: 93.99, transmutedGrade: 95 },
+      { minGrade: 92.00, maxGrade: 92.99, transmutedGrade: 94 },
+      { minGrade: 91.00, maxGrade: 91.99, transmutedGrade: 93 },
+      { minGrade: 90.00, maxGrade: 90.99, transmutedGrade: 92 },
+      { minGrade: 89.00, maxGrade: 89.99, transmutedGrade: 91 },
+      { minGrade: 88.00, maxGrade: 88.99, transmutedGrade: 90 },
+      { minGrade: 87.00, maxGrade: 87.99, transmutedGrade: 89 },
+      { minGrade: 86.00, maxGrade: 86.99, transmutedGrade: 88 },
+      { minGrade: 85.00, maxGrade: 85.99, transmutedGrade: 87 },
+      { minGrade: 84.00, maxGrade: 84.99, transmutedGrade: 86 },
+      { minGrade: 83.00, maxGrade: 83.99, transmutedGrade: 85 },
+      { minGrade: 82.00, maxGrade: 82.99, transmutedGrade: 84 },
+      { minGrade: 81.00, maxGrade: 81.99, transmutedGrade: 83 },
+      { minGrade: 80.00, maxGrade: 80.99, transmutedGrade: 82 },
+      { minGrade: 79.00, maxGrade: 79.99, transmutedGrade: 81 },
+      { minGrade: 78.00, maxGrade: 78.99, transmutedGrade: 80 },
+      { minGrade: 77.00, maxGrade: 77.99, transmutedGrade: 79 },
+      { minGrade: 76.00, maxGrade: 76.99, transmutedGrade: 78 },
+      { minGrade: 75.00, maxGrade: 75.99, transmutedGrade: 77 },
+      { minGrade: 73.00, maxGrade: 74.99, transmutedGrade: 76 },
+      { minGrade: 70.00, maxGrade: 72.99, transmutedGrade: 75 },
+      { minGrade: 68.00, maxGrade: 69.99, transmutedGrade: 74 },
+      { minGrade: 66.00, maxGrade: 67.99, transmutedGrade: 73 },
+      { minGrade: 64.00, maxGrade: 65.99, transmutedGrade: 72 },
+      { minGrade: 62.00, maxGrade: 63.99, transmutedGrade: 71 },
+      { minGrade: 60.00, maxGrade: 61.99, transmutedGrade: 70 },
+      { minGrade: 58.00, maxGrade: 59.99, transmutedGrade: 69 },
+      { minGrade: 56.00, maxGrade: 57.99, transmutedGrade: 68 },
+      { minGrade: 54.00, maxGrade: 55.99, transmutedGrade: 67 },
+      { minGrade: 52.00, maxGrade: 53.99, transmutedGrade: 66 },
+      { minGrade: 50.00, maxGrade: 51.99, transmutedGrade: 65 },
+      { minGrade: 48.00, maxGrade: 49.99, transmutedGrade: 64 },
+      { minGrade: 46.00, maxGrade: 47.99, transmutedGrade: 63 },
+      { minGrade: 43.00, maxGrade: 45.99, transmutedGrade: 62 },
+      { minGrade: 40.00, maxGrade: 42.99, transmutedGrade: 61 },
+      { minGrade: 0.00, maxGrade: 39.99, transmutedGrade: 60 },
+    ];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.transmutationEntry.deleteMany({});
+      await tx.transmutationEntry.createMany({
+        data: defaultEntries.map((e) => ({ ...e, isDefault: true })),
+      });
+    });
+
+    invalidateTransmutationCache();
+
+    await createAuditLog(
+      AuditAction.UPDATE,
+      { id: req.user?.id, firstName: req.user?.username, lastName: "", role: req.user?.role ?? "ADMIN" },
+      "TransmutationTable",
+      "CONFIG",
+      "Reset transmutation table to DepEd defaults (41 entries)",
+    );
+
+    const table = await getTransmutationTable();
+    res.json(table);
+  } catch (err: any) {
+    logger.error("Error resetting transmutation table:", err);
+    res.status(500).json({ message: "Failed to reset transmutation table" });
+  }
+});
+
+// ─── Per-Subject Weight Overrides ─────────────────────────────────────────
+
+// GET /api/admin/subject-weights — list all subjects with weights + override status
+router.get("/subject-weights", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const subjects = await prisma.subject.findMany({
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        type: true,
+        writtenWorkWeight: true,
+        perfTaskWeight: true,
+        quarterlyAssessWeight: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const result = subjects.map((s) => ({
+      ...s,
+      hasOverride: s.writtenWorkWeight !== null && s.perfTaskWeight !== null && s.quarterlyAssessWeight !== null,
+    }));
+
+    res.json(result);
+  } catch (err: any) {
+    logger.error("Error fetching subject weights:", err);
+    res.status(500).json({ message: "Failed to fetch subject weights" });
+  }
+});
+
+// PUT /api/admin/subject-weights/:subjectId — set per-subject override
+router.put("/subject-weights/:subjectId", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const subjectId = req.params.subjectId as string;
+    const { writtenWorkWeight, perfTaskWeight, quarterlyAssessWeight } = req.body;
+
+    if (writtenWorkWeight == null || perfTaskWeight == null || quarterlyAssessWeight == null) {
+      res.status(400).json({ message: "writtenWorkWeight, perfTaskWeight, and quarterlyAssessWeight are required" });
+      return;
+    }
+
+    const subject = await prisma.subject.update({
+      where: { id: subjectId },
+      data: {
+        writtenWorkWeight: Number(writtenWorkWeight),
+        perfTaskWeight: Number(perfTaskWeight),
+        quarterlyAssessWeight: Number(quarterlyAssessWeight),
+      },
+    });
+
+    res.json(subject);
+  } catch (err: any) {
+    if (err.code === "P2025") {
+      res.status(404).json({ message: "Subject not found" });
+    } else {
+      logger.error("Error updating subject weight:", err);
+      res.status(500).json({ message: "Failed to update subject weight" });
+    }
+  }
+});
+
+// DELETE /api/admin/subject-weights/:subjectId — clear override (revert to group default)
+router.delete("/subject-weights/:subjectId", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const subjectId = req.params.subjectId as string;
+
+    const subject = await prisma.subject.update({
+      where: { id: subjectId },
+      data: {
+        writtenWorkWeight: null,
+        perfTaskWeight: null,
+        quarterlyAssessWeight: null,
+      },
+    });
+
+    res.json(subject);
+  } catch (err: any) {
+    if (err.code === "P2025") {
+      res.status(404).json({ message: "Subject not found" });
+    } else {
+      logger.error("Error clearing subject weight:", err);
+      res.status(500).json({ message: "Failed to clear subject weight" });
+    }
+  }
+});
+
+// POST /api/admin/subject-weights/bulk — bulk update
+router.post("/subject-weights/bulk", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { updates } = req.body;
+    if (!Array.isArray(updates) || updates.length === 0) {
+      res.status(400).json({ message: "updates array is required" });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const u of updates) {
+        await tx.subject.update({
+          where: { id: u.subjectId },
+          data: {
+            writtenWorkWeight: u.writtenWorkWeight ?? null,
+            perfTaskWeight: u.perfTaskWeight ?? null,
+            quarterlyAssessWeight: u.quarterlyAssessWeight ?? null,
+          },
+        });
+      }
+    });
+
+    res.json({ message: `Updated ${updates.length} subjects` });
+  } catch (err: any) {
+    if (err.code === "P2025") {
+      res.status(404).json({ message: "One or more subjects not found" });
+    } else {
+      logger.error("Error bulk updating subject weights:", err);
+      res.status(500).json({ message: "Failed to bulk update subject weights" });
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// School Year Management
+// ---------------------------------------------------------------------------
+
+// List all school years
+router.get("/school-years", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const years = await prisma.schoolYear.findMany({ orderBy: { label: "desc" } });
+    res.json({ schoolYears: years });
+  } catch (err: any) {
+    logger.error("Error fetching school years:", err);
+    res.status(500).json({ message: "Failed to fetch school years" });
+  }
+});
+
+// Create a new school year
+router.post("/school-years", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { label, startDate, endDate } = req.body;
+    if (!label) {
+      res.status(400).json({ message: "label is required (e.g. '2027-2028')" });
+      return;
+    }
+
+    const existing = await prisma.schoolYear.findUnique({ where: { label } });
+    if (existing) {
+      res.status(409).json({ message: `School year ${label} already exists` });
+      return;
+    }
+
+    const year = await prisma.schoolYear.create({
+      data: {
+        label,
+        status: "DRAFT",
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+      },
+    });
+    invalidateSchoolYearCache();
+
+    const user = req.user;
+    if (user) {
+      await createAuditLog(
+        AuditAction.CREATE,
+        user,
+        `Created School Year ${label}`,
+        "School Year",
+        `Created new school year: ${label} (status: DRAFT)`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.INFO
+      );
+    }
+
+    res.status(201).json(year);
+  } catch (err: any) {
+    logger.error("Error creating school year:", err);
+    res.status(500).json({ message: "Failed to create school year" });
+  }
+});
+
+// Update school year status
+router.patch("/school-years/:id", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const { status, startDate, endDate } = req.body;
+
+    const year = await prisma.schoolYear.findUnique({ where: { id } });
+    if (!year) {
+      res.status(404).json({ message: "School year not found" });
+      return;
+    }
+
+    const updateData: any = {};
+    if (status) updateData.status = status;
+    if (startDate) updateData.startDate = new Date(startDate);
+    if (endDate) updateData.endDate = new Date(endDate);
+    if (status === "ARCHIVED" || status === "COMPLETED") updateData.archivedAt = new Date();
+
+    const updated = await prisma.schoolYear.update({ where: { id }, data: updateData });
+    invalidateSchoolYearCache();
+
+    const user = req.user;
+    if (user) {
+      await createAuditLog(
+        AuditAction.UPDATE,
+        user,
+        `Updated School Year ${year.label}`,
+        "School Year",
+        `Updated school year ${year.label}: status=${updated.status}`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.INFO
+      );
+    }
+
+    res.json(updated);
+  } catch (err: any) {
+    logger.error("Error updating school year:", err);
+    res.status(500).json({ message: "Failed to update school year" });
+  }
+});
+
+// Delete a school year (only DRAFT status)
+router.delete("/school-years/:id", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+
+    const year = await prisma.schoolYear.findUnique({ where: { id } });
+    if (!year) {
+      res.status(404).json({ message: "School year not found" });
+      return;
+    }
+
+    if (year.status !== "DRAFT") {
+      res.status(400).json({ message: `Cannot delete ${year.label} (status: ${year.status}). Only DRAFT years can be deleted.` });
+      return;
+    }
+
+    await prisma.schoolYear.delete({ where: { id } });
+    invalidateSchoolYearCache();
+
+    const user = req.user;
+    if (user) {
+      await createAuditLog(
+        AuditAction.DELETE,
+        user,
+        `Deleted School Year ${year.label}`,
+        "School Year",
+        `Deleted draft school year: ${year.label}`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.WARNING
+      );
+    }
+
+    res.json({ message: `School year ${year.label} deleted` });
+  } catch (err: any) {
+    logger.error("Error deleting school year:", err);
+    res.status(500).json({ message: "Failed to delete school year" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Archive School Year — freeze all data for a completed year
+// ---------------------------------------------------------------------------
+router.post("/archive-year", authenticateToken, requireAdmin, validate(archiveYearSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { schoolYear } = req.body;
+    if (!schoolYear) {
+      res.status(400).json({ message: "schoolYear is required" });
+      return;
+    }
+
+    // Verify the year exists in the data
+    const sectionCount = await prisma.section.count({ where: { schoolYear } });
+    if (sectionCount === 0) {
+      res.status(404).json({ message: `No sections found for school year ${schoolYear}` });
+      return;
+    }
+
+    // Prevent archiving the current active year
+    const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+    if (settings?.currentSchoolYear === schoolYear) {
+      res.status(400).json({ message: `Cannot archive the current active school year (${schoolYear}). Roll over to a new year first.` });
+      return;
+    }
+
+    const archiveTime = new Date();
+    const archiveReason = `Year ${schoolYear} archived`;
+
+    // Run all archival in a transaction
+    const results = await prisma.$transaction(async (tx) => {
+      // 1. Archive all Grades for this school year
+      const gradesResult = await tx.grade.updateMany({
+        where: {
+          classAssignment: { schoolYear }
+        },
+        data: {
+          isArchived: true,
+          archivedAt: archiveTime,
+          archivedReason: archiveReason
+        }
+      });
+
+      // 2. Archive all Enrollments
+      const enrollmentsResult = await tx.enrollment.updateMany({
+        where: { schoolYear },
+        data: {
+          isArchived: true,
+          archivedAt: archiveTime,
+          archivedReason: archiveReason
+        }
+      });
+
+      // 3. Mark Sections as COMPLETED
+      const sectionsResult = await tx.section.updateMany({
+        where: { schoolYear },
+        data: {
+          status: "COMPLETED",
+          archivedAt: archiveTime
+        }
+      });
+
+      // 4. Archive ClassAssignments
+      const assignmentsResult = await tx.classAssignment.updateMany({
+        where: { schoolYear },
+        data: {
+          isActive: false,
+          archivedAt: archiveTime,
+          archivedReason: archiveReason
+        }
+      });
+
+      return {
+        grades: gradesResult.count,
+        enrollments: enrollmentsResult.count,
+        sections: sectionsResult.count,
+        assignments: assignmentsResult.count
+      };
+    });
+
+    // Audit log
+    const user = req.user;
+    if (user) {
+      await createAuditLog(
+        AuditAction.UPDATE,
+        user,
+        `Archive School Year ${schoolYear}`,
+        "System Settings",
+        `Archived year ${schoolYear}: ${results.grades} grades, ${results.enrollments} enrollments, ${results.sections} sections, ${results.assignments} assignments frozen`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.WARNING
+      );
+    }
+
+    // Auto-lock grades after archiving
+    await prisma.systemSettings.update({
+      where: { id: "main" },
+      data: { gradeLock: true },
+    });
+
+    res.json({
+      message: `School year ${schoolYear} archived successfully`,
+      schoolYear,
+      archived: results
+    });
+  } catch (err: any) {
+    logger.error("Error archiving school year:", err);
+    res.status(500).json({ message: "Failed to archive school year" });
   }
 });
 

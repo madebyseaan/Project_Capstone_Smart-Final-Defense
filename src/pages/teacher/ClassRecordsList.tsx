@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { gradesApi, advisoryApi, type ClassAssignment, type GradeDeadlineInfo } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { GradeStatusBanner } from "@/components/GradeStatusBanner";
 import { useSyncStream } from "@/hooks/useSyncStream";
 import { GradeDeadlineBanner } from "@/components/GradeDeadlineBanner";
 
@@ -299,6 +300,14 @@ export default function ClassRecordsList() {
         <GradeDeadlineBanner deadline={gradeDeadline} hideLink />
       )}
 
+      {/* Grade Status Banner */}
+      <GradeStatusBanner
+        currentTerm={gradeDeadline?.currentTerm ?? "T1"}
+        termEndDate={gradeDeadline?.currentTerm === "T1" ? gradeDeadline?.t1EndDate : gradeDeadline?.currentTerm === "T2" ? gradeDeadline?.t2EndDate : gradeDeadline?.t3EndDate}
+        gradeLock={gradeDeadline?.gradeLock ?? false}
+        colors={colors}
+      />
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
         <div className="space-y-2">
           <div className="flex items-center gap-3 flex-wrap">
@@ -464,7 +473,7 @@ export default function ClassRecordsList() {
                           <div className="px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 group-hover:bg-white transition-colors">
                             <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
                             <p className="text-sm text-slate-900 font-black font-mono tracking-tighter text-center">
-                              {assignment.subject.writtenWorkWeight} / {assignment.subject.perfTaskWeight} / {assignment.subject.quarterlyAssessWeight}
+                              {assignment.effectiveWeights?.ww ?? assignment.subject.writtenWorkWeight} / {assignment.effectiveWeights?.pt ?? assignment.subject.perfTaskWeight} / {assignment.effectiveWeights?.qa ?? assignment.subject.quarterlyAssessWeight}
                             </p>
                           </div>
                         </div>
@@ -556,7 +565,7 @@ export default function ClassRecordsList() {
                               <div className="px-5 py-3 rounded-2xl bg-rose-50 border border-rose-100 group-hover:bg-white transition-colors">
                                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
                                 <p className="text-sm text-slate-900 font-black font-mono tracking-tighter text-center">
-                                  {assignment.subject.writtenWorkWeight} / {assignment.subject.perfTaskWeight} / {assignment.subject.quarterlyAssessWeight}
+                                  {assignment.effectiveWeights?.ww ?? assignment.subject.writtenWorkWeight} / {assignment.effectiveWeights?.pt ?? assignment.subject.perfTaskWeight} / {assignment.effectiveWeights?.qa ?? assignment.subject.quarterlyAssessWeight}
                                 </p>
                               </div>
                             </div>

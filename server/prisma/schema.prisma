@@ -7,27 +7,29 @@ datasource db {
 }
 
 model User {
-  id                   String          @id @default(cuid())
-  username             String          @unique
-  password             String
-  role                 Role
-  status               UserStatus      @default(ACTIVE)
-  suspendedAt          DateTime?
-  suspendedBy          String?
-  suspensionReason     String?
-  deactivatedAt        DateTime?
-  deactivatedBy        String?
-  deactivationReason   String?
-  firstName            String?
-  lastName             String?
-  email                String?
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
-  auditLogs            AuditLog[]      @relation("AuditLogUser")
-  uploadedEcrTemplates ECRTemplate[]   @relation("ECRTemplateUploader")
-  uploadedExcelForms   ExcelTemplate[] @relation("ExcelTemplateUploader")
-  refreshTokens        RefreshToken[]
-  teacher              Teacher?
+  id                 String          @id @default(cuid())
+  username           String          @unique
+  password           String
+  role               Role
+  status             UserStatus      @default(ACTIVE)
+  suspendedAt        DateTime?
+  suspendedBy        String?
+  suspensionReason   String?
+  deactivatedAt      DateTime?
+  deactivatedBy      String?
+  deactivationReason String?
+  firstName          String?
+  lastName           String?
+  email              String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  auditLogs          AuditLog[]      @relation("AuditLogUser")
+  uploadedExcelForms ExcelTemplate[] @relation("ExcelTemplateUploader")
+  refreshTokens      RefreshToken[]
+  teacher            Teacher?
+  editRequests       GradeEditRequest[] @relation("EditRequestTeacher")
+  approvedRequests   GradeEditRequest[] @relation("EditRequestApprover")
+  finalizedGrades    Grade[]            @relation("FinalizedGrades")
 }
 
 model Teacher {
@@ -71,6 +73,20 @@ model Student {
   address         String?
   guardianName    String?
   guardianContact String?
+  // Extended profile fields (synced from EnrollPro)
+  religion        String?
+  motherTongue    String?
+  barangay        String?
+  city            String?
+  province        String?
+  fatherName      String?
+  fatherContact   String?
+  motherName      String?
+  motherContact   String?
+  ipCommunity     Boolean?      @default(false)
+  is4PsBeneficiary Boolean?     @default(false)
+  disability      String?
+  isBalikAral     Boolean?      @default(false)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   attendance      Attendance[]
@@ -86,6 +102,9 @@ model Section {
   gradeLevel       GradeLevel
   schoolYear       String
   adviserId        String?
+  program          String            @default("REGULAR") // REGULAR, SPA, SPS, STE
+  status           String            @default("ACTIVE") // ACTIVE, ARCHIVED, COMPLETED
+  archivedAt       DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   attendance       Attendance[]
@@ -105,13 +124,13 @@ model Subject {
   name                  String
   description           String?
   type                  SubjectType       @default(CORE)
-  writtenWorkWeight     Int               @default(20)
-  perfTaskWeight        Int               @default(50)
-  quarterlyAssessWeight Int               @default(30)
+  writtenWorkWeight     Int?
+  perfTaskWeight        Int?
+  quarterlyAssessWeight Int?
   // Atlas rotation metadata — null = non-rotating subject
-  rotationTermGroupId   String?           // e.g. "SCIENCE", "TLE_EXPLORATORY"
-  rotationTermRank      Int?              // 1, 2, or 3 — maps to T1, T2, T3 on SF9
-  rotationOutputLabel   String?           // Atlas outputLabel e.g. "SCIENCE", "TLE"
+  rotationTermGroupId   String? // e.g. "SCIENCE", "TLE_EXPLORATORY"
+  rotationTermRank      Int? // 1, 2, or 3 — maps to T1, T2, T3 on SF9
+  rotationOutputLabel   String? // Atlas outputLabel e.g. "SCIENCE", "TLE"
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   classAssignments      ClassAssignment[]
@@ -119,59 +138,65 @@ model Subject {
 }
 
 model ClassAssignment {
-  id              String    @id @default(cuid())
+  id              String          @id @default(cuid())
   teacherId       String
   subjectId       String
   sectionId       String
   schoolYear      String
   teachingMinutes Int?
-  isActive        Boolean   @default(true)
+  isActive        Boolean         @default(true)
   archivedAt      DateTime?
   archivedReason  String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  ecrFileName     String?
-  ecrLastSyncedAt DateTime?
-  section         Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  subject         Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  teacher         Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  section         Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject         Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher         Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   grades          Grade[]
   workloadEntries WorkloadEntry[]
 
   @@unique([teacherId, subjectId, sectionId, schoolYear])
   @@index([schoolYear])
+  @@index([teacherId])
+  @@index([sectionId])
+  @@index([subjectId])
 }
 
 model ScheduleEntry {
-  id           String   @id @default(cuid())
-  teacherId    String
-  subjectId    String
-  sectionId    String
-  schoolYear   String
-  day          String
-  startTime    String
-  endTime      String
-  roomId       Int?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  subject      Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  section      Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  teacherId  String
+  subjectId  String
+  sectionId  String
+  schoolYear String
+  day        String
+  startTime  String
+  endTime    String
+  roomId     Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  teacher    Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  section    Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
   @@unique([teacherId, subjectId, sectionId, schoolYear, day, startTime])
   @@index([teacherId, schoolYear])
+  @@index([sectionId])
 }
 
 model Enrollment {
-  id         String           @id @default(cuid())
-  studentId  String
-  sectionId  String
-  schoolYear String
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  status     EnrollmentStatus @default(ENROLLED)
-  section    Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id             String           @id @default(cuid())
+  studentId      String
+  sectionId      String
+  schoolYear     String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  status         EnrollmentStatus @default(ENROLLED)
+  isArchived     Boolean          @default(false)
+  archivedAt     DateTime?
+  archivedReason String?
+  profileSnapshot Json?            // Student profile snapshot at enrollment time (immutable)
+  section        Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  student        Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, sectionId, schoolYear])
   @@index([schoolYear, status])
@@ -180,49 +205,60 @@ model Enrollment {
 }
 
 model Grade {
-  id                   String          @id @default(cuid())
-  studentId            String
-  classAssignmentId    String
-  term                 Term
-  writtenWorkScores    Json?
-  perfTaskScores       Json?
-  quarterlyAssessScore Float?
-  quarterlyAssessMax   Float?          @default(100)
-  qaDescription        String?
-  qaDate               String?
-  writtenWorkPS        Float?
-  perfTaskPS           Float?
-  quarterlyAssessPS    Float?
-  initialGrade         Float?
-  quarterlyGrade       Float?
-  remarks              String?
+  id                    String          @id @default(cuid())
+  studentId             String
+  classAssignmentId     String
+  term                  Term
+  writtenWorkScores     Json?
+  perfTaskScores        Json?
+  quarterlyAssessScore  Float?
+  quarterlyAssessMax    Float?          @default(100)
+  qaDescription         String?
+  qaDate                String?
+  writtenWorkPS         Float?
+  perfTaskPS            Float?
+  quarterlyAssessPS     Float?
+  initialGrade          Float?
+  quarterlyGrade        Float?
+  remarks               String?
   qualitativeDescriptor String?
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
-  classAssignment      ClassAssignment @relation(fields: [classAssignmentId], references: [id], onDelete: Cascade)
-  student              Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  isArchived            Boolean         @default(false)
+  archivedAt            DateTime?
+  archivedReason        String?
+  status                GradeStatus     @default(DRAFT)
+  finalizedBy           String?
+  finalizedAt           DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  classAssignment       ClassAssignment @relation(fields: [classAssignmentId], references: [id], onDelete: Cascade)
+  student               Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  finalizedByUser       User?           @relation("FinalizedGrades", fields: [finalizedBy], references: [id])
 
   @@unique([studentId, classAssignmentId, term])
+  @@index([studentId])
+  @@index([classAssignmentId])
+  @@index([status])
 }
 
 model GradeSnapshot {
-  id                 String   @id @default(cuid())
-  gradeId            String?
-  studentId          String
-  classAssignmentId  String
-  teacherId          String
-  subjectCode        String
-  subjectName        String
-  sectionId          String
-  sectionName        String
-  schoolYear         String
-  term               Term
-  snapshot           Json
-  createdAt          DateTime @default(now())
+  id                String   @id @default(cuid())
+  gradeId           String?
+  studentId         String
+  classAssignmentId String
+  teacherId         String
+  subjectCode       String
+  subjectName       String
+  sectionId         String
+  sectionName       String
+  schoolYear        String
+  term              Term
+  snapshot          Json
+  createdAt         DateTime @default(now())
 
   @@index([studentId, classAssignmentId, term])
   @@index([classAssignmentId, term])
   @@index([teacherId, createdAt])
+  @@index([gradeId])
 }
 
 model Attendance {
@@ -245,22 +281,23 @@ model Attendance {
 }
 
 model WorkloadEntry {
-  id               String         @id @default(cuid())
-  teacherId        String
-  sectionId        String?
+  id                String           @id @default(cuid())
+  teacherId         String
+  sectionId         String?
   classAssignmentId String?
-  schoolYear       String
-  type             WorkloadType
-  minutes          Int
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  teacher          Teacher        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  section          Section?       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  classAssignment  ClassAssignment? @relation(fields: [classAssignmentId], references: [id], onDelete: Cascade)
+  schoolYear        String
+  type              WorkloadType
+  minutes           Int
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  teacher           Teacher          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  section           Section?         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  classAssignment   ClassAssignment? @relation(fields: [classAssignmentId], references: [id], onDelete: Cascade)
 
   @@unique([teacherId, sectionId, schoolYear, type])
   @@index([teacherId, schoolYear])
   @@index([type, schoolYear])
+  @@index([sectionId])
 }
 
 model AuditLog {
@@ -304,6 +341,21 @@ model SyncHistory {
   @@index([source])
 }
 
+model SchoolYear {
+  id         String    @id @default(cuid())
+  label      String    @unique // "2026-2027"
+  externalId Int?      @unique  // EnrollPro numeric ID — primary align key
+  status     String    @default("ACTIVE") // DRAFT, ACTIVE, ARCHIVED, COMPLETED
+  startDate  DateTime?
+  endDate    DateTime?
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Reverse relation: which SystemSettings points to this year
+  systemSettings SystemSettings[]
+}
+
 model SystemSettings {
   id                 String    @id @default("main")
   schoolName         String    @default("Sample High School")
@@ -314,6 +366,8 @@ model SystemSettings {
   contactNumber      String?
   email              String?
   currentSchoolYear  String    @default("2025-2026")
+  schoolYearId       String?   // FK to SchoolYear — prefer reading from here
+  schoolYear         SchoolYear? @relation(fields: [schoolYearId], references: [id], onDelete: SetNull)
   currentTerm        Term      @default(T1)
   logoUrl            String?
   primaryColor       String    @default("#6366f1")
@@ -333,6 +387,7 @@ model SystemSettings {
   t3EndDate          DateTime?
   t3StartDate        DateTime?
   lastEnrollProSync  DateTime?
+  gradeLock          Boolean   @default(false)  // When true, teachers cannot edit grades (EOSY lock)
 }
 
 model GradingConfig {
@@ -344,6 +399,18 @@ model GradingConfig {
   isDepEdDefault        Boolean     @default(true)
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
+}
+
+model TransmutationEntry {
+  id              String   @id @default(cuid())
+  minGrade        Float
+  maxGrade        Float
+  transmutedGrade Int
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([minGrade])
 }
 
 model ExcelTemplate {
@@ -369,28 +436,6 @@ model ExcelTemplate {
   @@index([filePath])
 }
 
-model ECRTemplate {
-  id             String       @id @default(cuid())
-  subjectName    String
-  description    String?
-  filePath       String
-  fileName       String
-  fileSize       Int
-  placeholders   Json?
-  instructions   String?
-  isActive       Boolean      @default(true)
-  uploadedBy     String
-  uploadedByName String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  subjectType    SubjectType?
-  uploader       User         @relation("ECRTemplateUploader", fields: [uploadedBy], references: [id])
-
-  @@index([subjectName])
-  @@index([isActive])
-  @@index([filePath])
-}
-
 enum Role {
   TEACHER
   ADMIN
@@ -401,6 +446,12 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   DEACTIVATED
+}
+
+enum GradeStatus {
+  DRAFT
+  FINALIZED
+  LOCKED
 }
 
 enum Term {
@@ -467,4 +518,36 @@ enum FormType {
   SF9
   SF10
   SF7
+}
+
+model GradeEditRequest {
+  id           String            @id @default(cuid())
+  teacherId    String
+  teacherName  String
+  term         String
+  schoolYear   String
+  gradeLevel   String?
+  section      String?
+  subject      String?
+  classAssignmentId String?
+  reason       String
+  status       EditRequestStatus @default(PENDING)
+  approvedById String?
+  approvedByName String?
+  expiresAt    DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  teacher      User?             @relation("EditRequestTeacher", fields: [teacherId], references: [id])
+  approver     User?             @relation("EditRequestApprover", fields: [approvedById], references: [id])
+
+  @@index([status])
+  @@index([teacherId])
+  @@index([createdAt])
+}
+
+enum EditRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
 }

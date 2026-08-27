@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import {
   gradesApi,
-  SERVER_URL,
   type ClassAssignment,
   type ClassRecord,
   type ScoreItem,
@@ -17,13 +16,15 @@ import {
 import { ClassRecordTable } from "./components/ClassRecordTable";
 import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
 import { GradeEditModal } from "./components/GradeEditModal";
+import { GradeStatusBanner } from "@/components/GradeStatusBanner";
 import { AssessmentHeader } from "./components/AssessmentHeader";
 import { ClassRecordHero } from "./components/ClassRecordHero";
 import { ClassRecordStats } from "./components/ClassRecordStats";
-import { EcrGenerationDialog } from "./components/EcrGenerationDialog";
 import { ClassRecordTour } from "./components/ClassRecordTour";
+import { EditRequestModal } from "./components/EditRequestModal";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "@/contexts/ThemeContext";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
 import { HGDescriptorPanel } from "./components/HGDescriptorPanel";
 import {
@@ -56,14 +57,22 @@ function getGradeColor(grade: number | null): string {
 
 export default function ClassRecordView() {
   const { classAssignmentId } = useParams();
+  const { colors } = useTheme();
+
+  const userName = useMemo(() => {
+    try {
+      const u = JSON.parse(sessionStorage.getItem("user_teacher") || sessionStorage.getItem("user") || "{}");
+      return `${u.firstName || ""} ${u.lastName || ""}`.trim() || "—";
+    } catch { return "—"; }
+  }, []);
+
   const [classAssignment, setClassAssignment] = useState<ClassAssignment | null>(null);
   const [classRecord, setClassRecord] = useState<ClassRecord[]>([]);
   const [effectiveWeights, setEffectiveWeights] = useState<{
     ww: number;
     pt: number;
     qa: number;
-    source: "subject" | "generic-fallback";
-    hasExactEcrTemplate: boolean;
+    source: "subject-override" | "subject-type" | "generic-fallback";
   } | null>(null);
   const [selectedTerm, setSelectedTerm] = useState<string>("T1");
   const [termInitialized, setTermInitialized] = useState(false);
@@ -72,6 +81,58 @@ export default function ClassRecordView() {
   const [success, setSuccess] = useState<string | null>(null);
   const [savingDescriptorStudentId, setSavingDescriptorStudentId] = useState<string | null>(null);
   const [showAssessmentDetails, setShowAssessmentDetails] = useState(false);
+  const [currentTerm, setCurrentTerm] = useState<string>("T1");
+  const [termDates, setTermDates] = useState<{ t1EndDate?: string | null; t2EndDate?: string | null; t3EndDate?: string | null } | null>(null);
+  const [gradeLock, setGradeLock] = useState(false);
+
+  // Edit request state (must be declared before isViewOnly)
+  const [editRequestModalOpen, setEditRequestModalOpen] = useState(false);
+  const [editRequestStatus, setEditRequestStatus] = useState<"idle" | "pending" | "approved" | "rejected">("idle");
+  const [editRequestExpiresAt, setEditRequestExpiresAt] = useState<Date | null>(null);
+  const [editTimeRemaining, setEditTimeRemaining] = useState<string>("");
+
+  // Check if selected term is a past term (view-only mode)
+  const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+  const isPastTerm = currentTerm && termOrder[selectedTerm] < termOrder[currentTerm];
+  const isViewOnly = (isPastTerm || gradeLock) && editRequestStatus !== "approved";
+
+  // Compute time remaining for approved edit access
+  useEffect(() => {
+    if (editRequestStatus !== "approved" || !editRequestExpiresAt) return;
+    const updateRemaining = () => {
+      const now = new Date();
+      const diff = editRequestExpiresAt.getTime() - now.getTime();
+      if (diff <= 0) {
+        setEditTimeRemaining("Expired");
+        setEditRequestStatus("idle");
+        return;
+      }
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      setEditTimeRemaining(`${hours}h ${minutes}m remaining`);
+    };
+    updateRemaining();
+    const interval = setInterval(updateRemaining, 60000);
+    return () => clearInterval(interval);
+  }, [editRequestStatus, editRequestExpiresAt]);
+
+  // Check for existing edit requests on load
+  useEffect(() => {
+    if (isPastTerm && !gradeLock) {
+      gradesApi.getMyEditRequests().then((res) => {
+        const pending = res.data.requests?.find((r: any) => r.term === selectedTerm && r.status === "PENDING");
+        const approved = res.data.requests?.find((r: any) => r.term === selectedTerm && r.status === "APPROVED" && new Date(r.expiresAt) > new Date());
+        if (approved) {
+          setEditRequestStatus("approved");
+          setEditRequestExpiresAt(new Date(approved.expiresAt));
+        } else if (pending) {
+          setEditRequestStatus("pending");
+        } else {
+          setEditRequestStatus("idle");
+        }
+      }).catch(() => {});
+    }
+  }, [isPastTerm, gradeLock, selectedTerm]);
   const [wwMeta, setWwMeta] = useState<AssessmentTaskMeta[]>([]);
   const [ptMeta, setPtMeta] = useState<AssessmentTaskMeta[]>([]);
   const [qaMeta, setQaMeta] = useState<{ description: string; date: string }>({ description: '', date: '' });
@@ -87,7 +148,6 @@ export default function ClassRecordView() {
   const [showMobileWarning, setShowMobileWarning] = useState(false);
 
   const [separateByGender, setSeparateByGender] = useState(false);
-  const ecrFileInputRef = useRef<HTMLInputElement>(null);
   const isHGClass = (classAssignment?.subject?.code ?? '').startsWith('HG');
   // If the subject is a rotating subject (e.g. SCI_BIO = Term 1 only),
   // lock the term selector so the teacher can't accidentally enter grades in the wrong term.
@@ -197,7 +257,7 @@ export default function ClassRecordView() {
     });
   }, [classRecord, selectedTerm, wwCount, ptCount]);
 
-  const applyMetaToScores = (
+  const applyMetaToScores = useCallback((
     scores: ScoreItem[],
     category: 'WW' | 'PT',
     minLength = 0,
@@ -219,17 +279,59 @@ export default function ClassRecordView() {
         score: Number(existing.score ?? 0),
       };
     });
-  };
+  }, [wwMeta, ptMeta]);
 
-  const getCellKey = (sid: string, cat: 'WW' | 'PT' | 'QA', idx: number) => `${sid}:${cat}:${idx}`;
+  const fetchClassRecord = useCallback(async (silent = false) => {
+    if (!classAssignmentId) return;
+    try {
+      if (!silent) setLoading(true);
+      const response = await gradesApi.getClassRecord(classAssignmentId, selectedTerm);
 
-  const getMaxForCell = (cat: 'WW' | 'PT' | 'QA', idx: number): number => {
+      if (!termInitialized && response.data.currentTerm) {
+        setTermInitialized(true);
+        const forcedTerm = classAssignment?.subject?.rotationTermRank
+          ? `T${classAssignment.subject.rotationTermRank}`
+          : null;
+        const termToSet = forcedTerm ?? response.data.currentTerm;
+        if (termToSet !== selectedTerm) {
+          setSelectedTerm(termToSet);
+          return;
+        }
+      }
+
+      setClassAssignment(response.data.classAssignment);
+      setClassRecord(response.data.classRecord);
+      setEffectiveWeights(response.data.effectiveWeights ?? null);
+      if (response.data.currentTerm) {
+        setCurrentTerm(response.data.currentTerm);
+      }
+      if (response.data.termDates) {
+        setTermDates(response.data.termDates);
+      }
+      if (response.data.gradeLock !== undefined) {
+        setGradeLock(response.data.gradeLock);
+      }
+    } catch (err) {
+      console.error("Failed to fetch class record:", err);
+      if (!silent) setError("Failed to load class record");
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [classAssignmentId, selectedTerm, termInitialized, classAssignment?.subject?.rotationTermRank]);
+
+  const getCellKey = useCallback((sid: string, cat: 'WW' | 'PT' | 'QA', idx: number) => `${sid}:${cat}:${idx}`, []);
+
+  const getMaxForCell = useCallback((cat: 'WW' | 'PT' | 'QA', idx: number): number => {
     if (cat === 'WW') return Number(hpsData.wwScores[idx]?.maxScore ?? 0);
     if (cat === 'PT') return Number(hpsData.ptScores[idx]?.maxScore ?? 0);
     return Number(hpsData.qaMax ?? 0);
-  };
+  }, [hpsData]);
 
-  const openMetaEditor = (type: 'WW' | 'PT' | 'QA', index: number) => {
+  const isCellInvalid = useCallback((sid: string, cat: 'WW' | 'PT' | 'QA', idx: number): string | undefined => {
+    return invalidCells[getCellKey(sid, cat, idx)];
+  }, [invalidCells, getCellKey]);
+
+  const openMetaEditor = useCallback((type: 'WW' | 'PT' | 'QA', index: number) => {
     setSelectedColumn({ type, number: index + 1 });
     if (type === 'WW') {
       setMetaEditorDraft({
@@ -249,9 +351,9 @@ export default function ClassRecordView() {
       description: qaMeta.description || 'Term Assessment',
       date: qaMeta.date || '',
     });
-  };
+  }, [wwMeta, ptMeta, qaMeta]);
 
-  const saveColumnMeta = async () => {
+  const saveColumnMeta = useCallback(async () => {
     if (!classAssignmentId || !selectedColumn) return;
     const nextWwMeta = [...wwMeta];
     const nextPtMeta = [...ptMeta];
@@ -313,7 +415,7 @@ export default function ClassRecordView() {
     } finally {
       setSavingMeta(false);
     }
-  };
+  }, [classAssignmentId, selectedColumn, wwMeta, ptMeta, qaMeta, metaEditorDraft, classRecord, selectedTerm, applyMetaToScores, wwCount, ptCount, fetchClassRecord]);
 
   const applyColumnMetaFromMobile = async (
     category: 'WW' | 'PT' | 'QA',
@@ -379,8 +481,6 @@ export default function ClassRecordView() {
     }
   };
 
-  const isCellInvalid = (sid: string, cat: 'WW' | 'PT' | 'QA', idx: number) => Boolean(invalidCells[getCellKey(sid, cat, idx)]);
-
   const commitScoreInput = (
     inputEl: HTMLInputElement,
     studentId: string,
@@ -429,12 +529,6 @@ export default function ClassRecordView() {
   useEffect(() => {
     fetchClassRecord();
   }, [classAssignmentId, selectedTerm]);
-
-  useEffect(() => {
-    if (classAssignmentId && !isHGClass) {
-      fetchEcrStatus();
-    }
-  }, [classAssignmentId, isHGClass]);
 
   useEffect(() => {
     if (error || success) {
@@ -512,71 +606,13 @@ export default function ClassRecordView() {
   }, [selectedColumn]);
 
 
-  const fetchClassRecord = async (silent = false) => {
-    if (!classAssignmentId) return;
-    try {
-      if (!silent) setLoading(true);
-      const response = await gradesApi.getClassRecord(classAssignmentId, selectedTerm);
-
-      // Align initial term to system current term to avoid saving/viewing grades in the wrong term.
-      if (!termInitialized && response.data.currentTerm) {
-        setTermInitialized(true);
-        // For rotating subjects, always force the locked term regardless of currentTerm
-        const forcedTerm = classAssignment?.subject?.rotationTermRank
-          ? `T${classAssignment.subject.rotationTermRank}`
-          : null;
-        const termToSet = forcedTerm ?? response.data.currentTerm;
-        if (termToSet !== selectedTerm) {
-          setSelectedTerm(termToSet);
-          return;
-        }
-      }
-
-      setClassAssignment(response.data.classAssignment);
-      setClassRecord(response.data.classRecord);
-      setEffectiveWeights(response.data.effectiveWeights ?? null);
-    } catch (err) {
-      console.error("Failed to fetch class record:", err);
-      if (!silent) setError("Failed to load class record");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  const fetchEcrStatus = async () => {
-    if (!classAssignmentId) return;
-    try {
-      await gradesApi.getEcrStatus(classAssignmentId);
-    } catch (err) {
-      console.error("Failed to fetch ECR status:", err);
-    }
-  };
-
-  const handleEcrFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleEcrImport(file);
-    }
-  };
-
-  const handleEcrImport = async (file: File) => {
-    if (!classAssignmentId) return;
-    try {
-      const response = await gradesApi.importEcr(classAssignmentId, file);
-      setSuccess(`Successfully imported ${response.data.importedGrades} grades from ECR.`);
-      fetchClassRecord();
-    } catch (err: any) {
-      console.error("Failed to import ECR:", err);
-      setError(err.response?.data?.message || "Failed to import ECR grades");
-    }
-  };
-
-  const handleScoreUpdate = async (
+  const handleScoreUpdate = useCallback(async (
     studentId: string, 
     category: 'WW' | 'PT' | 'QA', 
     index: number, 
     newValue: number
   ) => {
+    if (isViewOnly) return;
     await executeScoreUpdate({
       classAssignmentId,
       classRecord,
@@ -593,14 +629,16 @@ export default function ClassRecordView() {
       setInvalidCells,
       setError,
       fetchClassRecord,
+      isViewOnly,
     });
-  };
+  }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, qaMeta, getCellKey, getMaxForCell, applyMetaToScores, fetchClassRecord]);
 
-  const handleHpsUpdate = async (
+  const handleHpsUpdate = useCallback(async (
     category: 'WW' | 'PT' | 'QA', 
     index: number, 
     newMax: number
   ) => {
+    if (isViewOnly) return;
     await executeHpsUpdate({
       classAssignmentId,
       classRecord,
@@ -613,10 +651,12 @@ export default function ClassRecordView() {
       setClassRecord,
       setError,
       fetchClassRecord,
+      isViewOnly,
     });
-  };
+  }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, qaMeta, applyMetaToScores, fetchClassRecord]);
 
   const handleDescriptorUpdate = async (studentId: string, descriptor: string) => {
+    if (isViewOnly) return;
     if (!classAssignmentId) return;
     try {
       setSavingDescriptorStudentId(studentId);
@@ -635,7 +675,8 @@ export default function ClassRecordView() {
     }
   };
 
-  const addTask = async (category: 'WW' | 'PT') => {
+  const addTask = useCallback(async (category: 'WW' | 'PT') => {
+    if (isViewOnly) return;
     const targetIdx = category === 'WW' ? wwCount : ptCount;
     if (category === 'WW') {
       setWwMeta((prev) => [...prev, { description: `WW ${targetIdx + 1}`, date: '' }]);
@@ -643,9 +684,10 @@ export default function ClassRecordView() {
       setPtMeta((prev) => [...prev, { description: `PT ${targetIdx + 1}`, date: '' }]);
     }
     handleHpsUpdate(category, targetIdx, 10);
-  };
+  }, [isViewOnly, wwCount, ptCount, handleHpsUpdate]);
 
-  const removeTask = async (category: 'WW' | 'PT') => {
+  const removeTask = useCallback(async (category: 'WW' | 'PT') => {
+    if (isViewOnly) return;
     await executeRemoveTask({
       classAssignmentId,
       classRecord,
@@ -661,8 +703,9 @@ export default function ClassRecordView() {
       setSuccess,
       setError,
       fetchClassRecord,
+      isViewOnly,
     });
-  };
+  }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, wwCount, ptCount, qaMeta, applyMetaToScores, fetchClassRecord]);
 
   const sortedRecords = useMemo(
     () =>
@@ -674,7 +717,8 @@ export default function ClassRecordView() {
     [classRecord]
   );
 
-  const saveAssessmentDetails = async () => {
+  const saveAssessmentDetails = useCallback(async () => {
+    if (isViewOnly) return;
     if (!classAssignmentId) return;
 
     try {
@@ -706,9 +750,10 @@ export default function ClassRecordView() {
       console.error('Failed to save assessment details:', err);
       setError(err?.response?.data?.message || 'Failed to save assessment details');
     }
-  };
+  }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, applyMetaToScores, wwCount, ptCount, qaMeta, fetchClassRecord]);
 
-  const handleClearScores = async () => {
+  const handleClearScores = useCallback(async () => {
+    if (isViewOnly) return;
     if (!classAssignmentId) return;
     try {
       setLoading(true);
@@ -722,7 +767,7 @@ export default function ClassRecordView() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isViewOnly, classAssignmentId, selectedTerm, fetchClassRecord]);
 
   const maleRecords = useMemo(() => sortedRecords.filter(r => r.student.gender?.toLowerCase() === 'male'), [sortedRecords]);
   const femaleRecords = useMemo(() => sortedRecords.filter(r => r.student.gender?.toLowerCase() === 'female'), [sortedRecords]);
@@ -733,8 +778,8 @@ export default function ClassRecordView() {
     qa: effectiveWeights?.qa ?? classAssignment?.subject?.quarterlyAssessWeight ?? 0,
   }), [effectiveWeights, classAssignment?.subject?.writtenWorkWeight, classAssignment?.subject?.perfTaskWeight, classAssignment?.subject?.quarterlyAssessWeight]);
 
-  const getDisplayFinalGrade = (record: ClassRecord): number | null =>
-    computeDisplayFinalGrade(record, selectedTerm, activeWeights);
+  const getDisplayFinalGrade = useCallback((record: ClassRecord): number | null =>
+    computeDisplayFinalGrade(record, selectedTerm, activeWeights), [selectedTerm, activeWeights]);
 
   const stats = useMemo(() => {
     if (classRecord.length === 0) return null;
@@ -751,6 +796,7 @@ export default function ClassRecordView() {
   }, [classRecord, selectedTerm, activeWeights]);
 
   const openMobileEditor = (studentId: string) => {
+    if (isViewOnly) return;
     setMobileEditorStudentId(studentId);
     setMobileEditorOpen(true);
     setMobileScoreDraft({});
@@ -768,6 +814,7 @@ export default function ClassRecordView() {
     index: number,
     value: string,
   ) => {
+    if (isViewOnly) return;
     const key = getMobileDraftKey(studentId, category, index);
     if (value === '') {
       setMobileScoreDraft((prev) => ({ ...prev, [key]: '' }));
@@ -797,6 +844,7 @@ export default function ClassRecordView() {
     category: 'WW' | 'PT' | 'QA',
     index: number,
   ) => {
+    if (isViewOnly) return;
     const key = getMobileDraftKey(record.student.id, category, index);
     const value = mobileScoreDraft[key] ?? computeScoreFromGrade(record, selectedTerm, category, index);
     const normalized = value.trim() === '' ? 0 : Number(value);
@@ -811,54 +859,6 @@ export default function ClassRecordView() {
 
     setMobileScoreDraft((prev) => ({ ...prev, [key]: normalized === 0 ? '' : String(normalized) }));
     handleScoreUpdate(record.student.id, category, index, normalized);
-  };
-
-  const [ecrProgress, setEcrProgress] = useState<string>('');
-  const [ecrPercentage, setEcrPercentage] = useState<number>(0);
-  const [showEcrGenerationDialog, setShowEcrGenerationDialog] = useState(false);
-  
-  const downloadECR = async () => {
-    if (!classAssignment) return;
-    try {
-      setShowEcrGenerationDialog(true);
-      setEcrPercentage(0);
-      setEcrProgress('Initializing compilation...');
-      setEcrPercentage(20);
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const token = sessionStorage.getItem("token");
-      const response = await fetch(`${SERVER_URL}/api/ecr-templates/generate/${classAssignment.id}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ term: selectedTerm }),
-      });
-
-      if (!response.ok) throw new Error('Failed to generate ECR');
-      
-      setEcrPercentage(60);
-      setEcrProgress('Injecting records...');
-      const blob = await response.blob();
-      
-      setEcrPercentage(90);
-      setEcrProgress('Finalizing workbook...');
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `ECR_${classAssignment.subject.name}_${classAssignment.section.name}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      
-      setEcrPercentage(100);
-      setEcrProgress('Download started!');
-      setTimeout(() => setShowEcrGenerationDialog(false), 1500);
-    } catch (error: any) {
-      setError(error.message);
-      setShowEcrGenerationDialog(false);
-    }
   };
 
   if (loading) {
@@ -901,10 +901,6 @@ export default function ClassRecordView() {
         classAssignment={classAssignment}
         isHGClass={isHGClass}
         effectiveWeightsSource={effectiveWeights?.source ?? null}
-        onExportEcr={downloadECR}
-        onOpenImport={() => ecrFileInputRef.current?.click()}
-        onImportSelect={handleEcrFileSelect}
-        fileInputRef={ecrFileInputRef}
         onStartTour={() => {
           // Check if on mobile or tablet
           const isMobileOrTablet = window.innerWidth < 1024;
@@ -917,6 +913,18 @@ export default function ClassRecordView() {
         }}
       />
 
+      {/* Grade Status Banner */}
+      <GradeStatusBanner
+        currentTerm={currentTerm}
+        selectedTerm={selectedTerm}
+        termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate}
+        gradeLock={gradeLock}
+        colors={colors}
+        editRequestStatus={isPastTerm ? editRequestStatus : "idle"}
+        editTimeRemaining={editTimeRemaining}
+        onRequestEdit={isPastTerm && !gradeLock && editRequestStatus === "idle" ? () => setEditRequestModalOpen(true) : undefined}
+      />
+
       {isHGClass && (
         <>
           <ClassRecordMobileList
@@ -927,6 +935,7 @@ export default function ClassRecordView() {
             onOpenEditor={openMobileEditor}
             getDisplayFinalGrade={getDisplayFinalGrade}
             getGradeColor={getGradeColor}
+            isViewOnly={isViewOnly}
           />
           <HGDescriptorPanel
             records={sortedRecords}
@@ -935,6 +944,7 @@ export default function ClassRecordView() {
             savingDescriptorStudentId={savingDescriptorStudentId}
             descriptors={HG_DESCRIPTORS}
             onDescriptorUpdate={handleDescriptorUpdate}
+            isViewOnly={isViewOnly}
           />
         </>
       )}
@@ -960,6 +970,7 @@ export default function ClassRecordView() {
             onOpenEditor={openMobileEditor}
             getDisplayFinalGrade={getDisplayFinalGrade}
             getGradeColor={getGradeColor}
+            isViewOnly={isViewOnly}
           />
 
           <ClassRecordTable
@@ -968,6 +979,8 @@ export default function ClassRecordView() {
             selectedTerm={selectedTerm}
             onTermChange={setSelectedTerm}
             lockedTerm={lockedTerm}
+            currentTerm={currentTerm}
+            isViewOnly={isViewOnly}
             separateByGender={separateByGender}
             onSeparateByGenderChange={setSeparateByGender}
             showAssessmentDetails={showAssessmentDetails}
@@ -1009,6 +1022,7 @@ export default function ClassRecordView() {
                 metaEditorDraft={metaEditorDraft}
                 setMetaEditorDraft={setMetaEditorDraft}
                 saveColumnMeta={saveColumnMeta}
+                isViewOnly={isViewOnly}
               />
             }
           />
@@ -1045,12 +1059,7 @@ export default function ClassRecordView() {
         onMobileScoreCommit={commitMobileScore}
         onDescriptorUpdate={handleDescriptorUpdate}
         onApplyColumnMeta={applyColumnMetaFromMobile}
-      />
-
-      <EcrGenerationDialog
-        open={showEcrGenerationDialog}
-        percentage={ecrPercentage}
-        progress={ecrProgress}
+        isViewOnly={isViewOnly}
       />
 
       <ClassRecordTour
@@ -1097,6 +1106,18 @@ export default function ClassRecordView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Access Request Modal */}
+      <EditRequestModal
+        open={editRequestModalOpen}
+        onOpenChange={setEditRequestModalOpen}
+        onSuccess={() => {
+          setEditRequestStatus("pending");
+        }}
+        selectedTerm={selectedTerm}
+        classAssignment={classAssignment}
+        userName={userName}
+      />
     </div>
   );
 }

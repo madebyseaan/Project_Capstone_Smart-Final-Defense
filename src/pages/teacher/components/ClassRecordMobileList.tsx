@@ -18,6 +18,7 @@ interface ClassRecordMobileListProps {
   onOpenEditor: (studentId: string) => void;
   getDisplayFinalGrade: (record: ClassRecord) => number | null;
   getGradeColor: (grade: number | null) => string;
+  isViewOnly?: boolean;
 }
 
 const terms = ["T1", "T2", "T3"] as const;
@@ -30,6 +31,7 @@ export function ClassRecordMobileList({
   onOpenEditor,
   getDisplayFinalGrade,
   getGradeColor,
+  isViewOnly = false,
 }: ClassRecordMobileListProps) {
   return (
     <Card className="lg:hidden border-0 shadow-lg shadow-slate-200/40 rounded-[2rem] overflow-hidden bg-white">
@@ -37,7 +39,7 @@ export function ClassRecordMobileList({
         <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">
           {isHGClass ? "Homeroom Guidance" : "Class Ledger"}
         </h2>
-        <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)}>
+        <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)} disabled={isViewOnly}>
           <SelectTrigger className="w-28 font-bold" size="sm">
             <SelectValue />
           </SelectTrigger>
@@ -76,8 +78,9 @@ export function ClassRecordMobileList({
             <button
               key={record.student.id}
               type="button"
-              onClick={() => onOpenEditor(record.student.id)}
-              className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm active:scale-[0.995] transition"
+              onClick={() => !isViewOnly && onOpenEditor(record.student.id)}
+              disabled={isViewOnly}
+              className={`w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm active:scale-[0.995] transition ${isViewOnly ? "opacity-60 cursor-not-allowed" : ""}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">

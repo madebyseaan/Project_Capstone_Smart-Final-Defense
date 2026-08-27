@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import axios from "axios";
+import { getPortalToken } from "@/lib/api";
 
 const SETTINGS_URL = "/api/admin/settings";
 
@@ -17,6 +18,7 @@ interface ThemeContextType {
   schoolDivision: string;
   schoolRegion: string;
   schoolId: string;
+  currentSchoolYear: string;
   loading: boolean;
   refreshTheme: () => Promise<void>;
 }
@@ -35,6 +37,7 @@ const ThemeContext = createContext<ThemeContextType>({
   schoolDivision: "",
   schoolRegion: "",
   schoolId: "",
+  currentSchoolYear: "",
   loading: true,
   refreshTheme: async () => {},
 });
@@ -136,7 +139,7 @@ interface ThemeProviderProps {
 
 const THEME_CACHE_KEY = "smart_theme_cache";
 
-function loadCachedTheme(): { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string } | null {
+function loadCachedTheme(): { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string; currentSchoolYear: string } | null {
   try {
     const cached = localStorage.getItem(THEME_CACHE_KEY);
     if (cached) return JSON.parse(cached);
@@ -144,7 +147,7 @@ function loadCachedTheme(): { colors: ThemeColors; logoUrl: string | null; schoo
   return null;
 }
 
-function saveThemeCache(data: { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string }) {
+function saveThemeCache(data: { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string; currentSchoolYear: string }) {
   try {
     localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(data));
   } catch {}
@@ -158,6 +161,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [schoolDivision, setSchoolDivision] = useState(() => loadCachedTheme()?.schoolDivision ?? "");
   const [schoolRegion, setSchoolRegion] = useState(() => loadCachedTheme()?.schoolRegion ?? "");
   const [schoolId, setSchoolId] = useState(() => loadCachedTheme()?.schoolId ?? "");
+  const [currentSchoolYear, setCurrentSchoolYear] = useState(() => loadCachedTheme()?.currentSchoolYear ?? "");
   const [loading, setLoading] = useState(true);
 
   // Apply cached theme immediately so there's no flash on refresh
@@ -185,6 +189,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       const newDivision = settings.division || "";
       const newRegion = settings.region || "";
       const newSchoolId = settings.schoolId || "";
+      const newSchoolYear = settings.currentSchoolYear || "";
 
       setColors(newColors);
       setLogoUrl(newLogoUrl);
@@ -193,9 +198,10 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       setSchoolDivision(newDivision);
       setSchoolRegion(newRegion);
       setSchoolId(newSchoolId);
+      setCurrentSchoolYear(newSchoolYear);
 
       // Persist to localStorage so refresh loads instantly
-      saveThemeCache({ colors: newColors, logoUrl: newLogoUrl, schoolName: newSchoolName, schoolAddress: newAddress, schoolDivision: newDivision, schoolRegion: newRegion, schoolId: newSchoolId });
+      saveThemeCache({ colors: newColors, logoUrl: newLogoUrl, schoolName: newSchoolName, schoolAddress: newAddress, schoolDivision: newDivision, schoolRegion: newRegion, schoolId: newSchoolId, currentSchoolYear: newSchoolYear });
 
       // Apply to document
       applyThemeToDocument(newColors);
@@ -246,7 +252,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   // SSE subscription for realtime settings updates across all connected clients
   useEffect(() => {
-    const token = sessionStorage.getItem("token");
+    const token = getPortalToken();
     if (!token) return;
 
     let es: EventSource | null = null;
@@ -293,7 +299,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ colors, logoUrl, schoolName, schoolAddress, schoolDivision, schoolRegion, schoolId, loading, refreshTheme }}>
+    <ThemeContext.Provider value={{ colors, logoUrl, schoolName, schoolAddress, schoolDivision, schoolRegion, schoolId, currentSchoolYear, loading, refreshTheme }}>
       {children}
     </ThemeContext.Provider>
   );

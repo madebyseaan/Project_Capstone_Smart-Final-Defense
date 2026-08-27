@@ -13,6 +13,8 @@ import {
   FileSpreadsheet,
   BookOpen,
   ChevronDown,
+  Calendar,
+  FileText,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getAcronym } from "@/lib/utils";
@@ -51,28 +53,22 @@ const navigationGroups = [
     title: "ACADEMICS",
     items: [
       { name: "Class Assignments", href: "/admin/assignments", icon: BookOpen },
+      { name: "Grade Edit Requests", href: "/admin/edit-requests", icon: FileText },
     ]
   },
   {
     title: "MANAGEMENT",
     items: [
       { name: "User Management", href: "/admin/users", icon: Users },
-      {
-        name: "Template Managers",
-        icon: FileSpreadsheet,
-        isDropdown: true,
-        inDevelopment: true,
-        children: [
-          { name: "SF Forms", href: "/admin/templates", icon: FileSpreadsheet },
-          { name: "ECR Templates", href: "/admin/ecr-templates", icon: BookOpen },
-        ],
-      },
+      { name: "SF Templates", href: "/admin/templates", icon: FileSpreadsheet },
     ]
   },
   {
     title: "SYSTEM",
     items: [
       { name: "Grading Config", href: "/admin/grading", icon: Sliders },
+      { name: "Transmutation Table", href: "/admin/transmutation", icon: Sliders },
+      { name: "School Years", href: "/admin/school-years", icon: Calendar },
       { name: "System Settings", href: "/admin/settings", icon: Settings },
       { name: "System Health", href: "/admin/health", icon: Shield },
       { name: "Audit Logs", href: "/admin/logs", icon: Activity },
@@ -93,10 +89,10 @@ export default function AdminLayout() {
     const saved = localStorage.getItem('adminDropdownState');
     return saved ? JSON.parse(saved) : { 'Template Managers': true };
   });
-  const { colors, logoUrl, schoolName } = useTheme();
+  const { colors, logoUrl, schoolName, currentSchoolYear } = useTheme();
 
   useEffect(() => {
-    const userData = sessionStorage.getItem("user");
+    const userData = sessionStorage.getItem("user_admin");
 
     if (!userData) {
       navigate("/login");
@@ -114,8 +110,12 @@ export default function AdminLayout() {
   }, [navigate]);
 
   const handleLogout = () => {
+    sessionStorage.removeItem("user_admin");
+    sessionStorage.removeItem("token_admin");
+    sessionStorage.removeItem("refreshToken_admin");
     sessionStorage.removeItem("user");
-    navigate("/login/admin");
+    sessionStorage.removeItem("token");
+    navigate("/login");
   };
 
   const toggleSidebarCollapse = () => {
@@ -178,7 +178,7 @@ export default function AdminLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           sidebarCollapsed ? "lg:w-[70px] w-[280px]" : "w-[280px]"
         )}
-        style={{ fontFamily: "'Instrument Sans', 'Geist Variable', sans-serif" }}
+        style={{ fontFamily: "'Inter', 'Poppins', sans-serif" }}
       >
         {/* Logo Header */}
         <div className={cn(
@@ -526,6 +526,12 @@ export default function AdminLayout() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* School Year Badge */}
+              {currentSchoolYear && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-wider px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
+                  S.Y. {currentSchoolYear}
+                </span>
+              )}
               {/* Dev Portal Quick Switcher */}
               <DevPortalSwitcher user={user} />
 

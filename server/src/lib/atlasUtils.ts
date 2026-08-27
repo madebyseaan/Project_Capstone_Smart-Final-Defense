@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import type { GradeLevel } from '@prisma/client';
+import type { GradeLevel, SubjectType } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
 // Grade level mapping — handles "Grade 7", "GRADE_7", "7-Rizal", etc.
@@ -11,6 +11,41 @@ export function mapGradeLevel(name: string | null | undefined): GradeLevel | nul
   if (n.includes('8'))  return 'GRADE_8';
   if (n.includes('9'))  return 'GRADE_9';
   return null;
+}
+
+/**
+ * Infers SubjectType from a SMART subject code.
+ * Used during ATLAS sync so subjects get the correct weight group.
+ *
+ * Mapping:
+ *   MAPEH* → MAPEH (follows 20/60/20 weights)
+ *   ARTS*  → MAPEH (MAPEH component)
+ *   MUSIC* → MAPEH (MAPEH component)
+ *   PE*    → MAPEH (MAPEH component)
+ *   HEALTH*→ MAPEH (MAPEH component)
+ *   SPA_*  → MAPEH (follows 20/60/20 weights)
+ *   SPS_*  → MAPEH (follows 20/60/20 weights)
+ *   TLE_*  → TLE   (follows 20/60/20 weights)
+ *   STE_*  → CORE  (follows 20/50/30 weights — Science specialisation)
+ *   SCI_*  → CORE  (follows 20/50/30 weights)
+ *   HG*    → CORE  (Homeroom Guidance)
+ *   Everything else → CORE
+ */
+export function inferSubjectTypeFromCode(code: string): SubjectType {
+  const c = code.toUpperCase();
+  // MAPEH components → MAPEH weight group (20/60/20)
+  if (c.startsWith('MAPEH') || c === 'MAPEH') return 'MAPEH' as SubjectType;
+  if (c.startsWith('ARTS')) return 'MAPEH' as SubjectType;
+  if (c.startsWith('MUSIC')) return 'MAPEH' as SubjectType;
+  if (c.startsWith('PE') && !c.startsWith('PERF')) return 'MAPEH' as SubjectType;
+  if (c.startsWith('HEALTH')) return 'MAPEH' as SubjectType;
+  // SPA/SPS special programs → MAPEH weight group
+  if (c.startsWith('SPA_') || c === 'SPA') return 'MAPEH' as SubjectType;
+  if (c.startsWith('SPS_') || c === 'SPS') return 'MAPEH' as SubjectType;
+  // TLE → TLE weight group (20/60/20)
+  if (c.startsWith('TLE_') || c === 'TLE' || c.startsWith('EPP') || c === 'EPP') return 'TLE' as SubjectType;
+  // Default → CORE weight group (20/50/30)
+  return 'CORE' as SubjectType;
 }
 
 // ---------------------------------------------------------------------------

@@ -18,8 +18,7 @@ export default function DevPortalSwitcher({ user, className }: DevPortalSwitcher
 
   const isDev = Boolean(
     user?.isDeveloper ||
-    user?.username === "999999" ||
-    user?.role === "DEVELOPER"
+    user?.username === "999999"
   );
 
   if (!isDev) return null;

@@ -75,12 +75,25 @@ export const REFRESH_COOKIE_OPTIONS = {
 
 /**
  * Cookie configuration for access token.
- * NOT httpOnly — must be readable by JavaScript for Axios interceptor.
+ * httpOnly: true — JS cannot read it (mitigates XSS token theft).
+ * The token is also returned in the JSON response body for SSE/Bearer use.
  */
 export const ACCESS_COOKIE_OPTIONS = {
-  httpOnly: false,
+  httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax" as const,
   path: "/",
   maxAge: 15 * 60 * 1000, // 15 minutes
+};
+
+/**
+ * CSRF token cookie — readable by JavaScript (double-submit pattern).
+ * The frontend reads this cookie and sends the value in x-csrf-token header.
+ */
+export const CSRF_COOKIE_OPTIONS = {
+  httpOnly: false,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: 15 * 60 * 1000, // 15 minutes — matches access token lifetime
 };

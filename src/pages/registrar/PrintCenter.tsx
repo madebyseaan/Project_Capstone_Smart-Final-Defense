@@ -310,10 +310,8 @@ export default function PrintCenter() {
                   <TableCell className="text-gray-500 text-sm">{job.createdAt}</TableCell>
                   <TableCell>
                     <DropdownMenu>
-                      <DropdownMenuTrigger>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
+                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" />}>
                           <MoreVertical className="w-4 h-4" />
-                        </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem>View Details</DropdownMenuItem>

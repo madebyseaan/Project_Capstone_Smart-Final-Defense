@@ -27,3 +27,24 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Playwright debug output
+.playwright-mcp/
+
+# User uploads
+server/uploads/
+
+# Root-level data/debug files
+*.pdf
+*.xlsx
+check_centering.*
+
+# Codex/OpenCode lock
+skills-lock.json
+
+# Backup files
+*.new
+
+# Server debug scripts at root
+server/check-*.ts
+server/check-*.js

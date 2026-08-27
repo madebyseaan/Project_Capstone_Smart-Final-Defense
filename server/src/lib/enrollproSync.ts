@@ -23,14 +23,17 @@ import {
   getAllIntegrationV1Sections,
   getAllIntegrationV1Learners,
   getEnrollProTeachers,
+  getEnrollProSectionStudents,
   resolveEnrollProSchoolYear,
 } from './enrollproClient';
+import { ensureSchoolYearFromEnrollPro } from './schoolYearResolver';
 import { prisma } from './prisma';
 import { logger } from './logger';
 import bcrypt from 'bcryptjs';
 import type { GradeLevel } from '@prisma/client';
 import { broadcastSyncStatus } from './sseManager';
 import { syncAdvisoryWorkloadEntry } from './workload';
+import { snapshotForDb } from './studentSnapshot';
 import { createHash } from 'crypto';
 
 // ---------------------------------------------------------------------------
@@ -43,6 +46,14 @@ function mapGradeLevel(name: string | null | undefined): GradeLevel | null {
   if (n.includes('8'))  return 'GRADE_8';
   if (n.includes('9'))  return 'GRADE_9';
   return null;
+}
+
+function mapProgramType(programType: string | null | undefined): string {
+  const pt = (programType ?? '').toUpperCase();
+  if (pt.includes('ARTS')) return 'SPA';
+  if (pt.includes('SPORT')) return 'SPS';
+  if (pt.includes('SCIENCE') || pt.includes('ENGINEERING') || pt.includes('STE')) return 'STE';
+  return 'REGULAR';
 }
 
 // ---------------------------------------------------------------------------
@@ -58,8 +69,18 @@ function hashStudentFields(data: {
   address: string | null;
   guardianName: string | null;
   suffix?: string | null;
+  guardianContact?: string | null;
+  religion?: string | null;
+  motherTongue?: string | null;
+  barangay?: string | null;
+  city?: string | null;
+  province?: string | null;
+  fatherName?: string | null;
+  fatherContact?: string | null;
+  motherName?: string | null;
+  motherContact?: string | null;
 }): string {
-  const raw = `${data.firstName}|${data.lastName}|${data.middleName ?? ''}|${data.gender ?? ''}|${data.birthDate?.toISOString() ?? ''}|${data.address ?? ''}|${data.guardianName ?? ''}|${data.suffix ?? ''}`;
+  const raw = `${data.firstName}|${data.lastName}|${data.middleName ?? ''}|${data.gender ?? ''}|${data.birthDate?.toISOString() ?? ''}|${data.address ?? ''}|${data.guardianName ?? ''}|${data.suffix ?? ''}|${data.guardianContact ?? ''}|${data.religion ?? ''}|${data.motherTongue ?? ''}|${data.barangay ?? ''}|${data.city ?? ''}|${data.province ?? ''}|${data.fatherName ?? ''}|${data.fatherContact ?? ''}|${data.motherName ?? ''}|${data.motherContact ?? ''}`;
   return createHash('sha256').update(raw).digest('hex').slice(0, 16);
 }
 
@@ -132,6 +153,9 @@ export async function runEnrollProSync() {
       `[EnrollProSync] Using school year ${schoolYearLabel} (id=${schoolYearId}) from ${resolvedSY.source}`,
     );
 
+    // Align SMART SchoolYear record to EnrollPro (source of truth)
+    await ensureSchoolYearFromEnrollPro(schoolYearId, schoolYearLabel);
+
     // 2. Fetch EnrollPro teachers + integration sections.
     const epTeachers = await getEnrollProTeachers();
     const epTeacherIdToEmpId = new Map<number, string>(
@@ -141,6 +165,20 @@ export async function runEnrollProSync() {
 
     // 3. Build & Upsert SMART teachers for all EnrollPro faculty
     const empIdToSmartTeacherId = new Map<string, string>();
+
+    // Pre-fetch all existing users into Maps for O(1) lookup (eliminates N individual findFirst)
+    const allExistingUsers = await prisma.user.findMany({
+      where: { role: 'TEACHER' },
+      select: { id: true, username: true, email: true },
+    });
+    const userByUsername = new Map(allExistingUsers.map(u => [u.username, u]));
+    const userByEmail = new Map(allExistingUsers.map(u => [u.email, u]));
+    logger.debug(`[EnrollProSync] Pre-fetched ${allExistingUsers.length} teacher users for O(1) lookup`);
+
+    const usersToCreate: Array<{ username: string; email: string; password: string; role: 'TEACHER'; firstName: string; lastName: string }> = [];
+    const usersToUpdate: Array<{ id: string; data: { firstName: string; lastName: string } }> = [];
+    const teacherUpserts: Array<{ employeeId: string; userId: string; specialization: string | null }> = [];
+
     for (const epTeacher of epTeachers) {
       if (!epTeacher.employeeId) continue;
       try {
@@ -149,95 +187,163 @@ export async function runEnrollProSync() {
         const firstName = epTeacher.firstName ?? '';
         const lastName = epTeacher.lastName ?? '';
 
-        const user = await prisma.user.findFirst({
-          where: { OR: [{ username: empId }, { email: userEmail }] },
-        });
+        const existingUser = userByUsername.get(empId) ?? userByEmail.get(userEmail);
 
-        let targetUserId = user?.id;
-        if (!user) {
-          const defaultPassword = await bcrypt.hash('password123', 10);
-          const createdUser = await prisma.user.create({
-            data: {
-              username: empId,
-              email: userEmail,
-              password: defaultPassword,
-              role: 'TEACHER',
-              firstName,
-              lastName,
-            },
-          });
-          targetUserId = createdUser.id;
+        let targetUserId = existingUser?.id;
+        if (!existingUser) {
+          const defaultPassword = await bcrypt.hash(process.env.DEFAULT_SYNC_PASSWORD || 'password123', 10);
+          usersToCreate.push({ username: empId, email: userEmail, password: defaultPassword, role: 'TEACHER', firstName, lastName });
+          // Placeholder — will resolve after batch create
+          targetUserId = `__pending_user__${empId}`;
         } else {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { firstName, lastName },
-          });
+          usersToUpdate.push({ id: existingUser.id, data: { firstName, lastName } });
         }
 
-        if (targetUserId) {
-          const teacher = await prisma.teacher.upsert({
-            where: { employeeId: empId },
-            update: { userId: targetUserId, specialization: epTeacher.specialization ?? null },
-            create: { employeeId: empId, userId: targetUserId, specialization: epTeacher.specialization ?? null },
-          });
-          empIdToSmartTeacherId.set(empId, teacher.id);
+        if (targetUserId && !targetUserId.startsWith('__pending_user__')) {
+          teacherUpserts.push({ employeeId: empId, userId: targetUserId, specialization: epTeacher.specialization ?? null });
         }
       } catch (tErr: any) {
         errors.push(`Teacher ${epTeacher.employeeId}: ${tErr.message}`);
       }
     }
+
+    // Batch execute: User creates
+    if (usersToCreate.length > 0) {
+      try {
+        await prisma.user.createMany({ data: usersToCreate, skipDuplicates: true });
+        const createdUsers = await prisma.user.findMany({
+          where: { username: { in: usersToCreate.map(u => u.username) } },
+          select: { id: true, username: true },
+        });
+        const usernameToId = new Map(createdUsers.map(u => [u.username, u.id]));
+
+        // Resolve pending teacher upserts
+        for (const upsert of teacherUpserts) {
+          if (upsert.userId.startsWith('__pending_user__')) {
+            const empId = upsert.userId.replace('__pending_user__', '');
+            const realId = usernameToId.get(empId);
+            if (realId) upsert.userId = realId;
+          }
+        }
+        // Add newly created users to lookup Maps
+        for (const u of createdUsers) {
+          userByUsername.set(u.username, { id: u.id, username: u.username, email: '' });
+        }
+        logger.debug(`[EnrollProSync] Batch created ${createdUsers.length} teacher users`);
+      } catch (err: any) {
+        errors.push(`Batch user create failed: ${err.message}`);
+      }
+    }
+
+    // Batch execute: User updates
+    if (usersToUpdate.length > 0) {
+      try {
+        await prisma.$transaction(
+          usersToUpdate.map(u => prisma.user.update({ where: { id: u.id }, data: u.data }))
+        );
+      } catch (err: any) {
+        errors.push(`Batch user update failed: ${err.message}`);
+      }
+    }
+
+    // Batch execute: Teacher upserts
+    const validTeacherUpserts = teacherUpserts.filter(u => !u.userId.startsWith('__pending_user__'));
+    if (validTeacherUpserts.length > 0) {
+      try {
+        await prisma.$transaction(
+          validTeacherUpserts.map(u =>
+            prisma.teacher.upsert({
+              where: { employeeId: u.employeeId },
+              update: { userId: u.userId, specialization: u.specialization },
+              create: { employeeId: u.employeeId, userId: u.userId, specialization: u.specialization },
+            })
+          )
+        );
+        // Populate empIdToSmartTeacherId from results
+        const syncedTeachers = await prisma.teacher.findMany({
+          where: { employeeId: { in: validTeacherUpserts.map(u => u.employeeId) } },
+          select: { id: true, employeeId: true },
+        });
+        for (const t of syncedTeachers) {
+          empIdToSmartTeacherId.set(t.employeeId, t.id);
+        }
+      } catch (err: any) {
+        errors.push(`Batch teacher upsert failed: ${err.message}`);
+      }
+    }
     logger.debug(`[EnrollProSync] Synced ${empIdToSmartTeacherId.size} SMART teachers`);
 
-    // 3b. Deactivate teachers no longer in EnrollPro
+    // 3b. Deactivate teachers no longer in EnrollPro (batch)
+    // SAFEGUARD: Only deactivate if EnrollPro returned a non-empty teacher list
+    // If EnrollPro is offline/error, epTeachers will be empty - don't archive anything
     const epEmpIds = new Set(epTeachers.map((t: any) => String(t.employeeId).trim()).filter(Boolean));
-    const localTeachers = await prisma.teacher.findMany({
-      where: { user: { role: 'TEACHER', status: 'ACTIVE' } },
-      include: { user: true },
-    });
-    let deactivatedCount = 0;
-    for (const localTeacher of localTeachers) {
-      if (!epEmpIds.has(localTeacher.employeeId)) {
+    
+    if (epEmpIds.size === 0) {
+      logger.warn(`[EnrollProSync] EnrollPro returned 0 teachers - skipping teacher deactivation to prevent false archival`);
+    } else {
+      const localTeachers = await prisma.teacher.findMany({
+        where: { user: { role: 'TEACHER', status: 'ACTIVE' } },
+        select: { id: true, employeeId: true, userId: true },
+      });
+      const deactivatedTeacherIds = localTeachers
+        .filter(t => !epEmpIds.has(t.employeeId))
+        .map(t => ({ userId: t.userId, teacherId: t.id }));
+
+      if (deactivatedTeacherIds.length > 0) {
         try {
-          await prisma.user.update({
-            where: { id: localTeacher.userId },
-            data: { status: 'SUSPENDED' },
-          });
-          // Deactivate class assignments for suspended teacher
-          await prisma.classAssignment.updateMany({
-            where: { teacherId: localTeacher.id, isActive: true },
-            data: { isActive: false, archivedAt: new Date(), archivedReason: 'Teacher removed from EnrollPro' },
-          });
-          deactivatedCount++;
+          const userIds = deactivatedTeacherIds.map(t => t.userId);
+          const teacherIds = deactivatedTeacherIds.map(t => t.teacherId);
+          await prisma.$transaction([
+            prisma.user.updateMany({ where: { id: { in: userIds } }, data: { status: 'SUSPENDED' } }),
+            prisma.classAssignment.updateMany({
+              where: { teacherId: { in: teacherIds }, isActive: true },
+              data: { isActive: false, archivedAt: new Date(), archivedReason: 'Teacher removed from EnrollPro' },
+            }),
+          ]);
+          logger.info(`[EnrollProSync] Deactivated ${deactivatedTeacherIds.length} teachers no longer in EnrollPro`);
         } catch (err: any) {
-          errors.push(`Deactivate teacher ${localTeacher.employeeId}: ${err.message}`);
+          errors.push(`Batch teacher deactivation failed: ${err.message}`);
         }
       }
-    }
-    if (deactivatedCount > 0) {
-      logger.info(`[EnrollProSync] Deactivated ${deactivatedCount} teachers no longer in EnrollPro`);
-    }
+    } // End of epEmpIds.size > 0 check
 
-    // 3c. Reactivate teachers who reappeared in EnrollPro
+    // 3c. Reactivate teachers who reappeared in EnrollPro (batch)
     const suspendedTeachers = await prisma.teacher.findMany({
       where: { user: { status: 'SUSPENDED', role: 'TEACHER' } },
-      include: { user: true },
+      select: { id: true, employeeId: true, userId: true },
     });
-    let reactivatedCount = 0;
-    for (const suspendedTeacher of suspendedTeachers) {
-      if (epEmpIds.has(suspendedTeacher.employeeId)) {
-        try {
-          await prisma.user.update({
-            where: { id: suspendedTeacher.userId },
-            data: { status: 'ACTIVE', suspendedAt: null, suspendedBy: null, suspensionReason: null },
+    const reactivatableUserIds = suspendedTeachers
+      .filter(t => epEmpIds.has(t.employeeId))
+      .map(t => t.userId);
+
+    if (reactivatableUserIds.length > 0) {
+      try {
+        await prisma.user.updateMany({
+          where: { id: { in: reactivatableUserIds } },
+          data: { status: 'ACTIVE', suspendedAt: null, suspendedBy: null, suspensionReason: null },
+        });
+        
+        // Also restore ClassAssignments for reactivated teachers
+        const reactivatedTeacherIds = suspendedTeachers
+          .filter(t => reactivatableUserIds.includes(t.userId))
+          .map(t => t.id);
+        
+        if (reactivatedTeacherIds.length > 0) {
+          await prisma.classAssignment.updateMany({
+            where: { 
+              teacherId: { in: reactivatedTeacherIds },
+              isActive: false,
+              archivedReason: 'Teacher removed from EnrollPro',
+            },
+            data: { isActive: true, archivedAt: null, archivedReason: null },
           });
-          reactivatedCount++;
-        } catch (err: any) {
-          errors.push(`Reactivate teacher ${suspendedTeacher.employeeId}: ${err.message}`);
+          logger.info(`[EnrollProSync] Restored ClassAssignments for ${reactivatedTeacherIds.length} reactivated teachers`);
         }
+        
+        logger.info(`[EnrollProSync] Reactivated ${reactivatableUserIds.length} teachers who reappeared in EnrollPro`);
+      } catch (err: any) {
+        errors.push(`Batch teacher reactivation failed: ${err.message}`);
       }
-    }
-    if (reactivatedCount > 0) {
-      logger.info(`[EnrollProSync] Reactivated ${reactivatedCount} teachers who reappeared in EnrollPro`);
     }
 
     // 4. Fetch ALL sections from EnrollPro integration v1 (paginated — fixes 50-section cap)
@@ -270,12 +376,13 @@ export async function runEnrollProSync() {
               schoolYear: schoolYearLabel,
             },
           },
-          update: { adviserId: teacherId },
+          update: { adviserId: teacherId, program: mapProgramType(epSection.programType) },
           create: {
             name: epSection.name,
             gradeLevel,
             schoolYear: schoolYearLabel,
             adviserId: teacherId,
+            program: mapProgramType(epSection.programType),
           },
         });
 
@@ -324,12 +431,16 @@ export async function runEnrollProSync() {
     const syncedStudentsPerSection = new Map<string, Set<string>>();
 
     // 7.1 Pre-fetch all existing students into a Map for O(1) lookup (reduces N queries to 1)
-    const existingStudentsByLrn = new Map<string, { id: string; firstName: string; lastName: string; middleName: string | null; gender: string | null; birthDate: Date | null; address: string | null; guardianName: string | null; suffix: string | null }>();
+    const existingStudentsByLrn = new Map<string, { id: string; firstName: string; lastName: string; middleName: string | null; gender: string | null; birthDate: Date | null; address: string | null; guardianName: string | null; suffix: string | null; guardianContact?: string | null; religion?: string | null; motherTongue?: string | null; barangay?: string | null; city?: string | null; province?: string | null; fatherName?: string | null; fatherContact?: string | null; motherName?: string | null; motherContact?: string | null; ipCommunity?: boolean | null; is4PsBeneficiary?: boolean | null; disability?: string | null; isBalikAral?: boolean | null }>();
     try {
       const allExistingStudents = await prisma.student.findMany({
         select: {
           lrn: true, id: true, firstName: true, lastName: true, middleName: true,
           gender: true, birthDate: true, address: true, guardianName: true, suffix: true,
+          guardianContact: true, religion: true, motherTongue: true, barangay: true,
+          city: true, province: true, fatherName: true, fatherContact: true,
+          motherName: true, motherContact: true, ipCommunity: true, is4PsBeneficiary: true,
+          disability: true, isBalikAral: true,
         },
       });
       for (const s of allExistingStudents) {
@@ -340,9 +451,42 @@ export async function runEnrollProSync() {
       logger.warn({ err: err.message }, 'Failed to pre-fetch existing students, falling back to per-record lookup');
     }
 
+    // --- Batch collections for students and enrollments ---
+    const newStudentsToCreate: Array<{
+      lrn: string; firstName: string; middleName: string | null; lastName: string;
+      suffix: string | null; gender: string | null; birthDate: Date | null;
+      address: string | null; guardianName: string | null; guardianContact: string | null;
+      religion: string | null; motherTongue: string | null; barangay: string | null;
+      city: string | null; province: string | null; fatherName: string | null;
+      fatherContact: string | null; motherName: string | null; motherContact: string | null;
+      ipCommunity: boolean; is4PsBeneficiary: boolean; disability: string | null; isBalikAral: boolean;
+    }> = [];
+    const studentsToUpdate: Array<{ id: string; data: Record<string, any> }> = [];
+    const enrollmentUpserts: Array<{
+      studentId: string; sectionId: string; status: 'ENROLLED' | 'DROPPED' | 'TRANSFERRED';
+    }> = [];
+    const enrollmentDedupPairs: Array<{ studentId: string; currentSectionId: string }> = [];
+
+    // Build LRN → EnrollPro student ID map from Integration v1 data
+    const lrnToEpStudentId = new Map<string, number>();
+    for (const record of allLearners) {
+      const learner = record.learner;
+      if (learner?.lrn && learner?.id) {
+        lrnToEpStudentId.set(learner.lrn, Number(learner.id));
+      }
+    }
+    logger.debug(`[EnrollProSync] Mapped ${lrnToEpStudentId.size} LRNs to EnrollPro student IDs`);
+
     for (const record of allLearners) {
       const statusUpper = String(record.status ?? '').toUpperCase();
-      if (statusUpper !== 'ENROLLED' && statusUpper !== 'OFFICIALLY_ENROLLED' && statusUpper !== 'SECTIONED') continue;
+      let smartStatus: 'ENROLLED' | 'DROPPED' | 'TRANSFERRED' = 'ENROLLED';
+      if (statusUpper === 'TRANSFERRED_OUT' || statusUpper === 'TRANSFERRED') {
+        smartStatus = 'TRANSFERRED';
+      } else if (statusUpper === 'DROPPED_OUT' || statusUpper === 'DROPPED') {
+        smartStatus = 'DROPPED';
+      } else if (statusUpper !== 'ENROLLED' && statusUpper !== 'OFFICIALLY_ENROLLED' && statusUpper !== 'SECTIONED') {
+        continue;
+      }
 
       const learner = record.learner;
       const sectionName: string = record.section?.name ?? '';
@@ -358,9 +502,7 @@ export async function runEnrollProSync() {
           const sec = await (prisma.section as any).upsert({
             where: {
               name_gradeLevel_schoolYear: {
-                name: sectionName,
-                gradeLevel,
-                schoolYear: schoolYearLabel,
+                name: sectionName, gradeLevel, schoolYear: schoolYearLabel,
               },
             },
             update: {},
@@ -379,30 +521,41 @@ export async function runEnrollProSync() {
         const incomingBirthDate = learner.birthdate ? new Date(learner.birthdate) : null;
         const incomingAddress = learner.address || record.address || record.homeAddress || record.currentAddress || null;
         const incomingGuardian = learner.parentGuardianName || learner.guardianName || record.guardianName || record.parentGuardianName || record.guardianInfo || null;
+        const incomingGuardianContact = learner.parentGuardianContact || learner.guardianContact || record.guardianContact || record.parentGuardianContact || null;
+        const incomingReligion = learner.religion || record.religion || null;
+        const incomingMotherTongue = learner.motherTongue || record.motherTongue || null;
+        const incomingBarangay = learner.barangay || record.barangay || null;
+        const incomingCity = learner.city || learner.municipality || record.city || record.municipality || null;
+        const incomingProvince = learner.province || record.province || null;
+        const incomingFatherName = learner.fatherName || learner.father?.name || record.fatherName || record.father?.name || null;
+        const incomingFatherContact = learner.fatherContact || learner.father?.contact || record.fatherContact || record.father?.contact || null;
+        const incomingMotherName = learner.motherName || learner.mother?.name || record.motherName || record.mother?.name || null;
+        const incomingMotherContact = learner.motherContact || learner.mother?.contact || record.motherContact || record.mother?.contact || null;
+        const incomingIpCommunity = learner.ipCommunity === true || String(learner.ipCommunity).toUpperCase() === 'YES' || record.ipCommunity === true;
+        const incomingIs4Ps = learner.is4PsBeneficiary === true || String(learner.is4PsBeneficiary).toUpperCase() === 'YES' || record.is4PsBeneficiary === true;
+        const incomingDisability = learner.disability || record.disability || null;
+        const incomingIsBalikAral = learner.isBalikAral === true || String(learner.isBalikAral).toUpperCase() === 'YES' || record.isBalikAral === true;
 
         const incomingHash = hashStudentFields({
-          firstName: learner.firstName,
-          lastName: learner.lastName,
-          middleName: learner.middleName ?? null,
-          gender: learner.sex ?? null,
-          birthDate: incomingBirthDate,
-          address: incomingAddress,
-          guardianName: incomingGuardian,
-          suffix: learner.extensionName ?? null,
+          firstName: learner.firstName, lastName: learner.lastName,
+          middleName: learner.middleName ?? null, gender: learner.sex ?? null,
+          birthDate: incomingBirthDate, address: incomingAddress,
+          guardianName: incomingGuardian, suffix: learner.extensionName ?? null,
+          guardianContact: incomingGuardianContact, religion: incomingReligion,
+          motherTongue: incomingMotherTongue, barangay: incomingBarangay,
+          city: incomingCity, province: incomingProvince,
+          fatherName: incomingFatherName, fatherContact: incomingFatherContact,
+          motherName: incomingMotherName, motherContact: incomingMotherContact,
         });
 
-        // Upsert the student record keyed by LRN.
-        // Use pre-fetched Map for O(1) lookup, fallback to DB query if not in Map
         const cached = existingStudentsByLrn.get(learner.lrn);
-        let existing: { id: string; firstName: string; lastName: string; middleName: string | null; gender: string | null; birthDate: Date | null; address: string | null; guardianName: string | null; suffix: string | null } | null = cached ?? null;
+        let existing = cached ?? null;
         if (cached === undefined) {
           existing = await prisma.student.findUnique({
             where: { lrn: learner.lrn },
             select: {
-              id: true,
-              firstName: true, lastName: true, middleName: true,
-              gender: true, birthDate: true, address: true, guardianName: true,
-              suffix: true,
+              id: true, firstName: true, lastName: true, middleName: true,
+              gender: true, birthDate: true, address: true, guardianName: true, suffix: true,
             },
           });
         }
@@ -410,73 +563,72 @@ export async function runEnrollProSync() {
         let studentId: string;
 
         if (!existing) {
-          // New student — create
-          const created = await prisma.student.create({
-            data: {
-              lrn: learner.lrn,
-              firstName: learner.firstName ?? '',
-              middleName: learner.middleName ?? null,
-              lastName: learner.lastName ?? '',
-              suffix: learner.extensionName ?? null,
-              gender: learner.sex ?? null,
-              birthDate: incomingBirthDate,
-              address: incomingAddress,
-              guardianName: incomingGuardian,
-            },
-            select: { id: true },
+          newStudentsToCreate.push({
+            lrn: learner.lrn, firstName: learner.firstName ?? '',
+            middleName: learner.middleName ?? null, lastName: learner.lastName ?? '',
+            suffix: learner.extensionName ?? null, gender: learner.sex ?? null,
+            birthDate: incomingBirthDate, address: incomingAddress,
+            guardianName: incomingGuardian, guardianContact: incomingGuardianContact,
+            religion: incomingReligion, motherTongue: incomingMotherTongue,
+            barangay: incomingBarangay, city: incomingCity, province: incomingProvince,
+            fatherName: incomingFatherName, fatherContact: incomingFatherContact,
+            motherName: incomingMotherName, motherContact: incomingMotherContact,
+            ipCommunity: incomingIpCommunity, is4PsBeneficiary: incomingIs4Ps,
+            disability: incomingDisability, isBalikAral: incomingIsBalikAral,
           });
-          studentId = created.id;
+          // Placeholder ID — will be resolved after batch create
+          studentId = `__pending__${learner.lrn}`;
           studentsSynced++;
-          // Update the Map so subsequent lookups in this sync cycle are fast
-          existingStudentsByLrn.set(learner.lrn, {
-            id: created.id,
-            firstName: learner.firstName ?? '',
-            lastName: learner.lastName ?? '',
-            middleName: learner.middleName ?? null,
-            gender: learner.sex ?? null,
-            birthDate: incomingBirthDate,
-            address: incomingAddress,
-            guardianName: incomingGuardian,
-            suffix: learner.extensionName ?? null,
-          });
         } else {
-          // Existing student — update only if fields changed
           const existingHash = hashStudentFields({
-            firstName: existing.firstName,
-            lastName: existing.lastName,
-            middleName: existing.middleName,
-            gender: existing.gender,
-            birthDate: existing.birthDate,
-            address: existing.address,
-            guardianName: existing.guardianName,
-            suffix: existing.suffix,
+            firstName: existing.firstName, lastName: existing.lastName,
+            middleName: existing.middleName, gender: existing.gender,
+            birthDate: existing.birthDate, address: existing.address,
+            guardianName: existing.guardianName, suffix: existing.suffix,
+            guardianContact: (existing as any).guardianContact,
+            religion: (existing as any).religion,
+            motherTongue: (existing as any).motherTongue,
+            barangay: (existing as any).barangay, city: (existing as any).city,
+            province: (existing as any).province,
+            fatherName: (existing as any).fatherName,
+            fatherContact: (existing as any).fatherContact,
+            motherName: (existing as any).motherName,
+            motherContact: (existing as any).motherContact,
           });
 
           if (existingHash !== incomingHash) {
-            await prisma.student.update({
-              where: { id: existing.id },
+            studentsToUpdate.push({
+              id: existing.id,
               data: {
-                firstName: learner.firstName ?? '',
-                middleName: learner.middleName ?? null,
-                lastName: learner.lastName ?? '',
-                suffix: learner.extensionName ?? null,
-                gender: learner.sex ?? null,
-                birthDate: incomingBirthDate,
-                address: incomingAddress,
-                guardianName: incomingGuardian,
+                firstName: learner.firstName ?? '', middleName: learner.middleName ?? null,
+                lastName: learner.lastName ?? '', suffix: learner.extensionName ?? null,
+                gender: learner.sex ?? null, birthDate: incomingBirthDate,
+                // Only overwrite enriched fields if Integration v1 has a value — never null them out
+                // (Enrichment pass fetches these from /students/:id detail endpoint)
+                address: incomingAddress || existing.address,
+                guardianName: incomingGuardian || existing.guardianName,
+                guardianContact: incomingGuardianContact || (existing as any).guardianContact,
+                religion: incomingReligion || (existing as any).religion,
+                motherTongue: incomingMotherTongue || (existing as any).motherTongue,
+                barangay: incomingBarangay || (existing as any).barangay,
+                city: incomingCity || (existing as any).city,
+                province: incomingProvince || (existing as any).province,
+                fatherName: incomingFatherName || (existing as any).fatherName,
+                fatherContact: incomingFatherContact || (existing as any).fatherContact,
+                motherName: incomingMotherName || (existing as any).motherName,
+                motherContact: incomingMotherContact || (existing as any).motherContact,
+                ipCommunity: incomingIpCommunity || (existing as any).ipCommunity,
+                is4PsBeneficiary: incomingIs4Ps || (existing as any).is4PsBeneficiary,
+                disability: incomingDisability || (existing as any).disability,
+                isBalikAral: incomingIsBalikAral || (existing as any).isBalikAral,
               },
             });
             studentsSynced++;
-            // Update the Map so subsequent lookups in this sync cycle are fast
             existingStudentsByLrn.set(learner.lrn, {
-              id: existing.id,
-              firstName: learner.firstName ?? '',
-              lastName: learner.lastName ?? '',
-              middleName: learner.middleName ?? null,
-              gender: learner.sex ?? null,
-              birthDate: incomingBirthDate,
-              address: incomingAddress,
-              guardianName: incomingGuardian,
+              id: existing.id, firstName: learner.firstName ?? '',
+              lastName: learner.lastName ?? '', middleName: learner.middleName ?? null,
+              gender: learner.sex ?? null, birthDate: incomingBirthDate,
+              address: incomingAddress, guardianName: incomingGuardian,
               suffix: learner.extensionName ?? null,
             });
           } else {
@@ -485,87 +637,226 @@ export async function runEnrollProSync() {
           studentId = existing.id;
         }
 
-        // Prevent duplicate enrollments in the same SY
-        await prisma.enrollment.updateMany({
-          where: {
-            studentId,
-            schoolYear: schoolYearLabel,
-            sectionId: { not: resolvedSectionId },
-            status: 'ENROLLED'
-          },
-          data: { status: 'DROPPED' }
-        });
+        // Collect enrollment dedup and upsert operations (batched below)
+        enrollmentDedupPairs.push({ studentId, currentSectionId: resolvedSectionId });
+        enrollmentUpserts.push({ studentId, sectionId: resolvedSectionId, status: smartStatus });
 
-        await prisma.enrollment.upsert({
-          where: {
-            studentId_sectionId_schoolYear: {
-              studentId: studentId,
-              sectionId: resolvedSectionId,
-              schoolYear: schoolYearLabel,
-            },
-          },
-          update: { status: 'ENROLLED' },
-          create: {
-            studentId: studentId,
-            sectionId: resolvedSectionId,
-            schoolYear: schoolYearLabel,
-            status: 'ENROLLED',
-          },
-        });
-
-        // Track synced student per section for stale-enrollment cleanup below.
         if (!syncedStudentsPerSection.has(resolvedSectionId)) {
           syncedStudentsPerSection.set(resolvedSectionId, new Set());
         }
-        syncedStudentsPerSection.get(resolvedSectionId)!.add(studentId);
+        // Track will be resolved after batch create; pending IDs are skipped here
+        if (!studentId.startsWith('__pending__')) {
+          syncedStudentsPerSection.get(resolvedSectionId)!.add(studentId);
+        }
 
       } catch (err: any) {
         errors.push(`Student LRN ${learner.lrn}: ${err.message}`);
       }
     }
 
-    // 8. Drop stale enrollments
-    let studentsDropped = 0;
-    
-    if (!updatedSince) {
+    // --- Batch execute: Student creates ---
+    if (newStudentsToCreate.length > 0) {
       try {
-        const allSmartSections = await prisma.section.findMany({
-          where: { schoolYear: schoolYearLabel },
-          select: { id: true, name: true },
+        await prisma.student.createMany({ data: newStudentsToCreate, skipDuplicates: true });
+        // Re-fetch created students to get their IDs
+        const createdLrns = newStudentsToCreate.map(s => s.lrn);
+        const createdStudents = await prisma.student.findMany({
+          where: { lrn: { in: createdLrns } },
+          select: { id: true, lrn: true },
         });
+        const lrnToId = new Map(createdStudents.map(s => [s.lrn, s.id]));
 
-        for (const section of allSmartSections) {
-          const sectionId = section.id;
-          const syncedStudentIds = syncedStudentsPerSection.get(sectionId) || new Set<string>();
-
-          try {
-            const currentlyEnrolled = await prisma.enrollment.findMany({
-              where: { sectionId, schoolYear: schoolYearLabel, status: 'ENROLLED' },
-              select: { id: true, studentId: true },
-            });
-            const toDropIds = currentlyEnrolled
-              .filter((e) => !syncedStudentIds.has(e.studentId))
-              .map((e) => e.id);
-            if (toDropIds.length > 0) {
-              await prisma.enrollment.updateMany({
-                where: { id: { in: toDropIds } },
-                data: { status: 'DROPPED' },
-              });
-              studentsDropped += toDropIds.length;
-              logger.debug(
-                `[EnrollProSync] Marked ${toDropIds.length} stale enrollment(s) as DROPPED for sectionId=${sectionId}`,
-              );
-            }
-          } catch (err: any) {
-            errors.push(`Stale enrollment cleanup sectionId=${sectionId}: ${err.message}`);
+        // Resolve pending studentIds in enrollment ops and tracking
+        for (const op of enrollmentUpserts) {
+          if (op.studentId.startsWith('__pending__')) {
+            const lrn = op.studentId.replace('__pending__', '');
+            const realId = lrnToId.get(lrn);
+            if (realId) op.studentId = realId;
           }
         }
+        for (const op of enrollmentDedupPairs) {
+          if (op.studentId.startsWith('__pending__')) {
+            const lrn = op.studentId.replace('__pending__', '');
+            const realId = lrnToId.get(lrn);
+            if (realId) op.studentId = realId;
+          }
+        }
+        for (const [sectionId, studentSet] of syncedStudentsPerSection) {
+          const pending = [...studentSet].filter(id => id.startsWith('__pending__'));
+          for (const p of pending) {
+            studentSet.delete(p);
+            const lrn = p.replace('__pending__', '');
+            const realId = lrnToId.get(lrn);
+            if (realId) studentSet.add(realId);
+          }
+        }
+
+        // Update the lookup Map for this sync cycle
+        for (const s of createdStudents) {
+          const created = newStudentsToCreate.find(c => c.lrn === s.lrn);
+          if (created) {
+            existingStudentsByLrn.set(s.lrn, {
+              id: s.id, firstName: created.firstName, lastName: created.lastName,
+              middleName: created.middleName, gender: created.gender,
+              birthDate: created.birthDate, address: created.address,
+              guardianName: created.guardianName, suffix: created.suffix,
+            });
+          }
+        }
+        logger.debug(`[EnrollProSync] Batch created ${createdStudents.length} students`);
       } catch (err: any) {
-        errors.push(`Stale enrollment cleanup global: ${err.message}`);
+        errors.push(`Batch student create failed: ${err.message}`);
       }
-    } else {
-      logger.debug(`[EnrollProSync] Delta sync enabled — skipping full roster stale enrollment cleanup.`);
     }
+
+    // --- Batch execute: Student updates ---
+    if (studentsToUpdate.length > 0) {
+      try {
+        await prisma.$transaction(
+          studentsToUpdate.map(u => prisma.student.update({ where: { id: u.id }, data: u.data }))
+        );
+        logger.debug(`[EnrollProSync] Batch updated ${studentsToUpdate.length} students`);
+      } catch (err: any) {
+        errors.push(`Batch student update failed: ${err.message}`);
+      }
+    }
+
+    // --- Batch execute: Enrollment dedup (drop stale cross-section enrollments) ---
+    const dedupPairs = enrollmentDedupPairs.filter(p => !p.studentId.startsWith('__pending__'));
+    if (dedupPairs.length > 0) {
+      try {
+        // For each student, drop ENROLLED enrollments in sections other than their current one
+        // Batch: collect all studentIds, query once, filter in memory, batch update
+        const dedupStudentIds = [...new Set(dedupPairs.map(p => p.studentId))];
+        const currentEnrollments = await prisma.enrollment.findMany({
+          where: {
+            studentId: { in: dedupStudentIds },
+            schoolYear: schoolYearLabel,
+            status: 'ENROLLED',
+          },
+          select: { id: true, studentId: true, sectionId: true },
+        });
+
+        const dedupPairMap = new Map(dedupPairs.map(p => [p.studentId, p.currentSectionId]));
+        const staleEnrollmentIds = currentEnrollments
+          .filter(e => {
+            const currentSectionId = dedupPairMap.get(e.studentId);
+            return currentSectionId && e.sectionId !== currentSectionId;
+          })
+          .map(e => e.id);
+
+        if (staleEnrollmentIds.length > 0) {
+          await prisma.enrollment.updateMany({
+            where: { id: { in: staleEnrollmentIds } },
+            data: { status: 'DROPPED' },
+          });
+          logger.debug(`[EnrollProSync] Batch dedup: dropped ${staleEnrollmentIds.length} stale enrollments`);
+        }
+      } catch (err: any) {
+        errors.push(`Batch enrollment dedup failed: ${err.message}`);
+      }
+    }
+
+    // --- Batch execute: Enrollment upserts ---
+    const validUpserts = enrollmentUpserts.filter(op => !op.studentId.startsWith('__pending__'));
+    if (validUpserts.length > 0) {
+      try {
+        await prisma.$transaction(
+          validUpserts.map(op =>
+            prisma.enrollment.upsert({
+              where: {
+                studentId_sectionId_schoolYear: {
+                  studentId: op.studentId, sectionId: op.sectionId, schoolYear: schoolYearLabel,
+                },
+              },
+              update: { status: op.status },
+              create: { studentId: op.studentId, sectionId: op.sectionId, schoolYear: schoolYearLabel, status: op.status },
+            })
+          )
+        );
+        logger.debug(`[EnrollProSync] Batch upserted ${validUpserts.length} enrollments`);
+      } catch (err: any) {
+        errors.push(`Batch enrollment upsert failed: ${err.message}`);
+      }
+    }
+
+    // --- Snapshot: Create profile snapshots for new enrollments ---
+    try {
+      const snapshotBatch = validUpserts.filter(op => !op.studentId.startsWith('__pending__'));
+      if (snapshotBatch.length > 0) {
+        const studentIds = [...new Set(snapshotBatch.map(op => op.studentId))];
+        const students = await prisma.student.findMany({
+          where: { id: { in: studentIds } },
+        });
+        const studentMap = new Map(students.map(s => [s.id, s]));
+
+        // Find enrollments missing snapshots (filter in code to avoid JSON null filter issue)
+        const allEnrollments = await prisma.enrollment.findMany({
+          where: {
+            studentId: { in: studentIds },
+            schoolYear: schoolYearLabel,
+          },
+          select: { id: true, studentId: true, profileSnapshot: true },
+        });
+
+        const needsSnapshot = allEnrollments.filter(e => !e.profileSnapshot);
+
+        if (needsSnapshot.length > 0) {
+          let snapshotCount = 0;
+          await prisma.$transaction(
+            needsSnapshot.map(e => {
+              const student = studentMap.get(e.studentId);
+              if (!student) return prisma.enrollment.update({ where: { id: 'never-match' }, data: {} });
+              snapshotCount++;
+              return prisma.enrollment.update({
+                where: { id: e.id },
+                data: { profileSnapshot: snapshotForDb(student) as any },
+              });
+            })
+          );
+          logger.debug(`[EnrollProSync] Created ${snapshotCount} enrollment profile snapshots`);
+        }
+      }
+    } catch (err: any) {
+      errors.push(`Snapshot creation failed: ${err.message}`);
+    }
+
+      // 8. Drop stale enrollments (single batch query instead of per-section)
+      let studentsDropped = 0;
+    
+      if (!updatedSince) {
+        try {
+          // Collect all synced student IDs across all sections
+          const allSyncedStudentIds = new Set<string>();
+          for (const studentSet of syncedStudentsPerSection.values()) {
+            for (const sid of studentSet) allSyncedStudentIds.add(sid);
+          }
+
+          // Single query: find all ENROLLED enrollments for this SY
+          const allCurrentEnrollments = await prisma.enrollment.findMany({
+            where: { schoolYear: schoolYearLabel, status: 'ENROLLED' },
+            select: { id: true, studentId: true },
+          });
+
+          // Filter to stale enrollments (student not in synced set)
+          const staleIds = allCurrentEnrollments
+            .filter(e => !allSyncedStudentIds.has(e.studentId))
+            .map(e => e.id);
+
+          if (staleIds.length > 0) {
+            await prisma.enrollment.updateMany({
+              where: { id: { in: staleIds } },
+              data: { status: 'DROPPED' },
+            });
+            studentsDropped = staleIds.length;
+            logger.debug(`[EnrollProSync] Batch dropped ${staleIds.length} stale enrollment(s)`);
+          }
+        } catch (err: any) {
+          errors.push(`Stale enrollment cleanup: ${err.message}`);
+        }
+      } else {
+        logger.debug(`[EnrollProSync] Delta sync enabled — skipping full roster stale enrollment cleanup.`);
+      }
 
     // 9. Drop enrollments in orphaned sections
     if (!updatedSince) {
@@ -634,6 +925,8 @@ export async function runEnrollProSync() {
           currentSchoolYear: schoolYearLabel,
         }
       });
+      const { invalidateSchoolYearCache } = await import("./schoolYearResolver");
+      invalidateSchoolYearCache();
     } catch (err: any) {
       logger.warn({ err: err.message }, 'Failed to update system settings after sync');
     }

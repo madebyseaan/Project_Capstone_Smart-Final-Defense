@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { getPortalToken } from './api';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 
@@ -79,7 +80,7 @@ export function useTemplate(
       setLoading(true);
       setError(null);
 
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       if (!token) {
         throw new Error('Authentication required');
       }
@@ -160,7 +161,7 @@ export function useTemplateList() {
       setLoading(true);
       setError(null);
 
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       if (!token) {
         throw new Error('Authentication required');
       }

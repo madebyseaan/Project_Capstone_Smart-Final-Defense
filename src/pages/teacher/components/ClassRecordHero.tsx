@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Download, Upload, Sparkles } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,11 +26,7 @@ function getGradeColors(gradeLevel: string) {
 interface ClassRecordHeroProps {
   classAssignment: ClassAssignment;
   isHGClass: boolean;
-  effectiveWeightsSource: "subject" | "generic-fallback" | null;
-  onExportEcr: () => void;
-  onOpenImport: () => void;
-  onImportSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  effectiveWeightsSource: "subject-override" | "subject-type" | "generic-fallback" | null;
   onStartTour?: () => void;
 }
 
@@ -38,10 +34,6 @@ export function ClassRecordHero({
   classAssignment,
   isHGClass,
   effectiveWeightsSource,
-  onExportEcr,
-  onOpenImport,
-  onImportSelect,
-  fileInputRef,
   onStartTour,
 }: ClassRecordHeroProps) {
   return (
@@ -66,9 +58,19 @@ export function ClassRecordHero({
                 </span>
               </div>
               <h1 className="text-3xl font-semibold text-slate-900 tracking-tight uppercase">{classAssignment.subject.name}</h1>
+              {effectiveWeightsSource === "subject-override" && !isHGClass && (
+                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mt-2">
+                  Using custom subject weights (overrides group default)
+                </p>
+              )}
+              {effectiveWeightsSource === "subject-type" && !isHGClass && (
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">
+                  Using group default weights
+                </p>
+              )}
               {effectiveWeightsSource === "generic-fallback" && !isHGClass && (
                 <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 mt-2">
-                  Generic WW/PT/TA fallback active (no exact ECR template for this subject)
+                  Generic fallback weights (20/50/30) — no group config set
                 </p>
               )}
             </div>
@@ -88,23 +90,9 @@ export function ClassRecordHero({
             )}
 
             {!isHGClass ? (
-              <div id="tutorial-ecr-actions" className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  className="h-12 px-6 rounded-2xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all shadow-sm"
-                  onClick={onExportEcr}
-                >
-                  <Download className="w-4 h-4 mr-2" />EXPORT ECR
-                </Button>
-                <Button
-                  className="h-12 px-8 rounded-2xl text-[10px] tracking-widest uppercase transition-all shadow-xl"
-                  style={{ backgroundColor: "var(--theme-primary)", color: "var(--theme-primary-text)" }}
-                  onClick={onOpenImport}
-                >
-                  <Upload className="w-4 h-4 mr-3" />IMPORT ECR
-                </Button>
-                <input type="file" ref={fileInputRef} onChange={onImportSelect} accept=".xlsx,.xls" className="hidden" />
-              </div>
+              <Badge className="h-9 px-4 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold">
+                Grade Entry Mode
+              </Badge>
             ) : (
               <Badge className="h-9 px-4 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold">
                 Qualitative Grading Mode

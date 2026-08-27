@@ -3,30 +3,59 @@ import { AuditAction, AuditSeverity, Term, EnrollmentStatus, Prisma } from "@pri
 import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../middleware/auth";
 import { createAuditLog } from "../lib/audit";
-import multer from "multer";
-import * as XLSX from "xlsx";
-
+import { getTransmutationTable } from "../lib/transmutationCache";
+import { getActiveSchoolYearLabel } from "../lib/schoolYearResolver";
+import { logger } from "../lib/logger";
+import { validate } from "../middleware/validate";
+import { getIntegrationV1ActiveTerm } from "../lib/enrollproClient";
+import {
+  gradeSaveSchema,
+  gradeDeleteSchema,
+  clearScoresSchema,
+  editRequestSchema,
+  editRequestApproveSchema,
+  editRequestRejectSchema,
+  classAssignmentDeleteSchema,
+} from "../schemas/grades";
 const router = Router();
 
-// Configure multer for ECR file uploads (in-memory storage)
-const ecrUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (_req, file, cb) => {
-    // Accept only Excel files
-    const validMimes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-    ];
-    const validExts = ['.xlsx', '.xls'];
-    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
-    if (validMimes.includes(file.mimetype) || validExts.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only Excel files (.xlsx, .xls) are allowed'));
+// ─── Live Term Resolver ──────────────────────────────────────────────────────
+// Always fetch the active term from EnrollPro. Falls back to DB value if unreachable.
+// Cache for 60s to avoid hammering EnrollPro on every request.
+let cachedTerm: { term: string; fetchedAt: number } | null = null;
+const TERM_CACHE_TTL_MS = 60_000;
+
+export async function resolveCurrentTerm(): Promise<string> {
+  const now = Date.now();
+  if (cachedTerm && now - cachedTerm.fetchedAt < TERM_CACHE_TTL_MS) {
+    return cachedTerm.term;
+  }
+
+  try {
+    const activeTermData = await getIntegrationV1ActiveTerm();
+    if (activeTermData?.activeTerm) {
+      const termUpper = activeTermData.activeTerm.toUpperCase();
+      if (['T1', 'T2', 'T3'].includes(termUpper)) {
+        cachedTerm = { term: termUpper, fetchedAt: now };
+        // Also persist to DB so offline fallback is correct
+        await prisma.systemSettings.upsert({
+          where: { id: 'main' },
+          update: { currentTerm: termUpper as any },
+          create: { id: 'main', currentTerm: termUpper as any },
+        }).catch(() => {});
+        return termUpper;
+      }
     }
-  },
-});
+  } catch (err: any) {
+    logger.warn(`[Grades] Live term fetch from EnrollPro failed (non-fatal): ${err.message}`);
+  }
+
+  // Fallback: read from database
+  const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
+  const dbTerm = settings?.currentTerm ?? 'T1';
+  cachedTerm = { term: dbTerm, fetchedAt: now };
+  return dbTerm;
+}
 
 // Types for enrolled student with relations
 interface EnrollmentWithStudent {
@@ -54,12 +83,11 @@ interface ClassAssignmentWithRelations {
   section: { _count: { enrollments: number } };
 }
 
-interface EffectiveWeights {
+export interface EffectiveWeights {
   ww: number;
   pt: number;
   qa: number;
-  source: "subject" | "generic-fallback";
-  hasExactEcrTemplate: boolean;
+  source: "subject-override" | "subject-type" | "generic-fallback";
 }
 
 const GENERIC_FALLBACK_WEIGHTS = {
@@ -93,7 +121,7 @@ async function resolveTermDeadline(
   const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
   if (!settings) return null;
 
-  const currentTerm = settings.currentTerm ?? 'T1';
+  const currentTerm = await resolveCurrentTerm();
 
   // Pick the end-date for the current term
   let termEndDate: Date | null = null;
@@ -201,7 +229,7 @@ function isHomeroomGuidanceSubjectCode(subjectCode?: string | null): boolean {
   return (subjectCode ?? '').toUpperCase().startsWith('HG');
 }
 
-async function resolveEffectiveWeightsForClassAssignment(classAssignmentId: string): Promise<EffectiveWeights> {
+export async function resolveEffectiveWeightsForClassAssignment(classAssignmentId: string): Promise<EffectiveWeights> {
   const classAssignment = await prisma.classAssignment.findUnique({
     where: { id: classAssignmentId },
     select: {
@@ -209,6 +237,9 @@ async function resolveEffectiveWeightsForClassAssignment(classAssignmentId: stri
         select: {
           name: true,
           type: true,
+          writtenWorkWeight: true,
+          perfTaskWeight: true,
+          quarterlyAssessWeight: true,
         },
       },
     },
@@ -220,24 +251,27 @@ async function resolveEffectiveWeightsForClassAssignment(classAssignmentId: stri
       pt: GENERIC_FALLBACK_WEIGHTS.pt,
       qa: GENERIC_FALLBACK_WEIGHTS.qa,
       source: "generic-fallback",
-      hasExactEcrTemplate: false,
     };
   }
 
   const subjectName = classAssignment.subject.name.trim();
   const baseSubjectName = getBaseSubjectName(subjectName);
-  const hasExactEcrTemplate =
-    (await prisma.eCRTemplate.count({
-      where: {
-        isActive: true,
-        OR: [
-          { subjectName },
-          { subjectName: baseSubjectName },
-        ],
-      },
-    })) > 0;
 
-  // Use admin-configurable GradingConfig as the source of truth for weights
+  // 1. Check Subject-level weight override (if set)
+  if (
+    classAssignment.subject.writtenWorkWeight !== null &&
+    classAssignment.subject.perfTaskWeight !== null &&
+    classAssignment.subject.quarterlyAssessWeight !== null
+  ) {
+    return {
+      ww: classAssignment.subject.writtenWorkWeight,
+      pt: classAssignment.subject.perfTaskWeight,
+      qa: classAssignment.subject.quarterlyAssessWeight,
+      source: "subject-override",
+    };
+  }
+
+  // 2. Check GradingConfig for subject type
   const gradingConfig = await prisma.gradingConfig.findUnique({
     where: { subjectType: classAssignment.subject.type },
   });
@@ -247,17 +281,16 @@ async function resolveEffectiveWeightsForClassAssignment(classAssignmentId: stri
       ww: gradingConfig.writtenWorkWeight,
       pt: gradingConfig.performanceTaskWeight,
       qa: gradingConfig.quarterlyAssessWeight,
-      source: "subject",
-      hasExactEcrTemplate,
+      source: "subject-type",
     };
   }
 
+  // 3. Generic fallback
   return {
     ww: GENERIC_FALLBACK_WEIGHTS.ww,
     pt: GENERIC_FALLBACK_WEIGHTS.pt,
     qa: GENERIC_FALLBACK_WEIGHTS.qa,
     source: "generic-fallback",
-    hasExactEcrTemplate,
   };
 }
 
@@ -277,8 +310,7 @@ router.get(
         return;
       }
 
-      const systemSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentSchoolYear = systemSettings?.currentSchoolYear ?? '2026-2027';
+      const currentSchoolYear = await getActiveSchoolYearLabel();
 
       const classes = await prisma.classAssignment.findMany({
         where: {
@@ -330,7 +362,7 @@ router.get(
 
       res.json(classesWithEffectiveWeights);
     } catch (error) {
-      console.error("Error fetching classes:", error);
+      logger.error("Error fetching classes:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -408,17 +440,27 @@ router.get(
       });
 
       const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
+      const currentTerm = await resolveCurrentTerm();
       const systemSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentTerm = systemSettings?.currentTerm ?? 'T1';
 
       res.json({
         classAssignment,
         classRecord,
         effectiveWeights,
         currentTerm,
+        // Term dates and lock status for banner display
+        termDates: {
+          t1StartDate: systemSettings?.t1StartDate,
+          t1EndDate: systemSettings?.t1EndDate,
+          t2StartDate: systemSettings?.t2StartDate,
+          t2EndDate: systemSettings?.t2EndDate,
+          t3StartDate: systemSettings?.t3StartDate,
+          t3EndDate: systemSettings?.t3EndDate,
+        },
+        gradeLock: systemSettings?.gradeLock ?? false,
       });
     } catch (error) {
-      console.error("Error fetching class record:", error);
+      logger.error("Error fetching class record:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -429,6 +471,7 @@ router.post(
   "/grade",
   authenticateToken,
   authorizeRoles("TEACHER"),
+  validate(gradeSaveSchema),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const {
@@ -451,6 +494,41 @@ router.post(
       if (!teacher) {
         res.status(404).json({ message: "Teacher profile not found" });
         return;
+      }
+
+      // Grade lock check — block edits during EOSY or when admin locks grades
+      const sysSettings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+      if (sysSettings?.gradeLock) {
+        res.status(403).json({ message: "Grade editing is locked. Contact admin to unlock." });
+        return;
+      }
+
+      // Term boundary check — only current term is editable (unless teacher has approved edit request)
+      const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+      const currentTerm = await resolveCurrentTerm();
+      const currentTermNum = termOrder[currentTerm] ?? 1;
+      const requestTermNum = termOrder[term as string] ?? 0;
+      if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
+        // Check if teacher has an approved, non-expired edit request for this term
+        let hasEditAccess = false;
+        if (teacher) {
+          const editRequest = await prisma.gradeEditRequest.findFirst({
+            where: {
+              teacherId: teacher.userId,
+              term: term as string,
+              status: "APPROVED",
+              expiresAt: { gt: new Date() },
+            },
+          });
+          hasEditAccess = !!editRequest;
+        }
+        if (!hasEditAccess) {
+          const relation = requestTermNum < currentTermNum ? "past" : "future";
+          res.status(403).json({
+            message: `Cannot edit grades for ${term} (${relation} term). The current term is ${currentTerm}. Only current term grades can be edited.`,
+          });
+          return;
+        }
       }
 
       // Verify teacher owns this class assignment
@@ -491,6 +569,18 @@ router.post(
       // before recomputing DepEd totals.
       const existingGrade = await prisma.grade.findFirst({ where: { studentId, classAssignmentId, term } });
 
+      // Block edits on archived grades
+      if (existingGrade?.isArchived) {
+        res.status(403).json({ message: "Cannot edit archived grades. This school year has been finalized." });
+        return;
+      }
+
+      // Block edits on finalized grades (registrar has locked them for EOSY)
+      if (existingGrade?.status === "FINALIZED") {
+        res.status(403).json({ message: "Grade is finalized and cannot be edited. Contact registrar to unfinalize." });
+        return;
+      }
+
       const mergedWrittenWorkScores = !isHG
         ? ((writtenWorkScores !== undefined
             ? writtenWorkScores
@@ -529,7 +619,7 @@ router.post(
 
       if (!isHG) {
         const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
-        const calculated = calculateGrades(
+        const calculated = await calculateGrades(
           mergedWrittenWorkScores,
           mergedPerfTaskScores,
           mergedQuarterlyAssessScore,
@@ -639,7 +729,7 @@ router.post(
 
       res.json(grade);
     } catch (error) {
-      console.error("Error saving grade:", error);
+      logger.error("Error saving grade:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -650,6 +740,7 @@ router.delete(
   "/grade/:gradeId",
   authenticateToken,
   authorizeRoles("TEACHER"),
+  validate(gradeDeleteSchema),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const gradeId = req.params.gradeId as string;
@@ -679,6 +770,12 @@ router.delete(
 
       if (!grade || grade.classAssignment.teacherId !== teacher.id) {
         res.status(403).json({ message: "Not authorized" });
+        return;
+      }
+
+      // Block deletion of archived grades
+      if (grade.isArchived) {
+        res.status(403).json({ message: "Cannot delete archived grades. This school year has been finalized." });
         return;
       }
 
@@ -729,7 +826,7 @@ router.delete(
 
       res.json({ message: "Grade deleted successfully" });
     } catch (error) {
-      console.error("Error deleting grade:", error);
+      logger.error("Error deleting grade:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -740,6 +837,7 @@ router.post(
   "/clear-scores",
   authenticateToken,
   authorizeRoles("TEACHER"),
+  validate(clearScoresSchema),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { classAssignmentId, term } = req.body;
@@ -751,6 +849,41 @@ router.post(
       if (!teacher) {
         res.status(404).json({ message: "Teacher profile not found" });
         return;
+      }
+
+      // Grade lock check
+      const sysSettings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+      if (sysSettings?.gradeLock) {
+        res.status(403).json({ message: "Grade editing is locked. Contact admin to unlock." });
+        return;
+      }
+
+      // Term boundary check — only current term is editable (unless teacher has approved edit request)
+      const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+      const currentTerm = await resolveCurrentTerm();
+      const currentTermNum = termOrder[currentTerm] ?? 1;
+      const requestTermNum = termOrder[term as string] ?? 0;
+      if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
+        // Check if teacher has an approved, non-expired edit request for this term
+        let hasEditAccess = false;
+        if (teacher) {
+          const editRequest = await prisma.gradeEditRequest.findFirst({
+            where: {
+              teacherId: teacher.userId,
+              term: term as string,
+              status: "APPROVED",
+              expiresAt: { gt: new Date() },
+            },
+          });
+          hasEditAccess = !!editRequest;
+        }
+        if (!hasEditAccess) {
+          const relation = requestTermNum < currentTermNum ? "past" : "future";
+          res.status(403).json({
+            message: `Cannot clear scores for ${term} (${relation} term). The current term is ${currentTerm}. Only current term scores can be cleared.`,
+          });
+          return;
+        }
       }
 
       // Verify ownership
@@ -767,6 +900,40 @@ router.post(
 
       if (!classAssignment) {
         res.status(403).json({ message: "Not authorized for this class" });
+        return;
+      }
+
+      // Block deletion if any grades for this assignment + term are archived
+      const archivedCount = await prisma.grade.count({
+        where: {
+          classAssignmentId,
+          term,
+          isArchived: true,
+        },
+      });
+
+      if (archivedCount > 0) {
+        res.status(403).json({
+          message: "Cannot clear scores: some grades are archived and must be preserved.",
+          archivedCount,
+        });
+        return;
+      }
+
+      // Block deletion if any grades for this assignment + term are finalized
+      const finalizedCount = await prisma.grade.count({
+        where: {
+          classAssignmentId,
+          term,
+          status: "FINALIZED",
+        },
+      });
+
+      if (finalizedCount > 0) {
+        res.status(403).json({
+          message: "Cannot clear scores: some grades are finalized. Contact registrar to unfinalize first.",
+          finalizedCount,
+        });
         return;
       }
 
@@ -797,7 +964,7 @@ router.post(
 
       res.json({ message: `Successfully cleared all scores for ${term}`, count });
     } catch (error) {
-      console.error("Error clearing scores:", error);
+      logger.error("Error clearing scores:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -836,10 +1003,30 @@ router.delete(
         return;
       }
 
+      // Check which assignments have grades — block deletion for those
+      const assignmentIds = archivedAssignments.map(a => a.id);
+      const gradeCounts = await prisma.grade.groupBy({
+        by: ['classAssignmentId'],
+        where: { classAssignmentId: { in: assignmentIds } },
+        _count: { id: true }
+      });
+      const assignmentsWithGrades = new Set(gradeCounts.map(g => g.classAssignmentId));
+      
+      const safeToDelete = archivedAssignments.filter(a => !assignmentsWithGrades.has(a.id));
+      const blockedCount = archivedAssignments.length - safeToDelete.length;
+
+      if (safeToDelete.length === 0) {
+        res.status(400).json({ 
+          message: `Cannot delete archived assignments: ${blockedCount} have grades that must be preserved for student records (SF10).`,
+          blockedCount,
+          totalArchived: archivedAssignments.length
+        });
+        return;
+      }
+
       const { count } = await prisma.classAssignment.deleteMany({
         where: {
-          teacherId: teacher.id,
-          isActive: false,
+          id: { in: safeToDelete.map(a => a.id) },
         },
       });
 
@@ -854,15 +1041,21 @@ router.delete(
           teacherUser,
           `Bulk Delete Archived Class Assignments`,
           "Class Records",
-          `Permanently deleted all (${count}) archived class assignments for teacher ${teacherUser.firstName} ${teacherUser.lastName}`,
+          `Permanently deleted ${count} archived class assignments for teacher ${teacherUser.firstName} ${teacherUser.lastName}${blockedCount > 0 ? ` (${blockedCount} blocked: have grades)` : ''}`,
           (req.ip as string) || req.socket?.remoteAddress,
           AuditSeverity.WARNING
         );
       }
 
-      res.json({ message: `Successfully deleted ${count} archived assignments`, count });
+      res.json({ 
+        message: blockedCount > 0 
+          ? `Deleted ${count} assignments. ${blockedCount} skipped (have grades, preserved for SF10).`
+          : `Successfully deleted ${count} archived assignments`,
+        count,
+        blockedCount
+      });
     } catch (error) {
-      console.error("Error deleting all archived class assignments:", error);
+      logger.error("Error deleting all archived class assignments:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -873,6 +1066,7 @@ router.delete(
   "/class-assignment/:id",
   authenticateToken,
   authorizeRoles("TEACHER"),
+  validate(classAssignmentDeleteSchema),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const assignmentId = req.params.id as string;
@@ -905,6 +1099,18 @@ router.delete(
         return;
       }
 
+      // Block deletion if assignment has grades — preserve for SF10
+      const gradeCount = await prisma.grade.count({
+        where: { classAssignmentId: assignmentId }
+      });
+      if (gradeCount > 0) {
+        res.status(400).json({ 
+          message: `Cannot delete: this assignment has ${gradeCount} grade record(s) that must be preserved for student permanent records (SF10).`,
+          gradeCount
+        });
+        return;
+      }
+
       await prisma.classAssignment.delete({
         where: { id: assignmentId },
       });
@@ -930,7 +1136,7 @@ router.delete(
 
       res.json({ message: "Assignment deleted successfully" });
     } catch (error) {
-      console.error("Error deleting class assignment:", error);
+      logger.error("Error deleting class assignment:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -960,9 +1166,8 @@ router.get(
         return;
       }
 
-      const systemSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentSchoolYear = systemSettings?.currentSchoolYear ?? '2026-2027';
-      const currentTerm = systemSettings?.currentTerm ?? 'T1';
+      const currentSchoolYear = await getActiveSchoolYearLabel();
+      const currentTerm = await resolveCurrentTerm();
 
       const classAssignments = await prisma.classAssignment.findMany({
         where: {
@@ -1051,7 +1256,7 @@ router.get(
         gradeDeadline,
       });
     } catch (error) {
-      console.error("Error fetching dashboard:", error);
+      logger.error("Error fetching dashboard:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -1073,9 +1278,8 @@ router.get(
         return;
       }
 
-      const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentSY = sysSettings?.currentSchoolYear ?? '2026-2027';
-      const currentTerm = sysSettings?.currentTerm ?? 'T1';
+      const currentSY = await getActiveSchoolYearLabel();
+      const currentTerm = await resolveCurrentTerm();
 
       const classAssignments = await prisma.classAssignment.findMany({
         where: {
@@ -1096,7 +1300,7 @@ router.get(
             },
           },
           grades: {
-            where: { term: currentTerm },
+            where: { term: currentTerm as Term },
           },
         },
       });
@@ -1109,10 +1313,10 @@ router.get(
         let gradesForStats: any[] = ca.grades;
         if (!isHG) {
           const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(ca.id);
-          gradesForStats = ca.grades.map((g: any) => {
+          gradesForStats = await Promise.all(ca.grades.map(async (g: any) => {
             if (g.quarterlyGrade !== null) return g;
 
-            const recalculated = calculateGrades(
+            const recalculated = await calculateGrades(
               (g.writtenWorkScores as Array<{ name: string; score: number; maxScore: number }> | null) ?? null,
               (g.perfTaskScores as Array<{ name: string; score: number; maxScore: number }> | null) ?? null,
               g.quarterlyAssessScore ?? 0,
@@ -1130,7 +1334,7 @@ router.get(
               initialGrade: recalculated.initialGrade,
               quarterlyGrade: recalculated.quarterlyGrade,
             };
-          });
+          }));
         }
 
         const gradesWithScore = isHG
@@ -1245,7 +1449,7 @@ router.get(
         gradeDeadline,
       });
     } catch (error) {
-      console.error("Error fetching dashboard stats:", error);
+      logger.error("Error fetching dashboard stats:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -1267,21 +1471,20 @@ router.get(
         return;
       }
 
-      const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentSchoolYear = settings?.currentSchoolYear ?? '2026-2027';
+      const currentSchoolYear = await getActiveSchoolYearLabel();
 
       const gradeDeadline = await resolveTermDeadline(teacher.id, currentSchoolYear);
 
       res.json({ gradeDeadline });
     } catch (error) {
-      console.error("Error fetching deadline status:", error);
+      logger.error("Error fetching deadline status:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
 );
 
 // Helper function to calculate grades based on DepEd formula
-function calculateGrades(
+async function calculateGrades(
   writtenWorkScores: Array<{ name: string; score: number; maxScore: number }> | null,
   perfTaskScores: Array<{ name: string; score: number; maxScore: number }> | null,
   quarterlyAssessScore: number | null,
@@ -1324,7 +1527,7 @@ function calculateGrades(
   // Transmute to Quarterly Grade
   let quarterlyGrade: number | null = null;
   if (initialGrade !== null) {
-    quarterlyGrade = transmute(initialGrade);
+    quarterlyGrade = await transmute(initialGrade);
   }
 
   return {
@@ -1336,61 +1539,19 @@ function calculateGrades(
   };
 }
 
-// DepEd Transmutation Table (Revised Guidelines 2026)
-function transmute(initialGrade: number): number {
+// DepEd Transmutation Table — loaded from DB (single source of truth)
+async function transmute(initialGrade: number): Promise<number> {
   const roundedGrade = Math.round(initialGrade * 100) / 100;
-  if (roundedGrade >= 99.5) return 100;
-
-  const transmutationTable: [number, number, number][] = [
-    [97.5, 99.49, 99],
-    [96.0, 97.49, 98],
-    [95.0, 95.99, 97],
-    [94.0, 94.99, 96],
-    [93.0, 93.99, 95],
-    [92.0, 92.99, 94],
-    [91.0, 91.99, 93],
-    [90.0, 90.99, 92],
-    [89.0, 89.99, 91],
-    [88.0, 88.99, 90],
-    [87.0, 87.99, 89],
-    [86.0, 86.99, 88],
-    [85.0, 85.99, 87],
-    [84.0, 84.99, 86],
-    [83.0, 83.99, 85],
-    [82.0, 82.99, 84],
-    [81.0, 81.99, 83],
-    [80.0, 80.99, 82],
-    [79.0, 79.99, 81],
-    [78.0, 78.99, 80],
-    [77.0, 77.99, 79],
-    [76.0, 76.99, 78],
-    [75.0, 75.99, 77],
-    [73.0, 74.99, 76],
-    [70.0, 72.99, 75],
-    [68.0, 69.99, 74],
-    [66.0, 67.99, 73],
-    [64.0, 65.99, 72],
-    [62.0, 63.99, 71],
-    [60.0, 61.99, 70],
-    [58.0, 59.99, 69],
-    [56.0, 57.99, 68],
-    [54.0, 55.99, 67],
-    [52.0, 53.99, 66],
-    [50.0, 51.99, 65],
-    [48.0, 49.99, 64],
-    [46.0, 47.99, 63],
-    [43.0, 45.99, 62],
-    [40.0, 42.99, 61],
-    [25.0, 39.99, 60],
-    [0.0,  24.99, 60],
-  ];
-
-  for (const [min, max, grade] of transmutationTable) {
-    if (roundedGrade >= min && roundedGrade <= max) {
-      return grade;
+  const table = await getTransmutationTable();
+  for (const entry of table) {
+    if (roundedGrade >= entry.minGrade && roundedGrade <= entry.maxGrade) {
+      return entry.transmutedGrade;
     }
   }
-
+  logger.warn(
+    `[Transmutation] Initial grade ${roundedGrade} did not match any range — returning fallback 60. ` +
+      `Check the transmutation table for gaps or misconfigured ranges (${table.length} entries).`
+  );
   return 60; // Minimum grade
 }
 
@@ -1424,7 +1585,7 @@ async function createGradeSnapshot(params: {
       },
     });
   } catch (error) {
-    console.error('Failed to create grade snapshot:', error);
+    logger.error('Failed to create grade snapshot:', error);
   }
 }
 
@@ -1439,9 +1600,9 @@ router.get(
       if (!teacher) { res.status(404).json({ message: "Teacher not found" }); return; }
 
       const { term } = req.query;
-      const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentSY = sysSettings?.currentSchoolYear ?? '2026-2027';
-      const selectedTerm = (term as string) || sysSettings?.currentTerm || 'T1';
+      const currentSY = await getActiveSchoolYearLabel();
+      const currentTerm = await resolveCurrentTerm();
+      const selectedTerm = (term as string) || currentTerm || 'T1';
 
       const advisorySection = await prisma.section.findFirst({
         where: { adviserId: teacher.id, schoolYear: currentSY },
@@ -1573,7 +1734,7 @@ router.get(
 
       res.json({ advisoryHonors, withHonors, hasAdvisory: true });
     } catch (error) {
-      console.error("Error fetching advisory honors:", error);
+      logger.error("Error fetching advisory honors:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -1597,8 +1758,7 @@ router.get(
         return;
       }
 
-      const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentTerm = sysSettings?.currentTerm ?? 'T1';
+      const currentTerm = await resolveCurrentTerm();
 
       // Build filter for class assignments
       const classAssignmentFilter: any = {
@@ -1610,8 +1770,7 @@ router.get(
         classAssignmentFilter.sectionId = sectionId as string;
       }
 
-      const sysSettingsForMastery = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentSYForMastery = sysSettingsForMastery?.currentSchoolYear ?? '2026-2027';
+      const currentSYForMastery = await getActiveSchoolYearLabel();
 
       if (!classAssignmentFilter.schoolYear) {
         classAssignmentFilter.schoolYear = currentSYForMastery;
@@ -1623,7 +1782,7 @@ router.get(
           section: true,
           subject: true,
           grades: {
-            where: { term: currentTerm },
+            where: { term: currentTerm as Term },
           },
         },
       });
@@ -1664,6 +1823,7 @@ router.get(
         id: ca.section.id,
         name: ca.section.name,
         gradeLevel: ca.section.gradeLevel,
+        program: ca.section.program,
       }));
 
       res.json({
@@ -1675,661 +1835,283 @@ router.get(
         },
       });
     } catch (error) {
-      console.error("Error fetching mastery distribution:", error);
+      logger.error("Error fetching mastery distribution:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
 );
 
-// ====================
-// ECR (E-Class Record) Import
-// ====================
-
-interface ECRStudentData {
-  name: string;
-  writtenWorkScores: number[];
-  writtenWorkTotal: number;
-  writtenWorkPS: number;
-  perfTaskScores: number[];
-  perfTaskTotal: number;
-  perfTaskPS: number;
-  quarterlyAssessScore: number;
-  quarterlyAssessPS: number;
-  initialGrade: number;
-  quarterlyGrade: number;
-}
-
-interface ECRQuarterData {
-  term: string;
-  students: ECRStudentData[];
-  maxScores: {
-    writtenWork: number[];
-    perfTask: number[];
-    quarterlyAssess: number;
-  };
-}
-
-// Parse ECR Excel file and extract student grades
-function parseECRFile(buffer: Buffer): { quarters: ECRQuarterData[]; metadata: any } {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const quarters: ECRQuarterData[] = [];
-  let metadata: any = {};
-
-  // Map sheet names to quarters
-  const termSheetMap: Record<string, string> = {};
-  workbook.SheetNames.forEach(name => {
-    const upperName = name.toUpperCase();
-    if (upperName.includes('T1') || upperName.includes('_T1') || upperName.includes('Q1') || upperName.includes('_Q1')) termSheetMap.T1 = name;
-    else if (upperName.includes('T2') || upperName.includes('_T2') || upperName.includes('Q2') || upperName.includes('_Q2')) termSheetMap.T2 = name;
-    else if (upperName.includes('T3') || upperName.includes('_T3') || upperName.includes('Q3') || upperName.includes('_Q3')) termSheetMap.T3 = name;
-  });
-
-  // Process each term sheet
-  for (const [term, sheetName] of Object.entries(termSheetMap)) {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
-
-    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
-    
-    // Extract metadata from early rows (typically row 7)
-    if (data[6]) {
-      const row7 = data[6];
-      metadata = {
-        ...metadata,
-        gradeSection: row7[2] || '',
-        teacher: row7[3] || '',
-        subject: row7[4] || '',
-      };
-    }
-
-    // Row 10 (index 9) contains highest possible scores
-    const maxScoreRow = data[9] || [];
-    const maxScores = {
-      writtenWork: [] as number[],
-      perfTask: [] as number[],
-      quarterlyAssess: 100,
-    };
-
-    // Extract max scores for WW (columns 5-14) and PT (columns 18-27)
-    for (let i = 5; i <= 14; i++) {
-      const val = Number(maxScoreRow[i]) || 0;
-      if (val > 0) maxScores.writtenWork.push(val);
-    }
-    for (let i = 18; i <= 27; i++) {
-      const val = Number(maxScoreRow[i]) || 0;
-      if (val > 0) maxScores.perfTask.push(val);
-    }
-
-    // Find MALE and FEMALE section markers (can be in column A or B depending on ECR format)
-    let maleStart = -1;
-    let femaleStart = -1;
-    let dataEnd = data.length;
-
-    for (let i = 0; i < data.length; i++) {
-      const colA = String(data[i][0] || '').toUpperCase().trim();
-      const colB = String(data[i][1] || '').toUpperCase().trim();
-      // Check both column A and B for MALE/FEMALE markers
-      if (colA === 'MALE' || colA === 'MALE ' || colB === 'MALE' || colB === 'MALE ') maleStart = i;
-      if (colA === 'FEMALE' || colA === 'FEMALE ' || colB === 'FEMALE' || colB === 'FEMALE ') femaleStart = i;
-      // Stop at empty sections or summary markers
-      if (maleStart > 0 && (colA.includes('SUMMARY') || colA.includes('AVERAGE') || colB.includes('SUMMARY') || colB.includes('AVERAGE'))) {
-        dataEnd = i;
-        break;
-      }
-    }
-
-    const students: ECRStudentData[] = [];
-
-    // Process student rows (after MALE header, and after FEMALE header)
-    const processStudentRows = (startRow: number, endRow: number) => {
-      for (let i = startRow + 1; i < endRow; i++) {
-        const row = data[i];
-        if (!row) continue;
-
-        // Column A is row number (can be string or number), Column B is student name
-        const rowNum = row[0];
-        const name = String(row[1] || '').trim();
-
-        // Skip empty rows or non-student rows (headers, totals, etc.)
-        if (!name || name === '') continue;
-        // Check if rowNum is a valid number (as string or number)
-        const rowNumParsed = typeof rowNum === 'number' ? rowNum : parseInt(String(rowNum), 10);
-        if (isNaN(rowNumParsed)) continue;
-        if (name.toUpperCase().includes('FEMALE') || name.toUpperCase().includes('MALE')) continue;
-        if (name.toUpperCase().includes('TOTAL') || name.toUpperCase().includes('AVERAGE')) continue;
-        if (name.toUpperCase().includes('HIGHEST')) continue;
-
-        // Extract Written Work scores (columns 5-14, 10 items max)
-        const wwScores: number[] = [];
-        for (let c = 5; c <= 14; c++) {
-          const val = Number(row[c]);
-          if (!isNaN(val) && maxScores.writtenWork[c - 5] !== undefined) {
-            wwScores.push(val);
-          }
-        }
-
-        // Extract Performance Task scores (columns 18-27, 10 items max)
-        const ptScores: number[] = [];
-        for (let c = 18; c <= 27; c++) {
-          const val = Number(row[c]);
-          if (!isNaN(val) && maxScores.perfTask[c - 18] !== undefined) {
-            ptScores.push(val);
-          }
-        }
-
-        // Extract totals, PS, and grades
-        const wwTotal = Number(row[15]) || 0;
-        const wwPS = Number(row[16]) || 0;
-        const ptTotal = Number(row[28]) || 0;
-        const ptPS = Number(row[29]) || 0;
-        const qaScore = Number(row[31]) || 0;
-        const qaPS = Number(row[32]) || 0;
-        const initialGrade = Number(row[34]) || 0;
-        const quarterlyGrade = Number(row[35]) || 0;
-
-        // Only add if student has any data
-        if (wwScores.length > 0 || ptScores.length > 0 || qaScore > 0 || quarterlyGrade > 0) {
-          students.push({
-            name,
-            writtenWorkScores: wwScores,
-            writtenWorkTotal: wwTotal,
-            writtenWorkPS: wwPS,
-            perfTaskScores: ptScores,
-            perfTaskTotal: ptTotal,
-            perfTaskPS: ptPS,
-            quarterlyAssessScore: qaScore,
-            quarterlyAssessPS: qaPS,
-            initialGrade,
-            quarterlyGrade,
-          });
-        }
-      }
-    };
-
-    // Process male students
-    if (maleStart > 0 && femaleStart > maleStart) {
-      processStudentRows(maleStart, femaleStart);
-    } else if (maleStart > 0) {
-      processStudentRows(maleStart, dataEnd);
-    }
-
-    // Process female students
-    if (femaleStart > 0) {
-      processStudentRows(femaleStart, dataEnd);
-    }
-
-    if (students.length > 0) {
-      quarters.push({ term, students, maxScores });
-    }
+// GET /api/grades/transmutation-table — public read-only endpoint for frontend transmutation
+router.get("/transmutation-table", async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const table = await getTransmutationTable();
+    res.json(table);
+  } catch (err: any) {
+    logger.error("Error fetching transmutation table:", err);
+    res.status(500).json({ message: "Failed to fetch transmutation table" });
   }
+});
 
-  return { quarters, metadata };
-}
+// ---------------------------------------------------------------------------
+// Grade Edit Request Endpoints
+// ---------------------------------------------------------------------------
 
-// Normalize name for matching (remove extra spaces, convert to uppercase)
-function normalizeName(name: string): string {
-  return name
-    .toUpperCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/,\s*/g, ', '); // Standardize comma spacing
-}
-
-// Strip name extensions (Jr., Sr., II, III, IV, V) from both sides for flexible matching
-function stripExtensions(name: string): string {
-  return name
-    .replace(/\b(JR\.?|SR\.?|II|III|IV|V)\b/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-    .replace(/,\s*$/, '')
-    .trim();
-}
-
-// Match ECR student name to database student
-// Handles: double first names (e.g. "Mary Grace"), extensions (Jr./Sr./III),
-// and flexible prefix matching for compound first names in ECR.
-function matchStudent(
-  ecrName: string,
-  dbStudents: Array<{ id: string; firstName: string; middleName?: string | null; lastName: string; suffix?: string | null }>
-): { id: string } | null {
-  const normalizedEcr = normalizeName(ecrName);
-  const strippedEcr = stripExtensions(normalizedEcr);
-
-  for (const student of dbStudents) {
-    const { firstName, lastName, middleName, suffix } = student;
-
-    // Build various name formats to match
-    const formats = [
-      // LASTNAME, FIRSTNAME MIDDLENAME
-      `${lastName}, ${firstName}${middleName ? ' ' + middleName : ''}`,
-      // LASTNAME, FIRSTNAME M.  (middle initial only)
-      `${lastName}, ${firstName}${middleName ? ' ' + middleName.charAt(0) + '.' : ''}`,
-      // LASTNAME, FIRSTNAME
-      `${lastName}, ${firstName}`,
-      // FIRSTNAME MIDDLENAME LASTNAME
-      `${firstName}${middleName ? ' ' + middleName : ''} ${lastName}`,
-      // FIRSTNAME LASTNAME
-      `${firstName} ${lastName}`,
-    ];
-
-    // Add suffix (Jr./Sr./etc.) variations
-    if (suffix) {
-      formats.push(`${lastName} ${suffix}, ${firstName}`);
-      formats.push(`${lastName}, ${firstName} ${suffix}`);
-      formats.push(`${lastName}, ${firstName}${middleName ? ' ' + middleName : ''} ${suffix}`);
-      formats.push(`${lastName}, ${firstName}${middleName ? ' ' + middleName.charAt(0) + '.' : ''} ${suffix}`);
-    }
-
-    // 1. Exact match
-    for (const fmt of formats) {
-      if (normalizeName(fmt) === normalizedEcr) return { id: student.id };
-    }
-
-    // 2. Extension-stripped match (handles Jr./Sr./II/III in ECR without suffix in DB, or vice versa)
-    for (const fmt of formats) {
-      if (stripExtensions(normalizeName(fmt)) === strippedEcr) return { id: student.id };
-    }
-
-    // 3. Double-first-name: DB has compound first name (e.g. "Mary Grace"),
-    //    try also matching against just the first word
-    const firstWordOfDbFirst = firstName.split(' ')[0];
-    if (firstWordOfDbFirst !== firstName) {
-      const shortFormats = [
-        `${lastName}, ${firstWordOfDbFirst}${middleName ? ' ' + middleName : ''}`,
-        `${lastName}, ${firstWordOfDbFirst}${middleName ? ' ' + middleName.charAt(0) + '.' : ''}`,
-        `${lastName}, ${firstWordOfDbFirst}`,
-      ];
-      for (const fmt of shortFormats) {
-        if (normalizeName(fmt) === normalizedEcr) return { id: student.id };
-        if (stripExtensions(normalizeName(fmt)) === strippedEcr) return { id: student.id };
-      }
-    }
-
-    // 4. Prefix match: ECR may combine first+second name as one token
-    //    e.g. ECR "PIATOS, MARY GRACE O." vs DB firstName="Mary", middleName=null
-    //    Check if ECR last name matches and ECR's first-name token STARTS WITH DB firstName
-    const commaIdx = strippedEcr.indexOf(',');
-    if (commaIdx > 0) {
-      const ecrLastNamePart = strippedEcr.substring(0, commaIdx).trim();
-      const ecrFirstPart = strippedEcr.substring(commaIdx + 1).trim().split(' ');
-      const dbLastNorm = normalizeName(lastName);
-      const dbFirstNorm = normalizeName(firstName);
-
-      if (ecrLastNamePart === dbLastNorm && ecrFirstPart.length > 0) {
-        // ECR first token starts with DB first name
-        if (ecrFirstPart[0] === dbFirstNorm) return { id: student.id };
-        // ECR first two tokens together equal DB first name (e.g. DB="Mary Grace", ECR tokens=["MARY","GRACE"])
-        if (ecrFirstPart.length > 1 && `${ecrFirstPart[0]} ${ecrFirstPart[1]}` === dbFirstNorm) return { id: student.id };
-      }
-    }
-  }
-
-  return null;
-}
-
-// Preview ECR import (returns parsed data without saving)
+// Teacher: Create edit request for past term
 router.post(
-  "/ecr/preview",
+  "/edit-request",
   authenticateToken,
   authorizeRoles("TEACHER"),
-  ecrUpload.single('file'),
+  validate(editRequestSchema),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-      if (!req.file) {
-        res.status(400).json({ message: "No file uploaded" });
-        return;
-      }
-
-      const classAssignmentId = req.body.classAssignmentId;
-      if (!classAssignmentId) {
-        res.status(400).json({ message: "Class assignment ID required" });
+      const { term, reason, classAssignmentId, gradeLevel, section, subject } = req.body;
+      if (!term || !reason) {
+        res.status(400).json({ message: "term and reason are required" });
         return;
       }
 
       const teacher = await prisma.teacher.findUnique({
         where: { userId: req.user?.id },
+        include: { user: true },
       });
-
       if (!teacher) {
         res.status(404).json({ message: "Teacher profile not found" });
         return;
       }
 
-      // Verify teacher owns this class assignment
-      const classAssignment = await prisma.classAssignment.findFirst({
-        where: {
-          id: classAssignmentId,
-          teacherId: teacher.id,
-        },
-        include: {
-          subject: true,
-          section: {
-            include: {
-              enrollments: {
-                include: { student: true },
-              },
-            },
-          },
-        },
+      const currentTerm = await resolveCurrentTerm();
+      const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
+      const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+      if (termOrder[term] >= termOrder[currentTerm]) {
+        res.status(400).json({ message: "Can only request edit access for past terms" });
+        return;
+      }
+
+      // Check for existing pending request
+      const existing = await prisma.gradeEditRequest.findFirst({
+        where: { teacherId: teacher.userId, term, status: "PENDING" },
       });
-
-      if (!classAssignment) {
-        res.status(403).json({ message: "Not authorized for this class" });
-        return;
-      }
-      if (isHomeroomGuidanceSubjectCode(classAssignment.subject.code)) {
-        res.status(400).json({ message: "ECR import is not available for Homeroom Guidance classes" });
+      if (existing) {
+        res.status(409).json({ message: "You already have a pending request for this term" });
         return;
       }
 
-      // Parse ECR file
-      const { quarters, metadata } = parseECRFile(req.file.buffer);
-
-      if (quarters.length === 0) {
-        res.status(400).json({ message: "No valid term data found in ECR file" });
-        return;
-      }
-
-      // Get enrolled students for matching
-      const enrolledStudents = classAssignment.section.enrollments.map(e => e.student);
-
-      // Match ECR students to database students
-      const matchResults = quarters.map(q => ({
-        term: q.term,
-        maxScores: q.maxScores,
-        students: q.students.map(ecrStudent => {
-          const match = matchStudent(ecrStudent.name, enrolledStudents);
-          return {
-            ...ecrStudent,
-            matchedStudentId: match?.id || null,
-            matchedStudent: match ? enrolledStudents.find(s => s.id === match.id) : null,
-          };
-        }),
-      }));
-
-      // Calculate match statistics (deduplicate by name across quarters)
-      const allNames = new Set<string>();
-      const matchedNames = new Set<string>();
-      matchResults.forEach(q => {
-        q.students.forEach(s => {
-          allNames.add(s.name);
-          if (s.matchedStudentId) matchedNames.add(s.name);
-        });
-      });
-      const totalStudents = allNames.size;
-      const matchedStudents = matchedNames.size;
-
-      res.json({
-        fileName: req.file.originalname,
-        metadata,
-        quarters: matchResults,
-        stats: {
-          totalStudents,
-          matchedStudents,
-          unmatchedStudents: totalStudents - matchedStudents,
-        },
-        classAssignment: {
-          id: classAssignment.id,
-          subject: classAssignment.subject.name,
-          section: classAssignment.section.name,
-          ecrLastSyncedAt: classAssignment.ecrLastSyncedAt,
-          ecrFileName: classAssignment.ecrFileName,
-        },
-      });
-    } catch (error) {
-      console.error("Error previewing ECR:", error);
-      res.status(500).json({ message: "Failed to parse ECR file" });
-    }
-  }
-);
-
-// Import ECR grades (after preview confirmation)
-router.post(
-  "/ecr/import",
-  authenticateToken,
-  authorizeRoles("TEACHER"),
-  ecrUpload.single('file'),
-  async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-      if (!req.file) {
-        res.status(400).json({ message: "No file uploaded" });
-        return;
-      }
-
-      const { classAssignmentId, selectedQuarters } = req.body;
-      const quartersToImport = selectedQuarters ? JSON.parse(selectedQuarters) : ['T1', 'T2', 'T3'];
-
-      if (!classAssignmentId) {
-        res.status(400).json({ message: "Class assignment ID required" });
-        return;
-      }
-
-      const teacher = await prisma.teacher.findUnique({
-        where: { userId: req.user?.id },
-      });
-
-      if (!teacher) {
-        res.status(404).json({ message: "Teacher profile not found" });
-        return;
-      }
-
-      // Verify teacher owns this class assignment
-      const classAssignment = await prisma.classAssignment.findFirst({
-        where: {
-          id: classAssignmentId,
-          teacherId: teacher.id,
-        },
-        include: {
-          subject: true,
-          section: {
-            include: {
-              enrollments: {
-                include: { student: true },
-              },
-            },
-          },
-        },
-      });
-
-      if (!classAssignment) {
-        res.status(403).json({ message: "Not authorized for this class" });
-        return;
-      }
-      if (isHomeroomGuidanceSubjectCode(classAssignment.subject.code)) {
-        res.status(400).json({ message: "ECR import is not available for Homeroom Guidance classes" });
-        return;
-      }
-
-      // Parse ECR file
-      const { quarters } = parseECRFile(req.file.buffer);
-
-      if (quarters.length === 0) {
-        res.status(400).json({ message: "No valid term data found in ECR file" });
-        return;
-      }
-
-      const enrolledStudents = classAssignment.section.enrollments.map(e => e.student);
-      const weights = {
-        ww: classAssignment.subject.writtenWorkWeight,
-        pt: classAssignment.subject.perfTaskWeight,
-        qa: classAssignment.subject.quarterlyAssessWeight,
-      };
-
-      let importedGrades = 0;
-      let skippedStudents = 0;
-
-      // Process each quarter
-      for (const termData of quarters) {
-        if (!quartersToImport.includes(termData.term)) continue;
-
-        for (const ecrStudent of termData.students) {
-          const match = matchStudent(ecrStudent.name, enrolledStudents);
-          
-          if (!match) {
-            skippedStudents++;
-            continue;
-          }
-
-          // Build score items array from ECR data
-          const writtenWorkScores = ecrStudent.writtenWorkScores.map((score, idx) => ({
-            name: `WW ${idx + 1}`,
-            score,
-            maxScore: termData.maxScores.writtenWork[idx] || 100,
-          }));
-
-          const perfTaskScores = ecrStudent.perfTaskScores.map((score, idx) => ({
-            name: `PT ${idx + 1}`,
-            score,
-            maxScore: termData.maxScores.perfTask[idx] || 100,
-          }));
-
-          // Calculate PS (percentage scores) using existing function, but use ECR's final grades
-          const calculated = calculateGrades(
-            writtenWorkScores,
-            perfTaskScores,
-            ecrStudent.quarterlyAssessScore,
-            termData.maxScores.quarterlyAssess,
-            weights.ww,
-            weights.pt,
-            weights.qa
-          );
-
-          // IMPORTANT: Use ECR's official grades (which include transmutation, conduct, etc.)
-          // Only use calculated PS values for display purposes
-          const finalInitialGrade = ecrStudent.initialGrade || calculated.initialGrade;
-          const finalQuarterlyGrade = ecrStudent.quarterlyGrade || calculated.quarterlyGrade;
-
-          // Upsert grade
-          await prisma.grade.upsert({
-            where: {
-              studentId_classAssignmentId_term: {
-                studentId: match.id,
-                classAssignmentId,
-                term: termData.term as Term,
-              },
-            },
-            update: {
-              writtenWorkScores,
-              perfTaskScores,
-              quarterlyAssessScore: ecrStudent.quarterlyAssessScore,
-              quarterlyAssessMax: termData.maxScores.quarterlyAssess,
-              writtenWorkPS: ecrStudent.writtenWorkPS || calculated.writtenWorkPS,
-              perfTaskPS: ecrStudent.perfTaskPS || calculated.perfTaskPS,
-              quarterlyAssessPS: ecrStudent.quarterlyAssessPS || calculated.quarterlyAssessPS,
-              initialGrade: finalInitialGrade,
-              quarterlyGrade: finalQuarterlyGrade,
-            },
-            create: {
-              studentId: match.id,
-              classAssignmentId,
-              term: termData.term as Term,
-              writtenWorkScores,
-              perfTaskScores,
-              quarterlyAssessScore: ecrStudent.quarterlyAssessScore,
-              quarterlyAssessMax: termData.maxScores.quarterlyAssess,
-              writtenWorkPS: ecrStudent.writtenWorkPS || calculated.writtenWorkPS,
-              perfTaskPS: ecrStudent.perfTaskPS || calculated.perfTaskPS,
-              quarterlyAssessPS: ecrStudent.quarterlyAssessPS || calculated.quarterlyAssessPS,
-              initialGrade: finalInitialGrade,
-              quarterlyGrade: finalQuarterlyGrade,
-            },
-          });
-
-          importedGrades++;
-        }
-      }
-
-      // Update class assignment with ECR sync info
-      await prisma.classAssignment.update({
-        where: { id: classAssignmentId },
+      const user = req.user!;
+      const request = await prisma.gradeEditRequest.create({
         data: {
-          ecrLastSyncedAt: new Date(),
-          ecrFileName: req.file.originalname,
+          teacherId: teacher.userId,
+          teacherName: `${teacher.user?.firstName || ""} ${teacher.user?.lastName || ""}`.trim() || req.user!.username,
+          term,
+          schoolYear: settings?.currentSchoolYear ?? "2026-2027",
+          gradeLevel: gradeLevel || null,
+          section: section || null,
+          subject: subject || null,
+          classAssignmentId: classAssignmentId || null,
+          reason,
         },
       });
 
-      // Create audit log
-      const teacherUser = await prisma.user.findUnique({
-        where: { id: req.user?.id },
-        select: { id: true, firstName: true, lastName: true, role: true },
-      });
+      // Broadcast to admin SSE
+      const { broadcastSettingsUpdate } = await import("../lib/sseManager");
+      const updatedSettings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+      if (updatedSettings) broadcastSettingsUpdate(updatedSettings);
 
-      if (teacherUser) {
-        await createAuditLog(
-          AuditAction.UPDATE,
-          teacherUser,
-          `ECR Import: ${classAssignment.subject.name} - ${classAssignment.section.name}`,
-          "Grades",
-          `Imported ${importedGrades} grades from ECR file "${req.file.originalname}" for quarters: ${quartersToImport.join(', ')}. ${skippedStudents} students unmatched.`,
-          (req.ip as string) || req.socket?.remoteAddress,
-          AuditSeverity.INFO,
-          classAssignmentId
-        );
-      }
-
-      res.json({
-        success: true,
-        importedGrades,
-        skippedStudents,
-        quartersImported: quarters.map(q => q.term).filter(q => quartersToImport.includes(q)),
-        ecrLastSyncedAt: new Date().toISOString(),
-        ecrFileName: req.file.originalname,
-      });
-    } catch (error) {
-      console.error("Error importing ECR:", error);
-      res.status(500).json({ message: "Failed to import ECR file" });
+      res.status(201).json({ message: "Edit request submitted", request });
+    } catch (err: any) {
+      logger.error("Error creating edit request:", err);
+      res.status(500).json({ message: "Failed to create edit request" });
     }
   }
 );
 
-// Get ECR sync status for a class assignment
+// Teacher: Get own edit requests
 router.get(
-  "/ecr/status/:classAssignmentId",
+  "/edit-requests",
   authenticateToken,
   authorizeRoles("TEACHER"),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-      const classAssignmentId = req.params.classAssignmentId as string;
-
-      const teacher = await prisma.teacher.findUnique({
-        where: { userId: req.user?.id },
-      });
-
+      const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
       if (!teacher) {
         res.status(404).json({ message: "Teacher profile not found" });
         return;
       }
 
-      const classAssignment = await prisma.classAssignment.findFirst({
-        where: {
-          id: classAssignmentId,
-          teacherId: teacher.id,
-        },
-        select: {
-          id: true,
-          subject: { select: { code: true } },
-          ecrLastSyncedAt: true,
-          ecrFileName: true,
+      const requests = await prisma.gradeEditRequest.findMany({
+        where: { teacherId: teacher.userId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
+
+      res.json({ requests });
+    } catch (err: any) {
+      logger.error("Error fetching edit requests:", err);
+      res.status(500).json({ message: "Failed to fetch edit requests" });
+    }
+  }
+);
+
+// Admin: Get all edit requests
+router.get(
+  "/admin/edit-requests",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { status } = req.query;
+      const where = status ? { status: status as any } : {};
+      const requests = await prisma.gradeEditRequest.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      res.json({ requests });
+    } catch (err: any) {
+      logger.error("Error fetching edit requests:", err);
+      res.status(500).json({ message: "Failed to fetch edit requests" });
+    }
+  }
+);
+
+// Admin: Approve edit request
+router.post(
+  "/admin/edit-requests/:id/approve",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  validate(editRequestApproveSchema),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      const { hours } = req.body; // Duration in hours (default 24)
+      const durationHours = Math.min(Math.max(Number(hours) || 24, 1), 168); // 1-168 hours (1 week max)
+
+      const request = await prisma.gradeEditRequest.findUnique({ where: { id } });
+      if (!request) {
+        res.status(404).json({ message: "Request not found" });
+        return;
+      }
+      if (request.status !== "PENDING") {
+        res.status(400).json({ message: `Request is already ${request.status.toLowerCase()}` });
+        return;
+      }
+
+      const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+      const user = req.user!;
+      const adminUser = await prisma.user.findUnique({ where: { id: user.id } });
+
+      const updated = await prisma.gradeEditRequest.update({
+        where: { id },
+        data: {
+          status: "APPROVED",
+          approvedById: user.id,
+          approvedByName: `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() || user.username,
+          expiresAt,
         },
       });
 
-      if (!classAssignment) {
-        res.status(404).json({ message: "Class assignment not found" });
+      // Audit log
+      await createAuditLog(
+        AuditAction.UPDATE,
+        user,
+        `Approved grade edit request for ${request.teacherName} - ${request.term}`,
+        "Grade Edit Request",
+        `Approved edit access for ${durationHours}h. Expires: ${expiresAt.toISOString()}`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.INFO
+      );
+
+      res.json({ message: "Request approved", request: updated });
+    } catch (err: any) {
+      logger.error("Error approving edit request:", err);
+      res.status(500).json({ message: "Failed to approve request" });
+    }
+  }
+);
+
+// Admin: Reject edit request
+router.post(
+  "/admin/edit-requests/:id/reject",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  validate(editRequestRejectSchema),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      const { reason } = req.body;
+
+      const request = await prisma.gradeEditRequest.findUnique({ where: { id } });
+      if (!request) {
+        res.status(404).json({ message: "Request not found" });
         return;
       }
-      if (isHomeroomGuidanceSubjectCode(classAssignment.subject.code)) {
-        res.status(400).json({ message: "ECR status is not applicable to Homeroom Guidance classes" });
+      if (request.status !== "PENDING") {
+        res.status(400).json({ message: `Request is already ${request.status.toLowerCase()}` });
         return;
       }
 
-      res.json({
-        hasSynced: !!classAssignment.ecrLastSyncedAt,
-        ecrLastSyncedAt: classAssignment.ecrLastSyncedAt,
-        ecrFileName: classAssignment.ecrFileName,
+      const user = req.user!;
+      const updated = await prisma.gradeEditRequest.update({
+        where: { id },
+        data: { status: "REJECTED" },
       });
-    } catch (error) {
-      console.error("Error fetching ECR status:", error);
-      res.status(500).json({ message: "Internal server error" });
+
+      await createAuditLog(
+        AuditAction.UPDATE,
+        user,
+        `Rejected grade edit request for ${request.teacherName} - ${request.term}`,
+        "Grade Edit Request",
+        `Rejected. Reason: ${reason || "No reason provided"}`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.INFO
+      );
+
+      res.json({ message: "Request rejected", request: updated });
+    } catch (err: any) {
+      logger.error("Error rejecting edit request:", err);
+      res.status(500).json({ message: "Failed to reject request" });
+    }
+  }
+);
+
+// Admin: Revoke (immediately expire) an approved edit request
+router.post(
+  "/admin/edit-requests/:id/revoke",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+
+      const request = await prisma.gradeEditRequest.findUnique({ where: { id } });
+      if (!request) {
+        res.status(404).json({ message: "Request not found" });
+        return;
+      }
+      if (request.status !== "APPROVED") {
+        res.status(400).json({ message: `Cannot revoke a request with status ${request.status.toLowerCase()}` });
+        return;
+      }
+
+      const user = req.user!;
+      const updated = await prisma.gradeEditRequest.update({
+        where: { id },
+        data: { status: "EXPIRED", expiresAt: new Date() },
+      });
+
+      await createAuditLog(
+        AuditAction.UPDATE,
+        user,
+        `Revoked grade edit access for ${request.teacherName} - ${request.term}`,
+        "Grade Edit Request",
+        `Admin manually revoked edit access`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.INFO
+      );
+
+      res.json({ message: "Edit access revoked", request: updated });
+    } catch (err: any) {
+      logger.error("Error revoking edit request:", err);
+      res.status(500).json({ message: "Failed to revoke request" });
     }
   }
 );

@@ -18,7 +18,7 @@ interface LoginResponse {
   user: {
     id: string;
     username: string;
-    role: "TEACHER" | "ADMIN" | "REGISTRAR" | "DEVELOPER";
+    role: "TEACHER" | "ADMIN" | "REGISTRAR";
     firstName?: string;
     lastName?: string;
     email?: string;
@@ -58,6 +58,11 @@ export default function AdminLoginPage() {
         return;
       }
 
+      sessionStorage.setItem("user_admin", JSON.stringify(response.data.user));
+      sessionStorage.setItem("token_admin", response.data.token);
+      if (response.data.refreshToken) {
+        sessionStorage.setItem("refreshToken_admin", response.data.refreshToken);
+      }
       sessionStorage.setItem("user", JSON.stringify(response.data.user));
       sessionStorage.setItem("token", response.data.token);
 

@@ -7,10 +7,10 @@ import {
   getEnrollProTeachers,
   resolveEnrollProSchoolYear,
 } from './enrollproClient';
+import { resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID } from './sync/httpClient';
 
 const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
 const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1');
-const ATLAS_SCHOOL_YEAR_ID = Number(process.env.ATLAS_SCHOOL_YEAR_ID ?? '3');
 
 export interface TeacherDashboardSnapshot {
   teacher: {
@@ -128,8 +128,11 @@ async function fetchAtlasFaculty(atlasToken: string): Promise<AtlasFaculty[]> {
 
 async function fetchAtlasAssignments(atlasFacultyId: number, atlasToken: string): Promise<AtlasAssignment[]> {
   try {
+    const resolvedAtlasSY = await resolveAtlasSchoolYear();
+    const atlasSchoolYearId = resolvedAtlasSY.id;
+
     const result = await fetchJSON(
-      `${ATLAS_BASE}/faculty-assignments/${atlasFacultyId}?schoolYearId=${ATLAS_SCHOOL_YEAR_ID}`,
+      `${ATLAS_BASE}/faculty-assignments/${atlasFacultyId}?schoolYearId=${atlasSchoolYearId}`,
       { Authorization: `Bearer ${atlasToken}` },
     );
     const payload = result?.assignments ?? result?.data ?? result ?? [];
@@ -137,7 +140,7 @@ async function fetchAtlasAssignments(atlasFacultyId: number, atlasToken: string)
 
     const hasSections = items.some(a => (a?.sections && a.sections.length > 0) || a?.sectionId);
     if (!hasSections) {
-      const fallbackSYs = [3, 6, 1, 8].filter(id => id !== ATLAS_SCHOOL_YEAR_ID);
+      const fallbackSYs = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 5, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
       for (const fallbackSY of fallbackSYs) {
         try {
           const fbRes = await fetchJSON(
@@ -174,6 +177,7 @@ export async function buildTeacherDashboardSnapshot(params: {
     select: { currentSchoolYear: true },
   });
   const resolvedSY = await resolveEnrollProSchoolYear(settings?.currentSchoolYear);
+  const resolvedAtlasSY = await resolveAtlasSchoolYear();
 
   const [epTeachers, epSections, atlasFaculty] = await Promise.all([
     getEnrollProTeachers(),
@@ -263,7 +267,7 @@ export async function buildTeacherDashboardSnapshot(params: {
     sourceMeta: {
       schoolYearLabel: resolvedSY.yearLabel,
       enrollproSchoolYearId: resolvedSY.id,
-      atlasSchoolYearId: ATLAS_SCHOOL_YEAR_ID,
+      atlasSchoolYearId: resolvedAtlasSY.id,
       generatedAt: new Date().toISOString(),
     },
     advisory: {

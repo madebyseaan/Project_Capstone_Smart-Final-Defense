@@ -26,22 +26,25 @@ const TeacherSchedule = lazy(() => import('./pages/teacher/Schedule'))
 const RegistrarDashboard = lazy(() => import('./pages/registrar/Dashboard'))
 const StudentRecords = lazy(() => import('./pages/registrar/StudentRecords'))
 const SchoolForms = lazy(() => import('./pages/registrar/SchoolForms'))
-const ApplicationTracker = lazy(() => import('./pages/registrar/ApplicationTracker'))
-const BOSYQueue = lazy(() => import('./pages/registrar/BOSYQueue'))
+
+
 const RemedialTracker = lazy(() => import('./pages/registrar/RemedialTracker'))
 const SectionRosterViewer = lazy(() => import('./pages/registrar/SectionRosterViewer'))
 const EOSYFinalization = lazy(() => import('./pages/registrar/EOSYFinalization'))
 const TeachingLoad = lazy(() => import('./pages/registrar/TeachingLoad'))
+const AlumniStudents = lazy(() => import('./pages/registrar/AlumniStudents'))
 
 // Admin pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'))
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'))
 const AuditLogs = lazy(() => import('./pages/admin/AuditLogs'))
 const GradingConfig = lazy(() => import('./pages/admin/GradingConfig'))
+const TransmutationTable = lazy(() => import('./pages/admin/TransmutationTable'))
+const SchoolYears = lazy(() => import('./pages/admin/SchoolYears'))
 const SystemSettings = lazy(() => import('./pages/admin/SystemSettings'))
 const TemplateManager = lazy(() => import('./pages/admin/TemplateManager'))
-const ECRTemplateManager = lazy(() => import('./pages/admin/ECRTemplateManager'))
 const ClassAssignments = lazy(() => import('./pages/admin/ClassAssignments'))
+const EditRequests = lazy(() => import('./pages/admin/EditRequests'))
 const SystemHealth = lazy(() => import('./pages/admin/SystemHealth'))
 
 function PageLoader() {
@@ -80,12 +83,13 @@ function App() {
         <Route index element={<RegistrarDashboard />} />
         <Route path="students" element={<StudentRecords />} />
         <Route path="forms" element={<SchoolForms />} />
-        <Route path="applications" element={<ApplicationTracker />} />
-        <Route path="bosy" element={<BOSYQueue />} />
+
+
         <Route path="remedial" element={<RemedialTracker />} />
         <Route path="roster" element={<SectionRosterViewer />} />
         <Route path="eosy" element={<EOSYFinalization />} />
         <Route path="teaching-load" element={<TeachingLoad />} />
+        <Route path="alumni" element={<AlumniStudents />} />
       </Route>
 
       {/* Admin routes */}
@@ -94,11 +98,13 @@ function App() {
         <Route path="users" element={<UserManagement />} />
         <Route path="logs" element={<AuditLogs />} />
         <Route path="grading" element={<GradingConfig />} />
+        <Route path="transmutation" element={<TransmutationTable />} />
+        <Route path="school-years" element={<SchoolYears />} />
         <Route path="settings" element={<SystemSettings />} />
         <Route path="health" element={<SystemHealth />} />
         <Route path="templates" element={<TemplateManager />} />
-        <Route path="ecr-templates" element={<ECRTemplateManager />} />
         <Route path="assignments" element={<ClassAssignments />} />
+        <Route path="edit-requests" element={<EditRequests />} />
       </Route>
 
       {/* Default redirect */}

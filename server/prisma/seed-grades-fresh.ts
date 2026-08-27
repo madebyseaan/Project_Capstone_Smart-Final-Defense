@@ -28,6 +28,8 @@ const prisma = new PrismaClient({
 
 // ---------------------------------------------------------------------------
 // DepEd Transmutation Table (Revised Guidelines 2026)
+// NOTE: This is a standalone seed script. The server uses the DB-backed version
+// via transmutationCache.ts. This hardcoded table must match the DB defaults.
 // ---------------------------------------------------------------------------
 function transmute(initialGrade: number): number {
   const roundedGrade = Math.round(initialGrade * 100) / 100;
@@ -296,7 +298,11 @@ async function main() {
       const isRotation = ca.subject.rotationTermGroupId !== null;
       const rotRank = ca.subject.rotationTermRank;
       const isHG = ca.subject.code.startsWith("HG");
-      const weights = { ww: ca.subject.writtenWorkWeight, pt: ca.subject.perfTaskWeight, qa: ca.subject.quarterlyAssessWeight };
+      const weights = {
+        ww: ca.subject.writtenWorkWeight ?? 20,
+        pt: ca.subject.perfTaskWeight ?? 50,
+        qa: ca.subject.quarterlyAssessWeight ?? 30,
+      };
 
       for (const enrollment of sorted) {
         const student = enrollment.student;

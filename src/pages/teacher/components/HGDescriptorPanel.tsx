@@ -18,6 +18,7 @@ interface HGDescriptorPanelProps {
   savingDescriptorStudentId: string | null;
   descriptors: readonly string[];
   onDescriptorUpdate: (studentId: string, descriptor: string) => void;
+  isViewOnly?: boolean;
 }
 
 export function HGDescriptorPanel({
@@ -27,6 +28,7 @@ export function HGDescriptorPanel({
   savingDescriptorStudentId,
   descriptors,
   onDescriptorUpdate,
+  isViewOnly = false,
 }: HGDescriptorPanelProps) {
   return (
     <Card className="hidden lg:block border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
@@ -69,7 +71,7 @@ export function HGDescriptorPanel({
                   if (!value) return;
                   onDescriptorUpdate(record.student.id, value);
                 }}
-                disabled={isSaving}
+                disabled={isViewOnly || isSaving}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select descriptor" />

@@ -21,10 +21,9 @@ import {
 import { Label } from "@/components/ui/label";
 import { adminApi } from "@/lib/api";
 
-const SCHOOL_YEARS = ["2026-2027", "2025-2026"];
-
 export default function ClassAssignments() {
-  const [schoolYear, setSchoolYear] = useState("2026-2027");
+  const [schoolYear, setSchoolYear] = useState("");
+  const [schoolYears, setSchoolYears] = useState<Array<{ id: string; label: string; status: string }>>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [workloadSummary, setWorkloadSummary] = useState<Array<{
     teacherId: string;
@@ -48,6 +47,18 @@ export default function ClassAssignments() {
   const [form, setForm] = useState({ teacherId: "", subjectId: "", sectionId: "" });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    adminApi.getSchoolYears().then((res) => {
+      const years = res.data.schoolYears;
+      if (Array.isArray(years) && years.length > 0) {
+        setSchoolYears(years);
+        const active = years.find((y) => y.status === "ACTIVE");
+        const defaultYear = active?.label || years[0].label;
+        setSchoolYear((prev) => prev || defaultYear);
+      }
+    }).catch(() => {});
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -123,8 +134,8 @@ export default function ClassAssignments() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SCHOOL_YEARS.map((sy) => (
-                <SelectItem key={sy} value={sy}>{sy}</SelectItem>
+              {schoolYears.map((sy) => (
+                <SelectItem key={sy.id} value={sy.label}>{sy.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -213,7 +224,7 @@ export default function ClassAssignments() {
                   <SelectContent>
                     {options.sections.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.name} ({gradeLevelLabel(s.gradeLevel)})
+                        {s.name}{s.program && s.program !== 'REGULAR' ? ` (${s.program})` : ''} ({gradeLevelLabel(s.gradeLevel)})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -282,7 +293,7 @@ export default function ClassAssignments() {
                       </span>
                       {a.subject?.name ?? "—"}
                     </TableCell>
-                    <TableCell>{a.section?.name ?? "—"}</TableCell>
+                    <TableCell>{a.section?.name ?? "—"}{a.section?.program && a.section.program !== 'REGULAR' ? ` (${a.section.program})` : ''}</TableCell>
                     <TableCell>{gradeLevelLabel(a.section?.gradeLevel ?? "")}</TableCell>
                     <TableCell>
                       <Button

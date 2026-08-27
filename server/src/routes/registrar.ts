@@ -22,15 +22,15 @@ import {
 } from "../lib/enrollproClient";
 
 import { getAtlasTeachingLoadSummary, getAtlasSubjectStats } from "../lib/atlasSync";
+import { getActiveSchoolYearLabel } from "../lib/schoolYearResolver";
+import { logger } from "../lib/logger";
+import { validate } from "../middleware/validate";
+import { enrollmentStatusSchema, finalizeGradesSchema } from "../schemas/registrar";
 
 const router = Router();
 
 async function resolveCurrentSchoolYearLabel(): Promise<string> {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "main" },
-    select: { currentSchoolYear: true },
-  });
-  return settings?.currentSchoolYear ?? process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? "2026-2027";
+  return getActiveSchoolYearLabel();
 }
 
 function getSyncFreshness(lastSyncAtIso: string | null): {
@@ -140,6 +140,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
       id: section.id,
       name: section.name,
       gradeLevel: section.gradeLevel,
+      program: section.program,
       studentCount: section._count.enrollments,
       adviser: section.adviser ? `${section.adviser.user.firstName} ${section.adviser.user.lastName}` : null
     }));
@@ -187,6 +188,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         id: String(section?.id ?? ''),
         name: String(section?.name ?? ''),
         gradeLevel: normalizeGradeLevel(section?.gradeLevel?.name) ?? "GRADE_7",
+        program: (() => { const pt = (section?.programType ?? '').toUpperCase(); if (pt.includes('ARTS')) return 'SPA'; if (pt.includes('SPORT')) return 'SPS'; if (pt.includes('SCIENCE') || pt.includes('ENGINEERING') || pt.includes('STE')) return 'STE'; return 'REGULAR'; })(),
         studentCount: Number(section?.enrolledCount ?? 0),
         adviser: section?.advisingTeacher
           ? (
@@ -197,7 +199,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
           : null,
       }));
 
-      console.log(`[RegistrarDashboard] EnrollPro: ${totalStudents} students, ${totalSections} sections (all pages fetched)`);
+      logger.info(`[RegistrarDashboard] EnrollPro: ${totalStudents} students, ${totalSections} sections (all pages fetched)`);
 
       // Live gender breakdown from EnrollPro learners (page 1 up to 500; fetch more if needed)
       try {
@@ -225,10 +227,10 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
           }
         });
       } catch (genderErr) {
-        console.warn("[RegistrarDashboard] Gender count fallback to local DB:", (genderErr as Error).message);
+        logger.warn("[RegistrarDashboard] Gender count fallback to local DB:", (genderErr as Error).message);
       }
     } catch (error) {
-      console.warn("[RegistrarDashboard] Falling back to SMART DB metrics:", (error as Error).message);
+      logger.warn("[RegistrarDashboard] Falling back to SMART DB metrics:", (error as Error).message);
     }
 
     const missingBirthDate = localEnrolledStudents.filter((row) => !row.student.birthDate).length;
@@ -257,7 +259,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
       },
     });
   } catch (error) {
-    console.error("Error fetching registrar dashboard:", error);
+    logger.error("Error fetching registrar dashboard:", error);
     res.status(500).json({ message: "Failed to fetch dashboard data" });
   }
 });
@@ -279,7 +281,7 @@ router.get("/sync/status", authenticateToken, async (req: AuthRequest, res: Resp
       lastResult: syncStatus.lastResult,
     });
   } catch (error) {
-    console.error("Error fetching registrar sync status:", error);
+    logger.error("Error fetching registrar sync status:", error);
     res.status(500).json({ message: "Failed to fetch sync status" });
   }
 });
@@ -302,7 +304,7 @@ router.post("/sync/run", authenticateToken, async (req: AuthRequest, res: Respon
       ...getSyncFreshness(syncStatus.lastSyncAt),
     });
   } catch (error) {
-    console.error("Error triggering registrar sync:", error);
+    logger.error("Error triggering registrar sync:", error);
     res.status(500).json({ message: "Failed to trigger sync" });
   }
 });
@@ -345,14 +347,14 @@ router.get("/school-years", authenticateToken, async (req: AuthRequest, res: Res
         allYears.add(resolved.yearLabel);
       }
     } catch (error) {
-      console.warn("[RegistrarSchoolYears] Failed to resolve active EnrollPro school year:", (error as Error).message);
+      logger.warn("[RegistrarSchoolYears] Failed to resolve active EnrollPro school year:", (error as Error).message);
     }
 
     res.json({
       schoolYears: Array.from(allYears).sort().reverse()
     });
   } catch (error) {
-    console.error("Error fetching school years:", error);
+    logger.error("Error fetching school years:", error);
     res.status(500).json({ message: "Failed to fetch school years" });
   }
 });
@@ -373,7 +375,7 @@ router.get("/students", authenticateToken, async (req: AuthRequest, res: Respons
     const syncStatus = getUnifiedSyncStatus();
     const syncFreshness = getSyncFreshness(syncStatus.lastSyncAt);
     if (syncFreshness.status === "stale" && syncFreshness.lastSyncedAt && !syncStatus.running && !syncStatus.circuitBreaker.open) {
-      console.log(`[RegistrarStudents] Data is stale (${syncFreshness.minutesSinceLastSync}m), triggering background sync...`);
+      logger.info(`[RegistrarStudents] Data is stale (${syncFreshness.minutesSinceLastSync}m), triggering background sync...`);
       triggerImmediateSync("registrar_students_load");
     }
 
@@ -432,6 +434,7 @@ router.get("/students", authenticateToken, async (req: AuthRequest, res: Respons
     // Transform data
     const students = uniqueFilteredEnrollments.map(e => ({
       id: e.student.id,
+      enrollmentId: e.id,
       lrn: e.student.lrn,
       firstName: e.student.firstName,
       middleName: e.student.middleName,
@@ -445,6 +448,7 @@ router.get("/students", authenticateToken, async (req: AuthRequest, res: Respons
       gradeLevel: e.section.gradeLevel,
       sectionId: e.section.id,
       sectionName: e.section.name,
+      program: e.section.program,
       schoolYear: e.schoolYear,
       status: e.status,
       adviser: e.section.adviser ? `${e.section.adviser.user.firstName} ${e.section.adviser.user.lastName}` : null
@@ -456,7 +460,8 @@ router.get("/students", authenticateToken, async (req: AuthRequest, res: Respons
       select: {
         id: true,
         name: true,
-        gradeLevel: true
+        gradeLevel: true,
+        program: true
       },
       orderBy: [
         { gradeLevel: 'asc' },
@@ -495,8 +500,486 @@ router.get("/students", authenticateToken, async (req: AuthRequest, res: Respons
       source: "smart-db-fallback"
     });
   } catch (error) {
-    console.error("Error fetching students:", error);
+    logger.error("Error fetching students:", error);
     res.status(500).json({ message: "Failed to fetch students" });
+  }
+});
+
+// Get alumni / graduated students (students no longer enrolled)
+router.get("/alumni", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const { search, gradeLevel, status, limit: limitParam, offset: offsetParam } = req.query;
+    const limit = Math.min(parseInt(limitParam as string) || 50, 200);
+    const offset = parseInt(offsetParam as string) || 0;
+
+    // Get the current school year
+    const currentSchoolYear = await resolveCurrentSchoolYearLabel();
+
+    // Get all students who have enrollments
+    const allEnrollments = await prisma.enrollment.findMany({
+      include: {
+        student: true,
+        section: true,
+      },
+      orderBy: { schoolYear: 'desc' },
+    });
+
+    // Get all student IDs who are currently enrolled in the current year
+    const currentlyEnrolled = new Set<string>();
+    for (const enr of allEnrollments) {
+      if (enr.schoolYear === currentSchoolYear && enr.status === 'ENROLLED') {
+        currentlyEnrolled.add(enr.studentId);
+      }
+    }
+
+    // Group by student, keep the latest enrollment
+    const studentMap = new Map<string, any>();
+    for (const enr of allEnrollments) {
+      const existing = studentMap.get(enr.studentId);
+      if (!existing || enr.schoolYear > existing.schoolYear) {
+        studentMap.set(enr.studentId, enr);
+      }
+    }
+
+    // Only include students who are NOT currently enrolled
+    let students = Array.from(studentMap.values())
+      .filter((enr: any) => !currentlyEnrolled.has(enr.studentId))
+      .map((enr: any) => ({
+        id: enr.student.id,
+        enrollmentId: enr.id,
+        lrn: enr.student.lrn,
+        firstName: enr.student.firstName,
+        middleName: enr.student.middleName,
+        lastName: enr.student.lastName,
+        suffix: enr.student.suffix,
+        gender: enr.student.gender,
+        lastGradeLevel: enr.section.gradeLevel,
+        lastSection: enr.section.name,
+        lastSchoolYear: enr.schoolYear,
+        lastProgram: enr.section.program || 'REGULAR',
+        enrollmentStatus: enr.status,
+      }));
+
+    // Filter by search
+    if (search) {
+      const searchLower = (search as string).toLowerCase();
+      students = students.filter((s: any) => {
+        const fullName = `${s.lastName} ${s.firstName} ${s.middleName || ""}`.toLowerCase();
+        return fullName.includes(searchLower) || s.lrn.includes(searchLower);
+      });
+    }
+
+    // Filter by grade level
+    if (gradeLevel && gradeLevel !== 'all') {
+      students = students.filter((s: any) => s.lastGradeLevel === gradeLevel);
+    }
+
+    // Filter by status (graduated = DROPPED or TRANSFERRED in latest year, NLS = DROPPED, transferred = TRANSFERRED)
+    if (status && status !== 'all') {
+      if (status === 'graduated') {
+        // Graduated = students whose last enrollment was ENROLLED (meaning they completed the year)
+        students = students.filter((s: any) => s.enrollmentStatus === 'ENROLLED');
+      } else {
+        students = students.filter((s: any) => s.enrollmentStatus === status);
+      }
+    }
+
+    const total = students.length;
+    students = students.slice(offset, offset + limit);
+
+    res.json({ students, total });
+  } catch (error) {
+    logger.error("Error fetching alumni:", error);
+    res.status(500).json({ message: "Failed to fetch alumni" });
+  }
+});
+
+// Update enrollment status (DROPPED ↔ TRANSFERRED)
+router.put("/enrollment/:enrollmentId/status", authenticateToken, validate(enrollmentStatusSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const enrollmentId = req.params.enrollmentId as string;
+    const { status } = req.body;
+
+    if (!['ENROLLED', 'DROPPED', 'TRANSFERRED'].includes(status)) {
+      res.status(400).json({ message: "Invalid status. Must be ENROLLED, DROPPED, or TRANSFERRED" });
+      return;
+    }
+
+    const enrollment = await prisma.enrollment.findUnique({ where: { id: enrollmentId } });
+    if (!enrollment) {
+      res.status(404).json({ message: "Enrollment not found" });
+      return;
+    }
+
+    const updated = await prisma.enrollment.update({
+      where: { id: enrollmentId },
+      data: { status },
+    });
+
+    res.json({ enrollment: updated });
+  } catch (error) {
+    logger.error("Error updating enrollment status:", error);
+    res.status(500).json({ message: "Failed to update enrollment status" });
+  }
+});
+
+// Finalize grades for a section/term/subject (DRAFT → FINALIZED)
+router.post("/finalize-grades", authenticateToken, validate(finalizeGradesSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const { sectionId, term, subjectId } = req.body;
+
+    // Find the class assignment for this section/term/subject
+    const classAssignment = await prisma.classAssignment.findFirst({
+      where: {
+        sectionId,
+        subjectId,
+        schoolYear: await getActiveSchoolYearLabel(),
+      },
+    });
+
+    if (!classAssignment) {
+      res.status(404).json({ message: "No class assignment found for this section/subject/year" });
+      return;
+    }
+
+    // Find all DRAFT grades for this class assignment and term
+    const draftGrades = await prisma.grade.findMany({
+      where: {
+        classAssignmentId: classAssignment.id,
+        term: term as Term,
+        status: "DRAFT",
+      },
+    });
+
+    if (draftGrades.length === 0) {
+      res.status(200).json({ message: "No draft grades to finalize", finalizedCount: 0 });
+      return;
+    }
+
+    // Finalize all draft grades
+    const result = await prisma.grade.updateMany({
+      where: {
+        classAssignmentId: classAssignment.id,
+        term: term as Term,
+        status: "DRAFT",
+      },
+      data: {
+        status: "FINALIZED",
+        finalizedBy: user.id,
+        finalizedAt: new Date(),
+      },
+    });
+
+    logger.info(`[Registrar] ${user.username} finalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
+
+    res.json({
+      message: `Finalized ${result.count} grades`,
+      finalizedCount: result.count,
+      sectionId,
+      term,
+      subjectId,
+    });
+  } catch (error) {
+    logger.error("Error finalizing grades:", error);
+    res.status(500).json({ message: "Failed to finalize grades" });
+  }
+});
+
+// Unfinalize grades (FINALIZED → DRAFT) — registrar can unlock
+router.post("/unfinalize-grades", authenticateToken, validate(finalizeGradesSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const { sectionId, term, subjectId } = req.body;
+
+    const classAssignment = await prisma.classAssignment.findFirst({
+      where: {
+        sectionId,
+        subjectId,
+        schoolYear: await getActiveSchoolYearLabel(),
+      },
+    });
+
+    if (!classAssignment) {
+      res.status(404).json({ message: "No class assignment found for this section/subject/year" });
+      return;
+    }
+
+    const result = await prisma.grade.updateMany({
+      where: {
+        classAssignmentId: classAssignment.id,
+        term: term as Term,
+        status: "FINALIZED",
+      },
+      data: {
+        status: "DRAFT",
+        finalizedBy: null,
+        finalizedAt: null,
+      },
+    });
+
+    logger.info(`[Registrar] ${user.username} unfinalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
+
+    res.json({
+      message: `Unfinalized ${result.count} grades`,
+      unfinalizedCount: result.count,
+    });
+  } catch (error) {
+    logger.error("Error unfinalizing grades:", error);
+    res.status(500).json({ message: "Failed to unfinalize grades" });
+  }
+});
+
+// Get finalization status for a section/term
+router.get("/finalize-status/:sectionId/:term", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const sectionId = req.params.sectionId as string;
+    const term = req.params.term as string;
+
+    // Get all class assignments for this section
+    const schoolYearLabel = await getActiveSchoolYearLabel();
+    const classAssignments = await prisma.classAssignment.findMany({
+      where: {
+        sectionId,
+        schoolYear: schoolYearLabel,
+      },
+      include: {
+        subject: true,
+        grades: {
+          where: { term: term as Term },
+          select: { status: true },
+        },
+      },
+    });
+
+    const status = classAssignments.map((ca: any) => {
+      const grades = ca.grades || [];
+      const draftCount = grades.filter((g: any) => g.status === "DRAFT").length;
+      const finalizedCount = grades.filter((g: any) => g.status === "FINALIZED").length;
+      const lockedCount = grades.filter((g: any) => g.status === "LOCKED").length;
+
+      return {
+        subjectId: ca.subjectId,
+        subjectName: ca.subject?.name || "",
+        subjectCode: ca.subject?.code || "",
+        total: grades.length,
+        draft: draftCount,
+        finalized: finalizedCount,
+        locked: lockedCount,
+        isComplete: draftCount === 0 && grades.length > 0,
+      };
+    });
+
+    res.json({ sectionId, term, subjects: status });
+  } catch (error) {
+    logger.error("Error getting finalize status:", error);
+    res.status(500).json({ message: "Failed to get finalize status" });
+  }
+});
+
+// Get per-student grades for a section/term (read-only, for registrar EOSY view)
+router.get("/student-grades/:sectionId/:term", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const sectionId = req.params.sectionId as string;
+    const term = req.params.term as Term;
+
+    if (!["T1", "T2", "T3"].includes(term)) {
+      res.status(400).json({ message: "Invalid term. Must be T1, T2, or T3." });
+      return;
+    }
+
+    const schoolYearLabel = await getActiveSchoolYearLabel();
+
+    // Get all enrollments for this section
+    const enrollments = await prisma.enrollment.findMany({
+      where: {
+        sectionId,
+        schoolYear: schoolYearLabel,
+        status: "ENROLLED",
+      },
+      include: {
+        student: true,
+      },
+      orderBy: {
+        student: { lastName: "asc" },
+      },
+    });
+
+    if (enrollments.length === 0) {
+      res.json({ sectionId, term, students: [] });
+      return;
+    }
+
+    const studentIds = enrollments.map((e) => e.studentId);
+
+    // Get all class assignments for this section/year with grades for the term
+    const classAssignments = await prisma.classAssignment.findMany({
+      where: {
+        sectionId,
+        schoolYear: schoolYearLabel,
+        isActive: true,
+      },
+      include: {
+        subject: true,
+        grades: {
+          where: {
+            studentId: { in: studentIds },
+            term,
+          },
+          select: {
+            studentId: true,
+            quarterlyGrade: true,
+            status: true,
+            initialGrade: true,
+            writtenWorkPS: true,
+            perfTaskPS: true,
+            quarterlyAssessPS: true,
+          },
+        },
+      },
+      orderBy: {
+        subject: { name: "asc" },
+      },
+    });
+
+    // Build per-student grade map
+    const students = enrollments.map((enrollment) => {
+      // Deduplicate by subjectId — keep the one with a grade if duplicates exist
+      const subjectGradeMap = new Map<string, any>();
+      for (const ca of classAssignments) {
+        const grade = ca.grades.find((g) => g.studentId === enrollment.studentId);
+        const existing = subjectGradeMap.get(ca.subjectId);
+        if (!existing || (grade && !existing.grade)) {
+          subjectGradeMap.set(ca.subjectId, { ca, grade });
+        }
+      }
+
+      const rawSubjectGrades = Array.from(subjectGradeMap.values()).map(({ ca, grade }) => ({
+        subjectId: ca.subjectId,
+        subjectName: ca.subject.name,
+        subjectCode: ca.subject.code,
+        quarterlyGrade: grade?.quarterlyGrade ?? null,
+        initialGrade: grade?.initialGrade ?? null,
+        writtenWorkPS: grade?.writtenWorkPS ?? null,
+        perfTaskPS: grade?.perfTaskPS ?? null,
+        quarterlyAssessPS: grade?.quarterlyAssessPS ?? null,
+        status: grade?.status ?? "NO_GRADE",
+        rotationTermGroupId: (ca.subject as any).rotationTermGroupId ?? null,
+        rotationTermRank: (ca.subject as any).rotationTermRank ?? null,
+        rotationOutputLabel: (ca.subject as any).rotationOutputLabel ?? null,
+      }));
+
+      // Merge rotation sub-subjects (e.g. Science-Biology, Science-Chemistry, Science-EarthScience)
+      // into a single "Science" row showing the current term's grade
+      const rotationGroups: Record<string, typeof rawSubjectGrades> = {};
+      const standaloneRows: typeof rawSubjectGrades = [];
+
+      for (const row of rawSubjectGrades) {
+        if (row.rotationTermGroupId) {
+          if (!rotationGroups[row.rotationTermGroupId]) {
+            rotationGroups[row.rotationTermGroupId] = [];
+          }
+          rotationGroups[row.rotationTermGroupId].push(row);
+        } else {
+          standaloneRows.push(row);
+        }
+      }
+
+      const mergedRotationRows: typeof rawSubjectGrades = [];
+      for (const [, groupRows] of Object.entries(rotationGroups)) {
+        const sorted = [...groupRows].sort((a, b) => (a.rotationTermRank ?? 0) - (b.rotationTermRank ?? 0));
+        // Use the current term's grade from whichever sub-subject is assigned to this term
+        const termRank = parseInt(term.replace("T", ""), 10);
+        const currentTermSub = sorted.find((s) => s.rotationTermRank === termRank);
+        // Fallback: use whichever sub-subject has a grade
+        const fallbackSub = sorted.find((s) => s.quarterlyGrade !== null);
+        const bestSub = currentTermSub || fallbackSub || sorted[0];
+
+        mergedRotationRows.push({
+          subjectId: bestSub.subjectId,
+          subjectName: bestSub.rotationOutputLabel
+            ? bestSub.rotationOutputLabel.charAt(0) + bestSub.rotationOutputLabel.slice(1).toLowerCase()
+            : bestSub.subjectName,
+          subjectCode: bestSub.rotationOutputLabel ?? bestSub.subjectCode,
+          quarterlyGrade: bestSub.quarterlyGrade,
+          initialGrade: bestSub.initialGrade,
+          writtenWorkPS: bestSub.writtenWorkPS,
+          perfTaskPS: bestSub.perfTaskPS,
+          quarterlyAssessPS: bestSub.quarterlyAssessPS,
+          status: bestSub.status,
+          rotationTermGroupId: bestSub.rotationTermGroupId,
+          rotationTermRank: null,
+          rotationOutputLabel: bestSub.rotationOutputLabel,
+        });
+      }
+
+      const subjectGrades = [...standaloneRows, ...mergedRotationRows].sort((a, b) =>
+        a.subjectName.localeCompare(b.subjectName)
+      );
+
+      // Calculate average from available quarterly grades
+      const gradedSubjects = subjectGrades.filter(
+        (sg) => sg.quarterlyGrade !== null && sg.quarterlyGrade !== undefined
+      );
+      const average =
+        gradedSubjects.length > 0
+          ? Math.round(
+              gradedSubjects.reduce((sum, sg) => sum + (sg.quarterlyGrade as number), 0) /
+                gradedSubjects.length
+            )
+          : null;
+
+      return {
+        studentId: enrollment.studentId,
+        firstName: enrollment.student.firstName,
+        lastName: enrollment.student.lastName,
+        middleName: enrollment.student.middleName,
+        lrn: enrollment.student.lrn,
+        subjects: subjectGrades,
+        average,
+        totalSubjects: subjectGrades.length,
+        gradedSubjects: gradedSubjects.length,
+      };
+    });
+
+    res.json({ sectionId, term, students });
+  } catch (error) {
+    logger.error("Error getting student grades:", error);
+    res.status(500).json({ message: "Failed to get student grades" });
   }
 });
 
@@ -530,7 +1013,7 @@ router.get("/student/:studentId", authenticateToken, async (req: AuthRequest, re
 
     res.json({ student });
   } catch (error) {
-    console.error("Error fetching student:", error);
+    logger.error("Error fetching student:", error);
     res.status(500).json({ message: "Failed to fetch student" });
   }
 });
@@ -610,12 +1093,12 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       return;
     }
 
-    // Get active enrollment for school year.
+    // Get active enrollment for school year — accepts any status (ENROLLED, DROPPED, TRANSFERRED)
+    // This allows retrieving historical SF9s for students who have since left
     const enrollment = await prisma.enrollment.findFirst({
       where: {
         studentId: studentId,
         schoolYear: currentSchoolYear,
-        status: 'ENROLLED',
       },
       orderBy: [{ createdAt: 'desc' }],
       include: {
@@ -630,7 +1113,7 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
     });
 
     if (!enrollment) {
-      res.status(404).json({ message: "Student not enrolled for this school year" });
+      res.status(404).json({ message: "Student not found for this school year" });
       return;
     }
 
@@ -655,7 +1138,6 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
         classAssignment: {
           sectionId: enrollment.sectionId,
           schoolYear: currentSchoolYear,
-          isActive: true,
         }
       },
       include: {
@@ -858,12 +1340,15 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       }
     }
 
+    // Use profile snapshot if available (historical), else current student data
+    const snap = enrollment.profileSnapshot as Record<string, any> | null;
+
     res.json({
       student: {
         id: student.id,
-        lrn: student.lrn,
+        lrn: snap?.lrn ?? student.lrn,
         name: `${student.lastName}, ${student.firstName} ${student.middleName || ""} ${student.suffix || ""}`.trim(),
-        gender: normalizeDisplaySex(student.gender),
+        gender: normalizeDisplaySex(snap?.gender ?? student.gender),
         birthDate: student.birthDate,
         age,
         section: enrollment.section.name,
@@ -892,7 +1377,7 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
       promotionStatus: generalAverage ? (allRows.every((s: any) => !s.finalGrade || s.finalGrade >= 75) ? "Promoted" : "Retained") : null
     });
   } catch (error) {
-    console.error("Error fetching SF9 data:", error);
+    logger.error("Error fetching SF9 data:", error);
     res.status(500).json({ message: "Failed to fetch SF9 data" });
   }
 });
@@ -915,7 +1400,7 @@ router.get("/forms/sf1/:sectionId", authenticateToken, async (req: AuthRequest, 
       where: { id: "main" },
       select: { currentSchoolYear: true },
     });
-    const schoolYear = (querySY as string) || settings?.currentSchoolYear || process.env.ENROLLPRO_SCHOOL_YEAR_LABEL || "2026-2027";
+    const schoolYear = (querySY as string) || await getActiveSchoolYearLabel();
 
     // Find the local section to get its name for EnrollPro lookup
     const localSection = await prisma.section.findUnique({ where: { id: sectionId } });
@@ -930,7 +1415,7 @@ router.get("/forms/sf1/:sectionId", authenticateToken, async (req: AuthRequest, 
       const resolvedSY = await resolveEnrollProSchoolYear(schoolYear);
       epSchoolYearId = resolvedSY.id;
     } catch (err: any) {
-      console.warn(`[SF1] Could not resolve EnrollPro school year: ${err.message}`);
+      logger.warn(`[SF1] Could not resolve EnrollPro school year: ${err.message}`);
     }
 
     // Find the EnrollPro section ID by matching name
@@ -942,7 +1427,7 @@ router.get("/forms/sf1/:sectionId", authenticateToken, async (req: AuthRequest, 
       );
       if (match) epSectionId = Number(match.id);
     } catch (err: any) {
-      console.warn(`[SF1] Could not fetch EnrollPro sections: ${err.message}`);
+      logger.warn(`[SF1] Could not fetch EnrollPro sections: ${err.message}`);
     }
 
     // Fetch students from EnrollPro
@@ -951,7 +1436,7 @@ router.get("/forms/sf1/:sectionId", authenticateToken, async (req: AuthRequest, 
       try {
         students = await getAllIntegrationV1SectionLearners(epSectionId);
       } catch (err: any) {
-        console.warn(`[SF1] EnrollPro learners fetch failed, falling back to local: ${err.message}`);
+        logger.warn(`[SF1] EnrollPro learners fetch failed, falling back to local: ${err.message}`);
       }
     }
 
@@ -962,21 +1447,25 @@ router.get("/forms/sf1/:sectionId", authenticateToken, async (req: AuthRequest, 
         include: { student: true },
         orderBy: { student: { lastName: "asc" } },
       });
-      students = enrollments.map((e) => ({
-        learner: {
-          lrn: e.student.lrn,
-          firstName: e.student.firstName,
-          middleName: e.student.middleName,
-          lastName: e.student.lastName,
-          suffix: e.student.suffix,
-          birthDate: e.student.birthDate,
-          gender: e.student.gender,
-          address: e.student.address,
-          guardianName: e.student.guardianName,
-          guardianContact: e.student.guardianContact,
-        },
-        status: "ENROLLED",
-      }));
+      students = enrollments.map((e) => {
+        // Use profile snapshot if available (historical), else current student data
+        const snap = e.profileSnapshot as Record<string, any> | null;
+        return {
+          learner: {
+            lrn: snap?.lrn ?? e.student.lrn,
+            firstName: snap?.firstName ?? e.student.firstName,
+            middleName: snap?.middleName ?? e.student.middleName,
+            lastName: snap?.lastName ?? e.student.lastName,
+            suffix: snap?.suffix ?? e.student.suffix,
+            birthDate: snap?.birthDate ?? e.student.birthDate,
+            gender: snap?.gender ?? e.student.gender,
+            address: snap?.address ?? e.student.address,
+            guardianName: snap?.guardianName ?? e.student.guardianName,
+            guardianContact: snap?.guardianContact ?? e.student.guardianContact,
+          },
+          status: "ENROLLED",
+        };
+      });
     }
 
     // Format students for SF1
@@ -1009,13 +1498,14 @@ router.get("/forms/sf1/:sectionId", authenticateToken, async (req: AuthRequest, 
         id: localSection.id,
         name: localSection.name,
         gradeLevel: localSection.gradeLevel,
+        program: localSection.program,
         schoolYear,
       },
       source: epSectionId ? "enrollpro" : "local",
       students: formattedStudents,
     });
   } catch (error: any) {
-    console.error("Error fetching SF1 data:", error);
+    logger.error("Error fetching SF1 data:", error);
     res.status(500).json({ message: "Failed to fetch SF1 data" });
   }
 });
@@ -1051,14 +1541,14 @@ router.get("/forms/sf5/:sectionId", authenticateToken, async (req: AuthRequest, 
 
     // Get all class assignments for this section
     const classAssignments = await prisma.classAssignment.findMany({
-      where: { sectionId, schoolYear: currentSchoolYear, isActive: true },
+      where: { sectionId, schoolYear: currentSchoolYear },
       include: { subject: true },
     });
 
     // Get all grades for this section
     const grades = await prisma.grade.findMany({
       where: {
-        classAssignment: { sectionId, schoolYear: currentSchoolYear, isActive: true },
+        classAssignment: { sectionId, schoolYear: currentSchoolYear },
       },
       include: { classAssignment: { include: { subject: true } } },
     });
@@ -1132,10 +1622,13 @@ router.get("/forms/sf5/:sectionId", authenticateToken, async (req: AuthRequest, 
       const late = studentAttendance.find((a) => a.status === "LATE")?._count.id ?? 0;
       const excused = studentAttendance.find((a) => a.status === "EXCUSED")?._count.id ?? 0;
 
+      // Use profile snapshot if available (historical), else current student data
+      const snap = enr.profileSnapshot as Record<string, any> | null;
+
       return {
-        lrn: enr.student.lrn,
+        lrn: snap?.lrn ?? enr.student.lrn,
         name: `${enr.student.lastName}, ${enr.student.firstName} ${enr.student.middleName || ""}`.trim(),
-        gender: enr.student.gender,
+        gender: snap?.gender ?? enr.student.gender,
         subjectDetails,
         generalAverage,
         promotionStatus,
@@ -1148,6 +1641,7 @@ router.get("/forms/sf5/:sectionId", authenticateToken, async (req: AuthRequest, 
         id: section.id,
         name: section.name,
         gradeLevel: section.gradeLevel,
+        program: section.program,
         schoolYear: currentSchoolYear,
         adviser: section.adviser ? `${section.adviser.user.firstName} ${section.adviser.user.lastName}` : null,
       },
@@ -1160,8 +1654,136 @@ router.get("/forms/sf5/:sectionId", authenticateToken, async (req: AuthRequest, 
       },
     });
   } catch (error) {
-    console.error("Error fetching SF5 data:", error);
+    logger.error("Error fetching SF5 data:", error);
     res.status(500).json({ message: "Failed to fetch SF5 data" });
+  }
+});
+
+// Get SF6 (Summary Promotion Report) data — school-wide aggregate
+router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const { schoolYear } = req.query;
+    const currentSchoolYear = (schoolYear as string) || await resolveCurrentSchoolYearLabel();
+
+    // Get all sections for this school year
+    const sections = await prisma.section.findMany({
+      where: { schoolYear: currentSchoolYear },
+      include: { adviser: { include: { user: true } } },
+      orderBy: [{ gradeLevel: 'asc' }, { name: 'asc' }],
+    });
+
+    const gradeOrder = ['GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10'];
+    const sectionResults: any[] = [];
+    const byGradeLevel: Record<string, { total: number; promoted: number; retained: number; dropped: number; transferred: number }> = {};
+
+    for (const section of sections) {
+      // Get enrollments
+      const enrollments = await prisma.enrollment.findMany({
+        where: { sectionId: section.id, schoolYear: currentSchoolYear },
+        include: { student: true },
+      });
+
+      // Get class assignments
+      const classAssignments = await prisma.classAssignment.findMany({
+        where: { sectionId: section.id, schoolYear: currentSchoolYear },
+        include: { subject: true },
+      });
+
+      // Get grades
+      const grades = await prisma.grade.findMany({
+        where: {
+          classAssignment: { sectionId: section.id, schoolYear: currentSchoolYear },
+        },
+        include: { classAssignment: { include: { subject: true } } },
+      });
+
+      // Compute per-student promotion status
+      let promoted = 0, retained = 0, dropped = 0, transferred = 0;
+
+      for (const enr of enrollments) {
+        if (enr.status === 'DROPPED') { dropped++; continue; }
+        if (enr.status === 'TRANSFERRED') { transferred++; continue; }
+
+        const studentGrades = grades.filter((g) => g.studentId === enr.studentId);
+        const subjectFinals: number[] = [];
+
+        for (const ca of classAssignments) {
+          if (ca.subject.code.toUpperCase().startsWith("HG")) continue;
+          const termGrades = studentGrades
+            .filter((g) => g.classAssignmentId === ca.id && g.quarterlyGrade !== null)
+            .map((g) => g.quarterlyGrade as number);
+          if (termGrades.length > 0) {
+            subjectFinals.push(Math.round(termGrades.reduce((a, b) => a + b, 0) / termGrades.length));
+          }
+        }
+
+        const hasFailing = subjectFinals.some((g) => g < 75);
+        const hasGrades = subjectFinals.length > 0;
+        if (!hasGrades || hasFailing) { retained++; } else { promoted++; }
+      }
+
+      const total = enrollments.length;
+      const promotionRate = total > 0 ? Math.round((promoted / total) * 100) : 0;
+
+      sectionResults.push({
+        sectionId: section.id,
+        sectionName: section.name,
+        gradeLevel: section.gradeLevel,
+        program: section.program || 'REGULAR',
+        adviser: section.adviser ? `${section.adviser.user.firstName} ${section.adviser.user.lastName}` : null,
+        totalStudents: total,
+        promoted,
+        retained,
+        dropped,
+        transferred,
+        promotionRate,
+      });
+
+      // Aggregate by grade level
+      const gl = section.gradeLevel;
+      if (!byGradeLevel[gl]) byGradeLevel[gl] = { total: 0, promoted: 0, retained: 0, dropped: 0, transferred: 0 };
+      byGradeLevel[gl].total += total;
+      byGradeLevel[gl].promoted += promoted;
+      byGradeLevel[gl].retained += retained;
+      byGradeLevel[gl].dropped += dropped;
+      byGradeLevel[gl].transferred += transferred;
+    }
+
+    // Sort section results by grade level then name
+    sectionResults.sort((a, b) => {
+      const gi = gradeOrder.indexOf(a.gradeLevel) - gradeOrder.indexOf(b.gradeLevel);
+      return gi !== 0 ? gi : a.sectionName.localeCompare(b.sectionName);
+    });
+
+    // Overall summary
+    const totalStudents = sectionResults.reduce((s, r) => s + r.totalStudents, 0);
+    const totalPromoted = sectionResults.reduce((s, r) => s + r.promoted, 0);
+    const totalRetained = sectionResults.reduce((s, r) => s + r.retained, 0);
+    const totalDropped = sectionResults.reduce((s, r) => s + r.dropped, 0);
+    const totalTransferred = sectionResults.reduce((s, r) => s + r.transferred, 0);
+
+    res.json({
+      schoolYear: currentSchoolYear,
+      sections: sectionResults,
+      summary: {
+        totalStudents,
+        promoted: totalPromoted,
+        retained: totalRetained,
+        dropped: totalDropped,
+        transferred: totalTransferred,
+        overallPromotionRate: totalStudents > 0 ? Math.round((totalPromoted / totalStudents) * 100) : 0,
+      },
+      byGradeLevel,
+    });
+  } catch (error) {
+    logger.error("Error fetching SF6 data:", error);
+    res.status(500).json({ message: "Failed to fetch SF6 data" });
   }
 });
 
@@ -1223,8 +1845,31 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
 
     const canonicalEnrollments = Array.from(enrollmentBySchoolYear.values());
 
+    // Determine the student's CURRENT grade level from their latest enrollment
+    const gradeOrder = ['GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10'];
+    // Sort canonicalEnrollments by school year desc to get the latest
+    const sortedByYear = [...canonicalEnrollments].sort((a: any, b: any) => b.schoolYear.localeCompare(a.schoolYear));
+    const currentEnrollment = sortedByYear[0];
+    const currentGradeLevel = currentEnrollment?.section?.gradeLevel ?? 'GRADE_10';
+    const currentGradeIdx = gradeOrder.indexOf(currentGradeLevel);
+    const currentSchoolYear = currentEnrollment?.schoolYear ?? await getActiveSchoolYearLabel();
+
+    // SF10 only shows grades up to the student's current grade level.
+    // Grade 7 → 1 year, Grade 8 → 2 years, Grade 9 → 3 years, Grade 10 → 4 years.
+    // Filter enrollments to only include those within the student's JHS range.
+    const filteredCanonicalEnrollments = canonicalEnrollments.filter((e: any) => {
+      const syStart = parseInt(e.schoolYear.split('-')[0]);
+      const currentStart = parseInt(currentSchoolYear.split('-')[0]);
+      const yearDiff = currentStart - syStart;
+      // Only include years within the student's JHS range (0 = current, up to currentGradeIdx back)
+      return yearDiff >= 0 && yearDiff <= currentGradeIdx;
+    });
+
+    // Build set of allowed school years for the grades loop
+    const allowedSchoolYears = new Set(filteredCanonicalEnrollments.map((e: any) => e.schoolYear));
+
     // Get all section IDs from canonical enrollments
-    const sectionIds = canonicalEnrollments.map((e: any) => e.sectionId);
+    const sectionIds = filteredCanonicalEnrollments.map((e: any) => e.sectionId);
 
     // Fetch all active class assignments for these sections
     const classAssignments = await prisma.classAssignment.findMany({
@@ -1240,7 +1885,7 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
     });
 
     // Get all grades for this student across all school years
-    const grades = await prisma.grade.findMany({
+    let grades = await prisma.grade.findMany({
       where: { studentId: studentId },
       include: {
         classAssignment: {
@@ -1254,6 +1899,45 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
         }
       }
     });
+
+    // Fallback: if no Grade records found, try GradeSnapshot
+    if (grades.length === 0) {
+      const snapshots = await prisma.gradeSnapshot.findMany({
+        where: { studentId: studentId },
+        orderBy: { createdAt: "desc" }
+      });
+
+      if (snapshots.length > 0) {
+        // Reconstruct grade-like objects from snapshots
+        const snapshotGrades: any[] = [];
+        for (const snap of snapshots) {
+          const snapData = snap.snapshot as any;
+          snapshotGrades.push({
+            id: snap.id,
+            studentId: snap.studentId,
+            classAssignmentId: snap.classAssignmentId,
+            term: snap.term,
+            quarterlyGrade: snapData?.quarterlyGrade ?? null,
+            writtenWorkPS: snapData?.writtenWorkPS ?? null,
+            perfTaskPS: snapData?.perfTaskPS ?? null,
+            quarterlyAssessPS: snapData?.quarterlyAssessPS ?? null,
+            initialGrade: snapData?.initialGrade ?? null,
+            classAssignment: {
+              id: snap.classAssignmentId,
+              subjectCode: snap.subjectCode,
+              subjectName: snap.subjectName,
+              sectionName: snap.sectionName,
+              schoolYear: snap.schoolYear,
+              isActive: false,
+              subject: { code: snap.subjectCode, name: snap.subjectName },
+              section: { name: snap.sectionName },
+              teacher: null
+            }
+          });
+        }
+        grades = snapshotGrades;
+      }
+    }
 
     const nonNullQuarterCountByAssignment = new Map<string, number>();
     grades.forEach((g: any) => {
@@ -1274,13 +1958,14 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
     // Organize by school year
     const academicHistory: Record<string, any> = {};
     
-    canonicalEnrollments.forEach((enrollment: any) => {
+    filteredCanonicalEnrollments.forEach((enrollment: any) => {
       const sy = enrollment.schoolYear;
       if (!academicHistory[sy]) {
         academicHistory[sy] = {
           schoolYear: sy,
           gradeLevel: enrollment.section.gradeLevel,
           section: enrollment.section.name,
+          program: enrollment.section.program ?? 'REGULAR',
           subjects: {}
         };
       }
@@ -1313,11 +1998,15 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
 
     [...grades].sort((a: any, b: any) => gradePriority(b) - gradePriority(a)).forEach((grade: any) => {
       const sy = grade.classAssignment.schoolYear;
+      // Skip grades for school years beyond the student's current grade level
+      if (!allowedSchoolYears.has(sy)) return;
+
       if (!academicHistory[sy]) {
         academicHistory[sy] = {
           schoolYear: sy,
           gradeLevel: grade.classAssignment.section.gradeLevel,
           section: grade.classAssignment.section.name,
+          program: grade.classAssignment.section.program ?? 'REGULAR',
           subjects: {}
         };
       }
@@ -1347,6 +2036,12 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
       if (grade.term === 'T3' && academicHistory[sy].subjects[key].T3 === null) academicHistory[sy].subjects[key].T3 = grade.quarterlyGrade;
     });
 
+    // Fetch school settings for SF10 metadata
+    const schoolSettings = await (prisma as any).systemSettings.findUnique({
+      where: { id: 'main' },
+      select: { schoolName: true, schoolId: true, division: true, region: true }
+    });
+
     // Calculate final grades for each school year
     const schoolRecords = Object.values(academicHistory).map((year: any) => {
       const subjectGrades = Object.values(year.subjects)
@@ -1373,14 +2068,34 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
         ? Math.round(allFinals.reduce((a: number, b: number) => a + b, 0) / allFinals.length)
         : null;
 
+      // Resolve adviser name from the enrollment's section
+      const enrollment = filteredCanonicalEnrollments.find((e: any) => e.schoolYear === year.schoolYear);
+      let adviserName: string | undefined;
+      if (enrollment?.section?.adviser?.user) {
+        adviserName = `${enrollment.section.adviser.user.firstName} ${enrollment.section.adviser.user.lastName}`;
+      }
+
+      // Include profile snapshot from enrollment for historical accuracy
+      const enrollmentForYear = filteredCanonicalEnrollments.find((e: any) => e.schoolYear === year.schoolYear);
+      const profileSnapshot = enrollmentForYear?.profileSnapshot ?? null;
+
       return {
         schoolYear: year.schoolYear,
         gradeLevel: year.gradeLevel,
         section: year.section,
+        program: year.program,
+        school: schoolSettings?.schoolName || '',
+        schoolId: schoolSettings?.schoolId || '',
+        district: schoolSettings?.division || '',
+        division: schoolSettings?.division || '',
+        region: schoolSettings?.region || '',
+        adviserName,
         subjectGrades,
         generalAverage,
         honors: generalAverage ? (generalAverage >= 98 ? "With Highest Honors" : generalAverage >= 95 ? "With High Honors" : generalAverage >= 90 ? "With Honors" : null) : null,
-        promotionStatus: generalAverage ? (subjectGrades.every((s: any) => !s.final || s.final >= 75) ? "Promoted" : "Retained") : null
+        promotionStatus: generalAverage ? (subjectGrades.every((s: any) => !s.final || s.final >= 75) ? "Promoted" : "Retained") : null,
+        remedialClasses: [],
+        profileSnapshot,
       };
     });
 
@@ -1389,16 +2104,26 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
         id: student.id,
         lrn: student.lrn,
         name: `${student.lastName}, ${student.firstName} ${student.middleName || ""} ${student.suffix || ""}`.trim(),
+        firstName: student.firstName,
+        lastName: student.lastName,
+        middleName: student.middleName || "",
+        nameExtension: student.suffix || "",
         gender: normalizeDisplaySex(student.gender),
         birthDate: student.birthDate,
         address: student.address,
         guardianName: student.guardianName,
         guardianContact: student.guardianContact
       },
-      schoolRecords: schoolRecords.sort((a, b) => a.schoolYear.localeCompare(b.schoolYear))
+      schoolRecords: schoolRecords.sort((a, b) => a.schoolYear.localeCompare(b.schoolYear)),
+      schoolSettings: {
+        schoolName: schoolSettings?.schoolName || '',
+        schoolId: schoolSettings?.schoolId || '',
+        division: schoolSettings?.division || '',
+        region: schoolSettings?.region || ''
+      }
     });
   } catch (error) {
-    console.error("Error fetching SF10 data:", error);
+    logger.error("Error fetching SF10 data:", error);
     res.status(500).json({ message: "Failed to fetch SF10 data" });
   }
 });
@@ -1502,13 +2227,16 @@ router.get("/forms/sf8", authenticateToken, async (req: AuthRequest, res: Respon
           };
         });
 
+        // Use profile snapshot if available (historical), else current student data
+        const snap = e.profileSnapshot as Record<string, any> | null;
+
         return {
           id: e.student.id,
-          lrn: e.student.lrn,
-          firstName: e.student.firstName,
-          middleName: e.student.middleName,
-          lastName: e.student.lastName,
-          gender: normalizeDisplaySex(e.student.gender),
+          lrn: snap?.lrn ?? e.student.lrn,
+          firstName: snap?.firstName ?? e.student.firstName,
+          middleName: snap?.middleName ?? e.student.middleName,
+          lastName: snap?.lastName ?? e.student.lastName,
+          gender: normalizeDisplaySex(snap?.gender ?? e.student.gender),
           grades: studentGrades
         };
       });
@@ -1524,6 +2252,7 @@ router.get("/forms/sf8", authenticateToken, async (req: AuthRequest, res: Respon
           id: section.id,
           name: section.name,
           gradeLevel: section.gradeLevel,
+          program: section.program,
           schoolYear: currentSchoolYear,
           adviser: section.adviser 
             ? `${section.adviser.user.firstName} ${section.adviser.user.lastName}`
@@ -1542,6 +2271,7 @@ router.get("/forms/sf8", authenticateToken, async (req: AuthRequest, res: Respon
         id: s.id,
         name: s.name,
         gradeLevel: s.gradeLevel,
+        program: s.program,
         studentCount: s._count.enrollments,
         adviser: s.adviser 
           ? `${s.adviser.user.firstName} ${s.adviser.user.lastName}`
@@ -1550,7 +2280,7 @@ router.get("/forms/sf8", authenticateToken, async (req: AuthRequest, res: Respon
       schoolYear: currentSchoolYear
     });
   } catch (error) {
-    console.error("Error fetching SF8 data:", error);
+    logger.error("Error fetching SF8 data:", error);
     res.status(500).json({ message: "Failed to fetch SF8 data" });
   }
 });
@@ -1593,7 +2323,7 @@ router.get("/sections", authenticateToken, async (req: AuthRequest, res: Respons
     });
 
     // Also fetch EnrollPro sections to map their numeric IDs (needed for roster viewer)
-    let epSectionNameToId = new Map<string, number>();
+    const epSectionNameToId = new Map<string, number>();
     try {
       const resolvedSY = await resolveEnrollProSchoolYear(currentSchoolYear);
       const epSections = await getAllIntegrationV1Sections(resolvedSY.id);
@@ -1611,6 +2341,7 @@ router.get("/sections", authenticateToken, async (req: AuthRequest, res: Respons
       name: s.name,
       gradeLevel: s.gradeLevel,
       schoolYear: s.schoolYear,
+      program: s.program,
       adviser: s.adviser
         ? `${s.adviser.user.firstName} ${s.adviser.user.lastName}`
         : null,
@@ -1618,7 +2349,7 @@ router.get("/sections", authenticateToken, async (req: AuthRequest, res: Respons
       enrollProId: epSectionNameToId.get(s.name) ?? null, // numeric EnrollPro section ID for roster
     })));
   } catch (error) {
-    console.error("Error fetching sections:", error);
+    logger.error("Error fetching sections:", error);
     res.status(500).json({ message: "Failed to fetch sections" });
   }
 });
@@ -1682,7 +2413,7 @@ router.get("/export/sf1/:sectionId", authenticateToken, async (req: AuthRequest,
 
     if (template) {
       // USE TEMPLATE SYSTEM
-      console.log("Using SF1 template for school register export");
+      logger.info("Using SF1 template for school register export");
 
       const students = section.enrollments.map((enrollment: any, index: number) => ({
         INDEX: index + 1,
@@ -1726,7 +2457,7 @@ router.get("/export/sf1/:sectionId", authenticateToken, async (req: AuthRequest,
       });
     } else {
       // FALLBACK TO HARDCODED FORMAT
-      console.log("No SF1 template found, using hardcoded format");
+      logger.info("No SF1 template found, using hardcoded format");
 
       const worksheetData: any[] = [
         ["SCHOOL FORM 1 - SCHOOL REGISTER"],
@@ -1787,8 +2518,8 @@ router.get("/export/sf1/:sectionId", authenticateToken, async (req: AuthRequest,
 
     res.send(buffer);
   } catch (error: any) {
-    console.error("Error exporting SF1:", error);
-    res.status(500).json({ message: "Failed to export school register", error: error.message });
+    logger.error("Error exporting SF1:", error);
+    res.status(500).json({ message: "Failed to export school register" });
   }
 });
 
@@ -1810,7 +2541,7 @@ router.get("/applications", authenticateToken, async (req: AuthRequest, res: Res
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
   try {
     const { status, gradeLevel, page, limit, search, forceRefresh } = req.query as Record<string, string>;
-    console.log("[registrar/applications] query params received:", { status, gradeLevel, page, limit, search, forceRefresh });
+    logger.info("[registrar/applications] query params received:", { status, gradeLevel, page, limit, search, forceRefresh });
 
     const GRADE_LEVEL_MAP: Record<string, string> = {
       GRADE_7:  "Grade 7",
@@ -1826,7 +2557,7 @@ router.get("/applications", authenticateToken, async (req: AuthRequest, res: Res
     const shouldRefresh = isCacheExpired || forceRefresh === "true";
 
     if (shouldRefresh) {
-      console.log(`[registrar/applications] cache status: ${!applicationsCache ? "empty" : isCacheExpired ? "expired" : "forceRefresh requested"}. Re-fetching...`);
+      logger.info(`[registrar/applications] cache status: ${!applicationsCache ? "empty" : isCacheExpired ? "expired" : "forceRefresh requested"}. Re-fetching...`);
       const limitVal = 500;
       const firstPage = await getEnrollProApplications({
         schoolYearId: sy.id,
@@ -1839,7 +2570,7 @@ router.get("/applications", authenticateToken, async (req: AuthRequest, res: Res
       let allApps = [...applications];
 
       const totalPages = Math.ceil(total / limitVal);
-      console.log(`[registrar/applications] total applications in EnrollPro: ${total}. Fetching ${totalPages} pages sequentially...`);
+      logger.info(`[registrar/applications] total applications in EnrollPro: ${total}. Fetching ${totalPages} pages sequentially...`);
       
       for (let p = 2; p <= totalPages; p++) {
         try {
@@ -1851,7 +2582,7 @@ router.get("/applications", authenticateToken, async (req: AuthRequest, res: Res
           const apps = resData.applications ?? resData.data ?? resData.items ?? [];
           allApps = allApps.concat(apps);
         } catch (fetchErr: any) {
-          console.error(`[registrar/applications] error fetching page ${p}, retrying once:`, fetchErr.message);
+          logger.error(`[registrar/applications] error fetching page ${p}, retrying once:`, fetchErr.message);
           await new Promise(r => setTimeout(r, 500));
           const resData = await getEnrollProApplications({
             schoolYearId: sy.id,
@@ -1867,9 +2598,9 @@ router.get("/applications", authenticateToken, async (req: AuthRequest, res: Res
         applications: allApps,
         timestamp: now,
       };
-      console.log(`[registrar/applications] cache populated successfully with ${allApps.length} applications`);
+      logger.info(`[registrar/applications] cache populated successfully with ${allApps.length} applications`);
     } else {
-      console.log(`[registrar/applications] serving from in-memory cache (age: ${Math.round((now - applicationsCache!.timestamp) / 1000)}s)`);
+      logger.info(`[registrar/applications] serving from in-memory cache (age: ${Math.round((now - applicationsCache!.timestamp) / 1000)}s)`);
     }
 
     let filteredApps = [...applicationsCache!.applications];
@@ -1922,11 +2653,11 @@ router.get("/applications", authenticateToken, async (req: AuthRequest, res: Res
       totalPages: totalPagesFiltered,
     };
 
-    console.log(`[registrar/applications] returning ${paginatedApps.length} of ${totalFiltered} filtered applications`);
+    logger.info(`[registrar/applications] returning ${paginatedApps.length} of ${totalFiltered} filtered applications`);
     res.json({ applications: paginatedApps, meta });
   } catch (err: any) {
-    console.error("[registrar/applications] error:", err.message);
-    res.status(502).json({ message: "Failed to fetch applications from EnrollPro", error: err.message });
+    logger.error("[registrar/applications] error:", err.message);
+    res.status(502).json({ message: "Failed to fetch applications from EnrollPro" });
   }
 });
 
@@ -1962,12 +2693,12 @@ router.get("/bosy/queue", authenticateToken, async (req: AuthRequest, res: Respo
 
     res.json(data);
   } catch (err: any) {
-    console.error("[registrar/bosy/queue]", err.message);
+    logger.error("[registrar/bosy/queue]", err.message);
     // Handle 404 or other network errors gracefully
     if (err.message?.includes("HTTP 404")) {
       return void res.json({ items: [], total: 0, page: 1, limit: 20, totalPages: 0, message: "Endpoint not yet implemented by EnrollPro" });
     }
-    res.status(502).json({ message: "Failed to fetch BOSY queue from EnrollPro", error: err.message });
+    res.status(502).json({ message: "Failed to fetch BOSY queue from EnrollPro" });
   }
 });
 
@@ -2004,12 +2735,12 @@ router.get("/bosy/expected-queue", authenticateToken, async (req: AuthRequest, r
 
     res.json(data);
   } catch (err: any) {
-    console.error("[registrar/bosy/expected-queue]", err.message);
+    logger.error("[registrar/bosy/expected-queue]", err.message);
     // Handle 404 or other network errors gracefully
     if (err.message?.includes("HTTP 404")) {
       return void res.json({ items: [], total: 0, page: 1, limit: 20, totalPages: 0, message: "Endpoint not yet implemented by EnrollPro" });
     }
-    res.status(502).json({ message: "Failed to fetch BOSY expected queue from EnrollPro", error: err.message });
+    res.status(502).json({ message: "Failed to fetch BOSY expected queue from EnrollPro" });
   }
 });
 
@@ -2029,8 +2760,8 @@ router.get("/remedial/pending", authenticateToken, async (req: AuthRequest, res:
     });
     res.json(data);
   } catch (err: any) {
-    console.error("[registrar/remedial/pending]", err.message);
-    res.status(502).json({ message: "Failed to fetch remedial list from EnrollPro", error: err.message });
+    logger.error("[registrar/remedial/pending]", err.message);
+    res.status(502).json({ message: "Failed to fetch remedial list from EnrollPro" });
   }
 });
 
@@ -2046,8 +2777,8 @@ router.get("/section-roster/:sectionId", authenticateToken, async (req: AuthRequ
     const first = await getIntegrationV1SectionLearners(sectionId, 1, 1);
     res.json({ section: first.section, learners, total: first.total });
   } catch (err: any) {
-    console.error("[registrar/section-roster]", err.message);
-    res.status(502).json({ message: "Failed to fetch section roster from EnrollPro", error: err.message });
+    logger.error("[registrar/section-roster]", err.message);
+    res.status(502).json({ message: "Failed to fetch section roster from EnrollPro" });
   }
 });
 
@@ -2064,8 +2795,8 @@ router.get("/eosy/school-years", authenticateToken, async (req: AuthRequest, res
     const data = await getEnrollProSchoolYears();
     res.json(data);
   } catch (err: any) {
-    console.error("[registrar/eosy/school-years]", err.message);
-    res.status(502).json({ message: "Failed to fetch school years from EnrollPro", error: err.message });
+    logger.error("[registrar/eosy/school-years]", err.message);
+    res.status(502).json({ message: "Failed to fetch school years from EnrollPro" });
   }
 });
 
@@ -2082,8 +2813,8 @@ router.get("/eosy/sections", authenticateToken, async (req: AuthRequest, res: Re
     const data = await getEnrollProEosySections(schoolYearId);
     res.json(data);
   } catch (err: any) {
-    console.error("[registrar/eosy/sections]", err.message);
-    res.status(502).json({ message: "Failed to fetch EOSY sections from EnrollPro", error: err.message });
+    logger.error("[registrar/eosy/sections]", err.message);
+    res.status(502).json({ message: "Failed to fetch EOSY sections from EnrollPro" });
   }
 });
 
@@ -2097,8 +2828,8 @@ router.get("/eosy/sections/:sectionId/records", authenticateToken, async (req: A
     const data = await getEnrollProEosySectionRecords(sectionId);
     res.json(data);
   } catch (err: any) {
-    console.error("[registrar/eosy/records]", err.message);
-    res.status(502).json({ message: "Failed to fetch EOSY records from EnrollPro", error: err.message });
+    logger.error("[registrar/eosy/records]", err.message);
+    res.status(502).json({ message: "Failed to fetch EOSY records from EnrollPro" });
   }
 });
 
@@ -2112,8 +2843,8 @@ router.get("/eosy/sections/:sectionId/sf5", authenticateToken, async (req: AuthR
     const data = await getEnrollProEosySF5(sectionId);
     res.json(data);
   } catch (err: any) {
-    console.error("[registrar/eosy/sf5]", err.message);
-    res.status(502).json({ message: "Failed to fetch SF5 from EnrollPro", error: err.message });
+    logger.error("[registrar/eosy/sf5]", err.message);
+    res.status(502).json({ message: "Failed to fetch SF5 from EnrollPro" });
   }
 });
 
@@ -2130,8 +2861,8 @@ router.get("/eosy/sf6", authenticateToken, async (req: AuthRequest, res: Respons
     const data = await getEnrollProEosySF6(schoolYearId);
     res.json(data);
   } catch (err: any) {
-    console.error("[registrar/eosy/sf6]", err.message);
-    res.status(502).json({ message: "Failed to fetch SF6 from EnrollPro", error: err.message });
+    logger.error("[registrar/eosy/sf6]", err.message);
+    res.status(502).json({ message: "Failed to fetch SF6 from EnrollPro" });
   }
 });
 
@@ -2151,7 +2882,7 @@ router.get("/atlas/teaching-loads", authenticateToken, async (req: AuthRequest, 
     const data = await getAtlasTeachingLoadSummary(atlasSchoolYearId);
     res.json(data);
   } catch (atlasErr: any) {
-    console.warn("[registrar/atlas/teaching-loads] ATLAS unavailable, falling back to local DB:", atlasErr.message);
+    logger.warn("[registrar/atlas/teaching-loads] ATLAS unavailable, falling back to local DB:", atlasErr.message);
     try {
       const currentSchoolYear = await resolveCurrentSchoolYearLabel();
       const assignments = await prisma.classAssignment.findMany({
@@ -2199,8 +2930,8 @@ router.get("/atlas/teaching-loads", authenticateToken, async (req: AuthRequest, 
         warning: "ATLAS is currently unreachable. Showing last synced data from SMART local database.",
       });
     } catch (dbErr: any) {
-      console.error("[registrar/atlas/teaching-loads] Local DB fallback also failed:", dbErr.message);
-      res.status(502).json({ message: "Failed to fetch teaching loads from ATLAS", error: atlasErr.message });
+      logger.error("[registrar/atlas/teaching-loads] Local DB fallback also failed:", dbErr.message);
+      res.status(502).json({ message: "Failed to fetch teaching loads from ATLAS" });
     }
   }
 });
@@ -2214,7 +2945,7 @@ router.get("/atlas/subject-coverage", authenticateToken, async (req: AuthRequest
     const data = await getAtlasSubjectStats();
     res.json(data);
   } catch (atlasErr: any) {
-    console.warn("[registrar/atlas/subject-coverage] ATLAS unavailable, falling back to local DB:", atlasErr.message);
+    logger.warn("[registrar/atlas/subject-coverage] ATLAS unavailable, falling back to local DB:", atlasErr.message);
     try {
       const currentSchoolYear = await resolveCurrentSchoolYearLabel();
       // Subjects that have at least one active assignment this SY
@@ -2234,8 +2965,8 @@ router.get("/atlas/subject-coverage", authenticateToken, async (req: AuthRequest
         warning: "ATLAS is currently unreachable. Showing last synced data from SMART local database.",
       });
     } catch (dbErr: any) {
-      console.error("[registrar/atlas/subject-coverage] Local DB fallback also failed:", dbErr.message);
-      res.status(502).json({ message: "Failed to fetch subject coverage from ATLAS", error: atlasErr.message });
+      logger.error("[registrar/atlas/subject-coverage] Local DB fallback also failed:", dbErr.message);
+      res.status(502).json({ message: "Failed to fetch subject coverage from ATLAS" });
     }
   }
 });

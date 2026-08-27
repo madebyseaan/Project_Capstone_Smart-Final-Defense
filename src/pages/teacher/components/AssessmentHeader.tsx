@@ -25,6 +25,7 @@ interface AssessmentHeaderProps {
   saveColumnMeta: () => void;
   metaEditorRef?: React.RefObject<HTMLDivElement | null>;
   assessmentDetailsRef?: React.RefObject<HTMLDivElement | null>;
+  isViewOnly?: boolean;
 }
 
 export function AssessmentHeader({
@@ -46,6 +47,7 @@ export function AssessmentHeader({
   saveColumnMeta,
   metaEditorRef,
   assessmentDetailsRef,
+  isViewOnly = false,
 }: AssessmentHeaderProps) {
   const categoryLabel = selectedColumn
     ? `${selectedColumn.type === "QA" ? "TA" : selectedColumn.type}${selectedColumn.type === "QA" ? "" : ` ${selectedColumn.number}`}`
@@ -68,11 +70,12 @@ export function AssessmentHeader({
                     <input
                       type="text"
                       value={metaEditorDraft.description}
+                      disabled={isViewOnly}
                       onChange={(e) =>
                         setMetaEditorDraft((prev) => ({ ...prev, description: e.target.value }))
                       }
                       placeholder={`e.g., Quiz ${selectedColumn.number}`}
-                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-300 transition-all"
+                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div>
@@ -82,10 +85,11 @@ export function AssessmentHeader({
                     <input
                       type="date"
                       value={metaEditorDraft.date}
+                      disabled={isViewOnly}
                       onChange={(e) =>
                         setMetaEditorDraft((prev) => ({ ...prev, date: e.target.value }))
                       }
-                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-300 transition-all"
+                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -100,7 +104,7 @@ export function AssessmentHeader({
                   </button>
                   <button
                     onClick={saveColumnMeta}
-                    disabled={savingMeta}
+                    disabled={savingMeta || isViewOnly}
                     className="px-6 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-700 transition-all disabled:opacity-50 shadow-sm"
                   >
                     {savingMeta ? "Applying\u2026" : "Apply"}
@@ -138,6 +142,7 @@ export function AssessmentHeader({
                     <input
                       type="date"
                       value={wwMeta[0]?.date || ""}
+                      disabled={isViewOnly}
                       onChange={(e) => {
                         const val = e.target.value;
                         setWwMeta((prev) => {
@@ -147,7 +152,7 @@ export function AssessmentHeader({
                           return next;
                         });
                       }}
-                      className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-400/30 outline-none transition-all"
+                      className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-400/30 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -156,6 +161,7 @@ export function AssessmentHeader({
                         key={`ww-meta-${i}`}
                         type="text"
                         value={wwMeta[i]?.description || ""}
+                        disabled={isViewOnly}
                         onChange={(e) => {
                           const val = e.target.value;
                           setWwMeta((prev) => {
@@ -166,7 +172,7 @@ export function AssessmentHeader({
                           });
                         }}
                         placeholder={`WW ${i + 1} description`}
-                        className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-400/30 outline-none transition-all"
+                        className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-400/30 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     ))}
                   </div>
@@ -185,6 +191,7 @@ export function AssessmentHeader({
                     <input
                       type="date"
                       value={ptMeta[0]?.date || ""}
+                      disabled={isViewOnly}
                       onChange={(e) => {
                         const val = e.target.value;
                         setPtMeta((prev) => {
@@ -194,7 +201,7 @@ export function AssessmentHeader({
                           return next;
                         });
                       }}
-                      className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 focus:border-purple-300 focus:ring-2 focus:ring-purple-400/30 outline-none transition-all"
+                      className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 focus:border-purple-300 focus:ring-2 focus:ring-purple-400/30 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -203,6 +210,7 @@ export function AssessmentHeader({
                         key={`pt-meta-${i}`}
                         type="text"
                         value={ptMeta[i]?.description || ""}
+                        disabled={isViewOnly}
                         onChange={(e) => {
                           const val = e.target.value;
                           setPtMeta((prev) => {
@@ -213,7 +221,7 @@ export function AssessmentHeader({
                           });
                         }}
                         placeholder={`PT ${i + 1} description`}
-                        className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 placeholder:text-slate-300 focus:border-purple-300 focus:ring-2 focus:ring-purple-400/30 outline-none transition-all"
+                        className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 placeholder:text-slate-300 focus:border-purple-300 focus:ring-2 focus:ring-purple-400/30 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     ))}
                   </div>
@@ -232,8 +240,9 @@ export function AssessmentHeader({
                     <input
                       type="date"
                       value={qaMeta.date}
+                      disabled={isViewOnly}
                       onChange={(e) => setQaMeta((prev) => ({ ...prev, date: e.target.value }))}
-                      className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 focus:border-amber-300 focus:ring-2 focus:ring-amber-400/30 outline-none transition-all"
+                      className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 focus:border-amber-300 focus:ring-2 focus:ring-amber-400/30 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div>
@@ -243,14 +252,16 @@ export function AssessmentHeader({
                     <input
                       type="text"
                       value={qaMeta.description}
+                      disabled={isViewOnly}
                       onChange={(e) => setQaMeta((prev) => ({ ...prev, description: e.target.value }))}
                       placeholder="e.g., Term Assessment"
-                      className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 placeholder:text-slate-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-400/30 outline-none transition-all"
+                      className="w-full h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 placeholder:text-slate-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-400/30 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                   <Button
                     onClick={saveAssessmentDetails}
-                    className="w-full h-8 rounded-lg text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-slate-700 transition-all shadow-sm mt-0.5"
+                    disabled={isViewOnly}
+                    className="w-full h-8 rounded-lg text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-slate-700 transition-all shadow-sm mt-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     Save All Details
                   </Button>

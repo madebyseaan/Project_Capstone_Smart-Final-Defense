@@ -11,6 +11,8 @@ import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { authenticateToken, AuthRequest, authorizeRoles } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { aimsAuthSchema } from '../schemas/integration';
 import {
   getEnrollProTeachers,
   getEnrollProSections,
@@ -29,6 +31,7 @@ import {
 } from '../lib/aimsClient';
 import { triggerImmediateSync } from '../lib/syncCoordinator';
 import { addSyncSseClient, removeSyncSseClient } from '../lib/sseManager';
+import { getActiveSchoolYearLabel } from '../lib/schoolYearResolver';
 
 const router = Router();
 
@@ -61,66 +64,26 @@ router.get('/sync/stream', authenticateToken, (req: AuthRequest, res: Response):
 });
 
 // ---------------------------------------------------------------------------
-// Webhooks / Callbacks
+// Grade Outcomes (called by EnrollPro during EOSY)
 // ---------------------------------------------------------------------------
 
 /**
- * POST /api/integration/enrollpro-webhook
- * Webhook endpoint for EnrollPro to notify SMART of data changes.
- * Triggers an immediate background sync.
+ * Webhook API key validation middleware.
+ * EnrollPro/ATLAS must send x-api-key header matching ENROLLPRO_WEBHOOK_KEY.
+ * Falls back to network-level auth if key is not configured.
  */
-router.post('/enrollpro-webhook', async (req, res) => {
-  const apiKey = req.headers['x-api-key'];
-  if (!process.env.ENROLLPRO_WEBHOOK_KEY) {
-    logger.warn('[Webhook] ENROLLPRO_WEBHOOK_KEY not set — webhook is UNPROTECTED');
+const validateWebhookKey = (req: any, res: any, next: any) => {
+  const configuredKey = process.env.ENROLLPRO_WEBHOOK_KEY;
+  if (!configuredKey) {
+    // No key configured — fall back to network-level auth (legacy behavior)
+    return next();
   }
-  if (process.env.ENROLLPRO_WEBHOOK_KEY && apiKey !== process.env.ENROLLPRO_WEBHOOK_KEY) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  const providedKey = req.headers['x-api-key'];
+  if (providedKey !== configuredKey) {
+    return res.status(401).json({ error: 'Unauthorized: invalid or missing API key' });
   }
-
-  console.log('[Webhook] Received notification from EnrollPro. Triggering sync...');
-  triggerImmediateSync('enrollpro-webhook');
-
-  res.json({ success: true, message: 'Sync triggered' });
-});
-
-/**
- * POST /api/integration/atlas-webhook
- * Webhook endpoint for ATLAS to notify SMART of schedule or teaching load changes.
- */
-router.post('/atlas-webhook', async (req, res) => {
-  const apiKey = req.headers['x-api-key'];
-  if (!process.env.ATLAS_WEBHOOK_KEY) {
-    logger.warn('[Webhook] ATLAS_WEBHOOK_KEY not set — webhook is UNPROTECTED');
-  }
-  if (process.env.ATLAS_WEBHOOK_KEY && apiKey !== process.env.ATLAS_WEBHOOK_KEY) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
-  }
-
-  console.log('[Webhook] Received notification from ATLAS. Triggering sync...');
-  triggerImmediateSync('atlas-webhook');
-
-  res.json({ success: true, message: 'Sync triggered' });
-});
-
-/**
- * POST /api/integration/aims-webhook
- * Webhook endpoint for AIMS to notify SMART of data updates.
- */
-router.post('/aims-webhook', async (req, res) => {
-  const apiKey = req.headers['x-api-key'];
-  if (!process.env.AIMS_WEBHOOK_KEY) {
-    logger.warn('[Webhook] AIMS_WEBHOOK_KEY not set — webhook is UNPROTECTED');
-  }
-  if (process.env.AIMS_WEBHOOK_KEY && apiKey !== process.env.AIMS_WEBHOOK_KEY) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
-  }
-
-  console.log('[Webhook] Received notification from AIMS. Triggering sync...');
-  triggerImmediateSync('aims-webhook');
-
-  res.json({ success: true, message: 'Sync triggered' });
-});
+  next();
+};
 
 /**
  * POST /api/integration/smart/sections/:sectionId/sync-grades
@@ -129,16 +92,10 @@ router.post('/aims-webhook', async (req, res) => {
  * EnrollPro calls this to pull final grades for all students in a section.
  * Returns per-subject final ratings, general average, remarks, and promotion status.
  *
- * Auth: x-api-key header matching ENROLLPRO_WEBHOOK_KEY
+ * Auth: x-api-key header (ENROLLPRO_WEBHOOK_KEY) or network-level (Tailscale).
  */
 const handleSmartSectionSyncGrades = async (req: any, res: any) => {
   try {
-    // API-key auth (same pattern as webhooks)
-    const apiKey = req.headers['x-api-key'];
-    if (process.env.ENROLLPRO_WEBHOOK_KEY && apiKey !== process.env.ENROLLPRO_WEBHOOK_KEY) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
-
     const sectionId = req.params.sectionId as string;
     const { schoolYear: querySY } = req.query;
     logger.info(`[SmartIntegration] Grade outcomes requested for Section #${sectionId}`);
@@ -148,7 +105,7 @@ const handleSmartSectionSyncGrades = async (req: any, res: any) => {
       where: { id: 'main' },
       select: { currentSchoolYear: true },
     });
-    const schoolYear = (querySY as string) || settings?.currentSchoolYear || '2026-2027';
+    const schoolYear = (querySY as string) || await getActiveSchoolYearLabel();
 
     // Find section
     const section = await prisma.section.findFirst({
@@ -180,10 +137,11 @@ const handleSmartSectionSyncGrades = async (req: any, res: any) => {
       include: { subject: true, teacher: { include: { user: true } } },
     });
 
-    // Get all grades for this section
+    // Get all FINALIZED grades for this section (only finalized grades sync to EnrollPro)
     const grades = await prisma.grade.findMany({
       where: {
         classAssignment: { sectionId: section.id, schoolYear, isActive: true },
+        status: 'FINALIZED',
       },
       include: {
         classAssignment: { include: { subject: true, teacher: { include: { user: true } } } },
@@ -310,12 +268,12 @@ const handleSmartSectionSyncGrades = async (req: any, res: any) => {
     });
   } catch (err: any) {
     console.error(`[SmartIntegration] Error syncing grades for section ${req.params.sectionId}:`, err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to sync grades' });
   }
 };
 
-router.post('/smart/sections/:sectionId/sync-grades', handleSmartSectionSyncGrades);
-router.post('/sections/:sectionId/sync-grades', handleSmartSectionSyncGrades);
+router.post('/smart/sections/:sectionId/sync-grades', validateWebhookKey, handleSmartSectionSyncGrades);
+router.post('/sections/:sectionId/sync-grades', validateWebhookKey, handleSmartSectionSyncGrades);
 
 // ---------------------------------------------------------------------------
 // System Status
@@ -390,7 +348,7 @@ router.get(
         },
       });
     } catch (err: any) {
-      res.status(502).json({ success: false, error: 'EP Error', detail: err.message });
+      res.status(502).json({ success: false, error: 'EP Error' });
     }
   }
 );
@@ -400,7 +358,7 @@ router.get('/enrollpro/sections', authenticateToken, async (_req: AuthRequest, r
     const sections = await getEnrollProSections();
     res.json({ success: true, data: sections });
   } catch (err: any) {
-    res.status(502).json({ success: false, error: 'EP Error', detail: err.message });
+    res.status(502).json({ success: false, error: 'EP Error' });
   }
 });
 
@@ -413,7 +371,7 @@ router.get(
       const faculty = await getEnrollProTeachers();
       res.json({ success: true, data: faculty });
     } catch (err: any) {
-      res.status(502).json({ success: false, error: 'EP Error', detail: err.message });
+      res.status(502).json({ success: false, error: 'EP Error' });
     }
   }
 );
@@ -437,7 +395,7 @@ router.get(
         where: { id: 'main' },
         select: { currentSchoolYear: true },
       });
-      const currentSchoolYear = settings?.currentSchoolYear ?? process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
+      const currentSchoolYear = await getActiveSchoolYearLabel();
 
       const assignments = await prisma.classAssignment.findMany({
         where: {
@@ -474,6 +432,7 @@ router.post(
   '/aims/auth',
   authenticateToken,
   authorizeRoles('TEACHER'),
+  validate(aimsAuthSchema),
   async (req: AuthRequest, res: Response): Promise<void> => {
     const { aimsPassword } = req.body as { aimsPassword?: string };
     const user = await prisma.user.findUnique({ where: { id: req.user?.id } });
@@ -529,11 +488,7 @@ router.get(
       });
       if (!teacher) { res.status(404).json({ error: 'Teacher profile not found' }); return; }
 
-      const settings = await prisma.systemSettings.findUnique({
-        where: { id: 'main' },
-        select: { currentSchoolYear: true },
-      });
-      const schoolYear = settings?.currentSchoolYear ?? process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
+      const schoolYear = await getActiveSchoolYearLabel();
 
       const entries = await prisma.scheduleEntry.findMany({
         where: { teacherId: teacher.id, schoolYear },
@@ -589,11 +544,7 @@ router.post(
       });
       if (!teacher) { res.status(404).json({ error: 'Teacher profile not found' }); return; }
 
-      const settings = await prisma.systemSettings.findUnique({
-        where: { id: 'main' },
-        select: { currentSchoolYear: true },
-      });
-      const schoolYear = settings?.currentSchoolYear ?? process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
+      const schoolYear = await getActiveSchoolYearLabel();
 
       const entries = await prisma.scheduleEntry.findMany({
         where: { teacherId: teacher.id, schoolYear },

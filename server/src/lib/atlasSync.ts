@@ -17,7 +17,7 @@ import { logger } from './logger';
 import { getEnrollProTeachers, getAllIntegrationV1Sections, resolveEnrollProSchoolYear } from './enrollproClient';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import { setCachedAtlasFaculty } from './syncCache';
-import { atlasGet, ATLAS_BASE, ATLAS_SCHOOL_ID } from './sync/httpClient';
+import { atlasGet, ATLAS_BASE, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID } from './sync/httpClient';
 import {
   mapGradeLevel,
   resolveSubjectCode,
@@ -25,12 +25,12 @@ import {
   sanitizeSubjectName,
   normalizeSubjectLabel,
   ensureHomeroomGuidanceLabel,
+  inferSubjectTypeFromCode,
   HOMEROOM_GUIDANCE_LABEL,
   HOMEROOM_GUIDANCE_MINUTES,
 } from './atlasUtils';
 
-const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '3', 10);
-const DEFAULT_SCHOOL_YEAR_LABEL = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
+import { getActiveSchoolYearLabel } from './schoolYearResolver';
 
 function normalizeAtlasSubjectCode(code: string | null | undefined): string {
   return (code ?? '').trim().toUpperCase();
@@ -73,23 +73,29 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       where: { id: 'main' },
       select: { currentSchoolYear: true },
     });
-    const preferredLabel = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? settings?.currentSchoolYear ?? DEFAULT_SCHOOL_YEAR_LABEL;
+    const preferredLabel = settings?.currentSchoolYear ?? await getActiveSchoolYearLabel();
     const resolvedSY = await resolveEnrollProSchoolYear(preferredLabel);
     const enrollProSchoolYearId = resolvedSY.id;
     const schoolYearLabel = resolvedSY.yearLabel;
 
-    const atlasSchoolYearId = Number.isFinite(DEFAULT_ATLAS_SCHOOL_YEAR_ID)
-      ? DEFAULT_ATLAS_SCHOOL_YEAR_ID
-      : 8;
+    const resolvedAtlasSY = await resolveAtlasSchoolYear();
+    const atlasSchoolYearId = resolvedAtlasSY.id;
     logger.debug(
-      `[AtlasSync] Using EnrollPro SY ${schoolYearLabel} (id=${enrollProSchoolYearId}, source=${resolvedSY.source}) and Atlas SY id=${atlasSchoolYearId}`,
+      `[AtlasSync] Using EnrollPro SY ${schoolYearLabel} (id=${enrollProSchoolYearId}, source=${resolvedSY.source}) and Atlas SY id=${atlasSchoolYearId} (source=${resolvedAtlasSY.source})`,
     );
 
-    // 1. Get all faculty from ATLAS
-    const facultyData = await atlasGet(`/faculty?schoolId=${ATLAS_SCHOOL_ID}`);
-    const atlasFaculty: any[] = facultyData.faculty ?? [];
-    // Populate the in-memory cache so teacherSync reads from cache on teacher login
-    if (atlasFaculty.length > 0) setCachedAtlasFaculty(atlasFaculty);
+    // 1. Get all faculty from ATLAS (with graceful degradation)
+    let atlasFaculty: any[] = [];
+    try {
+      const facultyData = await atlasGet(`/faculty?schoolId=${ATLAS_SCHOOL_ID}`);
+      atlasFaculty = facultyData.faculty ?? [];
+      // Populate the in-memory cache so teacherSync reads from cache on teacher login
+      if (atlasFaculty.length > 0) setCachedAtlasFaculty(atlasFaculty);
+    } catch (err: any) {
+      const msg = `Faculty fetch failed: ${err.message}`;
+      errors.push(msg);
+      logger.warn(`[AtlasSync] ${msg} — continuing with cached/empty faculty`);
+    }
 
     // 2. Build SMART teacher lookups and EnrollPro teacher-id mapping.
     // Atlas externalId is tied to the EnrollPro teacher record id, not the employeeId string.
@@ -233,8 +239,9 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
         // Brand new subject — create it with proper display name (not ATLAS abbreviation)
         const properName = resolveSubjectName(code);
+        const inferredType = inferSubjectTypeFromCode(code);
         await prisma.subject.create({
-          data: { code, name: properName, type: 'CORE', ...rotationData },
+          data: { code, name: properName, type: inferredType, ...rotationData },
         }).catch(() => { /* already exists via race condition */ });
         existingCodes.add(code);
         subjectsCreated++;
@@ -250,12 +257,22 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const homeroomLabelUpdated = new Set<string>();
 
     // 4.5 Batch-fix any bad subject names that slipped through previous syncs
+    const subjectNameFixes: Array<{ id: string; name: string }> = [];
     for (const subj of allSubjects) {
       const fixedName = sanitizeSubjectName(subj.name, subj.code);
       if (fixedName !== subj.name) {
-        await prisma.subject.update({ where: { id: subj.id }, data: { name: fixedName } }).catch(() => {});
+        subjectNameFixes.push({ id: subj.id, name: fixedName });
         subj.name = fixedName;
-        logger.debug(`[AtlasSync] Fixed bad name: "${subj.code}" "${subj.name}" → "${fixedName}"`);
+      }
+    }
+    if (subjectNameFixes.length > 0) {
+      try {
+        await prisma.$transaction(
+          subjectNameFixes.map(f => prisma.subject.update({ where: { id: f.id }, data: { name: f.name } }))
+        );
+        logger.debug(`[AtlasSync] Batch fixed ${subjectNameFixes.length} subject names`);
+      } catch (err: any) {
+        logger.warn(`[AtlasSync] Batch subject name fix failed: ${err.message}`);
       }
     }
 
@@ -269,6 +286,32 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     // 5.1 Pre-fetch all faculty assignments in parallel (with concurrency limit)
     const CONCURRENT_LIMIT = 5;
+
+    // Discover which school year has a published schedule (check once, reuse for all faculty)
+    let discoveredPubYearId: number | null = null;
+    try {
+      const schoolWide = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/schedules/published`);
+      if (schoolWide?.source?.schoolYearId) {
+        discoveredPubYearId = schoolWide.source.schoolYearId;
+        logger.info(`[AtlasSync] Discovered published schedule in school year ${discoveredPubYearId} (label=${schoolWide.source.schoolYearLabel})`);
+      }
+    } catch { /* no school-wide published schedule for active year */ }
+
+    // If no published year discovered, probe known year IDs to find one with data
+    if (!discoveredPubYearId) {
+      const probeYears = [atlasSchoolYearId, 2, 3, 5, 6, 1, 8].filter((v, i, a) => a.indexOf(v) === i); // deduplicate
+      for (const probeYear of probeYears) {
+        try {
+          const probeData = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/school-years/${probeYear}/schedules/published`);
+          if (probeData?.entries?.length > 0 || probeData?.source?.schoolYearId) {
+            discoveredPubYearId = probeYear;
+            logger.info(`[AtlasSync] Discovered published schedule in school year ${discoveredPubYearId} via probe`);
+            break;
+          }
+        } catch { /* this year has no published schedule */ }
+      }
+    }
+
     type FacultyAssignmentResult = {
       af: any;
       detail: any;
@@ -278,16 +321,16 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     async function fetchFacultyAssignment(af: any): Promise<FacultyAssignmentResult> {
       try {
-        let detail = await atlasGet(
+        const detail = await atlasGet(
           `/faculty-assignments/${af.id}?schoolYearId=${atlasSchoolYearId}`,
         );
-        let assignmentsPayload = detail?.assignments ?? detail?.data ?? detail ?? [];
+        const assignmentsPayload = detail?.assignments ?? detail?.data ?? detail ?? [];
         let assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
 
         // Fallback: If primary schoolYearId returned no sectionIds, try alternate active schoolYearId (e.g. 6 or 1)
         const hasDirectSections = assignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0));
         if (!hasDirectSections) {
-          const fallbackSYs = [3, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
+          const fallbackSYs = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 5, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
           for (const fallbackSY of fallbackSYs) {
             try {
               const fbDetail = await atlasGet(
@@ -311,15 +354,30 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         const flatAssignments = assignments.filter((a) => a && (a.subjectCode || a.sectionId));
         const nestedAssignments = assignments.filter((a) => a && (a.subject?.code || a.sections));
           // Always fetch published schedule — needed for teaching load fallback AND schedule entries
+          // ATLAS uses path-based routing: /school-years/:schoolYearId/schedules/published/faculty/:facultyId
+          // Uses pre-discovered year or configured year, falls back to current-year auto-resolve
           let pubEntries: any[] = [];
-          try {
-            const pubData = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`);
-            pubEntries = Array.isArray(pubData?.entries) ? pubData.entries : [];
-            if (pubEntries.length > 0) {
-              logger.debug(`[AtlasSync] Faculty ${af.firstName} ${af.lastName}: ${pubEntries.length} published schedule entries`);
-            }
-          } catch {
-            // Published schedule may not exist yet — not an error
+
+          async function fetchPubEntries(path: string): Promise<any[]> {
+            try {
+              const data = await atlasGet(path);
+              return Array.isArray(data?.entries) ? data.entries : [];
+            } catch { return []; }
+          }
+
+          // 1. Try discovered or configured school year
+          const yearToTry = discoveredPubYearId ?? atlasSchoolYearId;
+          pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/school-years/${yearToTry}/schedules/published/faculty/${af.id}`);
+          if (pubEntries.length > 0) {
+            logger.debug(`[AtlasSync] Faculty ${af.firstName} ${af.lastName}: ${pubEntries.length} entries (year ${yearToTry})`);
+          }
+
+          // 2. Try current-year endpoint (ATLAS resolves active year automatically)
+          if (pubEntries.length === 0 && yearToTry !== atlasSchoolYearId) {
+            pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published/faculty/${af.id}`);
+          }
+          if (pubEntries.length === 0) {
+            pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`);
           }
 
         return { af, detail: assignments, pubEntries };
@@ -394,7 +452,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           for (const a of nestedAssignments) {
             const subjectCode = normalizeAtlasSubjectCode(a.subject?.code ?? '');
             if (!subjectCode) continue;
-            let sections: any[] = a.sections ?? [];
+            const sections: any[] = a.sections ?? [];
 
             if (sections.length > MAX_SANE_SECTIONS) {
               logger.warn(`[AtlasSync] Rejecting broad nested assignment for ${subjectCode} (${sections.length} sections)`);
@@ -494,7 +552,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         subject = await prisma.subject.upsert({
           where: { code: smartSubjectCode },
           update: {},
-          create: { code: smartSubjectCode, name: autoName, type: 'CORE' },
+          create: { code: smartSubjectCode, name: autoName, type: inferSubjectTypeFromCode(smartSubjectCode) },
         });
         subjectByCode.set(smartSubjectCode, subject);
         logger.debug(`[AtlasSync] Auto-created subject "${smartSubjectCode}" ("${autoName}")`);
@@ -532,7 +590,8 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     }
 
     // 5.3 Persist published schedule entries as ScheduleEntry records
-    // ATLAS published schedule uses NESTED objects: entry.subject.code, entry.section.id, etc.
+    // ATLAS published schedule uses NESTED objects: entry.subject.code, entry.section.externalId, etc.
+    // See AIMS integration guide for full schema reference.
     {
       const allScheduleEntries: Array<{
         teacherId: string; subjectCode: string; sectionName: string;
@@ -552,11 +611,14 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           const startTime = entry?.startTime;
           const endTime = entry?.endTime;
           if (!day || !startTime || !endTime) { skippedNoDay++; continue; }
+          // Skip placeholder faculty entries (test/dummy data per AIMS guide)
+          if (entry?.faculty?.isPlaceholder) continue;
           // ATLAS nested structure: entry.subject.code (not entry.subjectCode)
           const subjectCode = normalizeAtlasSubjectCode(entry?.subject?.code ?? entry?.subjectCode);
           if (!subjectCode) { skippedNoSubject++; continue; }
-          // ATLAS nested structure: entry.section.id (not entry.sectionId)
-          const sectionId = Number(entry?.section?.id ?? entry?.sectionId);
+          // ATLAS nested structure: entry.section.externalId (EnrollPro section ID for cross-system matching)
+          // Falls back to entry.section.id (backward-compatible alias) then entry.sectionId
+          const sectionId = Number(entry?.section?.externalId ?? entry?.section?.id ?? entry?.sectionId);
           if (!Number.isFinite(sectionId)) continue;
           let epSection = epSectionById.get(sectionId);
           // Fallback: match by section name from ATLAS nested response
@@ -601,7 +663,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
               subject = await prisma.subject.upsert({
                 where: { code: smartSubjectCode },
                 update: {},
-                create: { code: smartSubjectCode, name: resolveSubjectName(smartSubjectCode, entry.gradeLevel), type: 'CORE' },
+                create: { code: smartSubjectCode, name: resolveSubjectName(smartSubjectCode, entry.gradeLevel), type: inferSubjectTypeFromCode(smartSubjectCode) },
               });
               subjectByCode.set(smartSubjectCode, subject);
             } catch { continue; }
@@ -650,11 +712,11 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           console.log(`[AtlasSync] Schedule entries: created=${scheduleCreated}, cleaned=${scheduleCleaned}`);
         }
       }
-      // Always log schedule diagnostics
+      // Always log schedule diagnostics with school year info
       if (totalPubEntries > 0) {
-        console.log(`[AtlasSync] Schedule diag: totalPub=${totalPubEntries}, skippedNoDay=${skippedNoDay}, skippedNoSubject=${skippedNoSubject}, skippedNoSection=${skippedNoSection}, resolved=${allScheduleEntries.length}`);
+        console.log(`[AtlasSync] Schedule diag: totalPub=${totalPubEntries}, skippedNoDay=${skippedNoDay}, skippedNoSubject=${skippedNoSubject}, skippedNoSection=${skippedNoSection}, resolved=${allScheduleEntries.length}, atlasSY=${atlasSchoolYearId}${discoveredPubYearId ? `, discoveredSY=${discoveredPubYearId}` : ''}`);
       } else {
-        console.log(`[AtlasSync] Schedule diag: no published schedule entries found from ATLAS`);
+        console.log(`[AtlasSync] Schedule diag: no published schedule entries found from ATLAS (tried atlasSY=${atlasSchoolYearId}, current-year${discoveredPubYearId ? `, discoveredSY=${discoveredPubYearId}` : ''})`);
       }
     }
 
@@ -667,28 +729,34 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         select: { id: true, teacherId: true, subjectId: true, sectionId: true, isActive: true },
       });
 
-      let reactivatedCount = 0;
       let preservedMissingCount = 0;
+      const reactivateIds: string[] = [];
 
       for (const assignment of currentAssignments) {
         const key = `${assignment.teacherId}:${assignment.subjectId}:${assignment.sectionId}`;
         const shouldBeActive = desiredAssignmentPairs.has(key);
         if (shouldBeActive && !assignment.isActive) {
-          await prisma.classAssignment.update({
-            where: { id: assignment.id },
-            data: { isActive: true, archivedAt: null, archivedReason: null },
-          });
-          reactivatedCount++;
+          reactivateIds.push(assignment.id);
         } else if (!shouldBeActive && assignment.isActive) {
-          // Preserve existing assignment when a sync cycle cannot prove it is stale.
-          // This avoids false negative "-1 section" drops during partial ATLAS payloads.
           preservedMissingCount++;
         }
       }
 
-      if (reactivatedCount > 0 || preservedMissingCount > 0) {
+      // Batch reactivation
+      if (reactivateIds.length > 0) {
+        try {
+          await prisma.classAssignment.updateMany({
+            where: { id: { in: reactivateIds } },
+            data: { isActive: true, archivedAt: null, archivedReason: null },
+          });
+        } catch (err: any) {
+          logger.warn(`[AtlasSync] Batch reactivation failed: ${err.message}`);
+        }
+      }
+
+      if (reactivateIds.length > 0 || preservedMissingCount > 0) {
         console.log(
-          `[AtlasSync] Stale-check (safe mode): reactivated=${reactivatedCount}, preservedMissing=${preservedMissingCount}.`,
+          `[AtlasSync] Stale-check (safe mode): reactivated=${reactivateIds.length}, preservedMissing=${preservedMissingCount}.`,
         );
       }
     }

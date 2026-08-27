@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { logger } from './logger';
 import { getSyncCircuitBreakerStatus, getUnifiedSyncStatus } from './syncCoordinator';
 
 const ENROLLPRO_BASE = (process.env.ENROLLPRO_URL ?? process.env.ENROLLPRO_BASE_URL ?? 'https://dev-jegs.buru-degree.ts.net/api').replace(/\/$/, '');
@@ -25,10 +26,10 @@ function evaluateStatus(online: boolean, httpStatus: number | null): ExternalHea
   return 'DEGRADED';
 }
 
-async function pingUrl(name: string, url: string): Promise<ExternalHealthCheck> {
+async function pingUrl(name: string, url: string, headers?: Record<string, string>): Promise<ExternalHealthCheck> {
   const started = Date.now();
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers });
     const status = evaluateStatus(response.ok, response.status);
     return {
       name,
@@ -67,8 +68,11 @@ export async function getSystemHealthSnapshot() {
   }
   const dbLatencyMs = Date.now() - dbStartedAt;
 
+  const epHeaders = process.env.ENROLLPRO_INTEGRATION_KEY
+    ? { 'X-Integration-Key': process.env.ENROLLPRO_INTEGRATION_KEY }
+    : undefined;
   const [enrollpro, atlas, aims, recentHistory] = await Promise.all([
-    pingUrl('EnrollPro', buildUrl(ENROLLPRO_BASE, '/integration/v1/health')),
+    pingUrl('EnrollPro', buildUrl(ENROLLPRO_BASE, '/integration/v1/health'), epHeaders),
     pingUrl('Atlas', buildUrl(ATLAS_BASE, '/health')),
     pingUrl('AIMS', buildUrl(AIMS_BASE, '/health')),
     prisma.syncHistory.findMany({
@@ -89,7 +93,7 @@ export async function getSystemHealthSnapshot() {
 
   const external = { enrollpro, atlas, aims };
   const externalAllOnline = enrollpro.online && atlas.online && aims.online;
-  const overall = dbOnline && externalAllOnline ? 'HEALTHY' : 'DEGRADED';
+  const overall = !dbOnline ? 'DOWN' : externalAllOnline ? 'HEALTHY' : 'DEGRADED';
 
   const memory = process.memoryUsage();
 

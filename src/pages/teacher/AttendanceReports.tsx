@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
-import { Download, Calendar, Filter, FileSpreadsheet, Eye } from "lucide-react";
+import { Download, Calendar, Filter, FileSpreadsheet, Eye, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -21,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTheme } from "@/contexts/ThemeContext";
-import { SERVER_URL } from "@/lib/api";
+import { SERVER_URL, getPortalToken } from "@/lib/api";
 import axios from "axios";
 
 // ── Local date helper (fixes UTC timezone bug) ─────────────────────────────
@@ -88,7 +87,7 @@ export default function AttendanceReports() {
 
   const fetchGenders = async (sectionId: string) => {
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getPortalToken();
       const gendersMap: Record<string, string> = {};
 
       const advisoryRes = await axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
@@ -115,7 +114,7 @@ export default function AttendanceReports() {
     let cancelled = false;
     const fetchAdvisory = async () => {
       try {
-        const token = sessionStorage.getItem("token");
+        const token = getPortalToken();
         const advisoryResponse = await axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -160,7 +159,7 @@ export default function AttendanceReports() {
     setLoading(true);
     setLoadingDaily(true);
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getPortalToken();
       await fetchGenders(selectedSection);
 
       const response = await axios.get(
@@ -204,7 +203,7 @@ export default function AttendanceReports() {
 
     setDownloading(true);
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getPortalToken();
       const d = new Date(startDate + "T00:00:00");
       const month = d.getMonth() + 1;
       const year = d.getFullYear();
@@ -245,29 +244,36 @@ export default function AttendanceReports() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 animate-fade-in max-w-7xl mx-auto pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Attendance Reports</h1>
-          <p className="text-gray-500 mt-1">View and download attendance summaries</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl text-white shadow-xl" style={{ backgroundColor: colors.primary }}>
+              <FileSpreadsheet className="w-6 h-6" />
+            </div>
+          </div>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Attendance Reports</h1>
+          <p className="text-slate-500 font-medium text-lg">View and download attendance summaries</p>
         </div>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-5 h-5" />
-            Attendance Report
-          </CardTitle>
-          <CardDescription>Advisory section — auto-loaded for current month</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+      <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden bg-white/90 backdrop-blur-md">
+        <CardContent className="p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 rounded-xl text-white" style={{ backgroundColor: colors.primary }}>
+              <Filter className="w-5 h-5" />
+            </div>
             <div>
-              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Advisory Section</Label>
-              <div className="h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center px-4 mt-1">
+              <p className="text-sm font-black text-slate-900 tracking-tight">Attendance Report</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Advisory section — auto-loaded for current month</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Advisory Section</Label>
+              <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center px-4">
                 <span className="text-sm font-bold text-slate-900">
                   {sections.length > 0
                     ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
@@ -276,20 +282,20 @@ export default function AttendanceReports() {
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="startDate" className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Start Date</Label>
+            <div className="space-y-2">
+              <Label htmlFor="startDate" className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Start Date</Label>
               <Input
                 id="startDate"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 max={endDate}
-                className="mt-1"
+                className="h-12 bg-slate-50 border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all"
               />
             </div>
 
-            <div>
-              <Label htmlFor="endDate" className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Date</Label>
+            <div className="space-y-2">
+              <Label htmlFor="endDate" className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">End Date</Label>
               <Input
                 id="endDate"
                 type="date"
@@ -297,7 +303,7 @@ export default function AttendanceReports() {
                 onChange={(e) => setEndDate(e.target.value)}
                 min={startDate}
                 max={getLocalDateStr()}
-                className="mt-1"
+                className="h-12 bg-slate-50 border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all"
               />
             </div>
 
@@ -305,12 +311,12 @@ export default function AttendanceReports() {
               <Button
                 onClick={fetchReport}
                 disabled={!selectedSection || !startDate || !endDate || loading}
-                className="flex-1 h-10 rounded-xl font-bold text-[10px] tracking-widest uppercase"
+                className="flex-1 h-12 rounded-xl text-white shadow-xl font-bold text-[10px] tracking-widest uppercase transition-all"
                 style={{ backgroundColor: colors.primary }}
               >
                 {loading ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Loading...
                   </>
                 ) : (
@@ -327,64 +333,71 @@ export default function AttendanceReports() {
 
       {/* Summary Stats */}
       {summary.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Total Students</p>
-                <p className="text-3xl font-bold" style={{ color: colors.primary }}>
-                  {summary.length}
-                </p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Students</p>
+                  <p className="text-2xl font-black text-slate-800">{summary.length}</p>
+                </div>
+                <div className="p-3 rounded-2xl text-white" style={{ backgroundColor: colors.primary }}>
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Avg. Attendance</p>
-                <p className="text-3xl font-bold text-green-600">
-                  {summary.length > 0
-                    ? (
-                        (summary.reduce((acc, s) => acc + s.present, 0) /
-                          summary.reduce((acc, s) => acc + s.total, 0)) *
-                        100
-                      ).toFixed(1)
-                    : 0}
-                  %
-                </p>
+          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Avg. Attendance</p>
+                  <p className="text-2xl font-black text-emerald-600">
+                    {summary.length > 0
+                      ? (
+                          (summary.reduce((acc, s) => acc + s.present, 0) /
+                            summary.reduce((acc, s) => acc + s.total, 0)) *
+                          100
+                        ).toFixed(1)
+                      : 0}%
+                  </p>
+                </div>
+                <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-500">
+                  <Eye className="w-6 h-6" />
+                </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Total Days</p>
-                <p className="text-3xl font-bold" style={{ color: colors.secondary }}>
-                  {summary[0]?.total || 0}
-                </p>
+          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Days</p>
+                  <p className="text-2xl font-black text-slate-800">{summary[0]?.total || 0}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
+                  <Calendar className="w-6 h-6" />
+                </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
+          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Export</p>
+                  <p className="text-sm font-black text-slate-800">SF2 Download</p>
+                </div>
                 <Button
                   onClick={downloadExcel}
                   disabled={downloading}
-                  variant="outline"
-                  className="w-full"
-                  style={{ borderColor: colors.accent, color: colors.accent }}
+                  className="h-10 rounded-xl text-white font-bold text-[10px] tracking-widest uppercase transition-all"
+                  style={{ backgroundColor: colors.secondary }}
                 >
                   {downloading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
-                      Exporting...
-                    </>
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download Excel
-                    </>
+                    <Download className="w-4 h-4" />
                   )}
                 </Button>
               </div>
@@ -394,34 +407,32 @@ export default function AttendanceReports() {
       )}
 
       {/* Report Table */}
-      <Card>
-        <CardHeader>
+      <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
+        <CardHeader className="p-8 border-b border-slate-50 bg-slate-50/30">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Attendance Summary</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-xl font-black text-slate-900 tracking-tight">Attendance Summary</CardTitle>
+              <CardDescription className="text-slate-500 font-sans normal-case font-medium tracking-normal mt-1">
                 {summary.length > 0
                   ? `Showing ${summary.length} students from ${startDate} to ${endDate}`
                   : "Select filters and click 'View Report' to see data"}
               </CardDescription>
             </div>
             {summary.length > 0 && (
-              <Badge variant="outline" className="text-sm">
-                <FileSpreadsheet className="w-3 h-3 mr-1" />
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 py-1.5 rounded-full bg-slate-100">
                 {summary.length} Records
-              </Badge>
+              </span>
             )}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {loading || loadingDaily ? (
             <div className="flex items-center justify-center py-24">
               <div className="text-center">
-                <div
-                  className="w-12 h-12 mx-auto mb-4 border-[3px] border-t-transparent rounded-full animate-spin"
-                  style={{ borderColor: colors.primary, borderTopColor: "transparent" }}
-                />
-                <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Compiling SF2 Daily Grid...</p>
+                <div className="w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm" style={{ backgroundColor: `${colors.primary}15` }}>
+                  <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
+                </div>
+                <p className="text-slate-500 font-black text-xs uppercase tracking-widest">Compiling SF2 Daily Grid...</p>
               </div>
             </div>
           ) : summary.length > 0 ? (
@@ -492,9 +503,9 @@ export default function AttendanceReports() {
                             <div className="flex items-center justify-between gap-3">
                               <span>{student.lastName}, {student.firstName}</span>
                               {hasConsecAbsence && (
-                                <Badge className="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse shrink-0">
-                                  ⚠️ 5+ Abs
-                                </Badge>
+                                <span className="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse shrink-0">
+                                  5+ Abs
+                                </span>
                               )}
                             </div>
                           </TableCell>
@@ -608,7 +619,7 @@ export default function AttendanceReports() {
                               const presentCount = getDailyAttendanceStats(date);
                               const rate = summary.length > 0 ? (presentCount / summary.length) * 100 : 0;
                               return (
-                                <TableCell key={`rate-${date}`} className="text-center font-black text-indigo-600 text-[10px] py-3 border-r border-slate-100">
+                                <TableCell key={`rate-${date}`} className="text-center font-black text-[10px] py-3 border-r border-slate-100" style={{ color: colors.primary }}>
                                   {rate.toFixed(0)}%
                                 </TableCell>
                               );
@@ -623,10 +634,12 @@ export default function AttendanceReports() {
               );
             })()
           ) : (
-            <div className="text-center py-12 text-gray-500">
-              <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p>No attendance data available</p>
-              <p className="text-sm mt-1">Select a section and date range to view the report</p>
+            <div className="py-32 text-center px-8">
+              <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-sm">
+                <Calendar className="w-10 h-10 text-slate-200" />
+              </div>
+              <h3 className="font-black text-slate-900 text-2xl mb-3">No Attendance Data</h3>
+              <p className="text-slate-400 font-medium text-lg leading-relaxed">Select a section and date range to view the report</p>
             </div>
           )}
         </CardContent>

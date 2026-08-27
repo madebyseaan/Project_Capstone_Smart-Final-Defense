@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { getPortalToken } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -78,7 +79,7 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
         return;
       }
 
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       const controller = new AbortController();
       abortRef.current = controller;
 

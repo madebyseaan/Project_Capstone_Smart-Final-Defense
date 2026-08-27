@@ -3,24 +3,24 @@ module.exports = {
     {
       name: 'server',
       cwd: './server',
-      script: 'npx',
-      args: 'ts-node-dev --respawn --transpile-only src/index.ts',
+      script: 'node',
+      args: 'node_modules/ts-node-dev/lib/bin.js --respawn --transpile-only src/index.ts',
+      wait_ready: true,
+      listen_timeout: 15000,
       autorestart: true,
       max_restarts: 10,
       watch: false,
       env: {
-        NODE_ENV: 'development',
+        NODE_ENV: 'production',
       },
     },
     {
       name: 'client',
-      script: 'npx',
-      args: 'vite --host',
+      cwd: '.',
+      script: 'node',
+      args: 'scripts/wait-for-server.cjs',
       autorestart: true,
       watch: false,
-      env: {
-        NODE_ENV: 'development',
-      },
     },
   ],
 };

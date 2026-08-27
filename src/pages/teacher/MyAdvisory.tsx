@@ -409,7 +409,9 @@ export default function MyAdvisory() {
                         </TableCell>
                       )}
                       <TableCell className="text-xs text-slate-500 font-bold italic">
-                        {student.guardianName || <span className="text-slate-200">UNSPECIFIED</span>}
+                        {student.guardianName || student.fatherName || student.motherName
+                          ? student.guardianName || `${student.fatherName || ''}${student.fatherName && student.motherName ? ' / ' : ''}${student.motherName || ''}`
+                          : <span className="text-slate-200">UNSPECIFIED</span>}
                       </TableCell>
                       <TableCell className="text-right pr-8">
                         <Link to={`/teacher/advisory/student/${student.id}`}>

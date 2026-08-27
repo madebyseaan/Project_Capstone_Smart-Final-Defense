@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Calendar as CalendarIcon, Users, Check, X, Clock, FileText, Save, CheckCircle2, AlertCircle, ClipboardCheck, RefreshCw, Download } from "lucide-react";
+import { Calendar as CalendarIcon, Users, X, FileText, Save, CheckCircle2, AlertCircle, ClipboardCheck, RefreshCw, Download, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -20,8 +19,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/ThemeContext";
-import { SERVER_URL } from "@/lib/api";
+import { SERVER_URL, getPortalToken } from "@/lib/api";
 import axios from "axios";
 
 // ── Local date helpers (fixes UTC timezone bug) ─────────────────────────────
@@ -105,7 +112,7 @@ export default function Attendance() {
   const fetchMonthlySF2Stats = async (sectionId: string, dateStr: string) => {
     setLoadingMonthly(true);
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getPortalToken();
       const d = new Date(dateStr);
       const y = d.getFullYear();
       const m = d.getMonth();
@@ -193,7 +200,7 @@ export default function Attendance() {
     let cancelled = false;
     const fetchSections = async () => {
       try {
-        const token = sessionStorage.getItem("token");
+        const token = getPortalToken();
         
         // Get advisory section only
         const advisoryResponse = await axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
@@ -230,7 +237,7 @@ export default function Attendance() {
     setLoading(true);
     setMessage(null);
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getPortalToken();
       const response = await axios.get(
         `${SERVER_URL}/api/attendance/section/${selectedSection}?date=${selectedDate}`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -284,7 +291,7 @@ export default function Attendance() {
     
     // Delete attendance records from database for this date
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getPortalToken();
       await axios.post(
         `${SERVER_URL}/api/attendance/clear`,
         { sectionId: selectedSection, date: selectedDate },
@@ -315,7 +322,7 @@ export default function Attendance() {
     setSaving(true);
     setMessage(null);
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getPortalToken();
       await axios.post(
         `${SERVER_URL}/api/attendance/bulk`,
         {
@@ -347,7 +354,7 @@ export default function Attendance() {
   const downloadExcel = async () => {
     if (!selectedSection) return;
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getPortalToken();
       const response = await axios.get(
         `${SERVER_URL}/api/attendance/export/${selectedSection}?month=${selectedMonth}&year=${selectedYear}`,
         {
@@ -382,20 +389,20 @@ export default function Attendance() {
   return (
     <div className="space-y-8 animate-fade-in max-w-7xl mx-auto pb-12">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-lg">
-              <ClipboardCheck className="w-5 h-5" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl text-white shadow-xl" style={{ backgroundColor: colors.primary }}>
+              <ClipboardCheck className="w-6 h-6" />
             </div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Daily Attendance</h1>
           </div>
-          <p className="text-slate-500 font-medium">Manage and track student attendance records</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Daily Attendance</h1>
+          <p className="text-slate-500 font-medium text-lg">Manage and track student attendance records</p>
         </div>
       </div>
 
       {/* Control Panel - Refined Glass Style */}
-      <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden bg-white/90 backdrop-blur-md">
+      <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden bg-white/90 backdrop-blur-md">
         <CardContent className="p-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
             <div className="space-y-2">
@@ -445,7 +452,8 @@ export default function Attendance() {
               <Button
                 onClick={saveAndNextDay}
                 disabled={saving || !attendanceData}
-                className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl font-bold text-[10px] tracking-widest uppercase transition-all"
+                className="flex-1 h-12 rounded-xl text-white shadow-xl font-bold text-[10px] tracking-widest uppercase transition-all"
+                style={{ backgroundColor: colors.primary }}
               >
                 {saving ? (
                   <>
@@ -517,7 +525,7 @@ export default function Attendance() {
               desc: "Days with records this month"
             },
           ].map((stat) => (
-            <Card key={stat.label} className="border-0 shadow-lg shadow-slate-200/50 rounded-3xl bg-white overflow-hidden">
+            <Card key={stat.label} className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -537,7 +545,7 @@ export default function Attendance() {
 
       {/* SF2 Download Section */}
       {attendanceData && (
-        <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-3xl bg-white overflow-hidden">
+        <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -592,13 +600,13 @@ export default function Attendance() {
         <CardHeader className="p-8 border-b border-slate-50 bg-slate-50/30">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-xl font-black text-slate-900">
+              <CardTitle className="text-xl font-black text-slate-900 tracking-tight">
                 {attendanceData?.section 
                   ? `${gradeLevelLabels[attendanceData.section.gradeLevel]} - ${attendanceData.section.name}`
                   : "Attendance Roster"
                 }
               </CardTitle>
-              <CardDescription className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">
+              <CardDescription className="text-slate-500 font-sans normal-case font-medium tracking-normal mt-1">
                 {attendanceData ? `${attendanceData.attendance.length} Learners Enrolled` : "Select filters to view list"}
               </CardDescription>
             </div>
@@ -606,9 +614,13 @@ export default function Attendance() {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="py-24 text-center">
-              <RefreshCw className="w-12 h-12 text-indigo-500 animate-spin mx-auto mb-4" />
-              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Pulling Records...</p>
+            <div className="flex items-center justify-center py-24">
+              <div className="text-center">
+                <div className="w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm" style={{ backgroundColor: `${colors.primary}15` }}>
+                  <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
+                </div>
+                <p className="text-slate-500 font-black text-xs uppercase tracking-widest">Loading attendance...</p>
+              </div>
             </div>
           ) : attendanceData ? (
             <div className="overflow-x-auto">
@@ -636,9 +648,9 @@ export default function Attendance() {
                             <span className="font-bold text-slate-900 tracking-tight truncate">
                               {student.lastName}, {student.firstName}
                             </span>
-                            {monthlyStats?.consecutiveAbsenceFlags[student.studentId] && (
+                              {monthlyStats?.consecutiveAbsenceFlags[student.studentId] && (
                               <span className="text-[8px] font-black uppercase text-rose-600 bg-rose-50 border border-rose-100 rounded px-1.5 py-0.5 mt-0.5 w-fit tracking-wide animate-pulse">
-                                ⚠️ 5+ Consecutive Absences
+                                5+ Consecutive Absences
                               </span>
                             )}
                           </div>
@@ -683,48 +695,48 @@ export default function Attendance() {
               </Table>
             </div>
           ) : (
-            <div className="py-32 text-center bg-slate-50/50">
-              <div className="w-20 h-20 bg-white rounded-[2rem] shadow-sm flex items-center justify-center mx-auto mb-6">
-                <Users className="w-8 h-8 text-slate-200" />
+            <div className="py-32 flex flex-col items-center justify-center text-center px-4">
+              <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-sm">
+                <Users className="w-10 h-10 text-slate-200" />
               </div>
-              <h3 className="text-slate-900 font-black text-sm uppercase tracking-widest mb-2">No Records Selected</h3>
-              <p className="text-slate-400 text-xs font-medium">Configure section and date to begin tracking attendance</p>
+              <h3 className="font-black text-slate-900 text-2xl mb-3">No Records Selected</h3>
+              <p className="text-slate-400 font-medium text-lg leading-relaxed">Configure section and date to begin tracking attendance</p>
             </div>
           )}
         </CardContent>
       </Card>
 
       {/* Clear Confirmation Dialog */}
-      {showConfirmClear && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-xl bg-amber-100">
-                <AlertCircle className="w-5 h-5 text-amber-600" />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Reset Attendance?</h3>
+      <Dialog open={showConfirmClear} onOpenChange={setShowConfirmClear}>
+        <DialogContent className="rounded-[2rem] border-0 shadow-2xl p-0 overflow-hidden max-w-md">
+          <div className="bg-amber-600 p-8 text-white">
+            <div className="w-16 h-16 bg-white/20 rounded-[1.5rem] flex items-center justify-center mb-6 backdrop-blur-md">
+              <AlertCircle className="w-8 h-8 text-white" />
             </div>
-            <p className="text-sm text-slate-500 mb-6">
-              This will <strong>delete all saved attendance records</strong> for this date from the database. All students will reset to Present.
-            </p>
-            <div className="flex gap-3">
-              <Button
-                onClick={() => setShowConfirmClear(false)}
-                variant="outline"
-                className="flex-1 rounded-xl font-bold"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={confirmClear}
-                className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold"
-              >
-                Reset All
-              </Button>
-            </div>
+            <DialogHeader className="p-0 text-left">
+              <DialogTitle className="text-2xl font-black text-white leading-tight">Reset Attendance?</DialogTitle>
+              <DialogDescription className="text-amber-100 font-medium text-base mt-2">
+                This will delete all saved attendance records for this date from the database. All students will reset to Present.
+              </DialogDescription>
+            </DialogHeader>
           </div>
-        </div>
-      )}
+          <DialogFooter className="p-8 bg-white flex flex-col sm:flex-row gap-4">
+            <Button
+              onClick={() => setShowConfirmClear(false)}
+              variant="outline"
+              className="h-14 rounded-2xl border-slate-200 font-bold hover:bg-slate-50 transition-all flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmClear}
+              className="h-14 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black shadow-xl shadow-amber-100 transition-all flex-1"
+            >
+              Reset All
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -39,16 +39,15 @@ import {
   HOMEROOM_GUIDANCE_LABEL,
   HOMEROOM_GUIDANCE_MINUTES,
 } from './atlasUtils';
-import { atlasGet, ATLAS_SCHOOL_ID } from './sync/httpClient';
+import { atlasGet, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID } from './sync/httpClient';
 import {
   upsertLearner,
   dropStaleEnrollments,
   upsertSection,
 } from './sync/utils';
 
-const DEFAULT_SCHOOL_YEAR = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? '2026-2027';
+import { getActiveSchoolYearLabel } from './schoolYearResolver';
 const DEFAULT_ENROLLPRO_SCHOOL_YEAR_ID = parseInt(process.env.ENROLLPRO_SCHOOL_YEAR_ID ?? '38', 10);
-const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '3', 10);
 
 // ---------------------------------------------------------------------------
 // Upsert a learner (student + enrollment) into SMART
@@ -94,10 +93,10 @@ export async function syncTeacherOnLogin(
   // resolve the matching EnrollPro schoolYearId from /school-years.
   // If lookup fails, fall back to EnrollPro active SY, then static defaults.
   let schoolYearId = DEFAULT_ENROLLPRO_SCHOOL_YEAR_ID;
-  let schoolYearLabel = DEFAULT_SCHOOL_YEAR;
+  let schoolYearLabel = 'loading...'; // will be set by resolver below
   try {
     const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-    const preferredLabel = process.env.ENROLLPRO_SCHOOL_YEAR_LABEL ?? settings?.currentSchoolYear ?? DEFAULT_SCHOOL_YEAR;
+    const preferredLabel = settings?.currentSchoolYear ?? await getActiveSchoolYearLabel();
     const resolvedSY = await getCachedSchoolYear(preferredLabel);
     schoolYearId = resolvedSY.id;
     schoolYearLabel = resolvedSY.yearLabel;
@@ -106,6 +105,16 @@ export async function syncTeacherOnLogin(
     );
   } catch {
     logger.warn('[TeacherSync] Could not resolve school year from EnrollPro, using defaults');
+  }
+
+  // Resolve Atlas school year dynamically (published schedule → probe → env fallback)
+  let atlasSchoolYearId = DEFAULT_ATLAS_SCHOOL_YEAR_ID;
+  try {
+    const resolvedAtlasSY = await resolveAtlasSchoolYear();
+    atlasSchoolYearId = resolvedAtlasSY.id;
+    logger.debug(`[TeacherSync] Using Atlas SY id=${atlasSchoolYearId} (source=${resolvedAtlasSY.source})`);
+  } catch {
+    logger.warn('[TeacherSync] Could not resolve Atlas school year, using env default');
   }
 
   // epTeacherId is the EnrollPro integer teacherId — used to match Atlas externalId
@@ -135,7 +144,7 @@ export async function syncTeacherOnLogin(
 
     // Process all sections assigned to this teacher in EnrollPro
     // Aggregate learners into the primary SMART section (keyed by name)
-    let totalLearners: any[] = [];
+    const totalLearners: any[] = [];
     
     for (const mySection of mySections) {
       const gradeLevel = mapGradeLevel(mySection.gradeLevel?.name ?? mySection.gradeLevelName ?? mySection.name);
@@ -265,7 +274,7 @@ export async function syncTeacherOnLogin(
           .filter((s: any) => Number(s?.advisingTeacher?.id) === Number(epTeacher.id));
 
         if (mySections.length > 0) {
-          let totalLearners: any[] = [];
+          const totalLearners: any[] = [];
           
           for (const mySection of mySections) {
             const gradeLevel =
@@ -388,7 +397,7 @@ export async function syncTeacherOnLogin(
       ? atlasFaculty.find((f) => Number(f.externalId) === Number(epTeacherId))
       : undefined;
 
-    let atlasMember = atlasByEmpId ?? atlasByEmail ?? atlasByExternalId;
+    const atlasMember = atlasByEmpId ?? atlasByEmail ?? atlasByExternalId;
 
     if (atlasByEmpId) {
       logger.debug(`[TeacherSync] Atlas: matched via employeeId=${employeeId} -> atlas.id=${atlasByEmpId.id}`);
@@ -404,16 +413,16 @@ export async function syncTeacherOnLogin(
       logger.debug(`[TeacherSync] Atlas: matched faculty id=${atlasMember.id}`);
 
       // Try 1: faculty-assignments (subject-grade assignments, may have section info)
-      let assignmentsData = await atlasGet(
-        `/faculty-assignments/${atlasMember.id}?schoolYearId=${DEFAULT_ATLAS_SCHOOL_YEAR_ID}`,
+      const assignmentsData = await atlasGet(
+        `/faculty-assignments/${atlasMember.id}?schoolYearId=${atlasSchoolYearId}`,
       );
-      let assignmentsPayload = assignmentsData?.assignments ?? assignmentsData?.data ?? assignmentsData ?? [];
+      const assignmentsPayload = assignmentsData?.assignments ?? assignmentsData?.data ?? assignmentsData ?? [];
       let assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
 
       // Fallback: If primary schoolYearId returned no sectionIds/sections, try alternate active schoolYearIds
       const hasDirectSections = assignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0));
       if (!hasDirectSections) {
-        const fallbackSYs = [3, 6, 1, 8].filter(id => id !== DEFAULT_ATLAS_SCHOOL_YEAR_ID);
+            const fallbackSYs = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 5, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
         for (const fallbackSY of fallbackSYs) {
           try {
             const fbDetail = await atlasGet(
@@ -758,16 +767,16 @@ export async function syncTeacherOnLogin(
       // ATLAS is authoritative for advisory assignments and must not be ignored.
       if (!advisorySectionSmartId) {
         try {
-          let advisersData = await atlasGet(
-            `/faculty/advisers?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${DEFAULT_ATLAS_SCHOOL_YEAR_ID}`,
+          const advisersData = await atlasGet(
+            `/faculty/advisers?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${atlasSchoolYearId}`,
           );
-          let atlasAdvisers: any[] = advisersData?.advisers ?? advisersData?.data ?? [];
+          const atlasAdvisers: any[] = advisersData?.advisers ?? advisersData?.data ?? [];
           let thisAdviser = atlasAdvisers.find(
             (a: any) => String(a.facultyId ?? a.teacherId ?? '') === String(atlasMember!.id),
           );
 
           if (!thisAdviser) {
-            const fallbackSYs = [3, 6, 1, 8].filter(id => id !== DEFAULT_ATLAS_SCHOOL_YEAR_ID);
+        const fallbackSYs = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 5, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
             for (const fallbackSY of fallbackSYs) {
               try {
                 const fbAdvisers = await atlasGet(
@@ -902,7 +911,7 @@ export async function syncTeacherOnLogin(
         }
 
         // Aggregate learners from ALL sections with this name and grade in EnrollPro.
-        let allLearnersForSection: any[] = [];
+        const allLearnersForSection: any[] = [];
         let epSectionIdsUsed: number[] = [];
 
         for (const candidate of candidates) {

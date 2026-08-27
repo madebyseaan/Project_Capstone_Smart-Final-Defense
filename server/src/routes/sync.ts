@@ -9,6 +9,7 @@ import {
 } from '../lib/syncCoordinator';
 import { runAtlasSync } from '../lib/atlasSync';
 import { prisma } from '../lib/prisma';
+import { logger } from '../lib/logger';
 
 const router = Router();
 
@@ -31,7 +32,8 @@ router.post('/all', authenticateToken, requireAdmin, async (req: AuthRequest, re
     const result = await runUnifiedSync({ source: 'admin-manual', forceBranding: true });
     res.json({ message: 'Full sync complete', result });
   } catch (error: any) {
-    res.status(500).json({ message: 'Sync failed', error: error?.message ?? String(error) });
+    logger.error("Full sync failed:", error);
+    res.status(500).json({ message: 'Sync failed' });
   }
 });
 
@@ -54,7 +56,8 @@ router.get('/status', authenticateToken, requireAdmin, async (_req: AuthRequest,
       },
     });
   } catch (error: any) {
-    res.status(500).json({ message: 'Failed to fetch status', error: error?.message ?? String(error) });
+    logger.error("Error fetching sync status:", error);
+    res.status(500).json({ message: 'Failed to fetch status' });
   }
 });
 
@@ -64,7 +67,8 @@ router.post('/atlas', authenticateToken, requireAdmin, async (_req: AuthRequest,
     const result = await runAtlasSync();
     res.json({ message: 'Atlas sync complete', result });
   } catch (error: any) {
-    res.status(500).json({ message: 'Atlas sync failed', error: error?.message ?? String(error) });
+    logger.error("Atlas sync failed:", error);
+    res.status(500).json({ message: 'Atlas sync failed' });
   }
 });
 

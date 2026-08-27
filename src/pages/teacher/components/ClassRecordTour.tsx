@@ -62,22 +62,6 @@ const TOUR_STEPS: TourStep[] = [
     },
   },
   {
-    id: "ecr-actions",
-    targetId: "tutorial-ecr-actions",
-    title: "Official DepEd ECR Excel Export & Import",
-    category: "Data Sync",
-    icon: FileSpreadsheet,
-    badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    content:
-      "Never re-type grades manually! Click 'Export ECR' to instantly generate and download the official DepEd Electronic Class Record (.xlsx) formatted to division standards. Already have scores in an Excel sheet? Click 'Import ECR' to batch-sync all student scores into SMART in seconds.",
-    devTip:
-      "The exported workbook uses official DepEd sheet formulas, making it 100% ready for quarterly submission to the registrar or school head.",
-    action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
-      setShowAssessmentDetails(false);
-      setSelectedColumn(null);
-    },
-  },
-  {
     id: "stats-overview",
     targetId: "tutorial-stats-overview",
     title: "Real-Time Class Performance Analytics",
@@ -119,7 +103,7 @@ const TOUR_STEPS: TourStep[] = [
     content:
       "Clicking this button expands the Assessment Details manager. This lets you assign descriptive titles (e.g. 'Quiz 1: Fractions') and submission dates to all Written Works, Performance Tasks, and Quarterly Exams.",
     devTip:
-      "Setting dates and descriptions is optional, but it enriches your official DepEd ECR export with complete lesson documentation.",
+      "Setting dates and descriptions is optional, but it enriches your grade records with complete lesson documentation.",
     action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
       setShowAssessmentDetails(true);
       setSelectedColumn(null);
@@ -140,7 +124,7 @@ const TOUR_STEPS: TourStep[] = [
         { label: "WW 1", value: "Quiz 1: Fractions (15/08/2026)", color: "text-indigo-600" },
         { label: "PT 1", value: "Math Model Portfolio", color: "text-purple-700" },
       ],
-      notes: "Saved titles appear automatically on DepEd ECR export sheets!",
+      notes: "Saved titles appear automatically on your grade records!",
     },
     devTip:
       "You can collapse this panel anytime by clicking 'Optional Assessment Details' again.",

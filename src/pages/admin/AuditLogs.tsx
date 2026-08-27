@@ -38,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { adminApi } from "@/lib/api";
+import { adminApi, getPortalToken } from "@/lib/api";
 import type { AdminAuditLog } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -137,7 +137,7 @@ export default function AuditLogs() {
 
   // SSE real-time stream
   useEffect(() => {
-    const token = sessionStorage.getItem("token");
+    const token = getPortalToken();
     if (!token) return;
 
     let es: EventSource | null = null;

@@ -4,6 +4,9 @@ import { authenticateToken, AuthRequest, authorizeRoles } from "../middleware/au
 import { syncTeacherOnLogin } from "../lib/teacherSync";
 import { invalidateEnrollProToken } from "../lib/enrollproClient";
 import { broadcastSyncStatus } from "../lib/sseManager";
+import { getActiveSchoolYearLabel } from "../lib/schoolYearResolver";
+import { logger } from "../lib/logger";
+
 import type { Student, Enrollment, Section, ClassAssignment, Subject, Teacher, User, Grade } from "@prisma/client";
 
 const router = Router();
@@ -113,8 +116,7 @@ router.get(
       }
 
       // Get current school year from system settings
-      const systemSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentSchoolYear = systemSettings?.currentSchoolYear ?? '2026-2027';
+      const currentSchoolYear = await getActiveSchoolYearLabel();
 
       // Find advisory section assigned to this teacher for the current school year.
       let advisorySection = await prisma.section.findFirst({
@@ -223,9 +225,8 @@ router.get(
       );
 
       // Calculate section stats
-      const students: StudentWithDetails[] = advisorySection.enrollments.map((e: EnrollmentWithStudent) => e.student);
-      const maleCount = students.filter((s: StudentWithDetails) => s.gender?.toLowerCase() === "male").length;
-      const femaleCount = students.filter((s: StudentWithDetails) => s.gender?.toLowerCase() === "female").length;
+      const maleCount = advisorySection.enrollments.filter((e: any) => e.student.gender?.toLowerCase() === "male").length;
+      const femaleCount = advisorySection.enrollments.filter((e: any) => e.student.gender?.toLowerCase() === "female").length;
 
       res.json({
         hasAdvisory: true,
@@ -238,14 +239,38 @@ router.get(
           id: advisorySection.id,
           name: advisorySection.name,
           gradeLevel: advisorySection.gradeLevel,
+          program: advisorySection.program,
           schoolYear: advisorySection.schoolYear,
         },
-        students: students.map((student: StudentWithDetails, index: number) => ({
-          ...student,
-          rank: index + 1,
-        })),
+        students: advisorySection.enrollments.map((e: any, index: number) => {
+          const snap = e.profileSnapshot as Record<string, any> | null;
+          const s = e.student;
+          return {
+            id: s.id,
+            lrn: snap?.lrn ?? s.lrn,
+            firstName: snap?.firstName ?? s.firstName,
+            middleName: snap?.middleName ?? s.middleName,
+            lastName: snap?.lastName ?? s.lastName,
+            suffix: snap?.suffix ?? s.suffix,
+            gender: snap?.gender ?? s.gender,
+            birthDate: s.birthDate,
+            address: snap?.address ?? s.address,
+            guardianName: snap?.guardianName ?? s.guardianName,
+            guardianContact: snap?.guardianContact ?? s.guardianContact,
+            fatherName: snap?.fatherName ?? s.fatherName,
+            fatherContact: snap?.fatherContact ?? s.fatherContact,
+            motherName: snap?.motherName ?? s.motherName,
+            motherContact: snap?.motherContact ?? s.motherContact,
+            religion: snap?.religion ?? s.religion,
+            motherTongue: snap?.motherTongue ?? s.motherTongue,
+            barangay: snap?.barangay ?? s.barangay,
+            city: snap?.city ?? s.city,
+            province: snap?.province ?? s.province,
+            rank: index + 1,
+          };
+        }),
         stats: {
-          totalStudents: students.length,
+          totalStudents: advisorySection.enrollments.length,
           maleCount,
           femaleCount,
         },
@@ -258,7 +283,7 @@ router.get(
         })),
       });
     } catch (error) {
-      console.error("Error fetching advisory:", error);
+      logger.error("Error fetching advisory:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -545,23 +570,40 @@ router.get(
         }
       }
 
+      // Use profile snapshot if available (historical), else current student data
+      const snap = currentEnrollment.profileSnapshot as Record<string, any> | null;
+
       res.json({
         student: {
           id: student.id,
-          lrn: student.lrn,
-          firstName: student.firstName,
-          middleName: student.middleName,
-          lastName: student.lastName,
-          suffix: student.suffix,
-          gender: student.gender,
+          lrn: snap?.lrn ?? student.lrn,
+          firstName: snap?.firstName ?? student.firstName,
+          middleName: snap?.middleName ?? student.middleName,
+          lastName: snap?.lastName ?? student.lastName,
+          suffix: snap?.suffix ?? student.suffix,
+          gender: snap?.gender ?? student.gender,
           birthDate: student.birthDate,
-          address: student.address,
-          guardianName: student.guardianName,
-          guardianContact: student.guardianContact,
+          address: snap?.address ?? student.address,
+          guardianName: snap?.guardianName ?? student.guardianName,
+          guardianContact: snap?.guardianContact ?? student.guardianContact,
+          religion: snap?.religion ?? (student as any).religion,
+          motherTongue: snap?.motherTongue ?? (student as any).motherTongue,
+          barangay: snap?.barangay ?? (student as any).barangay,
+          city: snap?.city ?? (student as any).city,
+          province: snap?.province ?? (student as any).province,
+          fatherName: snap?.fatherName ?? (student as any).fatherName,
+          fatherContact: snap?.fatherContact ?? (student as any).fatherContact,
+          motherName: snap?.motherName ?? (student as any).motherName,
+          motherContact: snap?.motherContact ?? (student as any).motherContact,
+          ipCommunity: snap?.ipCommunity ?? (student as any).ipCommunity,
+          is4PsBeneficiary: snap?.is4PsBeneficiary ?? (student as any).is4PsBeneficiary,
+          disability: snap?.disability ?? (student as any).disability,
+          isBalikAral: snap?.isBalikAral ?? (student as any).isBalikAral,
         },
         enrollment: {
           sectionName: currentEnrollment.section.name,
           gradeLevel: currentEnrollment.section.gradeLevel,
+          program: currentEnrollment.section.program,
           schoolYear: currentEnrollment.schoolYear,
           status: currentEnrollment.status,
         },
@@ -575,7 +617,7 @@ router.get(
         },
       });
     } catch (error) {
-      console.error("Error fetching student grades:", error);
+      logger.error("Error fetching student grades:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -597,8 +639,7 @@ router.get(
         return;
       }
 
-      const systemSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-      const currentSchoolYear = systemSettings?.currentSchoolYear ?? '2026-2027';
+      const currentSchoolYear = await getActiveSchoolYearLabel();
 
       const advisorySection = await prisma.section.findFirst({
         where: { adviserId: teacher.id, schoolYear: currentSchoolYear },
@@ -708,6 +749,7 @@ router.get(
           id: advisorySection.id,
           name: advisorySection.name,
           gradeLevel: advisorySection.gradeLevel,
+          program: advisorySection.program,
           schoolYear: advisorySection.schoolYear,
         },
         rankings: [...rankedStudents, ...ungradedStudents],
@@ -721,7 +763,7 @@ router.get(
         },
       });
     } catch (error) {
-      console.error("Error fetching advisory summary:", error);
+      logger.error("Error fetching advisory summary:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -785,7 +827,7 @@ router.post(
         errors: result.errors,
       });
     } catch (error) {
-      console.error("Error syncing advisory:", error);
+      logger.error("Error syncing advisory:", error);
       res.status(500).json({ message: "Sync failed" });
     }
   }

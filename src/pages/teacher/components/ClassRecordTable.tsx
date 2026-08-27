@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ClassAssignment, ClassRecord, ScoreItem } from "@/lib/api";
+import { gradesApi } from "@/lib/api";
 
 const terms = ["T1", "T2", "T3"] as const;
 
@@ -29,61 +30,37 @@ function getGradeColor(grade: number | null): string {
   return "text-rose-600";
 }
 
-function transmuteGrade(initialGrade: number): number {
-  const roundedGrade = Math.round(initialGrade * 100) / 100;
-  if (roundedGrade >= 99.5) return 100;
+type TransmutationRow = { minGrade: number; maxGrade: number; transmutedGrade: number };
 
-  const transmutationTable: [number, number, number][] = [
-    [97.5, 99.49, 99],
-    [96.0, 97.49, 98],
-    [95.0, 95.99, 97],
-    [94.0, 94.99, 96],
-    [93.0, 93.99, 95],
-    [92.0, 92.99, 94],
-    [91.0, 91.99, 93],
-    [90.0, 90.99, 92],
-    [89.0, 89.99, 91],
-    [88.0, 88.99, 90],
-    [87.0, 87.99, 89],
-    [86.0, 86.99, 88],
-    [85.0, 85.99, 87],
-    [84.0, 84.99, 86],
-    [83.0, 83.99, 85],
-    [82.0, 82.99, 84],
-    [81.0, 81.99, 83],
-    [80.0, 80.99, 82],
-    [79.0, 79.99, 81],
-    [78.0, 78.99, 80],
-    [77.0, 77.99, 79],
-    [76.0, 76.99, 78],
-    [75.0, 75.99, 77],
-    [73.0, 74.99, 76],
-    [70.0, 72.99, 75],
-    [68.0, 69.99, 74],
-    [66.0, 67.99, 73],
-    [64.0, 65.99, 72],
-    [62.0, 63.99, 71],
-    [60.0, 61.99, 70],
-    [58.0, 59.99, 69],
-    [56.0, 57.99, 68],
-    [54.0, 55.99, 67],
-    [52.0, 53.99, 66],
-    [50.0, 51.99, 65],
-    [48.0, 49.99, 64],
-    [46.0, 47.99, 63],
-    [43.0, 45.99, 62],
-    [40.0, 42.99, 61],
-    [25.0, 39.99, 60],
+function transmuteGrade(initialGrade: number, table?: TransmutationRow[]): number {
+  const roundedGrade = Math.round(initialGrade * 100) / 100;
+  if (table && table.length > 0) {
+    for (const entry of table) {
+      if (roundedGrade >= entry.minGrade && roundedGrade <= entry.maxGrade) {
+        return entry.transmutedGrade;
+      }
+    }
+    return 60;
+  }
+  // Fallback: hardcoded DepEd table (used when table not yet loaded)
+  if (roundedGrade >= 99.5) return 100;
+  const fallback: [number, number, number][] = [
+    [97.5, 99.49, 99], [96.0, 97.49, 98], [95.0, 95.99, 97], [94.0, 94.99, 96],
+    [93.0, 93.99, 95], [92.0, 92.99, 94], [91.0, 91.99, 93], [90.0, 90.99, 92],
+    [89.0, 89.99, 91], [88.0, 88.99, 90], [87.0, 87.99, 89], [86.0, 86.99, 88],
+    [85.0, 85.99, 87], [84.0, 84.99, 86], [83.0, 83.99, 85], [82.0, 82.99, 84],
+    [81.0, 81.99, 83], [80.0, 80.99, 82], [79.0, 79.99, 81], [78.0, 78.99, 80],
+    [77.0, 77.99, 79], [76.0, 76.99, 78], [75.0, 75.99, 77], [73.0, 74.99, 76],
+    [70.0, 72.99, 75], [68.0, 69.99, 74], [66.0, 67.99, 73], [64.0, 65.99, 72],
+    [62.0, 63.99, 71], [60.0, 61.99, 70], [58.0, 59.99, 69], [56.0, 57.99, 68],
+    [54.0, 55.99, 67], [52.0, 53.99, 66], [50.0, 51.99, 65], [48.0, 49.99, 64],
+    [46.0, 47.99, 63], [43.0, 45.99, 62], [40.0, 42.99, 61], [25.0, 39.99, 60],
     [0.0,  24.99, 60],
   ];
-
-  for (const [min, max, grade] of transmutationTable) {
-    if (roundedGrade >= min && roundedGrade <= max) {
-      return grade;
-    }
+  for (const [min, max, grade] of fallback) {
+    if (roundedGrade >= min && roundedGrade <= max) return grade;
   }
-
-  return 60; // Minimum grade
+  return 60;
 }
 
 // ─── LedgerRow ────────────────────────────────────────────────────────────────
@@ -103,6 +80,8 @@ interface LedgerRowProps {
   onScoreCommit: (inputEl: HTMLInputElement, sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
   onCellFocus: (cat: "WW" | "PT" | "QA", idx: number) => void;
   isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
+  transmutationTable?: TransmutationRow[];
+  isViewOnly?: boolean;
 }
 
 const LedgerRow = React.memo(
@@ -121,6 +100,8 @@ const LedgerRow = React.memo(
     onScoreCommit,
     onCellFocus,
     isCellInvalid,
+    transmutationTable,
+    isViewOnly = false,
   }: LedgerRowProps) => {
     const studentId = record?.student.id || "HPS";
     const grade = record?.grades?.find((g) => g.term === selectedTerm);
@@ -163,7 +144,7 @@ const LedgerRow = React.memo(
 
     const displayInitialGrade =
       displayWWWS !== null && displayPTWS !== null && displayQAWS !== null ? displayWWWS + displayPTWS + displayQAWS : null;
-    const displayQuarterlyGrade = displayInitialGrade !== null ? transmuteGrade(displayInitialGrade) : null;
+    const displayQuarterlyGrade = displayInitialGrade !== null ? transmuteGrade(displayInitialGrade, transmutationTable) : null;
 
     const cellClass = "text-center text-[11px] font-bold border-r border-slate-200 p-0 h-9 w-14 min-w-[56px] max-w-[56px]";
     const inputClass =
@@ -234,6 +215,7 @@ const LedgerRow = React.memo(
                   type={isHps ? "number" : "text"}
                   inputMode="decimal"
                   defaultValue={scoreVal}
+                  disabled={isViewOnly && !isHps}
                   placeholder="0"
                   className={`${inputClass} ${isHps ? "text-indigo-300 font-black" : (
                     scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
@@ -241,7 +223,7 @@ const LedgerRow = React.memo(
                     "text-slate-600"
                   )} ${
                     invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
-                  }`}
+                  } ${isViewOnly && !isHps ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
                   onFocus={(e) => {
                     onCellFocus("WW", i);
                     e.currentTarget.select();
@@ -322,6 +304,7 @@ const LedgerRow = React.memo(
                   type={isHps ? "number" : "text"}
                   inputMode="decimal"
                   defaultValue={scoreVal}
+                  disabled={isViewOnly && !isHps}
                   placeholder="0"
                   className={`${inputClass} ${isHps ? "text-purple-300 font-black" : (
                     scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
@@ -329,7 +312,7 @@ const LedgerRow = React.memo(
                     "text-slate-600"
                   )} ${
                     invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
-                  }`}
+                  } ${isViewOnly && !isHps ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
                   onFocus={(e) => {
                     onCellFocus("PT", i);
                     e.currentTarget.select();
@@ -408,6 +391,7 @@ const LedgerRow = React.memo(
                 type={isHps ? "number" : "text"}
                 inputMode="decimal"
                 defaultValue={scoreVal}
+                disabled={isViewOnly && !isHps}
                 placeholder="0"
                 className={`${inputClass} ${isHps ? "text-amber-300 font-black" : (
                   scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
@@ -415,7 +399,7 @@ const LedgerRow = React.memo(
                   "text-slate-600"
                 )} ${
                   invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
-                }`}
+                } ${isViewOnly && !isHps ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
                 onFocus={(e) => {
                   onCellFocus("QA", 0);
                   e.currentTarget.select();
@@ -512,6 +496,10 @@ interface ClassRecordTableProps {
    * may only enter grades for this specific term. Other terms are disabled.
    */
   lockedTerm?: string | null;
+  /** The system's current active term — past terms are disabled */
+  currentTerm?: string;
+  /** View-only mode — past terms or locked grades */
+  isViewOnly?: boolean;
   separateByGender: boolean;
   onSeparateByGenderChange: (value: boolean) => void;
   showAssessmentDetails: boolean;
@@ -545,6 +533,8 @@ export function ClassRecordTable({
   selectedTerm,
   onTermChange,
   lockedTerm,
+  currentTerm,
+  isViewOnly,
   separateByGender,
   onSeparateByGenderChange,
   showAssessmentDetails,
@@ -573,6 +563,14 @@ export function ClassRecordTable({
 
   const [confirmingClear, setConfirmingClear] = useState(false);
   const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch transmutation table from API (single source of truth)
+  const [transmutationTable, setTransmutationTable] = useState<Array<{ minGrade: number; maxGrade: number; transmutedGrade: number }>>([]);
+  useEffect(() => {
+    gradesApi.getTransmutationTable()
+      .then(res => setTransmutationTable(res.data))
+      .catch(() => {});
+  }, []);
 
   const handleClearClick = () => {
     if (!confirmingClear) {
@@ -711,7 +709,12 @@ export function ClassRecordTable({
               Optional Assessment Details
             </Button>
             <div id="tutorial-period-controls" className="flex items-center gap-3">
-              {onClearScores && (
+              {isViewOnly && (
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded-md px-2 py-0.5 flex items-center gap-1">
+                  👁️ View Only — Past term grades are finalized
+                </span>
+              )}
+              {onClearScores && !isViewOnly && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -733,7 +736,7 @@ export function ClassRecordTable({
                     className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-2 py-0.5 flex items-center gap-1"
                     title={`This is a rotating subject. You may only enter grades for ${lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'}.`}
                   >
-                    🔒 Rotating — {lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'} only
+                    Rotating — {lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'} only
                   </span>
                 )}
                 <Select
@@ -748,18 +751,24 @@ export function ClassRecordTable({
                   <SelectContent className="shadow-2xl">
                     {terms.map((q) => {
                       const isLocked = !!lockedTerm && q !== lockedTerm;
+                      const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+                      const isPastTerm = currentTerm && termOrder[q] < termOrder[currentTerm];
+                      const isFutureTerm = currentTerm && termOrder[q] > termOrder[currentTerm];
+                      const isReadOnly = isPastTerm; // Past terms are view-only
+                      const disabled = isLocked || isFutureTerm; // Future terms are not available at all
+                      const label = isPastTerm ? "Past term — view only" : isFutureTerm ? "Not yet available" : undefined;
                       return (
                         <SelectItem
                           key={q}
                           value={q}
-                          disabled={isLocked}
+                          disabled={disabled}
                           className={`text-[11px] font-bold ${
-                            isLocked ? "opacity-40 cursor-not-allowed" : ""
+                            disabled ? "opacity-40 cursor-not-allowed" : ""
                           }`}
-                          title={isLocked ? `This rotating subject is only taught in ${lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'}` : undefined}
+                          title={isLocked ? `This rotating subject is only taught in ${lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'}` : label}
                         >
                           {q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3"}
-                          {isLocked ? " 🔒" : ""}
+                          {isLocked ? " (Locked)" : isPastTerm ? " (View Only)" : isFutureTerm ? " (Locked)" : ""}
                         </SelectItem>
                       );
                     })}
@@ -800,14 +809,15 @@ export function ClassRecordTable({
                     <div className="flex items-center justify-center gap-2">
                       Written Work ({effectiveWeights?.ww ?? classAssignment.subject.writtenWorkWeight}%)
                       <button
-                        disabled={wwCount <= 1}
+                        disabled={isViewOnly || wwCount <= 1}
                         className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
                         onClick={() => onRemoveTask("WW")}
                       >
                         <Minus className="w-2.5 h-2.5" />
                       </button>
                       <button
-                        className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center"
+                        disabled={isViewOnly}
+                        className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
                         onClick={() => onAddTask("WW")}
                       >
                         <Plus className="w-2.5 h-2.5" />
@@ -822,14 +832,15 @@ export function ClassRecordTable({
                     <div className="flex items-center justify-center gap-2">
                       Perf. Tasks ({effectiveWeights?.pt ?? classAssignment.subject.perfTaskWeight}%)
                       <button
-                        disabled={ptCount <= 1}
+                        disabled={isViewOnly || ptCount <= 1}
                         className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
                         onClick={() => onRemoveTask("PT")}
                       >
                         <Minus className="w-2.5 h-2.5" />
                       </button>
                       <button
-                        className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all flex items-center justify-center"
+                        disabled={isViewOnly}
+                        className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
                         onClick={() => onAddTask("PT")}
                       >
                         <Plus className="w-2.5 h-2.5" />
@@ -897,6 +908,7 @@ export function ClassRecordTable({
                   onScoreCommit={onScoreCommit}
                   onCellFocus={onCellFocus}
                   isCellInvalid={isCellInvalid}
+                  transmutationTable={transmutationTable}
                 />
               </TableHeader>
             </Table>
@@ -933,7 +945,7 @@ export function ClassRecordTable({
                     );
                     maleRecords.forEach((r, i) =>
                       rows.push(
-                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
+                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
                       )
                     );
                   }
@@ -950,14 +962,14 @@ export function ClassRecordTable({
                     );
                     femaleRecords.forEach((r, i) =>
                       rows.push(
-                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
+                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
                       )
                     );
                   }
                 } else {
                   sortedRecords.forEach((r, i) =>
                     rows.push(
-                      <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} />
+                      <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
                     )
                   );
                 }

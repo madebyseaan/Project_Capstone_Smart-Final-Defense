@@ -51,6 +51,7 @@ import { useSyncStream } from "@/hooks/useSyncStream";
 // Extended student type that includes enrollment data
 interface StudentWithEnrollment {
   id: string;
+  enrollmentId: string;
   lrn: string;
   firstName: string;
   middleName?: string;
@@ -134,12 +135,12 @@ export default function StudentRecords() {
   const [students, setStudents] = useState<StudentWithEnrollment[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSchoolYear, setSelectedSchoolYear] = useState("2026-2027");
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState("");
   const [selectedGradeLevel, setSelectedGradeLevel] = useState("all");
   const [selectedSection, setSelectedSection] = useState("all");
   
   // School years from API
-  const [schoolYears, setSchoolYears] = useState<string[]>(["2026-2027"]);
+  const [schoolYears, setSchoolYears] = useState<string[]>([]);
 
   // Student detail modal
   const [selectedStudent, setSelectedStudent] = useState<StudentWithEnrollment | null>(null);
@@ -188,8 +189,7 @@ export default function StudentRecords() {
       const sysYears = res.data.schoolYears;
       if (Array.isArray(sysYears) && sysYears.length > 0) {
         setSchoolYears(sysYears);
-        // Set default to the first one (most recent) if not already set or matches default
-        if (selectedSchoolYear === "2026-2027" && sysYears[0] !== "2026-2027") {
+        if (!selectedSchoolYear) {
           setSelectedSchoolYear(sysYears[0]);
         }
       }
@@ -442,7 +442,7 @@ export default function StudentRecords() {
                     .filter(s => selectedGradeLevel === "all" || s.gradeLevel === selectedGradeLevel)
                     .map((section) => (
                       <SelectItem key={section.id} value={section.id}>
-                        {section.name} ({section.gradeLevel.replace("GRADE_", "Grade ")})
+                        {section.name}{section.program && section.program !== 'REGULAR' ? ` (${section.program})` : ''} ({section.gradeLevel.replace("GRADE_", "Grade ")})
                       </SelectItem>
                     ))
                   }
@@ -510,7 +510,15 @@ export default function StudentRecords() {
                           <Badge variant="outline" className="text-gray-600">
                             {student.sectionName || "-"}
                           </Badge>
-                          <Badge style={student.status === "ENROLLED" ? { backgroundColor: `${colors.primary}15`, color: colors.primary } : undefined} className={student.status !== "ENROLLED" ? "bg-gray-100 text-gray-600" : ""}>
+                          <Badge
+                            className={
+                              student.status === "ENROLLED"
+                                ? "bg-green-100 text-green-700 border-green-200"
+                                : student.status === "TRANSFERRED"
+                                ? "bg-blue-100 text-blue-700 border-blue-200"
+                                : "bg-orange-100 text-orange-700 border-orange-200"
+                            }
+                          >
                             {student.status || "N/A"}
                           </Badge>
                         </div>
@@ -576,11 +584,13 @@ export default function StudentRecords() {
                         </TableCell>
                         <TableCell className="font-medium text-slate-600 py-4">{student.sectionName || "-"}</TableCell>
                         <TableCell className="py-4">
-                          <Badge 
-                            variant="outline"
-                            className={student.status === "ENROLLED" 
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
-                              : "bg-slate-50 text-slate-600 border-slate-100"
+                          <Badge
+                            className={
+                              student.status === "ENROLLED"
+                                ? "bg-green-100 text-green-700 border-green-200"
+                                : student.status === "TRANSFERRED"
+                                ? "bg-blue-100 text-blue-700 border-blue-200"
+                                : "bg-orange-100 text-orange-700 border-orange-200"
                             }
                           >
                             {student.status || "N/A"}

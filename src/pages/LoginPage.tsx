@@ -18,7 +18,7 @@ interface LoginResponse {
   user: {
     id: string;
     username: string;
-    role: "TEACHER" | "ADMIN" | "REGISTRAR" | "DEVELOPER";
+    role: "TEACHER" | "ADMIN" | "REGISTRAR";
     firstName?: string;
     lastName?: string;
     email?: string;
@@ -50,14 +50,23 @@ export default function LoginPage() {
         password,
       });
 
-      // Verify teacher role or developer access
-      const isDev = Boolean(response.data.user.isDeveloper || response.data.user.username === "999999" || response.data.user.role === "ADMIN");
-      if (response.data.user.role !== "TEACHER" && !isDev) {
+      // Allow only TEACHER role (Admin uses /login/admin, Registrar uses /login/registrar)
+      const allowedRoles = ["TEACHER"];
+      const isDev = Boolean(response.data.user.isDeveloper || response.data.user.username === "999999");
+      if (!allowedRoles.includes(response.data.user.role) && !isDev) {
         setError("Access denied. This portal is for teachers only.");
         setIsLoading(false);
         return;
       }
 
+      // Store in role-specific keys so multiple users can be logged in simultaneously
+      const userRole = response.data.user.role === "ADMIN" ? "admin" : response.data.user.role === "REGISTRAR" ? "registrar" : "teacher";
+      sessionStorage.setItem(`user_${userRole}`, JSON.stringify(response.data.user));
+      sessionStorage.setItem(`token_${userRole}`, response.data.token);
+      if (response.data.refreshToken) {
+        sessionStorage.setItem(`refreshToken_${userRole}`, response.data.refreshToken);
+      }
+      // Also set legacy keys for backward compatibility
       sessionStorage.setItem("user", JSON.stringify(response.data.user));
       sessionStorage.setItem("token", response.data.token);
 
@@ -164,19 +173,19 @@ export default function LoginPage() {
           {/* Brand header (top left) - No logo, text only */}
           <div className="flex items-center gap-4 mb-6">
             <div>
-              <h1 className="text-4xl font-bold tracking-tight text-white">{acronym}</h1>
-              <p className="text-white text-sm font-bold max-w-md"> Student Management and Records Tracking</p>
+              <h1 className="text-4xl font-bold tracking-tight text-white font-sans">{acronym}</h1>
+              <p className="text-white text-sm font-bold max-w-md font-sans"> Student Management and Records Tracking</p>
             </div>
           </div>
 
           {/* School Name + Details */}
           <div className="space-y-3 mb-6">
-            <h2 className="text-3xl xl:text-4xl font-bold leading-tight tracking-tight text-white">
-              {schoolName}
-            </h2>
-            <p className="text-white text-sm font-bold">Junior High School (Grades 7-10)</p>
+              <h2 className="text-3xl xl:text-4xl font-bold leading-tight tracking-tight text-white font-sans">
+                {schoolName}
+              </h2>
+              <p className="text-white text-sm font-bold font-sans">Junior High School (Grades 7-10)</p>
             <div className="flex flex-col gap-1.5 mt-3">
-              <p className="text-white text-sm font-bold">
+              <p className="text-white text-sm font-bold font-sans">
                 DepEd Public School Student Management and Records Tracking Portal
               </p>
             </div>
@@ -198,8 +207,8 @@ export default function LoginPage() {
                   <feature.icon className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white">{feature.title}</h3>
-                  <p className="text-white text-sm font-semibold">{feature.desc}</p>
+                  <h3 className="font-bold text-white font-sans">{feature.title}</h3>
+                  <p className="text-white text-sm font-semibold font-sans">{feature.desc}</p>
                 </div>
               </div>
             ))}
@@ -211,7 +220,7 @@ export default function LoginPage() {
           <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
             <BookOpen className="w-4 h-4 text-white" />
           </div>
-          <span>Teacher Portal • Academic Excellence</span>
+          <span className="font-sans">Teacher Portal • Academic Excellence</span>
         </div>
       </div>
 
@@ -334,7 +343,7 @@ export default function LoginPage() {
               <CardTitle className="text-xl font-bold text-gray-900 pt-2">
                 Welcome Back
               </CardTitle>
-              <CardDescription className="text-gray-600 text-sm">
+              <CardDescription className="text-gray-600 text-sm font-sans">
                 Sign in to your Teacher account to manage classes at <span className="font-semibold text-primary">{acronym}</span>
               </CardDescription>
             </CardHeader>

@@ -9,6 +9,9 @@ import { authenticateToken, authorizeRoles, type AuthRequest } from '../middlewa
 import templateService from '../services/templateService';
 import { createAuditLog } from '../lib/audit';
 import { excelStyleParser } from '../services/excelStyleParser';
+import { logger } from '../lib/logger';
+import { validate } from '../middleware/validate';
+import { templateUploadSchema, templateToggleSchema, templateDeleteSchema } from '../schemas/templates';
 
 const router = Router();
 
@@ -257,8 +260,8 @@ router.get('/', authorizeRoles('ADMIN', 'REGISTRAR'), async (_req: AuthRequest, 
 
     res.json({ success: true, data: templates });
   } catch (error: any) {
-    console.error('Failed to fetch templates:', error);
-    res.status(500).json({ success: false, error: error.message });
+    logger.error('Failed to fetch templates:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch templates' });
   }
 });
 
@@ -282,8 +285,8 @@ router.get('/:formType', authorizeRoles('ADMIN', 'REGISTRAR', 'TEACHER'), async 
 
     res.json({ success: true, data: template });
   } catch (error: any) {
-    console.error('Failed to fetch template:', error);
-    res.status(500).json({ success: false, error: error.message });
+    logger.error('Failed to fetch template:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch template' });
   }
 });
 
@@ -335,8 +338,8 @@ router.get('/:id/structure', authorizeRoles('ADMIN', 'REGISTRAR'), async (req: A
       }
     });
   } catch (error: any) {
-    console.error('Failed to inspect template structure:', error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to inspect template structure' });
+    logger.error('Failed to inspect template structure:', error);
+    res.status(500).json({ success: false, error: 'Failed to inspect template structure' });
   }
 });
 
@@ -400,8 +403,8 @@ router.get('/:id/preview', authorizeRoles('ADMIN', 'REGISTRAR'), async (req: Aut
       }
     });
   } catch (error: any) {
-    console.error('Failed to preview template workbook:', error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to preview template workbook' });
+    logger.error('Failed to preview template workbook:', error);
+    res.status(500).json({ success: false, error: 'Failed to preview template workbook' });
   }
 });
 
@@ -459,12 +462,12 @@ router.get('/:id/styled-preview', authorizeRoles('ADMIN', 'REGISTRAR'), async (r
       }
     });
   } catch (error: any) {
-    console.error('Failed to parse template with styles:', error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to parse template styles' });
+    logger.error('Failed to parse template with styles:', error);
+    res.status(500).json({ success: false, error: 'Failed to parse template styles' });
   }
 });
 
-router.post('/upload', authorizeRoles('ADMIN'), upload.single('file'), async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/upload', authorizeRoles('ADMIN'), upload.single('file'), validate(templateUploadSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   let normalizedFilePath: string | null = null;
 
   try {
@@ -513,7 +516,7 @@ router.post('/upload', authorizeRoles('ADMIN'), upload.single('file'), async (re
     }
 
     const sheetNames = await templateService.getSheetNames(normalizedFilePath);
-    console.log('Found sheets in uploaded file:', sheetNames);
+    logger.info('Found sheets in uploaded file:', sheetNames);
 
     const targetFormTypes = isBundleUpload
       ? (() => {
@@ -546,18 +549,18 @@ router.post('/upload', authorizeRoles('ADMIN'), upload.single('file'), async (re
         if (!isBundleUpload) {
           const fallbackSheet = selectSingleUploadFallbackSheet(currentFormType, nonEmptySheetNames);
           if (fallbackSheet) {
-            console.log(`Using single-upload fallback ${currentFormType} -> ${fallbackSheet}`);
+            logger.info(`Using single-upload fallback ${currentFormType} -> ${fallbackSheet}`);
             resolvedSheetMappings[currentFormType] = fallbackSheet;
             continue;
           }
         }
 
-        console.log(`Could not auto-detect sheet for ${currentFormType}`);
+        logger.info(`Could not auto-detect sheet for ${currentFormType}`);
         unresolvedForms.push(currentFormType);
         continue;
       }
 
-      console.log(`Auto-detected ${currentFormType} -> ${autoSheet}`);
+      logger.info(`Auto-detected ${currentFormType} -> ${autoSheet}`);
       resolvedSheetMappings[currentFormType] = autoSheet;
     }
 
@@ -703,7 +706,7 @@ router.post('/upload', authorizeRoles('ADMIN'), upload.single('file'), async (re
       }
     });
   } catch (error: any) {
-    console.error('Failed to upload template:', error);
+    logger.error('Failed to upload template:', error);
 
     if (normalizedFilePath && fs.existsSync(normalizedFilePath)) {
       try {
@@ -721,11 +724,11 @@ router.post('/upload', authorizeRoles('ADMIN'), upload.single('file'), async (re
       }
     }
 
-    res.status(500).json({ success: false, error: error.message || 'Failed to upload template' });
+    res.status(500).json({ success: false, error: 'Failed to upload template' });
   }
 });
 
-router.delete('/:id', authorizeRoles('ADMIN'), async (req: AuthRequest, res: Response): Promise<void> => {
+router.delete('/:id', authorizeRoles('ADMIN'), validate(templateDeleteSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
 
@@ -757,12 +760,12 @@ router.delete('/:id', authorizeRoles('ADMIN'), async (req: AuthRequest, res: Res
 
     res.json({ success: true, message: 'Template deleted successfully' });
   } catch (error: any) {
-    console.error('Failed to delete template:', error);
-    res.status(500).json({ success: false, error: error.message });
+    logger.error('Failed to delete template:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete template' });
   }
 });
 
-router.post('/:id/toggle', authorizeRoles('ADMIN'), async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/:id/toggle', authorizeRoles('ADMIN'), validate(templateToggleSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
 
@@ -793,8 +796,8 @@ router.post('/:id/toggle', authorizeRoles('ADMIN'), async (req: AuthRequest, res
 
     res.json({ success: true, data: updatedTemplate });
   } catch (error: any) {
-    console.error('Failed to toggle template:', error);
-    res.status(500).json({ success: false, error: error.message });
+    logger.error('Failed to toggle template:', error);
+    res.status(500).json({ success: false, error: 'Failed to toggle template' });
   }
 });
 
@@ -823,8 +826,8 @@ router.get('/:formType/download', authorizeRoles('ADMIN', 'REGISTRAR', 'TEACHER'
 
     res.download(template.filePath, template.fileName);
   } catch (error: any) {
-    console.error('Failed to download template:', error);
-    res.status(500).json({ success: false, error: error.message });
+    logger.error('Failed to download template:', error);
+    res.status(500).json({ success: false, error: 'Failed to download template' });
   }
 });
 

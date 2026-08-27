@@ -303,7 +303,7 @@ export default function TeacherDashboard() {
               <div className="h-4 w-px bg-slate-200" />
               <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                 <Calendar className="w-3 h-3" />
-                S.Y. {data.classAssignments[0]?.schoolYear || "2026-2027"}
+                S.Y. {data.classAssignments[0]?.schoolYear || ""}
               </div>
             </div>
             

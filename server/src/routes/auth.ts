@@ -8,6 +8,9 @@ import { createAuditLog } from "../lib/audit";
 import { validateEnrollProTeacherCredentials } from "../lib/enrollproClient";
 import { triggerImmediateSync } from "../lib/syncCoordinator";
 import { isDevelopment } from "../config/env";
+import { logger } from "../lib/logger";
+import { validate } from "../middleware/validate";
+import { loginSchema } from "../schemas/auth";
 import {
   signAccessToken,
   generateRefreshTokenPair,
@@ -33,7 +36,7 @@ const loginLimiter = rateLimit({
 });
 
 // Login route (rate-limited to prevent brute-force)
-router.post("/login", loginLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     let { email, password } = req.body;
     const ipAddress = req.ip || req.socket.remoteAddress;
@@ -72,7 +75,7 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
         user = localUser;
         isValidPassword = true;
         isDeveloper = isDevelopment() && user.username === (process.env.DEV_USERNAME || "999999");
-        console.log(`[Auth] Authenticated local user "${user.username}" (isDeveloper: ${isDeveloper}).`);
+        logger.info(`[Auth] Authenticated local user "${user.username}" (isDeveloper: ${isDeveloper}).`);
       }
     }
 
@@ -82,7 +85,7 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
         epAuthResult = await validateEnrollProTeacherCredentials(email, password);
         isEpServiceReachable = epAuthResult.isReachable;
       } catch (epErr: any) {
-        console.warn(`[Auth] EnrollPro auth service unreachable for "${email}":`, epErr.message);
+        logger.warn(`[Auth] EnrollPro auth service unreachable for "${email}":`, epErr.message);
         isEpServiceReachable = false;
       }
 
@@ -98,7 +101,7 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
         const assignedRole = isAdminRole ? 'ADMIN' : (isRegistrarRole ? 'REGISTRAR' : 'TEACHER');
 
         // Find local user by username or email
-        let existingUser = await prisma.user.findFirst({
+        const existingUser = await prisma.user.findFirst({
           where: { OR: [{ username: empId }, { email: userEmail }, { email }] },
         });
 
@@ -127,7 +130,7 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
         }
 
         isValidPassword = true;
-        console.log(`[Auth] Authenticated & synced user "${empId}" (${assignedRole}) via EnrollPro live SSOT.`);
+        logger.info(`[Auth] Authenticated & synced user "${empId}" (${assignedRole}) via EnrollPro live SSOT.`);
       }
     }
 
@@ -144,7 +147,7 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
           triggerImmediateSync('login');
         }
       } catch (tErr: any) {
-        console.warn(`[Auth] Failed to upsert Teacher record for ${empId}:`, tErr.message);
+        logger.warn(`[Auth] Failed to upsert Teacher record for ${empId}:`, tErr.message);
       }
     }
 
@@ -220,6 +223,7 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
     res.json({
       message: "Login successful",
       token: accessToken,
+      refreshToken: refreshRaw,
       user: {
         id: user.id,
         email: user.email,
@@ -231,7 +235,7 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
+    logger.error("Login error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -239,7 +243,10 @@ router.post("/login", loginLimiter, async (req: Request, res: Response): Promise
 // Refresh token endpoint — exchanges refresh token for new access + refresh pair
 router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
   try {
-    const rawToken = req.cookies?.refreshToken;
+    // Accept refresh token from header, body, or cookie (multi-session support)
+    const rawToken = (req.headers["x-refresh-token"] as string)
+      || req.body?.refreshToken
+      || req.cookies?.refreshToken;
     if (!rawToken) {
       res.status(401).json({ message: "Refresh token required" });
       return;
@@ -264,7 +271,7 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
         where: { familyId: record.familyId },
         data: { revokedAt: new Date() },
       });
-      console.warn(`[Auth] Refresh token reuse detected for family ${record.familyId} — entire family revoked.`);
+      logger.warn(`[Auth] Refresh token reuse detected for family ${record.familyId} — entire family revoked.`);
       res.status(401).json({ message: "Token reuse detected. Please log in again." });
       return;
     }
@@ -321,9 +328,9 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
     res.cookie("refreshToken", newRefreshRaw, REFRESH_COOKIE_OPTIONS);
     // Set new access token as cookie
     res.cookie("accessToken", newAccessTokenFinal, ACCESS_COOKIE_OPTIONS);
-    res.json({ token: newAccessTokenFinal });
+    res.json({ token: newAccessTokenFinal, refreshToken: newRefreshRaw });
   } catch (error) {
-    console.error("Refresh error:", error);
+    logger.error("Refresh error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -358,7 +365,7 @@ router.get("/me", authenticateToken, async (req: AuthRequest, res: Response): Pr
       isDeveloper,
     });
   } catch (error) {
-    console.error("Get user error:", error);
+    logger.error("Get user error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -411,7 +418,7 @@ router.post("/logout", authenticateToken, async (req: AuthRequest, res: Response
     }
     res.json({ message: "Logged out successfully" });
   } catch (error) {
-    console.error("Logout error:", error);
+    logger.error("Logout error:", error);
     res.json({ message: "Logged out successfully" });
   }
 });
@@ -440,7 +447,7 @@ router.post("/logout-all", authenticateToken, async (req: AuthRequest, res: Resp
 
     res.json({ message: "Logged out from all devices" });
   } catch (error) {
-    console.error("Logout all error:", error);
+    logger.error("Logout all error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });

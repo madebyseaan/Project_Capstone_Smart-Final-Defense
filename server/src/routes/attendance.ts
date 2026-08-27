@@ -4,6 +4,9 @@ import { authenticateToken, AuthRequest, authorizeRoles } from "../middleware/au
 import type { Attendance, Student, Section, Enrollment } from "@prisma/client";
 import ExcelJS from "exceljs";
 import templateService from "../services/templateService";
+import { logger } from "../lib/logger";
+import { validate } from "../middleware/validate";
+import { attendanceBulkSchema, attendanceClearSchema } from "../schemas/attendance";
 
 const router = Router();
 
@@ -81,14 +84,15 @@ router.get(
             id: section.id,
             name: section.name,
             gradeLevel: section.gradeLevel,
+            program: section.program,
           },
           date: targetDate.toISOString().split("T")[0],
           attendance: attendanceData,
         },
       });
     } catch (error: any) {
-      console.error("Error fetching attendance:", error);
-      res.status(500).json({ message: "Failed to fetch attendance", error: error.message });
+      logger.error("Error fetching attendance:", error);
+      res.status(500).json({ message: "Failed to fetch attendance" });
     }
   }
 );
@@ -98,6 +102,7 @@ router.post(
   "/clear",
   authenticateToken,
   authorizeRoles("TEACHER", "ADMIN"),
+  validate(attendanceClearSchema),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { sectionId, date } = req.body;
@@ -123,8 +128,8 @@ router.post(
         deleted: result.count,
       });
     } catch (error: any) {
-      console.error("Error deleting attendance:", error);
-      res.status(500).json({ message: "Failed to delete attendance", error: error.message });
+      logger.error("Error deleting attendance:", error);
+      res.status(500).json({ message: "Failed to delete attendance" });
     }
   }
 );
@@ -134,6 +139,7 @@ router.post(
   "/bulk",
   authenticateToken,
   authorizeRoles("TEACHER", "ADMIN"),
+  validate(attendanceBulkSchema),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { sectionId, date, attendance } = req.body;
@@ -184,8 +190,8 @@ router.post(
         message: "Attendance saved successfully",
       });
     } catch (error: any) {
-      console.error("Error saving attendance:", error);
-      res.status(500).json({ message: "Failed to save attendance", error: error.message });
+      logger.error("Error saving attendance:", error);
+      res.status(500).json({ message: "Failed to save attendance" });
     }
   }
 );
@@ -255,8 +261,8 @@ router.get(
         },
       });
     } catch (error: any) {
-      console.error("Error fetching attendance summary:", error);
-      res.status(500).json({ message: "Failed to fetch summary", error: error.message });
+      logger.error("Error fetching attendance summary:", error);
+      res.status(500).json({ message: "Failed to fetch summary" });
     }
   }
 );
@@ -308,8 +314,8 @@ router.get(
         },
       });
     } catch (error: any) {
-      console.error("Error fetching student attendance:", error);
-      res.status(500).json({ message: "Failed to fetch attendance", error: error.message });
+      logger.error("Error fetching student attendance:", error);
+      res.status(500).json({ message: "Failed to fetch attendance" });
     }
   }
 );
@@ -671,8 +677,8 @@ router.get(
       const buffer = await workbook.xlsx.writeBuffer();
       res.send(Buffer.from(buffer));
     } catch (error: any) {
-      console.error("Error exporting attendance:", error);
-      res.status(500).json({ message: "Failed to export attendance", error: error.message });
+      logger.error("Error exporting attendance:", error);
+      res.status(500).json({ message: "Failed to export attendance" });
     }
   }
 );

@@ -112,6 +112,15 @@ const schoolForms: SchoolForm[] = [
     color: "green",
     status: "active",
   },
+  {
+    id: "SF6",
+    name: "Summary Promotion",
+    fullName: "School Form 6 - Summary Promotion Report",
+    description: "School-wide promotion statistics.",
+    icon: FileText,
+    color: "purple",
+    status: "active",
+  },
 ];
 
 // Helper function to format grade level for display
@@ -122,14 +131,14 @@ const formatGradeLevel = (gradeLevel: string) => {
   return gradeLevel;
 };
 
-type ViewMode = "list" | "sf1" | "sf2" | "sf5" | "sf9" | "sf10" | "bulk_sf9" | "bulk_sf10";
+type ViewMode = "list" | "sf1" | "sf2" | "sf5" | "sf6" | "sf9" | "sf10" | "bulk_sf9" | "bulk_sf10";
 
 export default function SchoolForms() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [schoolYear, setSchoolYear] = useState("2026-2027");
-  const [schoolYears, setSchoolYears] = useState<string[]>(["2026-2027"]);
+  const [schoolYear, setSchoolYear] = useState("");
+  const [schoolYears, setSchoolYears] = useState<string[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>("ALL");
   const [selectedSection, setSelectedSection] = useState<string>("");
@@ -159,6 +168,7 @@ export default function SchoolForms() {
   const [sf1Data, setSf1Data] = useState<any>(null);
   const [sf2Data, setSf2Data] = useState<any>(null);
   const [sf5Data, setSf5Data] = useState<any>(null);
+  const [sf6Data, setSf6Data] = useState<any>(null);
   const [sf9Data, setSf9Data] = useState<any>(null);
   const [sf10Data, setSf10Data] = useState<any>(null);
   const [bulkSf9Data, setBulkSf9Data] = useState<SF9Data[]>([]);
@@ -336,11 +346,25 @@ export default function SchoolForms() {
     }
   };
 
+  const handleViewSF6 = async () => {
+    setLoading(true);
+    try {
+      const response = await registrarApi.getSF6(schoolYear);
+      setSf6Data(response.data);
+      setViewMode("sf6");
+    } catch (error) {
+      console.error("Error loading SF6:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBack = () => {
     setViewMode("list");
     setSf1Data(null);
     setSf2Data(null);
     setSf5Data(null);
+    setSf6Data(null);
     setSf9Data(null);
     setSf10Data(null);
     setBulkSf9Data([]);
@@ -634,241 +658,418 @@ export default function SchoolForms() {
     </div>
   );
 
-  // Render SF10 Content Helper
-  const renderSF10Content = (data: SF10Data) => (
-    <div className="bg-white border-2 border-gray-400 shadow-xl print-form p-8 mb-8">
-      {/* Header with DepEd Logo */}
-      <div className="flex items-start justify-between mb-4 pb-4 border-b-2 border-gray-400">
-        <div className="w-20">
-          <img src="/DepEd.png" alt="DepEd Logo" className="w-16 h-16 object-contain" />
-        </div>
-        <div className="flex-1 text-center">
-          <h2 className="font-bold text-base text-gray-900">Republic of the Philippines</h2>
-          <h3 className="font-bold text-sm text-gray-900">Department of Education</h3>
-          {schoolRegion && <p className="text-sm text-gray-800 mt-1">{schoolRegion}</p>}
-          {schoolDivision && <p className="text-sm text-gray-800">Division of {schoolDivision}</p>}
-          {schoolName && <p className="text-sm text-gray-800">{schoolName}</p>}
-        </div>
-        <div className="w-20 flex items-center justify-center">
-          {fullLogoUrl ? (
-            <img src={fullLogoUrl} alt="School Logo" className="w-16 h-16 object-contain" />
-          ) : (
-            <img src="/DepEd.png" alt="DepEd Seal" className="w-16 h-16 object-contain" />
-          )}
-        </div>
+  // DepEd JHS learning area sort order (lower = higher priority)
+  const DEPED_AREA_ORDER: Record<string, number> = {
+    FIL: 1, ENG: 2, MATH: 3, SCI: 4, AP: 5, ESP: 6, TLE: 7, MAPEH: 8,
+    DEVL_READING: 9,
+    SPA_SPEC: 10, SPS_SPEC: 11,
+    STE_RESEARCH: 12, STE_ENV_SCI: 13, STE_BIOTECH: 14,
+    STE_APPLIED_CHEM: 15, STE_APPLIED_PHYS: 16, STE_ROBOTICS: 17,
+  };
+
+  // Display names for SF10 learning areas
+  const DEPED_AREA_NAMES: Record<string, string> = {
+    FIL: 'Filipino', ENG: 'English', MATH: 'Mathematics', SCI: 'Science',
+    AP: 'Araling Panlipunan (AP)', ESP: 'Edukasyon sa Pagpapakatao (EsP)',
+    TLE: 'Technology and Livelihood Education (TLE)',
+    MAPEH: 'MAPEH',
+    DEVL_READING: 'Developmental Reading',
+    SPA_SPEC: 'Special Program in the Arts: Specialization',
+    SPS_SPEC: 'Special Program in Sports: Specialization',
+    STE_RESEARCH: 'Research', STE_ENV_SCI: 'Environmental Science',
+    STE_BIOTECH: 'Biotechnology', STE_APPLIED_CHEM: 'Applied Chemistry',
+    STE_APPLIED_PHYS: 'Applied Physics', STE_ROBOTICS: 'Robotics',
+  };
+
+  // Map individual ATLAS subject codes to SF10 grouped codes
+  // Science: SCI_BIO, SCI_CHEM, SCI_ES → SCI (grouped)
+  // TLE: TLE_AFA, TLE_FCS, TLE_ICT (with or without _EXP suffix) → TLE (grouped)
+  // MAPEH: MUSIC, ARTS, PE, HEALTH → MAPEH (grouped, for historical seed data)
+  const SF10_GROUP_MAP: Record<string, string> = {
+    SCI_BIO: 'SCI', SCI_CHEM: 'SCI', SCI_ES: 'SCI', SCI: 'SCI',
+    TLE_AFA: 'TLE', TLE_AFA_EXP: 'TLE',
+    TLE_FCS: 'TLE', TLE_FCS_EXP: 'TLE',
+    TLE_ICT: 'TLE', TLE_ICT_EXP: 'TLE',
+    TLE: 'TLE',
+    MUSIC: 'MAPEH', ARTS: 'MAPEH', PE: 'MAPEH', HEALTH: 'MAPEH', MAPEH: 'MAPEH',
+  };
+
+  // Extract the base SF10 code from a subject code (strip grade number)
+  const sf10Code = (subjectCode: string): string =>
+    subjectCode.toUpperCase().replace(/\d+$/, '').replace(/[^A-Z_]/g, '');
+
+  // Map a raw SF10 code to its grouped code (if applicable)
+  const sf10GroupCode = (code: string): string => SF10_GROUP_MAP[code] ?? code;
+
+  // Build the SF10 learning area list from ATLAS subjectGrades (dynamic, per record)
+  // Groups SCI_* into one "Science" row and TLE_* into one "TLE" row
+  const buildSF10Areas = (subjectGrades: any[]) => {
+    const seen = new Map<string, { code: string; name: string; order: number; subCodes: string[] }>();
+    for (const sg of subjectGrades) {
+      const rawCode = sf10Code(sg.subjectCode);
+      const groupCode = sf10GroupCode(rawCode);
+      if (!seen.has(groupCode)) {
+        seen.set(groupCode, {
+          code: groupCode,
+          name: DEPED_AREA_NAMES[groupCode] ?? sg.subjectName.replace(/\s*\d+$/, ''),
+          order: DEPED_AREA_ORDER[groupCode] ?? 99,
+          subCodes: [],
+        });
+      }
+      const entry = seen.get(groupCode)!;
+      if (!entry.subCodes.includes(rawCode)) entry.subCodes.push(rawCode);
+    }
+    return Array.from(seen.values()).sort((a, b) => a.order - b.order);
+  };
+
+  // Get display values for a learning area (handles grouped subjects by averaging sub-grades)
+  const getAreaDisplayValues = (area: { code: string; subCodes: string[] }, subjectGrades: any[]) => {
+    // For non-grouped subjects (single subCode), match by subCode list
+    if (area.subCodes.length <= 1) {
+      const matched = subjectGrades.find((sg: any) => area.subCodes.includes(sf10Code(sg.subjectCode)));
+      return { t1: matched?.T1 ?? null, t2: matched?.T2 ?? null, t3: matched?.T3 ?? null, final: matched?.final ?? null };
+    }
+    // For grouped subjects, average all matching sub-grades
+    const subs = subjectGrades.filter((sg: any) => area.subCodes.includes(sf10Code(sg.subjectCode)));
+    if (subs.length === 0) return { t1: null, t2: null, t3: null, final: null };
+    const avg = (field: string) => {
+      const vals = subs.map((s: any) => s[field]).filter((v: any) => v != null);
+      return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : null;
+    };
+    return { t1: avg('T1'), t2: avg('T2'), t3: avg('T3'), final: avg('final') };
+  };
+
+  // DepEd Transmutation Table: raw grade → transmuted grade (whole number)
+  const transmuteGrade = (rawGrade: number | null): number | null => {
+    if (rawGrade === null || rawGrade === undefined) return null;
+    const g = Math.round(rawGrade * 100) / 100;
+    if (g >= 99.50) return 100;
+    if (g >= 97.50) return 99;
+    if (g >= 96.00) return 98;
+    if (g >= 95.00) return 97;
+    if (g >= 94.00) return 96;
+    if (g >= 93.00) return 95;
+    if (g >= 92.00) return 94;
+    if (g >= 91.00) return 93;
+    if (g >= 90.00) return 92;
+    if (g >= 89.00) return 91;
+    if (g >= 88.00) return 90;
+    if (g >= 87.00) return 89;
+    if (g >= 86.00) return 88;
+    if (g >= 85.00) return 87;
+    if (g >= 84.00) return 86;
+    if (g >= 83.00) return 85;
+    if (g >= 82.00) return 84;
+    if (g >= 81.00) return 83;
+    if (g >= 80.00) return 82;
+    if (g >= 79.00) return 81;
+    if (g >= 78.00) return 80;
+    if (g >= 77.00) return 79;
+    if (g >= 76.00) return 78;
+    if (g >= 75.00) return 77;
+    if (g >= 73.00) return 76;
+    if (g >= 70.00) return 75;
+    if (g >= 68.00) return 74;
+    if (g >= 66.00) return 73;
+    if (g >= 64.00) return 72;
+    if (g >= 62.00) return 71;
+    if (g >= 60.00) return 70;
+    if (g >= 58.00) return 69;
+    if (g >= 56.00) return 68;
+    if (g >= 54.00) return 67;
+    if (g >= 52.00) return 66;
+    if (g >= 50.00) return 65;
+    if (g >= 48.00) return 64;
+    if (g >= 46.00) return 63;
+    if (g >= 43.00) return 62;
+    if (g >= 40.00) return 61;
+    return 60;
+  };
+
+  // Render SF10 Content Helper — Official DepEd SF10-JHS Layout
+  const renderSF10Content = (data: SF10Data) => {
+    const studentFirstName = data.student.firstName || data.student.name.split(',')[1]?.trim().split(' ')[0] || '';
+    const studentLastName = data.student.lastName || data.student.name.split(',')[0]?.trim() || '';
+    const studentMiddleName = data.student.middleName || data.student.name.split(',')[1]?.trim().split(' ').slice(1).join(' ') || '';
+    const studentNameExtension = data.student.nameExtension || '';
+
+    return (
+    <div className="bg-white border-2 border-gray-400 shadow-xl print-form p-6 mb-8 text-[11px] leading-tight">
+      {/* SF10-JHS Label */}
+      <div className="mb-1">
+        <span className="font-bold text-gray-900 text-xs">SF10-JHS</span>
+      </div>
+
+      {/* Header — Republic / DepEd centered */}
+      <div className="text-center mb-3">
+        <p className="font-bold text-gray-900">Republic of the Philippines</p>
+        <p className="font-bold text-gray-900">Department of Education</p>
       </div>
 
       {/* Title */}
       <div className="text-center mb-4">
-        <h1 className="text-lg font-bold text-gray-900 uppercase">Learner's Permanent Academic Record for Junior High School</h1>
-        <p className="text-xs text-gray-700 mt-1">(Formerly Form 137)</p>
+        <h1 className="text-sm font-bold text-gray-900">Learner Permanent Academic Record for Junior High School (SF10-JHS)</h1>
+        <p className="text-[10px] text-gray-700 mt-0.5">(Formerly Form 137)</p>
       </div>
 
-      {/* Student's Personal Information */}
-      <div className="mb-4 border-2 border-gray-600">
-        <div className="bg-gray-200 p-1.5 border-b-2 border-gray-600">
-          <h3 className="font-bold text-xs text-gray-900">LEARNER'S INFORMATION</h3>
+      {/* LEARNER'S INFORMATION */}
+      <div className="mb-3 border border-black">
+        <div className="bg-gray-200 px-2 py-0.5 border-b border-black">
+          <span className="font-bold text-[11px] text-gray-900">LEARNER&apos;S INFORMATION</span>
         </div>
-        <div className="p-3 text-xs">
-          <div className="grid grid-cols-5 gap-3 mb-2">
-            <div className="col-span-2">
-              <label className="font-bold text-gray-900">LAST NAME:</label>
-              <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{data.student.name.split(',')[0]?.trim() || ''}</div>
-            </div>
-            <div className="col-span-2">
-              <label className="font-bold text-gray-900">FIRST NAME:</label>
-              <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{data.student.name.split(',')[1]?.trim().split(' ')[0] || ''}</div>
+        <div className="p-2">
+          {/* Row 1: Last Name | First Name */}
+          <div className="grid grid-cols-2 gap-4 mb-1">
+            <div>
+              <span className="font-bold text-gray-900">LAST NAME:</span>
+              <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[150px]">{studentLastName}</span>
             </div>
             <div>
-              <label className="font-bold text-gray-900">MIDDLE NAME:</label>
-              <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{data.student.name.split(',')[1]?.trim().split(' ').slice(1).join(' ') || ''}</div>
+              <span className="font-bold text-gray-900">FIRST NAME:</span>
+              <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[150px]">{studentFirstName}</span>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          {/* Row 2: Name Extension | Middle Name */}
+          <div className="grid grid-cols-2 gap-4 mb-1">
             <div>
-              <label className="font-bold text-gray-900">LRN:</label>
-              <div className="border-b border-gray-600 mt-1 font-mono text-gray-900 pb-1">{data.student.lrn}</div>
-            </div>
-            <div>
-              <label className="font-bold text-gray-900">BIRTHDATE:</label>
-              <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{data.student.birthDate || ''}</div>
+              <span className="font-bold text-gray-900">NAME EXTENSION (Jr, II):</span>
+              <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[150px]">{studentNameExtension}</span>
             </div>
             <div>
-              <label className="font-bold text-gray-900">SEX:</label>
-              <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{data.student.gender}</div>
+              <span className="font-bold text-gray-900">MIDDLE NAME:</span>
+              <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[150px]">{studentMiddleName}</span>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Eligibility for JHS Enrolment */}
-      <div className="mb-4 border-2 border-gray-600">
-        <div className="bg-gray-200 p-1.5 border-b-2 border-gray-600">
-          <h3 className="font-bold text-xs text-gray-900">ELIGIBILITY FOR JHS ENROLMENT</h3>
-        </div>
-        <div className="p-2 text-xs grid grid-cols-3 gap-3">
-          <div className="text-gray-900">
-            <label>☐ Grade 6 Completion Certificate</label>
-          </div>
-          <div className="text-gray-900">
-            <label>☐ Elementary SF10</label>
-          </div>
-          <div className="text-gray-900">
-            <label>☐ PEPT Certificate</label>
+          {/* Row 3: LRN | Birthdate */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <span className="font-bold text-gray-900">Learner Reference Number (LRN):</span>
+              <span className="border-b border-gray-600 ml-1 font-mono text-gray-900 inline-block min-w-[150px]">{data.student.lrn}</span>
+            </div>
+            <div>
+              <span className="font-bold text-gray-900">Birthdate (mm/dd/yyyy):</span>
+              <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[150px]">{data.student.birthDate || ''}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Academic Records */}
+      {/* ELIGIBILITY FOR JHS ENROLMENT */}
+      <div className="mb-3 border border-black">
+        <div className="bg-gray-200 px-2 py-0.5 border-b border-black">
+          <span className="font-bold text-[11px] text-gray-900">ELIGIBILITY FOR JHS ENROLMENT</span>
+        </div>
+        <div className="p-2">
+          {/* Row 1: Elementary School Completer + General Average */}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-gray-900">☐ Elementary School Completer</span>
+            <span className="ml-auto">
+              <span className="font-bold text-gray-900">General Average:</span>
+              <span className="border-b border-gray-600 ml-1 inline-block min-w-[60px] text-gray-900">&nbsp;</span>
+            </span>
+          </div>
+          <div className="mb-1">
+            <span className="font-bold text-gray-900 ml-4">Name of Elementary School:</span>
+            <span className="border-b border-gray-600 ml-1 inline-block min-w-[300px] text-gray-900">&nbsp;</span>
+          </div>
+          {/* Row 2: Other Credential */}
+          <div className="mb-1">
+            <span className="font-bold text-gray-900">Other Credential Presented</span>
+          </div>
+          <div className="flex items-center gap-2 mb-1 ml-4">
+            <span className="text-gray-900">☐ PEPT Passer</span>
+            <span className="ml-4">
+              <span className="font-bold text-gray-900">Rating:</span>
+              <span className="border-b border-gray-600 ml-1 inline-block min-w-[60px] text-gray-900">&nbsp;</span>
+            </span>
+          </div>
+          <div className="mb-1 ml-4">
+            <span className="font-bold text-gray-900">Date of Examination/Assessment (mm/dd/yyyy):</span>
+            <span className="border-b border-gray-600 ml-1 inline-block min-w-[100px] text-gray-900">&nbsp;</span>
+          </div>
+          <div className="flex items-center gap-2 ml-4">
+            <span className="text-gray-900">☐ ALS A &amp; E Passer</span>
+          </div>
+        </div>
+      </div>
+
+      {/* SCHOLASTIC RECORD — one per grade level */}
       {data.schoolRecords.map((record: any, recordIndex: number) => (
-        <div key={recordIndex} className="mb-4 border-2 border-gray-600 page-break-inside-avoid">
-          {/* School Year Header */}
-          <div className="p-2 border-b-2 border-gray-600 bg-gray-100">
-            <div className="grid grid-cols-2 gap-4 text-xs">
+        <div key={recordIndex} className="mb-3 border border-black page-break-inside-avoid">
+          {/* School / Grade / Section / SY Header */}
+          <div className="p-2 border-b border-black">
+            <div className="grid grid-cols-2 gap-2 mb-0.5">
               <div>
-                <span className="font-bold text-gray-900">School Year: </span>
-                <span className="text-gray-900">{record.schoolYear}</span>
-                <span className="font-bold text-gray-900 ml-4">Grade Level: </span>
-                <span className="text-gray-900">{formatGradeLevel(record.gradeLevel)}</span>
+                <span className="font-bold text-gray-900">School:</span>
+                <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[200px]">{record.school || schoolName || ''}</span>
               </div>
               <div>
-                <span className="font-bold text-gray-900">Section: </span>
-                <span className="text-gray-900">{record.section}</span>
+                <span className="font-bold text-gray-900">School ID:</span>
+                <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[80px]">{record.schoolId || ''}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <span className="font-bold text-gray-900">Classified as Grade:</span>
+                <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[40px]">{formatGradeLevel(record.gradeLevel)}</span>
+              </div>
+              <div>
+                <span className="font-bold text-gray-900">Section:</span>
+                <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[80px]">{record.section}</span>
+              </div>
+              <div>
+                <span className="font-bold text-gray-900">School Year:</span>
+                <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[80px]">{record.schoolYear}</span>
               </div>
             </div>
           </div>
 
           {/* Scholastic Record Table */}
-          <table className="w-full text-xs">
+          <table className="w-full text-[10px] border-collapse">
             <thead>
-              <tr className="border-b-2 border-gray-600 bg-gray-200">
-                <th rowSpan={2} className="border-r border-gray-600 p-1.5 text-left text-gray-900">
+              <tr className="border-b border-black">
+                <th rowSpan={2} className="border-r border-black p-1 text-left text-gray-900 bg-gray-200" style={{ width: '30%' }}>
                   LEARNING AREAS
                 </th>
-                <th colSpan={3} className="border-r border-gray-600 p-1.5 text-center text-gray-900">
-                  Term Rating
+                <th colSpan={3} className="border-r border-black p-1 text-center text-gray-900 bg-gray-200">
+                  Quarterly Rating
                 </th>
-                <th rowSpan={2} className="border-r border-gray-600 p-1.5 text-center text-gray-900 w-16">
-                  Final<br/>Rating
+                <th rowSpan={2} className="border-r border-black p-1 text-center text-gray-900 bg-gray-200" style={{ width: '10%' }}>
+                  FINAL<br/>RATING
                 </th>
-                <th rowSpan={2} className="p-1.5 text-center text-gray-900 w-20">
-                  Action<br/>Taken
+                <th rowSpan={2} className="p-1 text-center text-gray-900 bg-gray-200" style={{ width: '12%' }}>
+                  REMARKS
                 </th>
               </tr>
-              <tr className="border-b-2 border-gray-600 bg-gray-200">
-                <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">1</th>
-                <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">2</th>
-                <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">3</th>
+              <tr className="border-b border-black">
+                <th className="border-r border-black p-1 text-center text-gray-900 bg-gray-200" style={{ width: '8%' }}>1</th>
+                <th className="border-r border-black p-1 text-center text-gray-900 bg-gray-200" style={{ width: '8%' }}>2</th>
+                <th className="border-r border-black p-1 text-center text-gray-900 bg-gray-200" style={{ width: '8%' }}>3</th>
               </tr>
             </thead>
             <tbody>
-              {record.subjectGrades.map((sg: any, idx: number) => (
-                <tr key={idx} className="border-b border-gray-600">
-                  <td className="border-r border-gray-600 p-1.5 text-gray-900">{sg.subjectName}</td>
-                  <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T1 ?? 0) < 75 && sg.T1 ? 'text-red-600' : 'text-gray-900'}`}>
-                    {sg.T1 ?? ''}
-                  </td>
-                  <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T2 ?? 0) < 75 && sg.T2 ? 'text-red-600' : 'text-gray-900'}`}>
-                    {sg.T2 ?? ''}
-                  </td>
-                  <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T3 ?? 0) < 75 && sg.T3 ? 'text-red-600' : 'text-gray-900'}`}>
-                    {sg.T3 ?? ''}
-                  </td>
-                  <td className={`border-r border-gray-600 p-1.5 text-center font-bold ${(sg.final ?? 0) < 75 && sg.final ? 'text-red-600' : 'text-gray-900'}`}>
-                    {sg.final ?? ''}
-                  </td>
-                  <td className="p-1.5 text-center text-xs text-gray-900">{sg.remarks || ''}</td>
-                </tr>
-              ))}
+              {buildSF10Areas(record.subjectGrades).map((area, idx) => {
+                // Get display values (handles grouped subjects by averaging)
+                const vals = getAreaDisplayValues(area, record.subjectGrades);
+
+                const cellClass = (val: number | null) =>
+                  `border-r border-black p-0.5 text-center ${(val ?? 0) < 75 && val != null ? 'text-red-600 font-bold' : 'text-gray-900'}`;
+
+                // Transmute grades for display (raw → whole number)
+                const t1 = transmuteGrade(vals.t1);
+                const t2 = transmuteGrade(vals.t2);
+                const t3 = transmuteGrade(vals.t3);
+                const finalGrade = transmuteGrade(vals.final);
+
+                return (
+                  <tr key={idx} className="border-b border-black">
+                    <td className="border-r border-black p-0.5 text-gray-900 font-medium">
+                      {area.name}
+                    </td>
+                    <td className={cellClass(t1)}>{t1 ?? ''}</td>
+                    <td className={cellClass(t2)}>{t2 ?? ''}</td>
+                    <td className={`${cellClass(t3)} border-r border-black`}>{t3 ?? ''}</td>
+                    <td className={`border-r border-black p-0.5 text-center font-bold ${(finalGrade ?? 0) < 75 && finalGrade != null ? 'text-red-600' : 'text-gray-900'}`}>
+                      {finalGrade ?? ''}
+                    </td>
+                    <td className="p-0.5 text-center text-gray-900">
+                      {finalGrade != null ? (finalGrade >= 75 ? 'Passed' : 'Failed') : ''}
+                    </td>
+                  </tr>
+                );
+              })}
 
               {/* General Average Row */}
-              <tr className="border-t-2 border-gray-600 bg-gray-200 font-bold">
-                <td colSpan={5} className="border-r border-gray-600 p-1.5 text-right text-gray-900">General Average:</td>
-                <td className="border-r border-gray-600 p-1.5 text-center text-sm text-gray-900">
-                  {record.generalAverage?.toFixed(2) ?? ''}
+              <tr className="border-t-2 border-black bg-gray-100">
+                <td colSpan={4} className="border-r border-black p-1 text-right font-bold text-gray-900">General Average:</td>
+                <td className="border-r border-black p-1 text-center font-bold text-sm text-gray-900">
+                  {transmuteGrade(record.generalAverage) ?? ''}
                 </td>
-                <td className="p-1.5"></td>
+                <td className="p-1 text-center text-gray-900">
+                  {record.generalAverage != null ? (transmuteGrade(record.generalAverage)! >= 75 ? 'Passed' : 'Failed') : ''}
+                </td>
               </tr>
             </tbody>
           </table>
 
-          {/* Remarks and Certification Section */}
-          <div className="border-t-2 border-gray-600 p-2 bg-white">
-            <div className="text-xs mb-2">
-              <div className="flex items-center justify-between mb-1">
-                <div>
-                  <span className="font-bold text-gray-900">Prepared by: </span>
-                  <span className="text-gray-900">_________________________</span>
-                </div>
-                <div>
-                  <span className="font-bold text-gray-900">Date: </span>
-                  <span className="text-gray-900">_____________</span>
-                </div>
-              </div>
-              <div className="text-xs text-gray-700 italic mt-1">Signature of Adviser over Printed Name</div>
+          {/* Remedial Classes Section */}
+          <div className="border-t border-black p-2">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-bold text-gray-900">Remedial Classes</span>
+              <span className="text-gray-900 ml-4">
+                Conducted from (mm/dd/yyyy)
+                <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
+                to
+                <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
+              </span>
             </div>
-            
-            <div className="border-t border-gray-400 pt-2 mt-2">
-              <div className="flex items-center gap-3 text-xs">
-                <span className="font-bold text-gray-900">Remarks:</span>
-                <label className="flex items-center gap-1">
-                  <input type="checkbox" className="w-3 h-3" />
-                  <span className="text-gray-900">PROMOTED to Grade ____</span>
-                </label>
-                <label className="flex items-center gap-1">
-                  <input type="checkbox" className="w-3 h-3" />
-                  <span className="text-gray-900">NOT PROMOTED</span>
-                </label>
-              </div>
-              {record.honors && (
-                <div className="mt-1 text-xs">
-                  <span className="font-bold text-gray-900">Award/Recognition: </span>
-                  <span className="text-amber-700 font-semibold">{record.honors}</span>
-                </div>
-              )}
-            </div>
+            <table className="w-full text-[10px] border-collapse mt-1">
+              <thead>
+                <tr className="border-b border-black">
+                  <th className="border-r border-black p-0.5 text-left text-gray-900 bg-gray-100" style={{ width: '40%' }}>Learning Areas</th>
+                  <th className="border-r border-black p-0.5 text-center text-gray-900 bg-gray-100" style={{ width: '15%' }}>Final Rating</th>
+                  <th className="p-0.5 text-center text-gray-900 bg-gray-100" style={{ width: '25%' }}>Remedial Class Mark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[0, 1, 2].map((i) => (
+                  <tr key={i} className="border-b border-black">
+                    <td className="border-r border-black p-0.5 h-4">&nbsp;</td>
+                    <td className="border-r border-black p-0.5">&nbsp;</td>
+                    <td className="p-0.5">&nbsp;</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-            <div className="grid grid-cols-2 gap-6 mt-3 text-xs">
-              <div className="text-center">
-                <div className="border-b border-gray-600 mt-6 mx-8"></div>
-                <p className="mt-0.5 text-gray-900">Signature of Adviser</p>
-              </div>
-              <div className="text-center">
-                <div className="border-b border-gray-600 mt-6 mx-8"></div>
-                <p className="mt-0.5 text-gray-900">Signature of Principal/School Head</p>
-              </div>
+          {/* Adviser / Principal Signatures */}
+          <div className="grid grid-cols-2 gap-4 p-2 border-t border-black text-[10px]">
+            <div className="text-center">
+              <div className="border-b border-gray-600 mt-6 mx-4"></div>
+              <p className="mt-0.5 text-gray-900">Signature of Adviser</p>
+              <p className="text-gray-700 italic">(over Printed Name)</p>
+            </div>
+            <div className="text-center">
+              <div className="border-b border-gray-600 mt-6 mx-4"></div>
+              <p className="mt-0.5 text-gray-900">Signature of Principal/School Head</p>
+              <p className="text-gray-700 italic">(over Printed Name)</p>
             </div>
           </div>
         </div>
       ))}
 
-      {/* Footer Certification */}
-      <div className="mt-4 pt-3 border-t-2 border-gray-600 text-xs">
-        <p className="text-center text-gray-900 font-bold mb-2">CERTIFICATION</p>
-        <p className="text-gray-700 italic text-center leading-relaxed">
-          I CERTIFY that this is a true record of {data.student.name.split(',')[1]?.trim().split(' ')[0] || ''} {data.student.name.split(',')[0] || ''} 
+      {/* CERTIFICATION */}
+      <div className="mt-3 border border-black p-3">
+        <p className="font-bold text-gray-900 text-center mb-2">CERTIFICATION</p>
+        <p className="text-gray-900 text-center leading-relaxed mb-3">
+          I CERTIFY that this is a true record of {studentFirstName} {studentLastName}
           {' '}with LRN {data.student.lrn} and that he/she is eligible for admission to Grade ______.
         </p>
-        <div className="grid grid-cols-2 gap-8 mt-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <span className="font-bold text-gray-900">Name of School:</span>
+            <span className="border-b border-gray-600 ml-1 inline-block min-w-[180px] text-gray-900">{data.schoolSettings?.schoolName || schoolName || ''}</span>
+          </div>
+          <div>
+            <span className="font-bold text-gray-900">School ID:</span>
+            <span className="border-b border-gray-600 ml-1 inline-block min-w-[80px] text-gray-900">{data.schoolSettings?.schoolId || ''}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-8 mt-6">
           <div className="text-center">
-            <div className="border-b border-gray-600 mt-8 mx-12"></div>
-            <p className="mt-1 text-xs text-gray-900">Date</p>
+            <div className="border-b border-gray-600 mt-6 mx-8"></div>
+            <p className="mt-0.5 text-[10px] text-gray-900">Date</p>
           </div>
           <div className="text-center">
-            <div className="border-b border-gray-600 mt-8 mx-12"></div>
-            <p className="mt-1 text-xs text-gray-900">School Head/Principal</p>
-            <p className="text-xs text-gray-700">(Signature over Printed Name)</p>
+            <div className="border-b border-gray-600 mt-6 mx-8"></div>
+            <p className="mt-0.5 text-[10px] text-gray-900">Signature of Principal/School Head over Printed Name</p>
           </div>
         </div>
       </div>
-
-      {/* Official Seal */}
-      <div className="text-center mt-4 text-xs text-gray-600 italic">
-        <p>(School Seal)</p>
-        <p className="mt-2">Not valid without official seal</p>
-      </div>
     </div>
-  );
+    );
+  };
 
   // Form List View
   if (viewMode === "list") {
@@ -974,7 +1175,7 @@ export default function SchoolForms() {
                   <SelectContent>
                     {filteredSectionsForDropdown.map((section) => (
                       <SelectItem key={section.id} value={section.id}>
-                        {selectedGrade === "ALL" ? `Grade ${formatGradeLevel(section.gradeLevel)} - ${section.name}` : section.name}
+                        {selectedGrade === "ALL" ? `Grade ${formatGradeLevel(section.gradeLevel)} - ${section.name}` : section.name}{section.program && section.program !== 'REGULAR' ? ` (${section.program})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1022,12 +1223,13 @@ export default function SchoolForms() {
                   </p>
                   
                   <div className="flex mt-auto">
-                    {(form.id === "SF1" || form.id === "SF2" || form.id === "SF5" || form.id === "SF9" || form.id === "SF10") && !isDev ? (
+                    {(form.id === "SF1" || form.id === "SF2" || form.id === "SF5" || form.id === "SF6" || form.id === "SF9" || form.id === "SF10") && !isDev ? (
                       <Button
                         onClick={() => {
                           if (form.id === "SF1") handleViewSF1();
                           else if (form.id === "SF2") handleViewSF2();
                           else if (form.id === "SF5") handleViewSF5();
+                          else if (form.id === "SF6") handleViewSF6();
                           else if (form.id === "SF9") handleViewSF9();
                           else if (form.id === "SF10") handleViewSF10();
                         }}
@@ -1101,16 +1303,16 @@ export default function SchoolForms() {
                 <div className="flex items-center gap-2">
                   {selectedStudentIds.length > 0 && (
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                      <DropdownMenuTrigger render={
                         <Button
                           size="sm"
                           className="rounded-xl h-9 text-white gap-1.5"
                           style={{ backgroundColor: themeColors.primary }}
-                        >
+                        />
+                      }>
                           <Printer className="w-3.5 h-3.5" />
                           Print&nbsp;Selected
                           <ChevronRight className="w-3.5 h-3.5 rotate-90 opacity-70" />
-                        </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-52">
                         <DropdownMenuItem onClick={() => handleBulkPrint('sf9')}>
@@ -1126,12 +1328,10 @@ export default function SchoolForms() {
                   )}
 
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="rounded-xl h-9 gap-1.5">
+                    <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="rounded-xl h-9 gap-1.5" />}>
                         <Printer className="w-3.5 h-3.5" />
                         Print All
                         <ChevronRight className="w-3.5 h-3.5 rotate-90 opacity-50" />
-                      </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-52">
                       <DropdownMenuItem onClick={() => handleBulkPrint('sf9', true)}>
@@ -1209,10 +1409,8 @@ export default function SchoolForms() {
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-gray-100">
+                          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-gray-100" />}>
                               <MoreVertical className="w-4 h-4 text-gray-400" />
-                            </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-44">
                             <DropdownMenuItem onClick={() => handleViewSF9(student.id)} className="gap-2">
@@ -1456,6 +1654,135 @@ export default function SchoolForms() {
                           {s.promotionStatus}
                         </span>
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // SF6 View - Summary Promotion Report
+  if (viewMode === "sf6" && sf6Data) {
+    const sections = sf6Data.sections || [];
+    const summary = sf6Data.summary || {};
+    const byGradeLevel = sf6Data.byGradeLevel || {};
+    const gradeOrder = ['GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10'];
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">SF6 - Summary Promotion Report</h2>
+            <p className="text-sm text-gray-500">School Year: {sf6Data.schoolYear}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-blue-600">{summary.totalStudents || 0}</p>
+              <p className="text-sm text-gray-500">Total Students</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-green-600">{summary.promoted || 0}</p>
+              <p className="text-sm text-gray-500">Promoted</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-red-600">{summary.retained || 0}</p>
+              <p className="text-sm text-gray-500">Retained</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-purple-600">{summary.overallPromotionRate || 0}%</p>
+              <p className="text-sm text-gray-500">Promotion Rate</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* By Grade Level */}
+        <Card className="border-0 shadow-lg rounded-2xl">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-4 py-3 text-left font-semibold">Grade Level</th>
+                    <th className="px-4 py-3 text-center font-semibold">Total</th>
+                    <th className="px-4 py-3 text-center font-semibold">Promoted</th>
+                    <th className="px-4 py-3 text-center font-semibold">Retained</th>
+                    <th className="px-4 py-3 text-center font-semibold">Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gradeOrder.map((gl) => {
+                    const data = byGradeLevel[gl];
+                    if (!data) return null;
+                    const rate = data.total > 0 ? Math.round((data.promoted / data.total) * 100) : 0;
+                    return (
+                      <tr key={gl} className="border-b hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium">{formatGradeLevel(gl)}</td>
+                        <td className="px-4 py-3 text-center">{data.total}</td>
+                        <td className="px-4 py-3 text-center text-green-600 font-semibold">{data.promoted}</td>
+                        <td className="px-4 py-3 text-center text-red-600 font-semibold">{data.retained}</td>
+                        <td className="px-4 py-3 text-center font-semibold">{rate}%</td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-gray-50 font-bold">
+                    <td className="px-4 py-3">TOTAL</td>
+                    <td className="px-4 py-3 text-center">{summary.totalStudents || 0}</td>
+                    <td className="px-4 py-3 text-center text-green-600">{summary.promoted || 0}</td>
+                    <td className="px-4 py-3 text-center text-red-600">{summary.retained || 0}</td>
+                    <td className="px-4 py-3 text-center">{summary.overallPromotionRate || 0}%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* By Section */}
+        <Card className="border-0 shadow-lg rounded-2xl">
+          <CardHeader>
+            <CardTitle className="text-lg">Section Details</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-4 py-3 text-left font-semibold">Section</th>
+                    <th className="px-4 py-3 text-left font-semibold">Grade</th>
+                    <th className="px-4 py-3 text-left font-semibold">Program</th>
+                    <th className="px-4 py-3 text-center font-semibold">Total</th>
+                    <th className="px-4 py-3 text-center font-semibold">Promoted</th>
+                    <th className="px-4 py-3 text-center font-semibold">Retained</th>
+                    <th className="px-4 py-3 text-center font-semibold">Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sections.map((s: any) => (
+                    <tr key={s.sectionId} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{s.sectionName}</td>
+                      <td className="px-4 py-3">{formatGradeLevel(s.gradeLevel)}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100">{s.program}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">{s.totalStudents}</td>
+                      <td className="px-4 py-3 text-center text-green-600 font-semibold">{s.promoted}</td>
+                      <td className="px-4 py-3 text-center text-red-600 font-semibold">{s.retained}</td>
+                      <td className="px-4 py-3 text-center font-semibold">{s.promotionRate}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1747,237 +2074,8 @@ export default function SchoolForms() {
         </div>
 
         {/* SF10 Form - Official DepEd Format */}
-        <div ref={sf10PrintRef} className="bg-white border-2 border-gray-400 shadow-xl print-form p-8">
-          {/* Header with DepEd Logo */}
-          <div className="flex items-start justify-between mb-4 pb-4 border-b-2 border-gray-400">
-            <div className="w-20">
-              <img src="/DepEd.png" alt="DepEd Logo" className="w-16 h-16 object-contain" />
-            </div>
-            <div className="flex-1 text-center">
-              <h2 className="font-bold text-base text-gray-900">Republic of the Philippines</h2>
-              <h3 className="font-bold text-sm text-gray-900">Department of Education</h3>
-              {schoolRegion && <p className="text-sm text-gray-800 mt-1">{schoolRegion}</p>}
-              {schoolDivision && <p className="text-sm text-gray-800">Division of {schoolDivision}</p>}
-              {schoolName && <p className="text-sm text-gray-800">{schoolName}</p>}
-            </div>
-            <div className="w-20 flex items-center justify-center">
-              {fullLogoUrl ? (
-                <img src={fullLogoUrl} alt="School Logo" className="w-16 h-16 object-contain" />
-              ) : (
-                <img src="/DepEd.png" alt="DepEd Seal" className="w-16 h-16 object-contain" />
-              )}
-            </div>
-          </div>
-
-          {/* Title */}
-          <div className="text-center mb-4">
-            <h1 className="text-lg font-bold text-gray-900 uppercase">Learner's Permanent Academic Record for Junior High School</h1>
-            <p className="text-xs text-gray-700 mt-1">(Formerly Form 137)</p>
-          </div>
-
-          {/* Student's Personal Information */}
-          <div className="mb-4 border-2 border-gray-600">
-            <div className="bg-gray-200 p-1.5 border-b-2 border-gray-600">
-              <h3 className="font-bold text-xs text-gray-900">LEARNER'S INFORMATION</h3>
-            </div>
-            <div className="p-3 text-xs">
-              <div className="grid grid-cols-5 gap-3 mb-2">
-                <div className="col-span-2">
-                  <label className="font-bold text-gray-900">LAST NAME:</label>
-                  <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{sf10Data.student.name.split(',')[0]?.trim() || ''}</div>
-                </div>
-                <div className="col-span-2">
-                  <label className="font-bold text-gray-900">FIRST NAME:</label>
-                  <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{sf10Data.student.name.split(',')[1]?.trim().split(' ')[0] || ''}</div>
-                </div>
-                <div>
-                  <label className="font-bold text-gray-900">MIDDLE NAME:</label>
-                  <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{sf10Data.student.name.split(',')[1]?.trim().split(' ').slice(1).join(' ') || ''}</div>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="font-bold text-gray-900">LRN:</label>
-                  <div className="border-b border-gray-600 mt-1 font-mono text-gray-900 pb-1">{sf10Data.student.lrn}</div>
-                </div>
-                <div>
-                  <label className="font-bold text-gray-900">BIRTHDATE:</label>
-                  <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{sf10Data.student.birthDate || ''}</div>
-                </div>
-                <div>
-                  <label className="font-bold text-gray-900">SEX:</label>
-                  <div className="border-b border-gray-600 mt-1 text-gray-900 pb-1">{sf10Data.student.gender}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Eligibility for JHS Enrolment */}
-          <div className="mb-4 border-2 border-gray-600">
-            <div className="bg-gray-200 p-1.5 border-b-2 border-gray-600">
-              <h3 className="font-bold text-xs text-gray-900">ELIGIBILITY FOR JHS ENROLMENT</h3>
-            </div>
-            <div className="p-2 text-xs grid grid-cols-3 gap-3">
-              <div className="text-gray-900">
-                <label>☐ Grade 6 Completion Certificate</label>
-              </div>
-              <div className="text-gray-900">
-                <label>☐ Elementary SF10</label>
-              </div>
-              <div className="text-gray-900">
-                <label>☐ PEPT Certificate</label>
-              </div>
-            </div>
-          </div>
-
-          {/* Academic Records */}
-          {sf10Data.schoolRecords.map((record: any, recordIndex: number) => (
-            <div key={recordIndex} className="mb-4 border-2 border-gray-600 page-break-inside-avoid">
-              {/* School Year Header */}
-              <div className="p-2 border-b-2 border-gray-600 bg-gray-100">
-                <div className="grid grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <span className="font-bold text-gray-900">School Year: </span>
-                    <span className="text-gray-900">{record.schoolYear}</span>
-                    <span className="font-bold text-gray-900 ml-4">Grade Level: </span>
-                    <span className="text-gray-900">{formatGradeLevel(record.gradeLevel)}</span>
-                  </div>
-                  <div>
-                    <span className="font-bold text-gray-900">Section: </span>
-                    <span className="text-gray-900">{record.section}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Scholastic Record Table */}
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b-2 border-gray-600 bg-gray-200">
-                    <th rowSpan={2} className="border-r border-gray-600 p-1.5 text-left text-gray-900">
-                      LEARNING AREAS
-                    </th>
-                    <th colSpan={3} className="border-r border-gray-600 p-1.5 text-center text-gray-900">
-                      Term Rating
-                    </th>
-                    <th rowSpan={2} className="border-r border-gray-600 p-1.5 text-center text-gray-900 w-16">
-                      Final<br/>Rating
-                    </th>
-                    <th rowSpan={2} className="p-1.5 text-center text-gray-900 w-20">
-                      Action<br/>Taken
-                    </th>
-                  </tr>
-                  <tr className="border-b-2 border-gray-600 bg-gray-200">
-                    <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">1</th>
-                    <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">2</th>
-                    <th className="border-r border-gray-600 p-1.5 w-12 text-center text-gray-900">3</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {record.subjectGrades.map((sg: any, idx: number) => (
-                    <tr key={idx} className="border-b border-gray-600">
-                      <td className="border-r border-gray-600 p-1.5 text-gray-900">{sg.subjectName}</td>
-                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T1 ?? 0) < 75 && sg.T1 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {sg.T1 ?? ''}
-                      </td>
-                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T2 ?? 0) < 75 && sg.T2 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {sg.T2 ?? ''}
-                      </td>
-                      <td className={`border-r border-gray-600 p-1.5 text-center font-medium ${(sg.T3 ?? 0) < 75 && sg.T3 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {sg.T3 ?? ''}
-                      </td>
-                      <td className={`border-r border-gray-600 p-1.5 text-center font-bold ${(sg.final ?? 0) < 75 && sg.final ? 'text-red-600' : 'text-gray-900'}`}>
-                        {sg.final ?? ''}
-                      </td>
-                      <td className="p-1.5 text-center text-xs text-gray-900">{sg.remarks || ''}</td>
-                    </tr>
-                  ))}
-
-                  {/* General Average Row */}
-                  <tr className="border-t-2 border-gray-600 bg-gray-200 font-bold">
-                    <td colSpan={5} className="border-r border-gray-600 p-1.5 text-right text-gray-900">General Average:</td>
-                    <td className="border-r border-gray-600 p-1.5 text-center text-sm text-gray-900">
-                      {record.generalAverage?.toFixed(2) ?? ''}
-                    </td>
-                    <td className="p-1.5"></td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Remarks and Certification Section */}
-              <div className="border-t-2 border-gray-600 p-2 bg-white">
-                <div className="text-xs mb-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <div>
-                      <span className="font-bold text-gray-900">Prepared by: </span>
-                      <span className="text-gray-900">_________________________</span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-gray-900">Date: </span>
-                      <span className="text-gray-900">_____________</span>
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-700 italic mt-1">Signature of Adviser over Printed Name</div>
-                </div>
-                
-                <div className="border-t border-gray-400 pt-2 mt-2">
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="font-bold text-gray-900">Remarks:</span>
-                    <label className="flex items-center gap-1">
-                      <input type="checkbox" className="w-3 h-3" />
-                      <span className="text-gray-900">PROMOTED to Grade ____</span>
-                    </label>
-                    <label className="flex items-center gap-1">
-                      <input type="checkbox" className="w-3 h-3" />
-                      <span className="text-gray-900">NOT PROMOTED</span>
-                    </label>
-                  </div>
-                  {record.honors && (
-                    <div className="mt-1 text-xs">
-                      <span className="font-bold text-gray-900">Award/Recognition: </span>
-                      <span className="text-amber-700 font-semibold">{record.honors}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-6 mt-3 text-xs">
-                  <div className="text-center">
-                    <div className="border-b border-gray-600 mt-6 mx-8"></div>
-                    <p className="mt-0.5 text-gray-900">Signature of Adviser</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="border-b border-gray-600 mt-6 mx-8"></div>
-                    <p className="mt-0.5 text-gray-900">Signature of Principal/School Head</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* Footer Certification */}
-          <div className="mt-4 pt-3 border-t-2 border-gray-600 text-xs">
-            <p className="text-center text-gray-900 font-bold mb-2">CERTIFICATION</p>
-            <p className="text-gray-700 italic text-center leading-relaxed">
-              I CERTIFY that this is a true record of {sf10Data.student.name.split(',')[1]?.trim().split(' ')[0] || ''} {sf10Data.student.name.split(',')[0] || ''} 
-              {' '}with LRN {sf10Data.student.lrn} and that he/she is eligible for admission to Grade ______.
-            </p>
-            <div className="grid grid-cols-2 gap-8 mt-4">
-              <div className="text-center">
-                <div className="border-b border-gray-600 mt-8 mx-12"></div>
-                <p className="mt-1 text-xs text-gray-900">Date</p>
-              </div>
-              <div className="text-center">
-                <div className="border-b border-gray-600 mt-8 mx-12"></div>
-                <p className="mt-1 text-xs text-gray-900">School Head/Principal</p>
-                <p className="text-xs text-gray-700">(Signature over Printed Name)</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Official Seal */}
-          <div className="text-center mt-4 text-xs text-gray-600 italic">
-            <p>(School Seal)</p>
-            <p className="mt-2">Not valid without official seal</p>
-          </div>
+        <div ref={sf10PrintRef}>
+          {renderSF10Content(sf10Data)}
         </div>
       </div>
     );

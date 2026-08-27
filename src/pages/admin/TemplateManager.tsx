@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Upload, FileSpreadsheet, Download, Trash2, Power, Info, AlertCircle, CheckCircle2, Eye, Search, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import ExcelRenderer from '@/components/ExcelRenderer';
+import { getPortalToken } from "@/lib/api";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 
@@ -131,7 +132,7 @@ export default function TemplateManager() {
     try {
       setLoading(true);
       setLoadError('');
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       const response = await axios.get(`${SERVER_URL}/api/templates`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -208,7 +209,7 @@ export default function TemplateManager() {
       if (uploadDescription) formData.append('description', uploadDescription);
       if (uploadInstructions) formData.append('instructions', uploadInstructions);
 
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       const response = await axios.post(`${SERVER_URL}/api/templates/upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -251,7 +252,7 @@ export default function TemplateManager() {
 
   const handleToggleActive = async (template: ExcelTemplate) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       await axios.post(`${SERVER_URL}/api/templates/${template.id}/toggle`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -268,7 +269,7 @@ export default function TemplateManager() {
     }
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       await axios.delete(`${SERVER_URL}/api/templates/${template.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -307,7 +308,7 @@ export default function TemplateManager() {
 
     try {
       setBulkDeleting(true);
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       await Promise.all(
         selectedTemplateIds.map((templateId) =>
           axios.delete(`${SERVER_URL}/api/templates/${templateId}`, {
@@ -335,7 +336,7 @@ export default function TemplateManager() {
 
     try {
       setBulkDeleting(true);
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       await Promise.all(
         filteredTemplates.map((template) =>
           axios.delete(`${SERVER_URL}/api/templates/${template.id}`, {
@@ -355,7 +356,7 @@ export default function TemplateManager() {
 
   const handleDownload = async (template: ExcelTemplate) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       const response = await axios.get(`${SERVER_URL}/api/templates/${template.formType}/download`, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'
@@ -393,7 +394,7 @@ export default function TemplateManager() {
       setViewMode('styled');
       setPreviewScale(0.7);
 
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       
       // Load styled preview first (pixel-perfect rendering)
       try {
@@ -429,7 +430,7 @@ export default function TemplateManager() {
     if (!previewData) return;
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = getPortalToken();
       const response = await axios.get(`${SERVER_URL}/api/templates/${previewData.formType}/download`, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'

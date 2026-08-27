@@ -7,6 +7,7 @@
 
 import { prisma } from '../prisma';
 import type { GradeLevel } from '@prisma/client';
+import { snapshotForDb } from '../studentSnapshot';
 
 // Re-export everything from atlasUtils (the canonical source)
 export {
@@ -34,14 +35,52 @@ export async function upsertLearner(
   schoolYear: string,
 ): Promise<boolean> {
   if (!learner?.lrn) return false;
+
+  // Resolve address and guardian from multiple possible field names
+  const incomingAddress = learner.address || learner.homeAddress || learner.currentAddress || null;
+  const incomingGuardian = learner.parentGuardianName || learner.guardianName || null;
+  const incomingGuardianContact = learner.parentGuardianContact || learner.guardianContact || null;
+
+  // Resolve extended profile fields
+  const incomingReligion = learner.religion || null;
+  const incomingMotherTongue = learner.motherTongue || null;
+  const incomingBarangay = learner.barangay || null;
+  const incomingCity = learner.city || learner.municipality || null;
+  const incomingProvince = learner.province || null;
+  const incomingFatherName = learner.fatherName || learner.father?.name || null;
+  const incomingFatherContact = learner.fatherContact || learner.father?.contact || null;
+  const incomingMotherName = learner.motherName || learner.mother?.name || null;
+  const incomingMotherContact = learner.motherContact || learner.mother?.contact || null;
+  const incomingIpCommunity = learner.ipCommunity === true || String(learner.ipCommunity).toUpperCase() === 'YES';
+  const incomingIs4Ps = learner.is4PsBeneficiary === true || String(learner.is4PsBeneficiary).toUpperCase() === 'YES';
+  const incomingDisability = learner.disability && learner.disability !== 'NONE' ? learner.disability : null;
+  const incomingIsBalikAral = learner.isBalikAral === true || String(learner.isBalikAral).toUpperCase() === 'YES';
+
   const student = await prisma.student.upsert({
     where: { lrn: learner.lrn },
     update: {
       firstName: learner.firstName,
       lastName: learner.lastName,
       middleName: learner.middleName ?? null,
+      suffix: learner.extensionName ?? null,
       gender: learner.sex ?? null,
       birthDate: learner.birthdate ? new Date(learner.birthdate) : undefined,
+      address: incomingAddress,
+      guardianName: incomingGuardian,
+      guardianContact: incomingGuardianContact,
+      religion: incomingReligion,
+      motherTongue: incomingMotherTongue,
+      barangay: incomingBarangay,
+      city: incomingCity,
+      province: incomingProvince,
+      fatherName: incomingFatherName,
+      fatherContact: incomingFatherContact,
+      motherName: incomingMotherName,
+      motherContact: incomingMotherContact,
+      ipCommunity: incomingIpCommunity,
+      is4PsBeneficiary: incomingIs4Ps,
+      disability: incomingDisability,
+      isBalikAral: incomingIsBalikAral,
     },
     create: {
       lrn: learner.lrn,
@@ -51,12 +90,31 @@ export async function upsertLearner(
       suffix: learner.extensionName ?? null,
       gender: learner.sex ?? null,
       birthDate: learner.birthdate ? new Date(learner.birthdate) : null,
+      address: incomingAddress,
+      guardianName: incomingGuardian,
+      guardianContact: incomingGuardianContact,
+      religion: incomingReligion,
+      motherTongue: incomingMotherTongue,
+      barangay: incomingBarangay,
+      city: incomingCity,
+      province: incomingProvince,
+      fatherName: incomingFatherName,
+      fatherContact: incomingFatherContact,
+      motherName: incomingMotherName,
+      motherContact: incomingMotherContact,
+      ipCommunity: incomingIpCommunity,
+      is4PsBeneficiary: incomingIs4Ps,
+      disability: incomingDisability,
+      isBalikAral: incomingIsBalikAral,
     },
   });
   await prisma.enrollment.upsert({
     where: { studentId_sectionId_schoolYear: { studentId: student.id, sectionId, schoolYear } },
     update: { status: 'ENROLLED' },
-    create: { studentId: student.id, sectionId, schoolYear, status: 'ENROLLED' },
+    create: {
+      studentId: student.id, sectionId, schoolYear, status: 'ENROLLED',
+      profileSnapshot: snapshotForDb(student) as any,
+    },
   });
   return true;
 }
