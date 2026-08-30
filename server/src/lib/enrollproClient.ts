@@ -286,7 +286,9 @@ export async function getEnrollProStudentDetail(epStudentId: number): Promise<En
     const result = await fetchJSON(`${getEnrollProBase()}/students/${epStudentId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    return (result ?? null) as EnrollProStudent | null;
+    // EnrollPro wraps response as { student: {...}, historicalGrades: [...] }
+    const raw = result?.student ?? result;
+    return (raw ?? null) as EnrollProStudent | null;
   } catch (err: any) {
     logger.debug(`[EnrollProClient] /students/${epStudentId} failed: ${err.message}`);
     return null;
@@ -486,18 +488,36 @@ export async function getIntegrationV1LearnersPage(
 
 /**
  * Fetches ALL enrolled learners across all pages from Integration v1.
+ * Filters by school year by default; pass `null` to skip the SY filter and get all students.
  */
-export async function getAllIntegrationV1Learners(schoolYearId?: number, updatedSince?: string): Promise<any[]> {
+export async function getAllIntegrationV1Learners(schoolYearId?: number | null, updatedSince?: string): Promise<any[]> {
   const all: any[] = [];
   let page = 1;
   const limit = 200;
 
-  let targetSY: number | undefined = schoolYearId;
-  if (!targetSY) {
+  let targetSY: number | undefined = schoolYearId === null ? undefined : (schoolYearId ?? undefined);
+  if (targetSY === undefined && schoolYearId !== null) {
     try {
       const active = await getIntegrationV1ActiveSchoolYear();
       targetSY = active?.id;
     } catch { /* ignore */ }
+  }
+
+  // If no school year target, fetch unscoped (includes inactive students)
+  if (!targetSY) {
+    while (true) {
+      const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (updatedSince) query.set('updatedSince', updatedSince);
+      const result = await fetchJSON(`${getEnrollProBase()}/integration/v1/learners?${query.toString()}`, {
+        headers: getIntegrationHeaders(),
+      });
+      const data = result?.data ?? [];
+      const meta = result?.meta ?? { totalPages: 1 };
+      all.push(...data);
+      if (page >= meta.totalPages || data.length === 0) break;
+      page++;
+    }
+    return all;
   }
 
   try {
@@ -526,6 +546,31 @@ export async function getAllIntegrationV1Learners(schoolYearId?: number, updated
     }
   }
 
+  return all;
+}
+
+/**
+ * Returns SMART-specific student feed with lifecycle indicators.
+ * GET /api/integration/v1/default/smart/students
+ * Returns eosyStatus, dropOutDate, transferOutDate, dropOutReason.
+ * Paginated — fetches all pages automatically.
+ */
+export async function getSmartStudentsFeed(): Promise<any[]> {
+  const all: any[] = [];
+  let page = 1;
+  const limit = 200;
+  while (true) {
+    const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const result = await fetchJSON(
+      `${getEnrollProBase()}/integration/v1/default/smart/students?${query.toString()}`,
+      { headers: getIntegrationHeaders() }
+    );
+    const data = result?.data ?? [];
+    const meta = result?.meta ?? { totalPages: 1 };
+    all.push(...data);
+    if (page >= meta.totalPages || data.length === 0) break;
+    page++;
+  }
   return all;
 }
 
@@ -823,22 +868,6 @@ export async function getEnrollProBosyQueue(params?: {
   } catch {
     return { data: [], total: 0 };
   }
-}
-
-/**
- * @deprecated /api/bosy/expected-queue is no longer mounted by EnrollPro.
- * Returns empty results. Use getEnrollProBosyQueue() for the current BOSY queue.
- */
-export async function getEnrollProBosyExpectedQueue(_params?: {
-  priorSchoolYearId?: number;
-  currentSchoolYearId?: number;
-  gradeLevel?: string;
-  page?: number;
-  limit?: number;
-  search?: string;
-}): Promise<any> {
-  logger.warn('[EnrollProClient] getEnrollProBosyExpectedQueue called but /api/bosy/expected-queue is unsupported. Returning empty.');
-  return { items: [], total: 0, page: 1, limit: 20, totalPages: 0 };
 }
 
 export async function getEnrollProRemedialPending(params?: {

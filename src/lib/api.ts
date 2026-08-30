@@ -586,6 +586,10 @@ export interface RegistrarDashboard {
       GRADE_9: number;
       GRADE_10: number;
     };
+    activeStudents: number;
+    droppedStudents: number;
+    transferredStudents: number;
+    pendingStudents: number;
   };
   sections: {
     id: string;
@@ -605,6 +609,29 @@ export interface RegistrarDashboard {
     missingBirthDate: number;
     missingLrn: number;
     totalIssues: number;
+  };
+  gradePerformance: {
+    overallPassingRate: number;
+    overallAvgGrade: number;
+    totalGraded: number;
+    totalPassing: number;
+    totalFailing: number;
+    failingStudents: Array<{
+      studentName: string;
+      sectionName: string;
+      gradeLevel: string;
+      average: number;
+    }>;
+    bySection: Array<{
+      sectionId: string;
+      sectionName: string;
+      gradeLevel: string;
+      avgGrade: number | null;
+      passingRate: number;
+      totalStudents: number;
+      failingCount: number;
+      failingStudents: Array<{ studentName: string; average: number }>;
+    }>;
   };
 }
 
@@ -763,6 +790,110 @@ export interface SF10Data {
   };
 }
 
+export interface SF5SubjectDetail {
+  subjectCode: string;
+  subjectName: string;
+  finalGrade: number | null;
+  termGrades: Record<string, number | null>;
+}
+
+export interface SF5Student {
+  lrn: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  gender: string;
+  subjectDetails: SF5SubjectDetail[];
+  generalAverage: number | null;
+  descriptor: "O" | "VS" | "S" | "FS" | "DNME" | null;
+  promotionStatus: "Promoted" | "Conditional" | "Retained" | "No Grades";
+  failingSubjects: string[];
+  incompleteSubjects: { prevSY: string[]; currentSY: string[] };
+  attendance: { present: number; absent: number; late: number; excused: number; total: number };
+}
+
+export interface SF5Data {
+  section: {
+    id: string;
+    name: string;
+    gradeLevel: string;
+    program: string;
+    schoolYear: string;
+    adviser: string | null;
+  };
+  students: SF5Student[];
+  summary: {
+    totalStudents: number;
+    promoted: number;
+    conditional: number;
+    retained: number;
+    noGrades: number;
+    male: { promoted: number; conditional: number; retained: number; noGrades: number };
+    female: { promoted: number; conditional: number; retained: number; noGrades: number };
+    descriptors: Record<"O" | "VS" | "S" | "FS" | "DNME", { male: number; female: number; total: number }>;
+  };
+  schoolSettings: {
+    schoolName: string;
+    schoolId: string;
+    division: string;
+    region: string;
+    district: string;
+  };
+}
+
+export interface SF1Student {
+  index: number;
+  lrn: string;
+  lastName: string;
+  firstName: string;
+  middleName?: string;
+  suffix?: string;
+  birthDate?: string;
+  ageAsOfJune?: number;
+  gender: string;
+  birthPlace?: string;
+  motherTongue?: string;
+  ipCommunity?: string;
+  religion?: string;
+  address: {
+    houseStreet?: string;
+    barangay?: string;
+    municipality?: string;
+    province?: string;
+  };
+  fatherName?: string;
+  motherName?: string;
+  guardianName?: string;
+  guardianRelationship?: string;
+  guardianContact?: string;
+  remarks?: string[];
+}
+
+export interface SF1Data {
+  section: {
+    id: string;
+    name: string;
+    gradeLevel: string;
+    schoolYear: string;
+    adviserName?: string;
+  };
+  schoolSettings?: {
+    schoolName?: string;
+    schoolId?: string;
+    division?: string;
+    region?: string;
+    district?: string;
+  };
+  students: SF1Student[];
+  summary: {
+    maleCount: number;
+    femaleCount: number;
+    totalCount: number;
+  };
+  source: string;
+}
+
 export const registrarApi = {
   getDashboard: () => api.get<RegistrarDashboard>("/registrar/dashboard"),
 
@@ -822,7 +953,19 @@ export const registrarApi = {
     api.get<SF10Data>(`/registrar/forms/sf10/${studentId}`),
 
   getSF5: (sectionId: string, schoolYear?: string) =>
-    api.get(`/registrar/forms/sf5/${sectionId}`, { params: { schoolYear } }),
+    api.get<SF5Data>(`/registrar/forms/sf5/${sectionId}`, { params: { schoolYear } }),
+
+  exportSF5: (sectionId: string, schoolYear?: string) =>
+    api.get(`/registrar/export/sf5/${sectionId}`, {
+      params: { schoolYear },
+      responseType: "blob",
+    }),
+
+  getSF1Data: (sectionId: string, schoolYear: string) =>
+    api.get(`/registrar/forms/sf1/${sectionId}`, { params: { schoolYear } }),
+
+  exportSF1: (sectionId: string, schoolYear: string) =>
+    api.get(`/registrar/export/sf1/${sectionId}`, { params: { schoolYear }, responseType: "blob" }),
 
   getSF6: (schoolYear?: string) =>
     api.get<{
@@ -852,24 +995,13 @@ export const registrarApi = {
     }>("/registrar/forms/sf6", { params: { schoolYear } }),
 
   getSF1: (sectionId: string, schoolYear?: string) =>
-    api.get(`/registrar/forms/sf1/${sectionId}`, { params: { schoolYear } }),
+    api.get<SF1Data>(`/registrar/forms/sf1/${sectionId}`, { params: { schoolYear } }),
 
   getAttendanceSummary: (sectionId: string, startDate?: string, endDate?: string) =>
     api.get(`/attendance/summary/${sectionId}`, { params: { startDate, endDate } }),
 
   getSections: (params?: { schoolYear?: string; gradeLevel?: string }) =>
     api.get<Section[]>("/registrar/sections", { params }),
-
-  // Applications (Phase 1)
-  getApplications: (params?: { status?: string; gradeLevel?: string; page?: number; limit?: number; search?: string }) =>
-    api.get("/registrar/applications", { params }),
-
-  // BOSY (Phase 1)
-  getBosyQueue: (params?: { page?: number; limit?: number; search?: string; gradeLevel?: string }) =>
-    api.get("/registrar/bosy/queue", { params }),
-
-  getBosyExpectedQueue: (params?: { priorSchoolYearId?: number; page?: number; limit?: number; search?: string; gradeLevel?: string }) =>
-    api.get("/registrar/bosy/expected-queue", { params }),
 
   // Remedial (Phase 1)
   getRemedialPending: (params?: { page?: number; limit?: number; search?: string; gradeLevel?: string }) =>
@@ -894,6 +1026,24 @@ export const registrarApi = {
 
   getEosySF6: (schoolYearId?: number) =>
     api.get("/registrar/eosy/sf6", { params: schoolYearId ? { schoolYearId } : {} }),
+
+  getEosyPromotionStatus: (sectionId: string, schoolYear: string) =>
+    api.get(`/registrar/eosy/promotion-status/${sectionId}`, { params: { schoolYear } }),
+
+  finalizeEosySection: (sectionId: string, schoolYear: string) =>
+    api.post("/registrar/eosy/finalize", { sectionId, schoolYear }),
+
+  getEosyUnfinalizedSections: (schoolYear: string) =>
+    api.get("/registrar/eosy/unfinalized-sections", { params: { schoolYear } }),
+
+  exportYearBackup: (schoolYear: string) =>
+    api.get("/registrar/export/year-backup", { params: { schoolYear }, responseType: "blob" }),
+
+  triggerSync: () =>
+    api.post<{ message: string }>("/registrar/sync-enrollpro"),
+
+  syncInactiveStudents: () =>
+    api.post<{ message: string; fetched: number; inactive: number; upserted: number }>("/registrar/sync-inactive-students"),
 
   // ATLAS (Phase 3)
   getAtlasTeachingLoads: (atlasSchoolYearId?: number) =>
@@ -956,6 +1106,7 @@ export interface AdminDashboard {
     currentSchoolYear: string;
     currentTerm: string;
   };
+  termLabels: TermLabels;
 }
 
 export interface AdminUser {
@@ -1016,6 +1167,12 @@ export interface SystemSettings {
   passwordMinLength: number;
   requireSpecialChar: boolean;
   lastEnrollProSync?: string;
+  gradeLock?: boolean;
+  transitionLock?: boolean;
+  transitionNote?: string;
+  auditLogRetentionDays?: number;
+  syncHistoryRetentionDays?: number;
+  gradeSnapshotRetentionDays?: number;
 }
 
 export interface GradingConfig {
@@ -1025,6 +1182,12 @@ export interface GradingConfig {
   performanceTaskWeight: number;
   quarterlyAssessWeight: number;
   isDepEdDefault: boolean;
+}
+
+export interface TermLabels {
+  T1: string;
+  T2: string;
+  T3: string;
 }
 
 export interface ExternalServiceHealth {
@@ -1145,6 +1308,38 @@ export const adminApi = {
   toggleGradeLock: (locked: boolean) =>
     api.post<{ message: string; gradeLock: boolean }>("/admin/settings/grade-lock", { locked }),
 
+  toggleTransitionLock: (locked: boolean, note?: string) =>
+    api.post<{ message: string; transitionLock: boolean }>("/admin/settings/transition-lock", { locked, note }),
+
+  getYearLocks: () =>
+    api.get<{
+      locks: Array<{
+        schoolYearId: string;
+        label: string;
+        status: string;
+        yearLock: { isLocked: boolean; lockedBy: string | null; lockedAt: string | null; unlockedBy: string | null; unlockedAt: string | null };
+        termLocks: Array<{ term: "T1" | "T2" | "T3"; isLocked: boolean; lockedBy: string | null; lockedAt: string | null; unlockedBy: string | null; unlockedAt: string | null }>;
+      }>;
+    }>("/admin/year-locks"),
+
+  toggleYearLock: (schoolYearId: string, locked: boolean) =>
+    api.post<{ message: string; schoolYearId: string; locked: boolean }>(`/admin/year-locks/${schoolYearId}`, { locked }),
+
+  toggleTermLock: (schoolYearId: string, term: "T1" | "T2" | "T3", locked: boolean) =>
+    api.post<{ message: string; schoolYearId: string; term: string; locked: boolean }>(`/admin/term-locks/${schoolYearId}/${term}`, { locked }),
+
+  getRolloverStatus: () =>
+    api.get<{
+      currentSY: { id: string; label: string; status: string } | null;
+      previousYear: { id: string; label: string; status: string } | null;
+      unfinalizedCount: number;
+      unfinalizedSections: Array<{ sectionId: string; sectionName: string; gradeLevel: string; draftBlockerCount: number }>;
+      canArchive: boolean;
+    }>("/admin/rollover-status"),
+
+  archiveYear: (schoolYearId: string) =>
+    api.post<{ message: string; schoolYearId: string }>("/admin/archive-year", { schoolYearId }),
+
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append("logo", file);
@@ -1172,14 +1367,14 @@ export const adminApi = {
     api.post<{ message: string; result: any }>("/admin/system/sync/run", {}),
 
   // Grading Config
-  getGradingConfig: () => api.get<{ configs: GradingConfig[] }>("/admin/grading-config"),
+  getGradingConfig: () => api.get<{ configs: GradingConfig[]; termLabels: TermLabels }>("/admin/grading-config"),
 
   updateGradingConfig: (
     subjectType: string,
     data: { writtenWorkWeight: number; performanceTaskWeight: number; quarterlyAssessWeight: number }
   ) => api.put<{ message: string; config: GradingConfig }>(`/admin/grading-config/${subjectType}`, data),
 
-  resetGradingConfig: () => api.post<{ message: string; configs: GradingConfig[] }>("/admin/grading-config/reset"),
+  resetGradingConfig: () => api.post<{ message: string; configs: GradingConfig[]; termLabels: TermLabels }>("/admin/grading-config/reset"),
 
   // Class Assignments (Teaching Load)
   getClassAssignmentOptions: (schoolYear?: string) =>
@@ -1255,6 +1450,13 @@ export const adminApi = {
 
   deleteSchoolYear: (id: string) =>
     api.delete<{ message: string }>(`/admin/school-years/${id}`),
+
+  // ─── Term Display Labels ──────────────────────────────────────────────────
+  getTermLabels: () =>
+    api.get<{ termLabels: TermLabels }>("/admin/term-labels"),
+
+  updateTermLabels: (data: { termLabelT1?: string; termLabelT2?: string; termLabelT3?: string }) =>
+    api.put<{ message: string; termLabels: TermLabels }>("/admin/term-labels", data),
 };
 
 export default api;
