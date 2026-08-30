@@ -57,6 +57,49 @@ export async function archiveSchoolYear(opts: {
       return { outcome: "no_change" as const, error: "Year is already archived" };
     }
 
+    // Snapshot gap check: verify EOSY snapshots exist for all finalized grades
+    const [finalizedCounts, snapshotCounts] = await Promise.all([
+      tx.grade.groupBy({
+        by: ["classAssignmentId"],
+        where: { classAssignment: { schoolYear: yearLabel }, status: "FINALIZED" },
+        _count: { id: true },
+      }),
+      tx.gradeSnapshot.groupBy({
+        by: ["sectionId"],
+        where: { schoolYear: yearLabel, snapshot: { path: ["source"], equals: "EOSY_FINALIZE" } },
+        _count: { id: true },
+      }),
+    ]);
+
+    // Map section → finalized grade count via classAssignment → section
+    const cas = await tx.classAssignment.findMany({
+      where: { schoolYear: yearLabel },
+      select: { id: true, sectionId: true },
+    });
+    const caToSection = new Map(cas.map((ca) => [ca.id, ca.sectionId]));
+
+    const finalizedBySection = new Map<string, number>();
+    for (const fc of finalizedCounts) {
+      const sectionId = caToSection.get(fc.classAssignmentId);
+      if (sectionId) {
+        finalizedBySection.set(sectionId, (finalizedBySection.get(sectionId) ?? 0) + fc._count.id);
+      }
+    }
+
+    const snapshotsBySection = new Map(snapshotCounts.map((sc) => [sc.sectionId, sc._count.id]));
+
+    const gapSections: string[] = [];
+    for (const [sectionId, finalCount] of finalizedBySection) {
+      const snapCount = snapshotsBySection.get(sectionId) ?? 0;
+      if (snapCount < finalCount) {
+        const section = await tx.section.findUnique({ where: { id: sectionId }, select: { name: true } });
+        gapSections.push(section?.name ?? sectionId);
+      }
+    }
+    if (gapSections.length > 0) {
+      return { outcome: "error" as const, error: `Snapshot gap detected for sections: ${gapSections.join(", ")}. Finalize EOSY before archiving.` };
+    }
+
     await tx.grade.updateMany({
       where: { classAssignment: { schoolYear: yearLabel } },
       data: { isArchived: true, archivedReason: reason },
