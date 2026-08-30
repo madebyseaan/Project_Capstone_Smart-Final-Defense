@@ -135,6 +135,9 @@ export async function handleYearChangeRollover(
   const actor = { id: "system", name: "Rollover Scheduler" };
 
   try {
+    // Fail-safe: lock the previous year FIRST so it's at least locked if archive fails
+    await setYearLock(previousSchoolYearId, true, actor);
+
     const result = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLLOVER_ADVISORY_KEY})`;
 
@@ -181,8 +184,6 @@ export async function handleYearChangeRollover(
     }
 
     // Post-transaction side-effects (outside the advisory lock scope)
-    await setYearLock(previousSchoolYearId, true, actor);
-
     if (result.outcome === "archived") {
       await createAuditLog(
         "CONFIG" as any,

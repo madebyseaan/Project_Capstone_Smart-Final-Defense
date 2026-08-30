@@ -81,6 +81,19 @@ export async function getActiveSchoolYearLabel(): Promise<string> {
 }
 
 /**
+ * Returns configurable term display labels for the active school year.
+ * Labels fall back to "Quarterly 1/2/3" if not set.
+ */
+export async function getActiveTermLabels(): Promise<{ T1: string; T2: string; T3: string }> {
+  const year = await getActiveSchoolYear();
+  return {
+    T1: year.termLabelT1 || "Quarterly 1",
+    T2: year.termLabelT2 || "Quarterly 2",
+    T3: year.termLabelT3 || "Quarterly 3",
+  };
+}
+
+/**
  * Finds a SchoolYear by its EnrollPro external ID.
  * Returns null if not found — caller decides what to do.
  */
@@ -127,11 +140,39 @@ export async function ensureSchoolYearFromEnrollPro(
   }
 
   // Link FK in SystemSettings
+  const prevSettings = await prisma.systemSettings.findUnique({
+    where: { id: 'main' },
+    select: { schoolYearId: true },
+  });
+
   await prisma.systemSettings.upsert({
     where: { id: 'main' },
     update: { schoolYearId: year.id, currentSchoolYear: yearLabel },
     create: { id: 'main', schoolYearId: year.id, currentSchoolYear: yearLabel },
   });
+
+  if (prevSettings?.schoolYearId && prevSettings.schoolYearId !== year.id) {
+    try {
+      const { handleYearChangeRollover } = await import('./rollover');
+      const prevYear = await prisma.schoolYear.findUnique({ where: { id: prevSettings.schoolYearId } });
+      if (prevYear) {
+        await handleYearChangeRollover(prevYear.id, prevYear.label, year.id, yearLabel);
+      }
+    } catch (err: any) {
+      logger.error(`[SchoolYearResolver] Rollover handling failed: ${err.message}`);
+      // Revert FK so next sync retries the rollover (self-healing)
+      try {
+        await prisma.systemSettings.updateMany({
+          where: { id: 'main', schoolYearId: year.id },
+          data: { schoolYearId: prevSettings.schoolYearId },
+        });
+        invalidateSchoolYearCache();
+        logger.warn(`[SchoolYearResolver] Reverted schoolYearId to ${prevSettings.schoolYearId} for retry on next sync`);
+      } catch (revertErr: any) {
+        logger.error(`[SchoolYearResolver] FK revert also failed: ${revertErr.message}`);
+      }
+    }
+  }
 
   invalidateSchoolYearCache();
   return year;
