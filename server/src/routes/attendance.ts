@@ -7,8 +7,26 @@ import templateService from "../services/templateService";
 import { logger } from "../lib/logger";
 import { validate } from "../middleware/validate";
 import { attendanceBulkSchema, attendanceClearSchema } from "../schemas/attendance";
+import { getActiveSchoolYearLabel } from "../lib/schoolYearResolver";
 
 const router = Router();
+
+async function assertSectionAttendanceWritable(sectionId: string): Promise<string | null> {
+  const section = await prisma.section.findUnique({ where: { id: sectionId } });
+  if (!section) return "Section not found";
+  if (section.status === "COMPLETED" || section.archivedAt !== null) {
+    return "Attendance can only be recorded for the active school year";
+  }
+  try {
+    const activeYear = await getActiveSchoolYearLabel();
+    if (section.schoolYear !== activeYear) {
+      return "Attendance can only be recorded for the active school year";
+    }
+  } catch {
+    return "Unable to resolve active school year";
+  }
+  return null;
+}
 
 // Type definitions
 type AttendanceWithStudent = Attendance & { student: Student };
@@ -112,6 +130,12 @@ router.post(
         return;
       }
 
+      const guardError = await assertSectionAttendanceWritable(sectionId);
+      if (guardError) {
+        res.status(409).json({ message: guardError });
+        return;
+      }
+
       const targetDate = new Date(date);
       targetDate.setHours(0, 0, 0, 0);
 
@@ -146,6 +170,12 @@ router.post(
 
       if (!sectionId || !date || !Array.isArray(attendance)) {
         res.status(400).json({ message: "Invalid request body" });
+        return;
+      }
+
+      const guardError = await assertSectionAttendanceWritable(sectionId);
+      if (guardError) {
+        res.status(409).json({ message: guardError });
         return;
       }
 
