@@ -13,6 +13,7 @@ import { setYearLock } from "./gradeLocks";
 import { listUnfinalizedSections } from "./promotion";
 import { createAuditLog } from "./audit";
 import { broadcastSseEvent } from "./sseManager";
+import { getActiveSchoolYearLabel } from "./schoolYearResolver";
 
 const ROLLOVER_ADVISORY_KEY = 738291;
 
@@ -23,6 +24,102 @@ export interface RolloverResult {
   newYearId: string;
   newYearLabel: string;
   unfinalizedCount?: number;
+}
+
+export interface ArchiveSchoolYearResult {
+  ok: boolean;
+  error?: string;
+  schoolYearId: string;
+  yearLabel: string;
+}
+
+/**
+ * Shared archive function used by both auto-rollover and manual admin archive.
+ * Runs advisory lock + idempotency check + all archive writes in one transaction.
+ * Post-transaction: year lock, audit log, SSE broadcast, legacy gradeLock reset.
+ */
+export async function archiveSchoolYear(opts: {
+  schoolYearId: string;
+  yearLabel: string;
+  actor: { id: string; name: string };
+  reason: string;
+}): Promise<ArchiveSchoolYearResult> {
+  const { schoolYearId, yearLabel, actor, reason } = opts;
+
+  const txResult = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLLOVER_ADVISORY_KEY})`;
+
+    const year = await tx.schoolYear.findUnique({ where: { id: schoolYearId } });
+    if (!year) {
+      return { outcome: "error" as const, error: "School year not found" };
+    }
+    if (year.status === "ARCHIVED") {
+      return { outcome: "no_change" as const, error: "Year is already archived" };
+    }
+
+    await tx.grade.updateMany({
+      where: { classAssignment: { schoolYear: yearLabel } },
+      data: { isArchived: true, archivedReason: reason },
+    });
+    await tx.enrollment.updateMany({
+      where: { schoolYear: yearLabel },
+      data: { isArchived: true, archivedReason: reason },
+    });
+    await tx.section.updateMany({
+      where: { schoolYear: yearLabel },
+      data: { status: "COMPLETED", archivedAt: new Date() },
+    });
+    await tx.classAssignment.updateMany({
+      where: { schoolYear: yearLabel },
+      data: { isActive: false, archivedAt: new Date(), archivedReason: reason },
+    });
+    await tx.schoolYear.update({
+      where: { id: schoolYearId },
+      data: { status: "ARCHIVED", archivedAt: new Date() },
+    });
+    await tx.systemSettings.update({
+      where: { id: "main" },
+      data: { gradeLock: false },
+    });
+
+    return { outcome: "archived" as const };
+  });
+
+  if (txResult.outcome === "error") {
+    return { ok: false, error: txResult.error, schoolYearId, yearLabel };
+  }
+  if (txResult.outcome === "no_change") {
+    return { ok: true, schoolYearId, yearLabel };
+  }
+
+  // Post-transaction side-effects
+  await setYearLock(schoolYearId, true, actor);
+
+  let activeYearLabel: string;
+  try {
+    activeYearLabel = await getActiveSchoolYearLabel();
+  } catch {
+    activeYearLabel = "unknown";
+  }
+
+  await createAuditLog(
+    "CONFIG" as any,
+    { id: actor.id, username: actor.name, role: "ADMIN" } as any,
+    `School Year Archive: ${yearLabel}`,
+    "Config",
+    `${reason}. New year ${activeYearLabel} active.`,
+    undefined,
+    "WARNING" as any
+  );
+
+  broadcastSseEvent("SCHOOL_YEAR_ROLLOVER", {
+    action: "archived",
+    previousYear: yearLabel,
+    newYear: activeYearLabel,
+  });
+
+  logger.info(`[Rollover] ${yearLabel} archived. ${reason}`);
+  return { ok: true, schoolYearId, yearLabel };
 }
 
 export async function handleYearChangeRollover(
@@ -39,10 +136,8 @@ export async function handleYearChangeRollover(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // Acquire advisory lock — held until this transaction commits or rolls back
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLLOVER_ADVISORY_KEY})`;
 
-      // Idempotency guard: if previous year already archived, short-circuit
       const prevYear = await tx.schoolYear.findUnique({ where: { id: previousSchoolYearId } });
       if (!prevYear || prevYear.status === "ARCHIVED") {
         return { outcome: "no_change" as const };
