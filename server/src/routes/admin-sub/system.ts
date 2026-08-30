@@ -352,6 +352,7 @@ export default function (router: Router) {
       const currentSY = settings?.schoolYear;
       const years = await prisma.schoolYear.findMany({ orderBy: { label: "desc" } });
       const previousYear = years.find((y) => y.id !== currentSY?.id && y.status !== "ARCHIVED");
+      const pendingYearsCount = years.filter((y) => y.id !== currentSY?.id && y.status !== "ARCHIVED").length;
 
       let unfinalized: any[] = [];
       if (previousYear) {
@@ -364,6 +365,7 @@ export default function (router: Router) {
         unfinalizedCount: unfinalized.length,
         unfinalizedSections: unfinalized.map((s) => ({ sectionId: s.sectionId, sectionName: s.sectionName, gradeLevel: s.gradeLevel, draftBlockerCount: s.draftBlockerCount })),
         canArchive: unfinalized.length === 0 && !!previousYear,
+        pendingYearsCount: pendingYearsCount > 1 ? pendingYearsCount : undefined,
       });
     } catch (error) {
       logger.error("Error fetching rollover status:", error);

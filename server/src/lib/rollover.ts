@@ -6,7 +6,7 @@
  * to prevent concurrent rollover processing from overlapping syncs.
  */
 
-import { Prisma } from "@prisma/client";
+import { AuditAction, AuditSeverity, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { setYearLock } from "./gradeLocks";
@@ -146,13 +146,13 @@ export async function archiveSchoolYear(opts: {
   }
 
   await createAuditLog(
-    "CONFIG" as any,
-    { id: actor.id, username: actor.name, role: "ADMIN" } as any,
+    AuditAction.CONFIG,
+    { id: actor.id, firstName: actor.name, lastName: "", role: "ADMIN" },
     `School Year Archive: ${yearLabel}`,
     "Config",
     `${reason}. New year ${activeYearLabel} active.`,
     undefined,
-    "WARNING" as any
+    AuditSeverity.WARNING
   );
 
   broadcastSseEvent("SCHOOL_YEAR_ROLLOVER", {
@@ -229,13 +229,13 @@ export async function handleYearChangeRollover(
     // Post-transaction side-effects (outside the advisory lock scope)
     if (result.outcome === "archived") {
       await createAuditLog(
-        "CONFIG" as any,
-        { id: "system", username: "system", role: "ADMIN" } as any,
+        AuditAction.CONFIG,
+        { id: "system", firstName: "System", lastName: "", role: "ADMIN" },
         `School Year Rollover: ${previousYearLabel} → ${newYearLabel}`,
         "Config",
         `Previous year ${previousYearLabel} fully finalized — archived cleanly. New year ${newYearLabel} activated.`,
         undefined,
-        "WARNING" as any
+        AuditSeverity.WARNING
       );
 
       broadcastSseEvent("SCHOOL_YEAR_ROLLOVER", {
@@ -257,13 +257,13 @@ export async function handleYearChangeRollover(
 
     // locked_not_archived
     await createAuditLog(
-      "CONFIG" as any,
-      { id: "system", username: "system", role: "ADMIN" } as any,
+      AuditAction.CONFIG,
+      { id: "system", firstName: "System", lastName: "", role: "ADMIN" },
       `School Year Rollover Blocked: ${previousYearLabel}`,
       "Config",
       `Rollover detected: ${previousYearLabel} has ${result.unfinalizedCount} unfinalized section(s). Year locked but NOT archived. Admin action required.`,
       undefined,
-      "WARNING" as any
+      AuditSeverity.WARNING
     );
 
     broadcastSseEvent("SCHOOL_YEAR_ROLLOVER", {

@@ -26,8 +26,8 @@ export default function RolloverBanner() {
   if (!visible) return null;
 
   return (
-    <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5 flex items-center justify-between text-sm">
-      <div className="flex items-center gap-2 text-blue-800">
+    <div className="bg-blue-50 dark:bg-blue-950 border-b border-blue-200 dark:border-blue-800 px-4 py-2.5 flex items-center justify-between text-sm">
+      <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
         <Info className="w-4 h-4 flex-shrink-0" />
         <span>{message}</span>
       </div>
@@ -38,7 +38,7 @@ export default function RolloverBanner() {
             localStorage.setItem(LAST_SEEN_KEY, activeYear);
           }
         }}
-        className="text-blue-600 hover:text-blue-800 p-0.5"
+        className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 p-0.5"
       >
         <X className="w-4 h-4" />
       </button>
