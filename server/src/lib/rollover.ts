@@ -33,11 +33,102 @@ export interface ArchiveSchoolYearResult {
   yearLabel: string;
 }
 
-/**
- * Shared archive function used by both auto-rollover and manual admin archive.
- * Runs advisory lock + idempotency check + all archive writes in one transaction.
- * Post-transaction: year lock, audit log, SSE broadcast, legacy gradeLock reset.
- */
+// ---------------------------------------------------------------------------
+// archiveYearInTx — the SINGLE archive core. Receives a Prisma transaction
+// client. Never opens its own transaction or acquires advisory locks.
+// Contains: idempotency check, snapshot-gap check, all five archive writes,
+// legacy gradeLock reset.
+// ---------------------------------------------------------------------------
+async function archiveYearInTx(
+  tx: Prisma.TransactionClient,
+  opts: { schoolYearId: string; yearLabel: string; reason: string }
+): Promise<{ outcome: "archived" | "no_change" | "error"; error?: string }> {
+  const { schoolYearId, yearLabel, reason } = opts;
+
+  const year = await tx.schoolYear.findUnique({ where: { id: schoolYearId } });
+  if (!year) {
+    return { outcome: "error", error: "School year not found" };
+  }
+  if (year.status === "ARCHIVED") {
+    return { outcome: "no_change" };
+  }
+
+  // Snapshot gap check: verify EOSY snapshots exist for all finalized grades
+  const [finalizedCounts, snapshotCounts] = await Promise.all([
+    tx.grade.groupBy({
+      by: ["classAssignmentId"],
+      where: { classAssignment: { schoolYear: yearLabel }, status: "FINALIZED" },
+      _count: { id: true },
+    }),
+    tx.gradeSnapshot.groupBy({
+      by: ["sectionId"],
+      where: { schoolYear: yearLabel, snapshot: { path: ["source"], equals: "EOSY_FINALIZE" } },
+      _count: { id: true },
+    }),
+  ]);
+
+  const cas = await tx.classAssignment.findMany({
+    where: { schoolYear: yearLabel },
+    select: { id: true, sectionId: true },
+  });
+  const caToSection = new Map(cas.map((ca) => [ca.id, ca.sectionId]));
+
+  const finalizedBySection = new Map<string, number>();
+  for (const fc of finalizedCounts) {
+    const sectionId = caToSection.get(fc.classAssignmentId);
+    if (sectionId) {
+      finalizedBySection.set(sectionId, (finalizedBySection.get(sectionId) ?? 0) + fc._count.id);
+    }
+  }
+
+  const snapshotsBySection = new Map(snapshotCounts.map((sc) => [sc.sectionId, sc._count.id]));
+
+  const gapSections: string[] = [];
+  for (const [sectionId, finalCount] of finalizedBySection) {
+    const snapCount = snapshotsBySection.get(sectionId) ?? 0;
+    if (snapCount < finalCount) {
+      const section = await tx.section.findUnique({ where: { id: sectionId }, select: { name: true } });
+      gapSections.push(section?.name ?? sectionId);
+    }
+  }
+  if (gapSections.length > 0) {
+    return { outcome: "error", error: `Snapshot gap detected for sections: ${gapSections.join(", ")}. Finalize EOSY before archiving.` };
+  }
+
+  // All five archive writes + legacy gradeLock reset
+  await tx.grade.updateMany({
+    where: { classAssignment: { schoolYear: yearLabel } },
+    data: { isArchived: true, archivedReason: reason },
+  });
+  await tx.enrollment.updateMany({
+    where: { schoolYear: yearLabel },
+    data: { isArchived: true, archivedReason: reason },
+  });
+  await tx.section.updateMany({
+    where: { schoolYear: yearLabel },
+    data: { status: "COMPLETED", archivedAt: new Date() },
+  });
+  await tx.classAssignment.updateMany({
+    where: { schoolYear: yearLabel },
+    data: { isActive: false, archivedAt: new Date(), archivedReason: reason },
+  });
+  await tx.schoolYear.update({
+    where: { id: schoolYearId },
+    data: { status: "ARCHIVED", archivedAt: new Date() },
+  });
+  await tx.systemSettings.update({
+    where: { id: "main" },
+    data: { gradeLock: false },
+  });
+
+  return { outcome: "archived" };
+}
+
+// ---------------------------------------------------------------------------
+// archiveSchoolYear — public entry point for manual admin archive.
+// Wraps archiveYearInTx in its own transaction with advisory lock.
+// Post-transaction: year lock, audit log, SSE broadcast.
+// ---------------------------------------------------------------------------
 export async function archiveSchoolYear(opts: {
   schoolYearId: string;
   yearLabel: string;
@@ -48,84 +139,7 @@ export async function archiveSchoolYear(opts: {
 
   const txResult = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLLOVER_ADVISORY_KEY})`;
-
-    const year = await tx.schoolYear.findUnique({ where: { id: schoolYearId } });
-    if (!year) {
-      return { outcome: "error" as const, error: "School year not found" };
-    }
-    if (year.status === "ARCHIVED") {
-      return { outcome: "no_change" as const, error: "Year is already archived" };
-    }
-
-    // Snapshot gap check: verify EOSY snapshots exist for all finalized grades
-    const [finalizedCounts, snapshotCounts] = await Promise.all([
-      tx.grade.groupBy({
-        by: ["classAssignmentId"],
-        where: { classAssignment: { schoolYear: yearLabel }, status: "FINALIZED" },
-        _count: { id: true },
-      }),
-      tx.gradeSnapshot.groupBy({
-        by: ["sectionId"],
-        where: { schoolYear: yearLabel, snapshot: { path: ["source"], equals: "EOSY_FINALIZE" } },
-        _count: { id: true },
-      }),
-    ]);
-
-    // Map section → finalized grade count via classAssignment → section
-    const cas = await tx.classAssignment.findMany({
-      where: { schoolYear: yearLabel },
-      select: { id: true, sectionId: true },
-    });
-    const caToSection = new Map(cas.map((ca) => [ca.id, ca.sectionId]));
-
-    const finalizedBySection = new Map<string, number>();
-    for (const fc of finalizedCounts) {
-      const sectionId = caToSection.get(fc.classAssignmentId);
-      if (sectionId) {
-        finalizedBySection.set(sectionId, (finalizedBySection.get(sectionId) ?? 0) + fc._count.id);
-      }
-    }
-
-    const snapshotsBySection = new Map(snapshotCounts.map((sc) => [sc.sectionId, sc._count.id]));
-
-    const gapSections: string[] = [];
-    for (const [sectionId, finalCount] of finalizedBySection) {
-      const snapCount = snapshotsBySection.get(sectionId) ?? 0;
-      if (snapCount < finalCount) {
-        const section = await tx.section.findUnique({ where: { id: sectionId }, select: { name: true } });
-        gapSections.push(section?.name ?? sectionId);
-      }
-    }
-    if (gapSections.length > 0) {
-      return { outcome: "error" as const, error: `Snapshot gap detected for sections: ${gapSections.join(", ")}. Finalize EOSY before archiving.` };
-    }
-
-    await tx.grade.updateMany({
-      where: { classAssignment: { schoolYear: yearLabel } },
-      data: { isArchived: true, archivedReason: reason },
-    });
-    await tx.enrollment.updateMany({
-      where: { schoolYear: yearLabel },
-      data: { isArchived: true, archivedReason: reason },
-    });
-    await tx.section.updateMany({
-      where: { schoolYear: yearLabel },
-      data: { status: "COMPLETED", archivedAt: new Date() },
-    });
-    await tx.classAssignment.updateMany({
-      where: { schoolYear: yearLabel },
-      data: { isActive: false, archivedAt: new Date(), archivedReason: reason },
-    });
-    await tx.schoolYear.update({
-      where: { id: schoolYearId },
-      data: { status: "ARCHIVED", archivedAt: new Date() },
-    });
-    await tx.systemSettings.update({
-      where: { id: "main" },
-      data: { gradeLock: false },
-    });
-
-    return { outcome: "archived" as const };
+    return archiveYearInTx(tx, { schoolYearId, yearLabel, reason });
   });
 
   if (txResult.outcome === "error") {
@@ -165,6 +179,11 @@ export async function archiveSchoolYear(opts: {
   return { ok: true, schoolYearId, yearLabel };
 }
 
+// ---------------------------------------------------------------------------
+// handleYearChangeRollover — auto-rollover triggered by school year change.
+// Uses archiveYearInTx inside its transaction (no duplicate writes).
+// RETHROWS on archive failure so schoolYearResolver can revert the FK.
+// ---------------------------------------------------------------------------
 export async function handleYearChangeRollover(
   previousSchoolYearId: string,
   previousYearLabel: string,
@@ -177,85 +196,72 @@ export async function handleYearChangeRollover(
 
   const actor = { id: "system", name: "Rollover Scheduler" };
 
-  try {
-    // Fail-safe: lock the previous year FIRST so it's at least locked if archive fails
-    await setYearLock(previousSchoolYearId, true, actor);
+  // Fail-safe: lock the previous year FIRST so it's at least locked if archive fails
+  await setYearLock(previousSchoolYearId, true, actor);
 
-    const result = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLLOVER_ADVISORY_KEY})`;
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLLOVER_ADVISORY_KEY})`;
 
-      const prevYear = await tx.schoolYear.findUnique({ where: { id: previousSchoolYearId } });
-      if (!prevYear || prevYear.status === "ARCHIVED") {
-        return { outcome: "no_change" as const };
-      }
+    const prevYear = await tx.schoolYear.findUnique({ where: { id: previousSchoolYearId } });
+    if (!prevYear || prevYear.status === "ARCHIVED") {
+      return { outcome: "no_change" as const };
+    }
 
-      const unfinalized = await listUnfinalizedSections(previousYearLabel);
+    const unfinalized = await listUnfinalizedSections(previousYearLabel);
 
-      if (unfinalized.length === 0) {
-        await tx.grade.updateMany({
-          where: { classAssignment: { schoolYear: previousYearLabel } },
-          data: { isArchived: true, archivedReason: `Rollover: ${previousYearLabel} archived` },
-        });
-        await tx.enrollment.updateMany({
-          where: { schoolYear: previousYearLabel },
-          data: { isArchived: true, archivedReason: `Rollover: ${previousYearLabel} archived` },
-        });
-        await tx.section.updateMany({
-          where: { schoolYear: previousYearLabel },
-          data: { status: "COMPLETED", archivedAt: new Date() },
-        });
-        await tx.classAssignment.updateMany({
-          where: { schoolYear: previousYearLabel },
-          data: { isActive: false, archivedAt: new Date(), archivedReason: `Rollover: ${previousYearLabel} archived` },
-        });
-        await tx.schoolYear.update({
-          where: { id: previousSchoolYearId },
-          data: { status: "ARCHIVED", archivedAt: new Date() },
-        });
-        await tx.systemSettings.update({
-          where: { id: "main" },
-          data: { gradeLock: false },
-        });
-        return { outcome: "archived" as const, unfinalizedCount: 0 };
-      }
+    if (unfinalized.length === 0) {
+      // Use the shared core — includes snapshot-gap check + all archive writes
+      const archiveResult = await archiveYearInTx(tx, {
+        schoolYearId: previousSchoolYearId,
+        yearLabel: previousYearLabel,
+        reason: `Rollover: ${previousYearLabel} archived`,
+      });
+      return archiveResult;
+    }
 
-      return { outcome: "locked_not_archived" as const, unfinalizedCount: unfinalized.length, unfinalized };
+    return { outcome: "locked_not_archived" as const, unfinalizedCount: unfinalized.length, unfinalized };
+  });
+
+  if (result.outcome === "no_change") {
+    return { action: "no_change", previousYearId: previousSchoolYearId, previousYearLabel, newYearId: newSchoolYearId, newYearLabel };
+  }
+
+  if (result.outcome === "error") {
+    // Rethrow so schoolYearResolver's catch fires → FK revert → self-healing retry
+    throw new Error(`Rollover archive failed: ${result.error}`);
+  }
+
+  // Post-transaction side-effects (outside the advisory lock scope)
+  if (result.outcome === "archived") {
+    await createAuditLog(
+      AuditAction.CONFIG,
+      { id: "system", firstName: "System", lastName: "", role: "ADMIN" },
+      `School Year Rollover: ${previousYearLabel} → ${newYearLabel}`,
+      "Config",
+      `Previous year ${previousYearLabel} fully finalized — archived cleanly. New year ${newYearLabel} activated.`,
+      undefined,
+      AuditSeverity.WARNING
+    );
+
+    broadcastSseEvent("SCHOOL_YEAR_ROLLOVER", {
+      action: "archived",
+      previousYear: previousYearLabel,
+      newYear: newYearLabel,
     });
 
-    if (result.outcome === "no_change") {
-      return { action: "no_change", previousYearId: previousSchoolYearId, previousYearLabel, newYearId: newSchoolYearId, newYearLabel };
-    }
+    logger.info(`[Rollover] ${previousYearLabel} fully finalized — archived cleanly. ${newYearLabel} activated.`);
+    return {
+      action: "archived",
+      previousYearId: previousSchoolYearId,
+      previousYearLabel,
+      newYearId: newSchoolYearId,
+      newYearLabel,
+      unfinalizedCount: 0,
+    };
+  }
 
-    // Post-transaction side-effects (outside the advisory lock scope)
-    if (result.outcome === "archived") {
-      await createAuditLog(
-        AuditAction.CONFIG,
-        { id: "system", firstName: "System", lastName: "", role: "ADMIN" },
-        `School Year Rollover: ${previousYearLabel} → ${newYearLabel}`,
-        "Config",
-        `Previous year ${previousYearLabel} fully finalized — archived cleanly. New year ${newYearLabel} activated.`,
-        undefined,
-        AuditSeverity.WARNING
-      );
-
-      broadcastSseEvent("SCHOOL_YEAR_ROLLOVER", {
-        action: "archived",
-        previousYear: previousYearLabel,
-        newYear: newYearLabel,
-      });
-
-      logger.info(`[Rollover] ${previousYearLabel} fully finalized — archived cleanly. ${newYearLabel} activated.`);
-      return {
-        action: "archived",
-        previousYearId: previousSchoolYearId,
-        previousYearLabel,
-        newYearId: newSchoolYearId,
-        newYearLabel,
-        unfinalizedCount: 0,
-      };
-    }
-
-    // locked_not_archived
+  // locked_not_archived
+  if (result.outcome === "locked_not_archived") {
     await createAuditLog(
       AuditAction.CONFIG,
       { id: "system", firstName: "System", lastName: "", role: "ADMIN" },
@@ -271,7 +277,7 @@ export async function handleYearChangeRollover(
       previousYear: previousYearLabel,
       newYear: newYearLabel,
       unfinalizedCount: result.unfinalizedCount,
-      unfinalizedSections: result.unfinalized!.map((s) => ({ id: s.sectionId, name: s.sectionName, draftBlockerCount: s.draftBlockerCount })),
+      unfinalizedSections: result.unfinalized.map((s) => ({ id: s.sectionId, name: s.sectionName, draftBlockerCount: s.draftBlockerCount })),
     });
 
     logger.warn(`[Rollover] ${previousYearLabel} has ${result.unfinalizedCount} unfinalized section(s) — locked but NOT archived. Admin action required.`);
@@ -284,8 +290,8 @@ export async function handleYearChangeRollover(
       newYearLabel,
       unfinalizedCount: result.unfinalizedCount,
     };
-  } catch (err) {
-    logger.error(`[Rollover] Transaction failed: ${err}`);
-    return { action: "no_change", previousYearId: previousSchoolYearId, previousYearLabel, newYearId: newSchoolYearId, newYearLabel };
   }
+
+  // Should not reach here, but handle gracefully
+  return { action: "no_change", previousYearId: previousSchoolYearId, previousYearLabel, newYearId: newSchoolYearId, newYearLabel };
 }
