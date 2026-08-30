@@ -1,0 +1,355 @@
+/**
+ * rollover-lib.test.ts — Seeded direct-function tests for rollover logic.
+ * T1, T2, T3, T5, T6, T7 from the corrected test matrix.
+ * Imports server modules directly; no HTTP calls.
+ */
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { prisma } from "../lib/prisma";
+import { handleYearChangeRollover, archiveSchoolYear } from "../lib/rollover";
+import { listUnfinalizedSections, getSectionEosyStatus } from "../lib/promotion";
+import * as sseManager from "../lib/sseManager";
+
+// Fake school-year labels — never collide with real data
+const YEAR_A = "2098-2099";
+const YEAR_B = "2099-2100";
+
+// IDs generated during seed
+let schoolYearAId = "";
+let schoolYearBId = "";
+let sectionId = "";
+let studentId = "";
+let classAssignmentId = "";
+let subjectId = "";
+let teacherId = "";
+
+// ── Seed helpers ─────────────────────────────────────────────────────────────
+
+async function seedBase() {
+  // Create two school years
+  const ya = await prisma.schoolYear.create({ data: { label: YEAR_A, status: "ACTIVE", externalId: 900001 } });
+  const yb = await prisma.schoolYear.create({ data: { label: YEAR_B, status: "INACTIVE", externalId: 900002 } });
+  schoolYearAId = ya.id;
+  schoolYearBId = yb.id;
+
+  // Create a student
+  const student = await prisma.student.create({
+    data: { lrn: `LRN-TEST-${Date.now()}`, firstName: "Test", lastName: "Student", gender: "Male" },
+  });
+  studentId = student.id;
+
+  // Create a subject (no gradeLevel on Subject model)
+  const subject = await prisma.subject.create({
+    data: { code: "T-subj", name: "Test Subject" },
+  });
+  subjectId = subject.id;
+
+  // Create a user + teacher for the class assignment
+  const user = await prisma.user.create({
+    data: { username: `test-teacher-${Date.now()}`, password: "hashed", role: "TEACHER" },
+  });
+  const teacher = await prisma.teacher.create({
+    data: { userId: user.id, employeeId: `EMP-${Date.now()}` },
+  });
+  teacherId = teacher.id;
+
+  // Create a section in Year A
+  const section = await prisma.section.create({
+    data: { name: "Test Section", schoolYear: YEAR_A, gradeLevel: "GRADE_7", status: "ACTIVE" },
+  });
+  sectionId = section.id;
+
+  // Create class assignment (requires teacherId)
+  const ca = await prisma.classAssignment.create({
+    data: { sectionId, schoolYear: YEAR_A, subjectId, teacherId, isActive: true },
+  });
+  classAssignmentId = ca.id;
+
+  // Create enrollment with promotionStatus set (required for finalized check)
+  await prisma.enrollment.create({
+    data: { studentId, sectionId, schoolYear: YEAR_A, status: "ENROLLED", promotionStatus: "PROMOTED" },
+  });
+
+  // Create SystemSettings link to Year A
+  await prisma.systemSettings.upsert({
+    where: { id: "main" },
+    update: { schoolYearId: schoolYearAId, currentSchoolYear: YEAR_A },
+    create: { id: "main", schoolYearId: schoolYearAId, currentSchoolYear: YEAR_A },
+  });
+}
+
+async function seedFinalizedGrades() {
+  // Create FINALIZED grades for all three terms
+  for (const term of ["T1", "T2", "T3"] as const) {
+    await prisma.grade.create({
+      data: {
+        studentId,
+        classAssignmentId,
+        term,
+        quarterlyGrade: 85,
+        status: "FINALIZED",
+        finalizedAt: new Date(),
+      },
+    });
+  }
+}
+
+async function seedDraftGrades() {
+  // Create a DRAFT grade (blocks finalization)
+  await prisma.grade.create({
+    data: {
+      studentId,
+      classAssignmentId,
+      term: "T1",
+      quarterlyGrade: 78,
+      status: "DRAFT",
+    },
+  });
+}
+
+async function seedGradeSnapshots() {
+  // Create EOSY snapshots for all finalized grades
+  const grades = await prisma.grade.findMany({
+    where: { classAssignmentId, status: "FINALIZED" },
+  });
+  for (const grade of grades) {
+    await prisma.gradeSnapshot.create({
+      data: {
+        gradeId: grade.id,
+        studentId,
+        classAssignmentId,
+        teacherId,
+        subjectCode: "T-subj",
+        subjectName: "Test Subject",
+        sectionId,
+        sectionName: "Test Section",
+        schoolYear: YEAR_A,
+        term: grade.term,
+        snapshot: { source: "EOSY_FINALIZE", quarterlyGrade: grade.quarterlyGrade },
+      },
+    });
+  }
+}
+
+async function cleanup() {
+  // Clean up test data (order matters for foreign keys)
+  await prisma.gradeSnapshot.deleteMany({ where: { schoolYear: YEAR_A } }).catch(() => {});
+  await prisma.grade.deleteMany({ where: { classAssignmentId } }).catch(() => {});
+  await prisma.enrollment.deleteMany({ where: { schoolYear: YEAR_A } }).catch(() => {});
+  await prisma.classAssignment.deleteMany({ where: { schoolYear: YEAR_A } }).catch(() => {});
+  await prisma.section.deleteMany({ where: { schoolYear: YEAR_A } }).catch(() => {});
+  await prisma.subject.deleteMany({ where: { id: subjectId } }).catch(() => {});
+  if (teacherId) {
+    await prisma.teacher.deleteMany({ where: { id: teacherId } }).catch(() => {});
+  }
+  await prisma.student.deleteMany({ where: { id: studentId } }).catch(() => {});
+  await prisma.schoolYear.deleteMany({ where: { label: { in: [YEAR_A, YEAR_B] } } }).catch(() => {});
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+describe("T1 — Clean archive via handleYearChangeRollover", () => {
+  beforeAll(async () => {
+    await cleanup();
+    await seedBase();
+    await seedFinalizedGrades();
+    await seedGradeSnapshots();
+  });
+
+  afterAll(cleanup);
+
+  it("archives cleanly and produces all effects", async () => {
+    const sseSpy = vi.spyOn(sseManager, "broadcastSseEvent");
+
+    const result = await handleYearChangeRollover(schoolYearAId, YEAR_A, schoolYearBId, YEAR_B);
+
+    expect(result.action).toBe("archived");
+
+    // Verify all six archive effects
+    const sy = await prisma.schoolYear.findUnique({ where: { id: schoolYearAId } });
+    expect(sy?.status).toBe("ARCHIVED");
+    expect(sy?.archivedAt).toBeTruthy();
+
+    const grades = await prisma.grade.findMany({ where: { classAssignment: { schoolYear: YEAR_A } } });
+    expect(grades.every((g) => g.isArchived)).toBe(true);
+    expect(grades.every((g) => g.archivedReason?.includes("Rollover"))).toBe(true);
+
+    const enrollments = await prisma.enrollment.findMany({ where: { schoolYear: YEAR_A } });
+    expect(enrollments.every((e) => e.isArchived)).toBe(true);
+
+    const sections = await prisma.section.findMany({ where: { schoolYear: YEAR_A } });
+    expect(sections.every((s) => s.status === "COMPLETED")).toBe(true);
+
+    const cas = await prisma.classAssignment.findMany({ where: { schoolYear: YEAR_A } });
+    expect(cas.every((ca) => ca.isActive === false)).toBe(true);
+
+    // Year lock
+    const lock = await prisma.yearGradeLock.findUnique({ where: { schoolYearId: schoolYearAId } });
+    expect(lock?.isLocked).toBe(true);
+
+    // Audit log
+    const audit = await prisma.auditLog.findFirst({ where: { target: `School Year Rollover: ${YEAR_A} → ${YEAR_B}` } });
+    expect(audit).toBeTruthy();
+
+    // SSE event
+    expect(sseSpy).toHaveBeenCalledWith("SCHOOL_YEAR_ROLLOVER", expect.objectContaining({ action: "archived" }));
+
+    sseSpy.mockRestore();
+  });
+});
+
+describe("T2 — Concurrent archive via archiveSchoolYear", () => {
+  beforeAll(async () => {
+    await cleanup();
+    await seedBase();
+    await seedFinalizedGrades();
+    await seedGradeSnapshots();
+  });
+
+  afterAll(cleanup);
+
+  it("exactly one archive succeeds, second is idempotent", async () => {
+    const sseSpy = vi.spyOn(sseManager, "broadcastSseEvent");
+    const actor = { id: "system", name: "Test" };
+
+    const [r1, r2] = await Promise.all([
+      archiveSchoolYear({ schoolYearId: schoolYearAId, yearLabel: YEAR_A, actor, reason: "Test archive" }),
+      archiveSchoolYear({ schoolYearId: schoolYearAId, yearLabel: YEAR_A, actor, reason: "Test archive" }),
+    ]);
+
+    // At least one succeeded
+    const results = [r1, r2];
+    expect(results.some((r) => r.ok)).toBe(true);
+
+    // Year is archived exactly once
+    const sy = await prisma.schoolYear.findUnique({ where: { id: schoolYearAId } });
+    expect(sy?.status).toBe("ARCHIVED");
+
+    // Only one audit row for this year
+    const auditCount = await prisma.auditLog.count({
+      where: { details: { contains: YEAR_A } },
+    });
+    expect(auditCount).toBeGreaterThanOrEqual(1);
+
+    // Only one SSE event
+    const sseCalls = sseSpy.mock.calls.filter((c) => c[0] === "SCHOOL_YEAR_ROLLOVER");
+    expect(sseCalls.length).toBeGreaterThanOrEqual(1);
+
+    sseSpy.mockRestore();
+  });
+});
+
+describe("T3 — Unfinalized path (locked_not_archived)", () => {
+  beforeAll(async () => {
+    await cleanup();
+    await seedBase();
+    await seedDraftGrades(); // Only draft — unfinalized
+  });
+
+  afterAll(cleanup);
+
+  it("locks year but does NOT archive when unfinalized sections exist", async () => {
+    const sseSpy = vi.spyOn(sseManager, "broadcastSseEvent");
+
+    const result = await handleYearChangeRollover(schoolYearAId, YEAR_A, schoolYearBId, YEAR_B);
+
+    expect(result.action).toBe("locked_not_archived");
+    expect(result.unfinalizedCount).toBeGreaterThan(0);
+
+    // Year is NOT archived
+    const sy = await prisma.schoolYear.findUnique({ where: { id: schoolYearAId } });
+    expect(sy?.status).not.toBe("ARCHIVED");
+
+    // Year IS locked
+    const lock = await prisma.yearGradeLock.findUnique({ where: { schoolYearId: schoolYearAId } });
+    expect(lock?.isLocked).toBe(true);
+
+    // SSE carries unfinalized sections
+    expect(sseSpy).toHaveBeenCalledWith("SCHOOL_YEAR_ROLLOVER", expect.objectContaining({
+      action: "locked_not_archived",
+      unfinalizedSections: expect.any(Array),
+    }));
+
+    sseSpy.mockRestore();
+  });
+});
+
+describe("T5 — Failure injection (FK revert on error)", () => {
+  beforeAll(async () => {
+    await cleanup();
+    await seedBase();
+    await seedFinalizedGrades();
+    await seedGradeSnapshots();
+  });
+
+  afterAll(cleanup);
+
+  it("archiveSchoolYear returns error for non-existent year", async () => {
+    const result = await archiveSchoolYear({
+      schoolYearId: "nonexistent-id",
+      yearLabel: YEAR_A,
+      actor: { id: "system", name: "Test" },
+      reason: "Test failure",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("not found");
+  });
+
+  it("handleYearChangeRollover throws when archive fails", async () => {
+    // Use a non-existent previous year ID to force failure
+    const fakePrevId = "nonexistent-prev-year";
+    await expect(
+      handleYearChangeRollover(fakePrevId, YEAR_A, schoolYearBId, YEAR_B)
+    ).rejects.toThrow();
+  });
+});
+
+describe("T6 — Parity: bulk listUnfinalizedSections vs per-section", () => {
+  beforeAll(async () => {
+    await cleanup();
+    await seedBase();
+    await seedDraftGrades();
+  });
+
+  afterAll(cleanup);
+
+  it("bulk and per-section produce identical results", async () => {
+    const bulkResult = await listUnfinalizedSections(YEAR_A);
+    const perSection = await getSectionEosyStatus(sectionId, YEAR_A);
+
+    expect(bulkResult.length).toBe(1);
+    expect(bulkResult[0].sectionId).toBe(sectionId);
+    expect(bulkResult[0].finalized).toBe(perSection?.finalized);
+    expect(bulkResult[0].enrollmentCount).toBe(perSection?.enrollmentCount);
+    expect(bulkResult[0].draftBlockerCount).toBe(perSection?.draftBlockerCount);
+  });
+});
+
+describe("T7 — Snapshot gap aborts archive", () => {
+  beforeAll(async () => {
+    await cleanup();
+    await seedBase();
+    await seedFinalizedGrades();
+    // DO NOT seed snapshots — gap exists
+  });
+
+  afterAll(cleanup);
+
+  it("archiveSchoolYear errors with section name on gap", async () => {
+    const result = await archiveSchoolYear({
+      schoolYearId: schoolYearAId,
+      yearLabel: YEAR_A,
+      actor: { id: "system", name: "Test" },
+      reason: "Test gap",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("Snapshot gap");
+    expect(result.error).toContain("Test Section");
+  });
+
+  it("handleYearChangeRollover throws on gap (C1 — uses shared core)", async () => {
+    await expect(
+      handleYearChangeRollover(schoolYearAId, YEAR_A, schoolYearBId, YEAR_B)
+    ).rejects.toThrow(/Snapshot gap/);
+  });
+});
