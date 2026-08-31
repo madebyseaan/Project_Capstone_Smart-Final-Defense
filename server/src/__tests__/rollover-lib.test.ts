@@ -9,9 +9,18 @@ import { handleYearChangeRollover, archiveSchoolYear } from "../lib/rollover";
 import { listUnfinalizedSections, getSectionEosyStatus } from "../lib/promotion";
 import * as sseManager from "../lib/sseManager";
 
+// D1: Capture original SystemSettings BEFORE any test runs
+const originalSettingsPromise = prisma.systemSettings.findUnique({
+  where: { id: "main" },
+  select: { schoolYearId: true, currentSchoolYear: true },
+});
+
 // Fake school-year labels — never collide with real data
 const YEAR_A = "2098-2099";
 const YEAR_B = "2099-2100";
+
+// Captured original SystemSettings for D1 regression guard
+let originalSettings: { schoolYearId: string | null; currentSchoolYear: string | null } | null = null;
 
 // IDs generated during seed
 let schoolYearAId = "";
@@ -69,12 +78,8 @@ async function seedBase() {
     data: { studentId, sectionId, schoolYear: YEAR_A, status: "ENROLLED", promotionStatus: "PROMOTED" },
   });
 
-  // Create SystemSettings link to Year A
-  await prisma.systemSettings.upsert({
-    where: { id: "main" },
-    update: { schoolYearId: schoolYearAId, currentSchoolYear: YEAR_A },
-    create: { id: "main", schoolYearId: schoolYearAId, currentSchoolYear: YEAR_A },
-  });
+  // D1: Do NOT upsert SystemSettings here — it would overwrite live settings
+  // with fake years and never restore them. Rollover functions don't need it.
 }
 
 async function seedFinalizedGrades() {
@@ -351,5 +356,37 @@ describe("T7 — Snapshot gap aborts archive", () => {
     await expect(
       handleYearChangeRollover(schoolYearAId, YEAR_A, schoolYearBId, YEAR_B)
     ).rejects.toThrow(/Snapshot gap/);
+  });
+});
+
+// ── D1 regression guard ──────────────────────────────────────────────────────
+// Fails the suite if any test left live SystemSettings pointing at fake years.
+describe("D1 — SystemSettings regression guard", () => {
+  it("live SystemSettings unchanged after all tests", async () => {
+    const current = await prisma.systemSettings.findUnique({
+      where: { id: "main" },
+      select: { schoolYearId: true, currentSchoolYear: true },
+    });
+    const original = await originalSettingsPromise;
+
+    // If there was no settings row before, there shouldn't be one now
+    // (cleanup deletes fake years, and we never upserted settings)
+    if (!original) {
+      // The archive transaction creates/updates SystemSettings, but cleanup
+      // should have left it in its original state. If it existed before,
+      // it still exists. If it didn't, archiveYearInTx's update would have
+      // failed — so we wouldn't get here.
+      expect(current).toBeTruthy(); // archiveYearInTx created it — that's OK
+      // But the schoolYearId should point at a REAL year, not our fake ones
+      if (current?.schoolYearId) {
+        const linkedYear = await prisma.schoolYear.findUnique({ where: { id: current.schoolYearId } });
+        expect(linkedYear?.label).not.toBe(YEAR_A);
+        expect(linkedYear?.label).not.toBe(YEAR_B);
+      }
+    } else {
+      // Settings existed before — verify they're unchanged
+      expect(current?.schoolYearId).toBe(original.schoolYearId);
+      expect(current?.currentSchoolYear).toBe(original.currentSchoolYear);
+    }
   });
 });
