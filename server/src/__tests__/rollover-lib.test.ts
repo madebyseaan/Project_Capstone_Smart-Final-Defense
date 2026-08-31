@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { prisma } from "../lib/prisma";
 import { handleYearChangeRollover, archiveSchoolYear } from "../lib/rollover";
+import { ensureSchoolYearFromEnrollPro } from "../lib/schoolYearResolver";
 import { listUnfinalizedSections, getSectionEosyStatus } from "../lib/promotion";
 import * as sseManager from "../lib/sseManager";
 
@@ -278,33 +279,63 @@ describe("T3 — Unfinalized path (locked_not_archived)", () => {
   });
 });
 
-describe("T5 — Failure injection (FK revert on error)", () => {
+describe("T5 — Failure injection + FK revert + retry", () => {
+  let origSchoolYearId: string | null = null;
+  let origCurrentSchoolYear: string | null = null;
+
   beforeAll(async () => {
     await cleanup();
     await seedBase();
     await seedFinalizedGrades();
     await seedGradeSnapshots();
+
+    // Link SystemSettings to Year A (required for resolver's FK-revert test)
+    const settings = await prisma.systemSettings.findUnique({ where: { id: "main" }, select: { schoolYearId: true, currentSchoolYear: true } });
+    origSchoolYearId = settings?.schoolYearId ?? null;
+    origCurrentSchoolYear = settings?.currentSchoolYear ?? null;
+    await prisma.systemSettings.update({ where: { id: "main" }, data: { schoolYearId: schoolYearAId, currentSchoolYear: YEAR_A } });
   });
 
-  afterAll(cleanup);
-
-  it("archiveSchoolYear returns error for non-existent year", async () => {
-    const result = await archiveSchoolYear({
-      schoolYearId: "nonexistent-id",
-      yearLabel: YEAR_A,
-      actor: { id: "system", name: "Test" },
-      reason: "Test failure",
+  afterAll(async () => {
+    // Restore original settings (D1 guard)
+    await prisma.systemSettings.update({
+      where: { id: "main" },
+      data: {
+        schoolYearId: origSchoolYearId ?? undefined,
+        currentSchoolYear: origCurrentSchoolYear ?? undefined,
+      },
     });
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("not found");
+    await cleanup();
   });
 
-  it("handleYearChangeRollover throws when archive fails", async () => {
-    // Use a non-existent previous year ID to force failure
-    const fakePrevId = "nonexistent-prev-year";
-    await expect(
-      handleYearChangeRollover(fakePrevId, YEAR_A, schoolYearBId, YEAR_B)
-    ).rejects.toThrow();
+  it("FK reverts on rollover failure, then retry succeeds", async () => {
+    // 1. Mock handleYearChangeRollover to throw (simulates archive failure)
+    const rolloverMod = await import("../lib/rollover");
+    const spy = vi.spyOn(rolloverMod, "handleYearChangeRollover")
+      .mockRejectedValueOnce(new Error("Injected archive failure"));
+
+    // 2. Call resolver — it will: upsert FK to B → call mocked handleYearChangeRollover → throws → catch reverts FK to A
+    const yearB = await prisma.schoolYear.findUnique({ where: { id: schoolYearBId } });
+    const result = await ensureSchoolYearFromEnrollPro(yearB!.externalId!, YEAR_B);
+
+    expect(result.label).toBe(YEAR_B);
+
+    // 3. Assert FK reverted to Year A (the self-healing revert)
+    const settingsAfterFail = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+    expect(settingsAfterFail?.schoolYearId).toBe(schoolYearAId);
+
+    // 4. Restore mock and retry — should succeed
+    spy.mockRestore();
+    const retry = await ensureSchoolYearFromEnrollPro(yearB!.externalId!, YEAR_B);
+    expect(retry.label).toBe(YEAR_B);
+
+    // 5. Assert FK now points to Year B
+    const settingsAfterRetry = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+    expect(settingsAfterRetry?.schoolYearId).toBe(schoolYearBId);
+
+    // 6. Assert Year A is now ARCHIVED
+    const syA = await prisma.schoolYear.findUnique({ where: { id: schoolYearAId } });
+    expect(syA?.status).toBe("ARCHIVED");
   });
 });
 
