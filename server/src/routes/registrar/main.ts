@@ -1779,3 +1779,41 @@ router.get("/sections", authenticateToken, async (req: AuthRequest, res: Respons
 });
 
 } // end registerMainRoutes
+
+// ── Alumni classification predicate (testable pure function) ─────────────────
+// Determines whether a student's latest enrollment qualifies them as alumni.
+// Exported for unit testing; no behavior change to the route.
+export interface EnrollmentRecord {
+  studentId: string;
+  promotionStatus: string | null;
+  status: string;
+  schoolYear: string;
+}
+
+export function isStudentAlumni(
+  latestEnrollment: EnrollmentRecord,
+  allEnrollments: EnrollmentRecord[],
+  currentlyEnrolled: Set<string>,
+  currentSchoolYear: string,
+): boolean {
+  // Currently enrolled students are never alumni
+  if (latestEnrollment.schoolYear === currentSchoolYear && latestEnrollment.status === "ENROLLED") {
+    return false;
+  }
+  // JHS completers are always alumni
+  if (latestEnrollment.promotionStatus === "JHS_COMPLETER") return true;
+  // PROMOTED/CONDITIONALLY_PROMOTED/RETAINED without current-year enrollment
+  // are awaiting re-enrollment, not alumni — unless they have a terminal enrollment
+  const ps = latestEnrollment.promotionStatus;
+  const isContinuing = ps === "PROMOTED" || ps === "CONDITIONALLY_PROMOTED" || ps === "RETAINED";
+  if (isContinuing) {
+    const hasTerminal = allEnrollments.some(
+      (e) =>
+        e.studentId === latestEnrollment.studentId &&
+        e.schoolYear > latestEnrollment.schoolYear &&
+        (e.status === "TRANSFERRED" || e.status === "DROPPED"),
+    );
+    if (!hasTerminal) return false;
+  }
+  return true;
+}
