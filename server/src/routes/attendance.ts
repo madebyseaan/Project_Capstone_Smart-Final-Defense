@@ -11,7 +11,7 @@ import { getActiveSchoolYearLabel } from "../lib/schoolYearResolver";
 
 const router = Router();
 
-async function assertSectionAttendanceWritable(sectionId: string): Promise<string | null> {
+export async function assertSectionAttendanceWritable(sectionId: string): Promise<string | null> {
   const section = await prisma.section.findUnique({ where: { id: sectionId } });
   if (!section) return "Section not found";
   if (section.status === "COMPLETED" || section.archivedAt !== null) {
