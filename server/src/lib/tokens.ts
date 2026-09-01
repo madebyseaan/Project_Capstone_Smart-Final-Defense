@@ -14,7 +14,6 @@ export interface AccessTokenPayload {
   username: string;
   email?: string;
   role: string;
-  isDeveloper?: boolean;
 }
 
 /**

@@ -21,7 +21,6 @@ interface LoginResponse {
     firstName?: string;
     lastName?: string;
     email?: string;
-    isDeveloper?: boolean;
   };
 }
 
@@ -49,14 +48,6 @@ export default function RegistrarLoginPage() {
         password,
       });
 
-      // Verify registrar role or developer access
-      const isDev = Boolean(response.data.user.isDeveloper || response.data.user.username === "999999" || response.data.user.role === "ADMIN");
-      if (response.data.user.role !== "REGISTRAR" && !isDev) {
-        setError("Access denied. This portal is for registrars only.");
-        setIsLoading(false);
-        return;
-      }
-
       sessionStorage.setItem("user_registrar", JSON.stringify(response.data.user));
       sessionStorage.setItem("token_registrar", response.data.token);
       if (response.data.refreshToken) {
@@ -67,8 +58,17 @@ export default function RegistrarLoginPage() {
 
       setSuccess(response.data);
 
+      // Redirect to correct portal based on actual role
+      const role = response.data.user.role;
+      let redirectPath = "/registrar";
+      if (role === "TEACHER") {
+        redirectPath = "/teacher";
+      } else if (role === "ADMIN") {
+        redirectPath = "/admin";
+      }
+
       setTimeout(() => {
-        navigate("/registrar");
+        navigate(redirectPath);
       }, 1000);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {

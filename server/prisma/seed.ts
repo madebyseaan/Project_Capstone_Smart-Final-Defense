@@ -230,8 +230,10 @@ async function main() {
 
   // System Settings
   console.log("Seeding default system settings...");
-  await prisma.systemSettings.create({
-    data: {
+  await prisma.systemSettings.upsert({
+    where: { id: "main" },
+    update: {},
+    create: {
       id: "main",
       schoolName: "Hinigaran National High School",
       schoolId: "300847",

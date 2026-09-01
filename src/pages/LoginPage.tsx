@@ -22,7 +22,6 @@ interface LoginResponse {
     firstName?: string;
     lastName?: string;
     email?: string;
-    isDeveloper?: boolean;
   };
 }
 
@@ -50,15 +49,6 @@ export default function LoginPage() {
         password,
       });
 
-      // Allow only TEACHER role (Admin uses /login/admin, Registrar uses /login/registrar)
-      const allowedRoles = ["TEACHER"];
-      const isDev = Boolean(response.data.user.isDeveloper || response.data.user.username === "999999");
-      if (!allowedRoles.includes(response.data.user.role) && !isDev) {
-        setError("Access denied. This portal is for teachers only.");
-        setIsLoading(false);
-        return;
-      }
-
       // Store in role-specific keys so multiple users can be logged in simultaneously
       const userRole = response.data.user.role === "ADMIN" ? "admin" : response.data.user.role === "REGISTRAR" ? "registrar" : "teacher";
       sessionStorage.setItem(`user_${userRole}`, JSON.stringify(response.data.user));
@@ -72,8 +62,17 @@ export default function LoginPage() {
 
       setSuccess(response.data);
 
+      // Redirect to correct portal based on actual role
+      const role = response.data.user.role;
+      let redirectPath = "/teacher";
+      if (role === "ADMIN") {
+        redirectPath = "/admin";
+      } else if (role === "REGISTRAR") {
+        redirectPath = "/registrar";
+      }
+
       setTimeout(() => {
-        navigate("/teacher");
+        navigate(redirectPath);
       }, 1000);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {

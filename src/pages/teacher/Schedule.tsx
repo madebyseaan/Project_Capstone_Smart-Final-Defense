@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun } from "lucide-react";
+import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun, Coffee, UtensilsCrossed } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,26 @@ interface ScheduleData {
   byDay: Record<string, ScheduleEntry[]>;
   count: number;
 }
+
+// ---------------------------------------------------------------------------
+// Time slot types — class slots and break slots
+// ---------------------------------------------------------------------------
+interface ClassSlot {
+  type: "class";
+  start: string;
+  end: string;
+  entries: Record<string, ScheduleEntry>;
+}
+
+interface BreakSlot {
+  type: "break";
+  start: string;
+  end: string;
+  breakType: "recess" | "lunch";
+  durationMin: number;
+}
+
+type TimeSlot = ClassSlot | BreakSlot;
 
 // ---------------------------------------------------------------------------
 // Constants — matching ClassRecordsList.tsx exactly
@@ -126,6 +146,12 @@ function formatTime12h(time24: string): string {
   const period = h >= 12 ? "PM" : "AM";
   const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/** Convert "HH:MM" to total minutes since midnight for gap calculation */
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,57 +363,98 @@ export default function TeacherSchedule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {timeSlots.map((slot, idx) => (
-                  <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
-                    {/* Time column — single line, no wrap */}
-                    <td className="px-5 py-4 align-middle border-r border-slate-100 whitespace-nowrap">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                          <Clock className="w-4 h-4 text-slate-500" />
-                        </div>
-                        <div className="leading-none">
-                          <p className="text-sm font-black text-slate-800 whitespace-nowrap">{formatTime12h(slot.start)}</p>
-                          <p className="text-[11px] font-semibold text-slate-400 whitespace-nowrap mt-1">{formatTime12h(slot.end)}</p>
-                        </div>
-                      </div>
-                    </td>
-                    {/* Day columns */}
-                    {DAYS.map((day) => {
-                      const entry = slot.entries[day];
-                      if (!entry) {
-                        return (
-                          <td key={day} className="px-2 py-2 align-middle">
-                            <div className={`h-[88px] rounded-2xl ${day === todayKey ? "bg-primary/[0.03]" : "bg-slate-50/50"}`} />
-                          </td>
-                        );
-                      }
-                      const gc = getGradeColors(entry.section.gradeLevel);
-                      return (
-                        <td key={day} className="px-2 py-2 align-top">
-                          <div className={`rounded-2xl border ${gc.cell} p-3 transition-all hover:shadow-md hover:-translate-y-0.5 cursor-default h-[88px] flex flex-col justify-between`}>
-                            {/* Subject */}
-                            <div>
-                              <p className={`text-[13px] font-black ${gc.text} leading-tight line-clamp-1`} title={entry.subject.name}>{shortenSubject(entry.subject.name)}</p>
-                              {/* Section */}
-                              <p className="text-[11px] font-bold text-slate-600 mt-0.5 line-clamp-1">{entry.section.name}</p>
+                {timeSlots.map((slot, idx) => {
+                  // --- Break row ---
+                  if (slot.type === "break") {
+                    const isLunch = slot.breakType === "lunch";
+                    const BreakIcon = isLunch ? UtensilsCrossed : Coffee;
+                    const label = isLunch ? "Lunch Break" : "Recess";
+                    return (
+                      <tr key={`break-${idx}`} className="border-y border-dashed border-slate-200/80">
+                        {/* Time column */}
+                        <td className="px-5 py-3 align-middle border-r border-slate-100 whitespace-nowrap">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isLunch ? "bg-orange-50" : "bg-amber-50"}`}>
+                              <BreakIcon className={`w-4 h-4 ${isLunch ? "text-orange-400" : "text-amber-500"}`} />
                             </div>
-                            {/* Room — always at bottom */}
-                            <div className="flex items-center gap-1">
-                              {entry.roomId != null ? (
-                                <>
-                                  <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                                  <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">Rm {entry.roomId}</span>
-                                </>
-                              ) : (
-                                <span className="text-[11px] text-slate-300">&nbsp;</span>
-                              )}
+                            <div className="leading-none">
+                              <p className="text-sm font-bold text-slate-500 whitespace-nowrap">{formatTime12h(slot.start)}</p>
+                              <p className="text-[11px] font-semibold text-slate-400 whitespace-nowrap mt-1">{formatTime12h(slot.end)}</p>
                             </div>
                           </div>
                         </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                        {/* Day columns — merged break label */}
+                        {DAYS.map((day) => (
+                          <td key={day} className="px-2 py-2 align-middle">
+                            <div className={`h-[88px] rounded-2xl border border-dashed flex flex-col items-center justify-center gap-1 ${
+                              isLunch
+                                ? "border-orange-200/60 bg-orange-50/30"
+                                : "border-amber-200/60 bg-amber-50/30"
+                            }`}>
+                              <BreakIcon className={`w-4 h-4 ${isLunch ? "text-orange-300" : "text-amber-400"}`} />
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLunch ? "text-orange-400" : "text-amber-400"}`}>
+                                {label}
+                              </span>
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  }
+
+                  // --- Class row ---
+                  return (
+                    <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
+                      {/* Time column — single line, no wrap */}
+                      <td className="px-5 py-4 align-middle border-r border-slate-100 whitespace-nowrap">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                            <Clock className="w-4 h-4 text-slate-500" />
+                          </div>
+                          <div className="leading-none">
+                            <p className="text-sm font-black text-slate-800 whitespace-nowrap">{formatTime12h(slot.start)}</p>
+                            <p className="text-[11px] font-semibold text-slate-400 whitespace-nowrap mt-1">{formatTime12h(slot.end)}</p>
+                          </div>
+                        </div>
+                      </td>
+                      {/* Day columns */}
+                      {DAYS.map((day) => {
+                        const entry = slot.entries[day];
+                        if (!entry) {
+                          return (
+                            <td key={day} className="px-2 py-2 align-middle">
+                              <div className={`h-[88px] rounded-2xl ${day === todayKey ? "bg-primary/[0.03]" : "bg-slate-50/50"}`} />
+                            </td>
+                          );
+                        }
+                        const gc = getGradeColors(entry.section.gradeLevel);
+                        return (
+                          <td key={day} className="px-2 py-2 align-top">
+                            <div className={`rounded-2xl border ${gc.cell} p-3 transition-all hover:shadow-md hover:-translate-y-0.5 cursor-default h-[88px] flex flex-col justify-between`}>
+                              {/* Subject */}
+                              <div>
+                                <p className={`text-[13px] font-black ${gc.text} leading-tight line-clamp-1`} title={entry.subject.name}>{shortenSubject(entry.subject.name)}</p>
+                                {/* Section */}
+                                <p className="text-[11px] font-bold text-slate-600 mt-0.5 line-clamp-1">{entry.section.name}</p>
+                              </div>
+                              {/* Room — always at bottom */}
+                              <div className="flex items-center gap-1">
+                                {entry.roomId != null ? (
+                                  <>
+                                    <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                    <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">Rm {entry.roomId}</span>
+                                  </>
+                                ) : (
+                                  <span className="text-[11px] text-slate-300">&nbsp;</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -467,14 +534,43 @@ export default function TeacherSchedule() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function getTimeSlots(entries: ScheduleEntry[]): Array<{ start: string; end: string; entries: Record<string, ScheduleEntry> }> {
-  const slotMap = new Map<string, { start: string; end: string; entries: Record<string, ScheduleEntry> }>();
+
+/** Minimum gap (minutes) to qualify as a break row */
+const BREAK_THRESHOLD_MIN = 15;
+
+function getTimeSlots(entries: ScheduleEntry[]): TimeSlot[] {
+  // 1. Group entries by their exact start-end time pair (existing logic)
+  const slotMap = new Map<string, ClassSlot>();
   for (const entry of entries) {
     const key = `${entry.startTime}-${entry.endTime}`;
     if (!slotMap.has(key)) {
-      slotMap.set(key, { start: entry.startTime, end: entry.endTime, entries: {} });
+      slotMap.set(key, { type: "class", start: entry.startTime, end: entry.endTime, entries: {} });
     }
     slotMap.get(key)!.entries[entry.day.toUpperCase()] = entry;
   }
-  return Array.from(slotMap.values()).sort((a, b) => a.start.localeCompare(b.start));
+
+  const classSlots = Array.from(slotMap.values()).sort((a, b) => a.start.localeCompare(b.start));
+  if (classSlots.length === 0) return [];
+
+  // 2. Detect gaps between consecutive class slots and insert break rows
+  const result: TimeSlot[] = [classSlots[0]];
+  for (let i = 1; i < classSlots.length; i++) {
+    const prevEnd = timeToMinutes(classSlots[i - 1].end);
+    const nextStart = timeToMinutes(classSlots[i].start);
+    const gap = nextStart - prevEnd;
+
+    if (gap >= BREAK_THRESHOLD_MIN) {
+      const breakType = gap >= 45 ? "lunch" : "recess";
+      result.push({
+        type: "break",
+        start: classSlots[i - 1].end,
+        end: classSlots[i].start,
+        breakType,
+        durationMin: gap,
+      });
+    }
+    result.push(classSlots[i]);
+  }
+
+  return result;
 }

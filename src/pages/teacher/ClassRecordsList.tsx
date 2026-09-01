@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { gradesApi, advisoryApi, type ClassAssignment, type GradeDeadlineInfo } from "@/lib/api";
+import { gradesApi, advisoryApi, adminApi, type ClassAssignment, type GradeDeadlineInfo, type TermLabels } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { GradeStatusBanner } from "@/components/GradeStatusBanner";
 import { useSyncStream } from "@/hooks/useSyncStream";
@@ -202,6 +202,7 @@ export default function ClassRecordsList() {
   const [classes, setClasses] = useState<ClassAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [gradeDeadline, setGradeDeadline] = useState<GradeDeadlineInfo | null>(null);
+  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
@@ -217,12 +218,14 @@ export default function ClassRecordsList() {
   useEffect(() => {
     const fetchClasses = async () => {
       try {
-        const [classesRes, deadlineRes] = await Promise.all([
+        const [classesRes, deadlineRes, settingsRes] = await Promise.all([
           gradesApi.getMyClasses(),
           gradesApi.getDeadlineStatus().catch(() => ({ data: { gradeDeadline: null } })),
+          adminApi.getSettings().catch(() => ({ data: { termLabels: { T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" } } })),
         ]);
         setClasses(classesRes.data);
         setGradeDeadline(deadlineRes.data.gradeDeadline);
+        if (settingsRes.data.termLabels) setTermLabels(settingsRes.data.termLabels);
       } catch (err) {
         console.error("Failed to fetch classes:", err);
       } finally {
@@ -306,6 +309,7 @@ export default function ClassRecordsList() {
         termEndDate={gradeDeadline?.currentTerm === "T1" ? gradeDeadline?.t1EndDate : gradeDeadline?.currentTerm === "T2" ? gradeDeadline?.t2EndDate : gradeDeadline?.t3EndDate}
         gradeLock={gradeDeadline?.gradeLock ?? false}
         colors={colors}
+        termLabels={termLabels}
       />
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">

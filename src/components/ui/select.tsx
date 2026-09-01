@@ -64,12 +64,14 @@ function SelectContent({
   align = "start",
   alignOffset = 0,
   alignItemWithTrigger = false,
+  avoidCollisions = true,
+  position = "item-aligned",
   searchable,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
     SelectPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
+    "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger" | "avoidCollisions" | "position"
   > & {
     searchable?: boolean
   }) {
@@ -134,6 +136,8 @@ function SelectContent({
         align={align}
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
+        avoidCollisions={avoidCollisions}
+        position={position}
         className="isolate z-50"
       >
         <SelectPrimitive.Popup

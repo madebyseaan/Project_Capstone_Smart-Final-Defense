@@ -258,7 +258,7 @@ export default function TransmutationTable() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Transmutation Table</h1>
           <p className="text-gray-600 mt-1">
-            DepEd grading transmutation — initial grade to quarterly grade
+            DepEd grading transmutation — initial grade to term grade
           </p>
         </div>
         <div className="flex items-center gap-2">

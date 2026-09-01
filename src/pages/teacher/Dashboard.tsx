@@ -14,13 +14,14 @@ import {
   Medal,
   Calendar,
   Sparkles,
+  Clock,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { gradesApi, type ClassAssignment, type GradeDeadlineInfo } from "@/lib/api";
+import { gradesApi, scheduleApi, type ClassAssignment, type GradeDeadlineInfo } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { GradeDeadlineBanner } from "@/components/GradeDeadlineBanner";
 import {
@@ -116,6 +117,17 @@ const gradeLevelLabels: Record<string, string> = {
   GRADE_10: "Grade 10",
 };
 
+function fmtTime12h(time24: string): string {
+  const [h, m] = time24.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function shorten(name: string, max = 14): string {
+  return name.length > max ? name.slice(0, max) + "…" : name;
+}
+
 export default function TeacherDashboard() {
   const { colors } = useTheme();
   const { syncVersion } = useSyncStream();
@@ -132,6 +144,63 @@ export default function TeacherDashboard() {
   const [attentionSectionFilter, setAttentionSectionFilter] = useState<string>("all");
   const [attentionSubjectFilter, setAttentionSubjectFilter] = useState<string>("all");
   const [showAllGrading, setShowAllGrading] = useState(false);
+  const [todayClasses, setTodayClasses] = useState<{ subject: { code: string; name: string }; section: { name: string; gradeLevel: string }; startTime: string; endTime: string; roomId: number | null }[]>([]);
+  const [now, setNow] = useState(new Date());
+
+  // Get current day key (MONDAY, TUESDAY, etc.)
+  const getDayKey = (): string => {
+    const day = new Date().getDay();
+    return ["", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "", ""][day] ?? "";
+  };
+
+  // Auto-advance: update `now` every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Determine current class status from time
+  const getCurrentClassInfo = () => {
+    if (todayClasses.length === 0) return { status: "empty" as const };
+
+    const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+
+    // Sort classes by start time
+    const sorted = [...todayClasses].sort((a, b) => toMin(a.startTime) - toMin(b.startTime));
+    const firstStart = toMin(sorted[0].startTime);
+    const lastEnd = toMin(sorted[sorted.length - 1].endTime);
+
+    // Before school
+    if (currentMin < firstStart) {
+      return { status: "before" as const, next: sorted[0] };
+    }
+
+    // After all classes
+    if (currentMin >= lastEnd) {
+      return { status: "done" as const };
+    }
+
+    // Find current or next class
+    for (const cls of sorted) {
+      const start = toMin(cls.startTime);
+      const end = toMin(cls.endTime);
+      if (currentMin >= start && currentMin < end) {
+        return { status: "active" as const, current: cls };
+      }
+    }
+
+    // Between classes — find next
+    for (const cls of sorted) {
+      if (toMin(cls.startTime) > currentMin) {
+        return { status: "next" as const, next: cls };
+      }
+    }
+
+    return { status: "done" as const };
+  };
+
+  const classInfo = getCurrentClassInfo();
 
   // Fetch mastery distribution with filters
   const fetchMasteryDistribution = async (gradeLevel?: string, sectionId?: string) => {
@@ -149,17 +218,25 @@ export default function TeacherDashboard() {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const [dashboardRes, statsRes, masteryRes, advisoryHonorsRes] = await Promise.all([
+        const [dashboardRes, statsRes, masteryRes, advisoryHonorsRes, scheduleRes] = await Promise.all([
           gradesApi.getDashboard(),
           gradesApi.getDashboardStats(),
           gradesApi.getMasteryDistribution(),
           gradesApi.getAdvisoryHonors(),
+          scheduleApi.getMySchedule().catch(() => ({ data: null })),
         ]);
         setData(dashboardRes.data);
         setStats(statsRes.data);
         setMasteryData(masteryRes.data);
         setAdvisoryHonors(advisoryHonorsRes.data);
         setSelectedHonorsTerm(dashboardRes.data.currentTerm);
+
+        // Extract today's classes from schedule
+        if (scheduleRes.data) {
+          const dayKey = getDayKey();
+          const todayEntries = scheduleRes.data.byDay?.[dayKey] ?? [];
+          setTodayClasses(todayEntries);
+        }
       } catch (err) {
         setError("Failed to load dashboard data");
         console.error(err);
@@ -335,25 +412,87 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
-          <div className="hidden lg:flex flex-col gap-4 min-w-[300px]">
-            <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
+          <div className="hidden lg:flex flex-col gap-3 min-w-[280px] max-w-[320px]">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Overall Passing</p>
-                <p className="text-4xl font-black text-slate-900">{stats?.summary.overallPassingRate.toFixed(0)}%</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Overall Passing</p>
+                <p className="text-3xl font-black text-slate-900 leading-none">{stats?.summary.overallPassingRate.toFixed(0)}%</p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
-                <TrendingUp className="w-7 h-7 text-emerald-500" />
+              <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
+                <TrendingUp className="w-5 h-5 text-emerald-500" />
               </div>
             </div>
-            <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Grade Submission</p>
-                <p className="text-4xl font-black text-slate-900">{stats?.summary.gradeSubmissionRate.toFixed(0)}%</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Grade Submission</p>
+                <p className="text-3xl font-black text-slate-900 leading-none">{stats?.summary.gradeSubmissionRate.toFixed(0)}%</p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
-                <FileCheck className="w-7 h-7 text-indigo-500" />
+              <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
+                <FileCheck className="w-5 h-5 text-indigo-500" />
               </div>
             </div>
+            {/* Today's Classes — dynamic status */}
+            {classInfo.status === "empty" ? (
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Today&apos;s Classes</p>
+                  <p className="text-sm font-bold text-slate-400">No classes today</p>
+                </div>
+                <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center">
+                  <Clock className="w-5 h-5 text-slate-300" />
+                </div>
+              </div>
+            ) : classInfo.status === "done" ? (
+              <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50 flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">All Done</p>
+                  <p className="text-sm font-black text-emerald-700">Great job today!</p>
+                </div>
+                <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                </div>
+              </div>
+            ) : classInfo.status === "before" ? (
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Upcoming</p>
+                  <p className="text-sm font-black text-slate-800 leading-tight">{shorten(classInfo.next.subject.name)}</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">{classInfo.next.section.name} &middot; {fmtTime12h(classInfo.next.startTime)}</p>
+                </div>
+                <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
+                  <Clock className="w-5 h-5 text-amber-500" />
+                </div>
+              </div>
+            ) : classInfo.status === "active" ? (
+              <div className="p-4 rounded-2xl border-2 bg-white flex items-center justify-between" style={{ borderColor: colors.primary + "60" }}>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: colors.primary }} />
+                      <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: colors.primary }} />
+                    </span>
+                    <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: colors.primary }}>Now Teaching</p>
+                  </div>
+                  <p className="text-sm font-black text-slate-800 leading-tight">{shorten(classInfo.current.subject.name)}</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">{classInfo.current.section.name} &middot; {fmtTime12h(classInfo.current.startTime)}–{fmtTime12h(classInfo.current.endTime)}</p>
+                </div>
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary + "15" }}>
+                  <BookOpen className="w-5 h-5" style={{ color: colors.primary }} />
+                </div>
+              </div>
+            ) : (
+              /* next */
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Next Class</p>
+                  <p className="text-sm font-black text-slate-800 leading-tight">{shorten(classInfo.next.subject.name)}</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">{classInfo.next.section.name} &middot; {fmtTime12h(classInfo.next.startTime)}</p>
+                </div>
+                <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
+                  <Clock className="w-5 h-5 text-amber-500" />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

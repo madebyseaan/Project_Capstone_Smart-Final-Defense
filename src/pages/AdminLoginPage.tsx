@@ -22,7 +22,6 @@ interface LoginResponse {
     firstName?: string;
     lastName?: string;
     email?: string;
-    isDeveloper?: boolean;
   };
 }
 
@@ -50,14 +49,6 @@ export default function AdminLoginPage() {
         password,
       });
 
-      // Verify admin role or developer access
-      const isDev = Boolean(response.data.user.isDeveloper || response.data.user.username === "999999");
-      if (response.data.user.role !== "ADMIN" && !isDev) {
-        setError("Access denied. This portal is for administrators only.");
-        setIsLoading(false);
-        return;
-      }
-
       sessionStorage.setItem("user_admin", JSON.stringify(response.data.user));
       sessionStorage.setItem("token_admin", response.data.token);
       if (response.data.refreshToken) {
@@ -68,8 +59,17 @@ export default function AdminLoginPage() {
 
       setSuccess(response.data);
 
+      // Redirect to correct portal based on actual role
+      const role = response.data.user.role;
+      let redirectPath = "/admin";
+      if (role === "TEACHER") {
+        redirectPath = "/teacher";
+      } else if (role === "REGISTRAR") {
+        redirectPath = "/registrar";
+      }
+
       setTimeout(() => {
-        navigate("/admin");
+        navigate(redirectPath);
       }, 1000);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {

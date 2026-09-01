@@ -135,6 +135,14 @@ api.interceptors.response.use(
       }
     }
 
+    // Retry once on 429 (rate limited)
+    if (error.response?.status === 429 && !originalRequest._retry429) {
+      originalRequest._retry429 = true;
+      const retryAfter = parseInt(error.response.headers?.["retry-after"] ?? "2", 10) || 2;
+      await new Promise((r) => setTimeout(r, retryAfter * 1000));
+      return api(originalRequest);
+    }
+
     return Promise.reject(error);
   }
 );
@@ -1032,6 +1040,18 @@ export const registrarApi = {
 
   finalizeEosySection: (sectionId: string, schoolYear: string) =>
     api.post("/registrar/eosy/finalize", { sectionId, schoolYear }),
+
+  finalizeGrades: (sectionId: string, term: string, subjectId: string) =>
+    api.post<{ message: string; finalizedCount: number; sectionId: string; term: string; subjectId: string }>(
+      "/registrar/finalize-grades",
+      { sectionId, term, subjectId },
+    ),
+
+  unfinalizeGrades: (sectionId: string, term: string, subjectId: string) =>
+    api.post<{ message: string; unfinalizedCount: number }>(
+      "/registrar/unfinalize-grades",
+      { sectionId, term, subjectId },
+    ),
 
   getEosyUnfinalizedSections: (schoolYear: string) =>
     api.get("/registrar/eosy/unfinalized-sections", { params: { schoolYear } }),

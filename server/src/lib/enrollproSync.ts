@@ -57,6 +57,25 @@ function mapProgramType(programType: string | null | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
+// EnrollPro status classification
+// EnrollPro uses several variants (TRANSFERRED_OUT, TRANSFERRED_OUT_TO_ALS,
+// DROPPED_OUT, OFFICIALLY_ENROLLED, GRADUATED, COMPLETED, ...). Classify by keyword so no variant
+// is silently skipped. TRANSFERRED_IN means the learner is enrolled HERE.
+// Returns null for statuses we should ignore entirely.
+// ---------------------------------------------------------------------------
+function mapEpEnrollmentStatus(raw: string | null | undefined): 'ENROLLED' | 'DROPPED' | 'TRANSFERRED' | 'GRADUATED' | null {
+  const s = String(raw ?? '').toUpperCase().trim().replace(/[\s-]+/g, '_');
+  if (!s) return null;
+  if (s.includes('TRANSFER')) {
+    return s.includes('_IN') || s.startsWith('TRANSFERRED_IN') ? 'ENROLLED' : 'TRANSFERRED';
+  }
+  if (s.includes('DROP')) return 'DROPPED';
+  if (s.includes('GRADUAT') || s.includes('COMPLETED')) return 'GRADUATED';
+  if (s.includes('ENROLL') || s === 'SECTIONED') return 'ENROLLED';
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Change detection — hash the fields we care about for a student record.
 // Returns a short SHA-256 hex prefix (16 chars) — good enough for drift detection.
 // ---------------------------------------------------------------------------
@@ -478,15 +497,12 @@ export async function runEnrollProSync() {
     logger.debug(`[EnrollProSync] Mapped ${lrnToEpStudentId.size} LRNs to EnrollPro student IDs`);
 
     for (const record of allLearners) {
-      const statusUpper = String(record.status ?? '').toUpperCase();
-      let smartStatus: 'ENROLLED' | 'DROPPED' | 'TRANSFERRED' = 'ENROLLED';
-      if (statusUpper === 'TRANSFERRED_OUT' || statusUpper === 'TRANSFERRED') {
-        smartStatus = 'TRANSFERRED';
-      } else if (statusUpper === 'DROPPED_OUT' || statusUpper === 'DROPPED') {
-        smartStatus = 'DROPPED';
-      } else if (statusUpper !== 'ENROLLED' && statusUpper !== 'OFFICIALLY_ENROLLED' && statusUpper !== 'SECTIONED') {
-        continue;
-      }
+      // EnrollPro may expose status at record level or nested on the learner/enrollment
+      const epStatus = String(
+        record.status ?? record.learner?.status ?? record.enrollment?.status ?? ''
+      ).toUpperCase();
+      const smartStatus = mapEpEnrollmentStatus(epStatus);
+      if (!smartStatus) continue;
 
       const learner = record.learner;
       const sectionName: string = record.section?.name ?? '';
@@ -639,7 +655,7 @@ export async function runEnrollProSync() {
 
         // Collect enrollment dedup and upsert operations (batched below)
         enrollmentDedupPairs.push({ studentId, currentSectionId: resolvedSectionId });
-        enrollmentUpserts.push({ studentId, sectionId: resolvedSectionId, status: smartStatus });
+        enrollmentUpserts.push({ studentId, sectionId: resolvedSectionId, status: smartStatus === 'GRADUATED' ? 'ENROLLED' : smartStatus });
 
         if (!syncedStudentsPerSection.has(resolvedSectionId)) {
           syncedStudentsPerSection.set(resolvedSectionId, new Set());
@@ -824,12 +840,28 @@ export async function runEnrollProSync() {
       // 8. Drop stale enrollments (single batch query instead of per-section)
       let studentsDropped = 0;
     
-      if (!updatedSince) {
+      {
         try {
           // Collect all synced student IDs across all sections
           const allSyncedStudentIds = new Set<string>();
           for (const studentSet of syncedStudentsPerSection.values()) {
             for (const sid of studentSet) allSyncedStudentIds.add(sid);
+          }
+
+          // During delta sync, also fetch the full learners feed to detect stale enrollments
+          // (delta only processes changed students, so we need the full list to know who's gone)
+          if (updatedSince && allSyncedStudentIds.size > 0) {
+            try {
+              const fullLearners = await getAllIntegrationV1Learners();
+              for (const record of fullLearners) {
+                const l = record.learner ?? record;
+                const lrn = String(l.lrn ?? '').trim();
+                if (lrn) {
+                  const dbStudent = await prisma.student.findUnique({ where: { lrn }, select: { id: true } });
+                  if (dbStudent) allSyncedStudentIds.add(dbStudent.id);
+                }
+              }
+            } catch { /* non-fatal — stale check will use whatever IDs we have */ }
           }
 
           // Single query: find all ENROLLED enrollments for this SY
@@ -846,7 +878,7 @@ export async function runEnrollProSync() {
           if (staleIds.length > 0) {
             await prisma.enrollment.updateMany({
               where: { id: { in: staleIds } },
-              data: { status: 'DROPPED' },
+              data: { status: 'TRANSFERRED' },
             });
             studentsDropped = staleIds.length;
             logger.debug(`[EnrollProSync] Batch dropped ${staleIds.length} stale enrollment(s)`);
@@ -854,8 +886,6 @@ export async function runEnrollProSync() {
         } catch (err: any) {
           errors.push(`Stale enrollment cleanup: ${err.message}`);
         }
-      } else {
-        logger.debug(`[EnrollProSync] Delta sync enabled — skipping full roster stale enrollment cleanup.`);
       }
 
     // 9. Drop enrollments in orphaned sections
@@ -900,6 +930,64 @@ export async function runEnrollProSync() {
       } catch (err: any) {
         errors.push(`Orphaned section cleanup: ${err.message}`);
       }
+    }
+
+    // Update enrollment lifecycle fields from SMART students feed
+    try {
+      const { getSmartStudentsFeed } = await import('./enrollproClient');
+      const smartStudents = await getSmartStudentsFeed();
+      logger.info(`[EnrollProSync] Lifecycle: fetched ${smartStudents.length} students from SMART feed`);
+      let lifecycleUpdated = 0;
+      let lifecycleSkippedNoLrn = 0;
+      let lifecycleSkippedNoDbStudent = 0;
+      let lifecycleSkippedNoEnrollment = 0;
+      let lifecycleSkippedNoChange = 0;
+      for (const student of smartStudents) {
+        const lrn = student.lrn;
+        if (!lrn) { lifecycleSkippedNoLrn++; continue; }
+        const eosyStatus = String(student.eosyStatus ?? student.status ?? '').toUpperCase();
+        const dropOutDate = student.dropOutDate ? new Date(student.dropOutDate) : null;
+        const transferOutDate = student.transferOutDate ? new Date(student.transferOutDate) : null;
+        const dropOutReason = student.dropOutReason ?? null;
+        const schoolYearLabel = student.schoolYear?.yearLabel;
+        if (!schoolYearLabel) continue;
+
+        const dbStudent = await prisma.student.findUnique({ where: { lrn }, select: { id: true } });
+        if (!dbStudent) { lifecycleSkippedNoDbStudent++; continue; }
+
+        // Match ENROLLED and DROPPED: the stale-roster cleanup above marks
+        // transferred-out learners DROPPED (they vanish from the learners feed),
+        // so this pass must be able to correct that to TRANSFERRED.
+        const enrollment = await prisma.enrollment.findFirst({
+          where: { studentId: dbStudent.id, schoolYear: schoolYearLabel, status: { in: ['ENROLLED', 'DROPPED'] } },
+          select: { id: true, dropOutDate: true, transferOutDate: true },
+        });
+        if (!enrollment) { lifecycleSkippedNoEnrollment++; continue; }
+
+        const mappedStatus = mapEpEnrollmentStatus(eosyStatus);
+        const updateData: Record<string, any> = {};
+        if (mappedStatus === 'DROPPED') {
+          updateData.status = 'DROPPED';
+          if (dropOutDate && !enrollment.dropOutDate) updateData.dropOutDate = dropOutDate;
+          if (dropOutReason) updateData.dropOutReason = dropOutReason;
+        } else if (mappedStatus === 'TRANSFERRED') {
+          updateData.status = 'TRANSFERRED';
+          if (transferOutDate && !enrollment.transferOutDate) updateData.transferOutDate = transferOutDate;
+        } else {
+          lifecycleSkippedNoChange++;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          await prisma.enrollment.update({ where: { id: enrollment.id }, data: updateData });
+          lifecycleUpdated++;
+        }
+      }
+      if (lifecycleUpdated > 0) {
+        console.log(`[EnrollProSync] Lifecycle: ${lifecycleUpdated} enrollment(s) updated with drop/transfer info`);
+      }
+      logger.info(`[EnrollProSync] Lifecycle: ${smartStudents.length} total, ${lifecycleUpdated} updated, ${lifecycleSkippedNoLrn} no LRN, ${lifecycleSkippedNoDbStudent} no DB student, ${lifecycleSkippedNoEnrollment} no enrollment, ${lifecycleSkippedNoChange} no change`);
+    } catch (err: any) {
+      logger.warn(`[EnrollProSync] Lifecycle feed failed (non-fatal): ${err.message}`);
     }
 
     studentsFetched = allLearners.length;

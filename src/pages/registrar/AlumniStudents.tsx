@@ -9,8 +9,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   GraduationCap,
-  UserX,
   ArrowRightLeft,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { registrarApi } from "@/lib/api";
-import { Breadcrumb } from "@/components/ui/breadcrumb";
+
 import { useTheme } from "@/contexts/ThemeContext";
 
 interface AlumniStudent {
@@ -72,19 +72,18 @@ const formatName = (s: AlumniStudent) => {
 const statusStyles: Record<string, { bg: string; text: string; border: string }> = {
   "ENROLLED": { bg: "bg-green-50", text: "text-green-700", border: "border-green-200" },
   "TRANSFERRED": { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
-  "DROPPED": { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
+  "GRADUATED": { bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
 };
 
 const statusLabels: Record<string, string> = {
   "ENROLLED": "Enrolled",
   "TRANSFERRED": "Transferred",
-  "DROPPED": "NLS",
+  "GRADUATED": "Graduated",
 };
 
 const tabConfig = [
   { key: "all", label: "All", icon: Users },
   { key: "graduated", label: "Graduated", icon: GraduationCap },
-  { key: "DROPPED", label: "NLS", icon: UserX },
   { key: "TRANSFERRED", label: "Transferred", icon: ArrowRightLeft },
 ];
 
@@ -98,7 +97,14 @@ export default function AlumniStudents() {
   const [activeTab, setActiveTab] = useState("all");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
-  const [counts, setCounts] = useState<Record<string, number>>({ all: 0, graduated: 0, DROPPED: 0, TRANSFERRED: 0 });
+  const [syncing, setSyncing] = useState(false);
+  const [counts, setCounts] = useState<Record<string, number>>({ all: 0, graduated: 0, TRANSFERRED: 0 });
+
+  // Sync modal state
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<"syncing" | "complete" | "error">("syncing");
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadAlumni();
@@ -108,18 +114,23 @@ export default function AlumniStudents() {
     loadCounts();
   }, []);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, []);
+
   const loadCounts = async () => {
     try {
-      const [allRes, gradRes, nlsRes, transRes] = await Promise.all([
+      const [allRes, gradRes, transRes] = await Promise.all([
         registrarApi.getAlumni({ limit: 1 }),
         registrarApi.getAlumni({ status: 'graduated', limit: 1 }),
-        registrarApi.getAlumni({ status: 'DROPPED', limit: 1 }),
         registrarApi.getAlumni({ status: 'TRANSFERRED', limit: 1 }),
       ]);
       setCounts({
         all: allRes.data.total || 0,
         graduated: gradRes.data.total || 0,
-        DROPPED: nlsRes.data.total || 0,
         TRANSFERRED: transRes.data.total || 0,
       });
     } catch (err) {
@@ -163,18 +174,87 @@ export default function AlumniStudents() {
     }
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncModalOpen(true);
+    setSyncStatus("syncing");
+    setSyncProgress(0);
+
+    try {
+      // Use lightweight sync instead of full EnrollPro sync
+      const result = await registrarApi.syncInactiveStudents();
+      setSyncProgress(100);
+      setSyncStatus("complete");
+
+      setTimeout(() => {
+        setSyncModalOpen(false);
+        setSyncing(false);
+        void handleSearch();
+        void loadCounts();
+      }, 1200);
+    } catch {
+      setSyncStatus("error");
+      setTimeout(() => {
+        setSyncModalOpen(false);
+        setSyncing(false);
+      }, 2000);
+    }
+  };
+
   const totalPages = Math.ceil(total / rowsPerPage);
   const startItem = page * rowsPerPage + 1;
   const endItem = Math.min((page + 1) * rowsPerPage, total);
 
   return (
     <div className={`p-6 space-y-6 ${theme === 'dark' ? 'bg-gray-900 text-gray-100' : ''}`}>
-      <Breadcrumb
-        items={[
-          { label: "Dashboard", href: "/registrar" },
-          { label: "Former Students" },
-        ]}
-      />
+      {/* Sync Progress Modal */}
+      {syncModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4 text-center">
+            {/* Bouncing Dots */}
+            <div className="flex items-center justify-center gap-2 mb-6">
+              <div className="w-3 h-3 rounded-full bg-[#800000] animate-bounce" style={{ animationDelay: "0ms", animationDuration: "0.6s" }} />
+              <div className="w-3 h-3 rounded-full bg-[#800000] animate-bounce" style={{ animationDelay: "150ms", animationDuration: "0.6s" }} />
+              <div className="w-3 h-3 rounded-full bg-[#800000] animate-bounce" style={{ animationDelay: "300ms", animationDuration: "0.6s" }} />
+            </div>
+
+            {/* Title */}
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
+              {syncStatus === "complete" ? "Sync Complete" : syncStatus === "error" ? "Sync Failed" : "Syncing Student Data"}
+            </h3>
+
+            {/* Subtitle */}
+            <p className="text-sm text-gray-500 mb-6">
+              {syncStatus === "complete"
+                ? "Student data has been synced successfully."
+                : syncStatus === "error"
+                ? "An error occurred during sync. Please try again."
+                : `Fetching enrollment records from EnrollPro...`}
+            </p>
+
+            {/* Progress Bar */}
+            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden mb-4">
+              <div
+                className="h-full rounded-full transition-all duration-300 ease-out"
+                style={{
+                  width: `${syncProgress}%`,
+                  backgroundColor: syncStatus === "complete" ? "#16a34a" : syncStatus === "error" ? "#dc2626" : "#800000",
+                }}
+              />
+            </div>
+
+            {/* Counter */}
+            <p className="text-sm font-semibold text-gray-700">
+              {syncStatus === "complete"
+                ? "Done!"
+                : syncStatus === "error"
+                ? "Failed"
+                : `Syncing data from EnrollPro...`}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Main Card */}
       <Card className={`rounded-2xl shadow-sm ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
@@ -219,6 +299,16 @@ export default function AlumniStudents() {
                   <SelectItem value="GRADE_10">Grade 10</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                disabled={syncing}
+                onClick={() => void handleSync()}
+              >
+                {syncing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+                Sync from EnrollPro
+              </Button>
             </div>
           </div>
 
@@ -319,18 +409,20 @@ export default function AlumniStudents() {
           </div>
 
           {/* Pagination Footer */}
-          <div className={`flex items-center justify-between mt-4 pt-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-100'}`}>
-            <div className="flex items-center gap-4">
-              <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between bg-gray-50/30">
+            <div className="flex items-center gap-4 text-sm font-semibold text-slate-800">
+              <span>
                 Showing {total > 0 ? startItem : 0} to {endItem} of {total} Learners
               </span>
+              <div className="h-4 w-px bg-slate-300 mx-2" />
               <div className="flex items-center gap-2">
-                <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>Rows per page:</span>
+                <span>Rows per page:</span>
                 <Select value={String(rowsPerPage)} onValueChange={(v) => { setRowsPerPage(Number(v)); setPage(0); }}>
-                  <SelectTrigger className={`w-[70px] h-8 text-sm ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                  <SelectTrigger className="w-20" size="sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="15">15</SelectItem>
                     <SelectItem value="25">25</SelectItem>
                     <SelectItem value="50">50</SelectItem>
                     <SelectItem value="100">100</SelectItem>
@@ -340,39 +432,43 @@ export default function AlumniStudents() {
             </div>
             <div className="flex items-center gap-1">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg"
+                className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
                 disabled={page === 0}
                 onClick={() => setPage(0)}
               >
                 <ChevronsLeft className="h-4 w-4" />
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg"
+                className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
                 disabled={page === 0}
                 onClick={() => setPage(p => p - 1)}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="h-8 w-8 flex items-center justify-center rounded-lg text-sm font-medium" style={{ backgroundColor: colors.primary, color: 'white' }}>
-                {page + 1}
-              </div>
               <Button
-                variant="outline"
+                variant="default"
+                size="sm"
+                className="h-9 w-9 rounded-lg bg-[#800000] hover:bg-[#600000] text-white font-bold shadow-sm"
+              >
+                {page + 1}
+              </Button>
+              <Button
+                variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg"
+                className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
                 disabled={page >= totalPages - 1}
                 onClick={() => setPage(p => p + 1)}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg"
+                className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
                 disabled={page >= totalPages - 1}
                 onClick={() => setPage(totalPages - 1)}
               >

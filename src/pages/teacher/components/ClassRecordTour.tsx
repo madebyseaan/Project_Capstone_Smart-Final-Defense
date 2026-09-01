@@ -53,7 +53,7 @@ const TOUR_STEPS: TourStep[] = [
     icon: BookOpen,
     badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
     content:
-      "Welcome! This banner displays your current subject, grade level, and assigned section. SMART automatically determines whether standard DepEd weighted scoring (e.g., 20% Written Work, 50% Performance Tasks, 30% Quarterly Assessment) or Homeroom Guidance qualitative grading mode is active.",
+      "Welcome! This banner displays your current subject, grade level, and assigned section. SMART automatically determines whether standard DepEd weighted scoring (e.g., 20% Written Work, 50% Performance Tasks, 30% Term Assessment) or Homeroom Guidance qualitative grading mode is active.",
     devTip:
       "Click the back arrow on the left anytime to return to your Class Records list and select other subjects.",
     action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
@@ -71,7 +71,7 @@ const TOUR_STEPS: TourStep[] = [
     content:
       "These live metric cards recalculate your Class Average, Passing Rate, Highest Grade, and Students Needing Support in real time as you type scores — giving you instant visibility into student mastery without manual computation.",
     devTip:
-      "Keep an eye on 'Needs Support' (learners below 75.0) to schedule timely remedial sessions before quarterly finalization.",
+      "Keep an eye on 'Needs Support' (learners below 75.0) to schedule timely remedial sessions before term finalization.",
     action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
       setShowAssessmentDetails(false);
       setSelectedColumn(null);

@@ -7,7 +7,9 @@ import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
 import { addSettingsSseClient, removeSettingsSseClient, broadcastSettingsUpdate } from "../../lib/sseManager";
 import { syncEnrollProBranding } from "../../lib/enrollproBrandingSync";
+import { invalidateEnrollProCredentials } from "../../lib/enrollproClient";
 import { getRecentSyncHistory, runUnifiedSync } from "../../lib/syncCoordinator";
+import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
 import { getActiveTermLabels, invalidateSchoolYearCache } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
@@ -57,6 +59,28 @@ export default function (router: Router) {
     } catch (error: any) {
       logger.error("Error running unified sync:", error);
       res.status(500).json({ message: "Failed to run unified sync" });
+    }
+  });
+
+  router.get("/sync-verification", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { buildSyncVerificationReport } = await import("../../lib/syncVerification");
+      const report = await buildSyncVerificationReport();
+      res.json(report);
+    } catch (error) {
+      logger.error("Error building sync verification report:", error);
+      res.status(500).json({ message: "Failed to build sync verification report" });
+    }
+  });
+
+  router.post("/prune", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const dryRun = req.body?.dryRun === true || req.query?.dryRun === 'true';
+      const result = await runPruneFromLiveSources({ dryRun });
+      res.json({ message: dryRun ? 'Prune dry-run complete' : 'Prune complete', result });
+    } catch (error) {
+      logger.error("Error running prune:", error);
+      res.status(500).json({ message: "Failed to run prune" });
     }
   });
 
@@ -556,6 +580,64 @@ export default function (router: Router) {
       }
     }
   );
+
+  // ── EnrollPro Credentials ────────────────────────────────────────────────
+
+  router.get("/settings/enrollpro-credentials", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+      res.json({
+        enrollproUrl: settings?.enrollproUrl || "",
+        enrollproAccountName: settings?.enrollproAccountName || "",
+        enrollproPassword: settings?.enrollproPassword ? "••••••••" : "",
+        enrollproIntegrationKey: settings?.enrollproIntegrationKey ? "••••••••" : "",
+        hasCredentials: !!(settings?.enrollproAccountName && settings?.enrollproPassword),
+      });
+    } catch (error) {
+      logger.error("Error fetching EnrollPro credentials:", error);
+      res.status(500).json({ message: "Failed to fetch EnrollPro credentials" });
+    }
+  });
+
+  router.put("/settings/enrollpro-credentials", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { enrollproUrl, enrollproAccountName, enrollproPassword, enrollproIntegrationKey } = req.body;
+
+      const updateData: Record<string, string | null> = {};
+      if (typeof enrollproUrl === "string") updateData.enrollproUrl = enrollproUrl.trim() || null;
+      if (typeof enrollproAccountName === "string") updateData.enrollproAccountName = enrollproAccountName.trim() || null;
+      if (typeof enrollproPassword === "string" && enrollproPassword !== "••••••••") updateData.enrollproPassword = enrollproPassword.trim() || null;
+      if (typeof enrollproIntegrationKey === "string" && enrollproIntegrationKey !== "••••••••") updateData.enrollproIntegrationKey = enrollproIntegrationKey.trim() || null;
+
+      if (Object.keys(updateData).length === 0) {
+        res.status(400).json({ message: "No valid fields provided" });
+        return;
+      }
+
+      const settings = await prisma.systemSettings.upsert({
+        where: { id: "main" },
+        update: updateData,
+        create: { id: "main", ...updateData },
+      });
+
+      invalidateEnrollProCredentials();
+
+      await createAuditLog(
+        AuditAction.CONFIG,
+        req.user!,
+        "System Settings",
+        "Config",
+        "Updated EnrollPro credentials",
+        req.ip,
+        AuditSeverity.WARNING
+      );
+
+      res.json({ message: "EnrollPro credentials updated", hasCredentials: !!(settings.enrollproAccountName && settings.enrollproPassword) });
+    } catch (error) {
+      logger.error("Error updating EnrollPro credentials:", error);
+      res.status(500).json({ message: "Failed to update EnrollPro credentials" });
+    }
+  });
 
   // ── Term Display Labels ──────────────────────────────────────────────────
 

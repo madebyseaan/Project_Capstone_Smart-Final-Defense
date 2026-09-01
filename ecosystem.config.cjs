@@ -3,8 +3,8 @@ module.exports = {
     {
       name: 'server',
       cwd: './server',
-      script: 'node',
-      args: 'node_modules/ts-node-dev/lib/bin.js --respawn --transpile-only src/index.ts',
+      script: './node_modules/ts-node-dev/lib/bin.js',
+      args: '--respawn --transpile-only src/index.ts',
       wait_ready: true,
       listen_timeout: 15000,
       autorestart: true,
@@ -17,8 +17,7 @@ module.exports = {
     {
       name: 'client',
       cwd: '.',
-      script: 'node',
-      args: 'scripts/wait-for-server.cjs',
+      script: './scripts/wait-for-server.cjs',
       autorestart: true,
       watch: false,
     },

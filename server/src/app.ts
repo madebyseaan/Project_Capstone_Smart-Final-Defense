@@ -17,6 +17,7 @@ import syncRoutes from "./routes/sync";
 import integrationRoutes from "./routes/integration";
 import { globalLimiter } from "./middleware/rateLimiter";
 import { csrfProtection } from "./middleware/csrf";
+import { logger } from "./lib/logger";
 
 const app = express();
 
@@ -52,6 +53,14 @@ app.use("/api/integration", integrationRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Global error handler — catches any unhandled error from routes/middleware
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  logger.error("[global-error-handler]", err?.message ?? err);
+  if (res.headersSent) return;
+  res.status(err?.status ?? 500).json({ message: "Internal server error" });
 });
 
 export default app;

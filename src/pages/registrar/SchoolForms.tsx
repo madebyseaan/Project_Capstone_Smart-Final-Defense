@@ -13,7 +13,8 @@ import {
   Loader2,
   AlertCircle,
   MoreVertical,
-  PrinterIcon
+  PrinterIcon,
+  Download
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,10 +41,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { registrarApi, type Section, SERVER_URL, type SF9Data, type SF10Data } from "@/lib/api";
-import { Breadcrumb } from "@/components/ui/breadcrumb";
+import api, { registrarApi, type Section, SERVER_URL, type SF9Data, type SF10Data, type SF1Data, type SF5Data } from "@/lib/api";
+
 import { HelpTooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
+import SF5Form from "./components/SF5Form";
 
 // Student type for the forms page
 interface FormStudent {
@@ -165,14 +167,16 @@ export default function SchoolForms() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   
   // Form data states
-  const [sf1Data, setSf1Data] = useState<any>(null);
+  const [sf1Data, setSf1Data] = useState<SF1Data | null>(null);
   const [sf2Data, setSf2Data] = useState<any>(null);
-  const [sf5Data, setSf5Data] = useState<any>(null);
+  const [sf5Data, setSf5Data] = useState<SF5Data | null>(null);
   const [sf6Data, setSf6Data] = useState<any>(null);
   const [sf9Data, setSf9Data] = useState<any>(null);
   const [sf10Data, setSf10Data] = useState<any>(null);
   const [bulkSf9Data, setBulkSf9Data] = useState<SF9Data[]>([]);
   const [bulkSf10Data, setBulkSf10Data] = useState<SF10Data[]>([]);
+  const sf1PrintRef = useRef<HTMLDivElement | null>(null);
+  const sf5PrintRef = useRef<HTMLDivElement | null>(null);
   const sf9PrintRef = useRef<HTMLDivElement | null>(null);
   const sf10PrintRef = useRef<HTMLDivElement | null>(null);
   const bulkPrintRef = useRef<HTMLDivElement | null>(null);
@@ -739,53 +743,6 @@ export default function SchoolForms() {
     return { t1: avg('T1'), t2: avg('T2'), t3: avg('T3'), final: avg('final') };
   };
 
-  // DepEd Transmutation Table: raw grade → transmuted grade (whole number)
-  const transmuteGrade = (rawGrade: number | null): number | null => {
-    if (rawGrade === null || rawGrade === undefined) return null;
-    const g = Math.round(rawGrade * 100) / 100;
-    if (g >= 99.50) return 100;
-    if (g >= 97.50) return 99;
-    if (g >= 96.00) return 98;
-    if (g >= 95.00) return 97;
-    if (g >= 94.00) return 96;
-    if (g >= 93.00) return 95;
-    if (g >= 92.00) return 94;
-    if (g >= 91.00) return 93;
-    if (g >= 90.00) return 92;
-    if (g >= 89.00) return 91;
-    if (g >= 88.00) return 90;
-    if (g >= 87.00) return 89;
-    if (g >= 86.00) return 88;
-    if (g >= 85.00) return 87;
-    if (g >= 84.00) return 86;
-    if (g >= 83.00) return 85;
-    if (g >= 82.00) return 84;
-    if (g >= 81.00) return 83;
-    if (g >= 80.00) return 82;
-    if (g >= 79.00) return 81;
-    if (g >= 78.00) return 80;
-    if (g >= 77.00) return 79;
-    if (g >= 76.00) return 78;
-    if (g >= 75.00) return 77;
-    if (g >= 73.00) return 76;
-    if (g >= 70.00) return 75;
-    if (g >= 68.00) return 74;
-    if (g >= 66.00) return 73;
-    if (g >= 64.00) return 72;
-    if (g >= 62.00) return 71;
-    if (g >= 60.00) return 70;
-    if (g >= 58.00) return 69;
-    if (g >= 56.00) return 68;
-    if (g >= 54.00) return 67;
-    if (g >= 52.00) return 66;
-    if (g >= 50.00) return 65;
-    if (g >= 48.00) return 64;
-    if (g >= 46.00) return 63;
-    if (g >= 43.00) return 62;
-    if (g >= 40.00) return 61;
-    return 60;
-  };
-
   // Render SF10 Content Helper — Official DepEd SF10-JHS Layout
   const renderSF10Content = (data: SF10Data) => {
     const studentFirstName = data.student.firstName || data.student.name.split(',')[1]?.trim().split(' ')[0] || '';
@@ -932,7 +889,7 @@ export default function SchoolForms() {
                   LEARNING AREAS
                 </th>
                 <th colSpan={3} className="border-r border-black p-1 text-center text-gray-900 bg-gray-200">
-                  Quarterly Rating
+                  Term Rating
                 </th>
                 <th rowSpan={2} className="border-r border-black p-1 text-center text-gray-900 bg-gray-200" style={{ width: '10%' }}>
                   FINAL<br/>RATING
@@ -955,11 +912,11 @@ export default function SchoolForms() {
                 const cellClass = (val: number | null) =>
                   `border-r border-black p-0.5 text-center ${(val ?? 0) < 75 && val != null ? 'text-red-600 font-bold' : 'text-gray-900'}`;
 
-                // Transmute grades for display (raw → whole number)
-                const t1 = transmuteGrade(vals.t1);
-                const t2 = transmuteGrade(vals.t2);
-                const t3 = transmuteGrade(vals.t3);
-                const finalGrade = transmuteGrade(vals.final);
+                // Backend quarterlyGrade values are already transmuted — display as-is
+                const t1 = vals.t1;
+                const t2 = vals.t2;
+                const t3 = vals.t3;
+                const finalGrade = vals.final;
 
                 return (
                   <tr key={idx} className="border-b border-black">
@@ -983,10 +940,10 @@ export default function SchoolForms() {
               <tr className="border-t-2 border-black bg-gray-100">
                 <td colSpan={4} className="border-r border-black p-1 text-right font-bold text-gray-900">General Average:</td>
                 <td className="border-r border-black p-1 text-center font-bold text-sm text-gray-900">
-                  {transmuteGrade(record.generalAverage) ?? ''}
+                  {record.generalAverage ?? ''}
                 </td>
                 <td className="p-1 text-center text-gray-900">
-                  {record.generalAverage != null ? (transmuteGrade(record.generalAverage)! >= 75 ? 'Passed' : 'Failed') : ''}
+                  {record.generalAverage != null ? (record.generalAverage >= 75 ? 'Passed' : 'Failed') : ''}
                 </td>
               </tr>
             </tbody>
@@ -1071,18 +1028,143 @@ export default function SchoolForms() {
     );
   };
 
+  const renderSF1Content = (data: SF1Data) => {
+    const males = data.students.filter((s) => s.gender === "Male");
+    const females = data.students.filter((s) => s.gender === "Female");
+
+    const renderStudentRow = (s: SF1Student) => (
+      <tr key={`${s.gender}-${s.index}`} className="hover:bg-gray-50">
+        <td className="border border-black p-0.5 text-center">{s.lrn}</td>
+        <td className="border border-black p-0.5">{s.lastName}, {s.firstName} {s.middleName}</td>
+        <td className="border border-black p-0.5 text-center">{s.gender === "Male" ? "M" : "F"}</td>
+        <td className="border border-black p-0.5">{s.birthDate}</td>
+        <td className="border border-black p-0.5 text-center">{s.ageAsOfJune}</td>
+        <td className="border border-black p-0.5">{s.birthPlace}</td>
+        <td className="border border-black p-0.5">{s.motherTongue}</td>
+        <td className="border border-black p-0.5 text-center">{s.ipCommunity}</td>
+        <td className="border border-black p-0.5">{s.religion}</td>
+        <td className="border border-black p-0.5">{s.address.houseStreet}{s.address.barangay ? `, Brgy. ${s.address.barangay}` : ""}{s.address.municipality ? `, ${s.address.municipality}` : ""}{s.address.province ? `, ${s.address.province}` : ""}</td>
+        <td className="border border-black p-0.5">{s.fatherName}</td>
+        <td className="border border-black p-0.5">{s.motherName}</td>
+        <td className="border border-black p-0.5">{s.guardianName}</td>
+        <td className="border border-black p-0.5 text-center">{s.guardianContact}</td>
+        <td className="border border-black p-0.5">{Array.isArray(s.remarks) ? s.remarks.join(", ") : s.remarks || ""}</td>
+      </tr>
+    );
+
+    return (
+      <div className="bg-white border-2 border-gray-400 shadow-xl print-form p-4 mb-8 text-[9px] leading-tight">
+        {/* SF1 Label */}
+        <div className="mb-1">
+          <span className="font-bold text-gray-900 text-xs">SF1</span>
+        </div>
+
+        {/* Header */}
+        <div className="text-center mb-2">
+          <p className="font-bold text-gray-900">Republic of the Philippines</p>
+          <p className="font-bold text-gray-900">Department of Education</p>
+        </div>
+
+        {/* School info bar */}
+        <div className="grid grid-cols-4 gap-x-4 gap-y-0.5 border border-black p-1.5 mb-2 text-[9px]">
+          <div>School ID: <span className="font-bold">{data.schoolSettings?.schoolId}</span></div>
+          <div>Region: <span className="font-bold">{data.schoolSettings?.region}</span></div>
+          <div>Division: <span className="font-bold">{data.schoolSettings?.division}</span></div>
+          <div>District: <span className="font-bold">{data.schoolSettings?.district}</span></div>
+          <div className="col-span-2">School Name: <span className="font-bold">{data.schoolSettings?.schoolName}</span></div>
+          <div>School Year: <span className="font-bold">{data.section.schoolYear}</span></div>
+          <div>Grade Level: <span className="font-bold">{data.section.gradeLevel?.replace("_", " ")}</span></div>
+          <div>Section: <span className="font-bold">{data.section.name}</span></div>
+          <div>Adviser: <span className="font-bold">{data.section.adviserName}</span></div>
+        </div>
+
+        {/* Student table */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse border border-black text-[8px]">
+            <thead>
+              <tr className="bg-gray-200">
+                <th className="border border-black p-0.5 min-w-[80px]">LRN</th>
+                <th className="border border-black p-0.5 min-w-[140px]">NAME (Last, First, Middle)</th>
+                <th className="border border-black p-0.5 min-w-[25px]">Sex</th>
+                <th className="border border-black p-0.5 min-w-[60px]">Birth Date</th>
+                <th className="border border-black p-0.5 min-w-[25px]">Age</th>
+                <th className="border border-black p-0.5 min-w-[60px]">Birth Place</th>
+                <th className="border border-black p-0.5 min-w-[60px]">Mother Tongue</th>
+                <th className="border border-black p-0.5 min-w-[25px]">IP</th>
+                <th className="border border-black p-0.5 min-w-[55px]">Religion</th>
+                <th className="border border-black p-0.5 min-w-[150px]">ADDRESS</th>
+                <th className="border border-black p-0.5 min-w-[100px]">Father</th>
+                <th className="border border-black p-0.5 min-w-[100px]">Mother</th>
+                <th className="border border-black p-0.5 min-w-[80px]">Guardian</th>
+                <th className="border border-black p-0.5 min-w-[60px]">Contact</th>
+                <th className="border border-black p-0.5 min-w-[50px]">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* MALE section */}
+              {males.map(renderStudentRow)}
+              <tr className="bg-gray-100 font-bold">
+                <td colSpan={15} className="border border-black p-0.5 text-right pr-2">TOTAL MALE: {males.length}</td>
+              </tr>
+
+              {/* FEMALE section */}
+              {females.map(renderStudentRow)}
+              <tr className="bg-gray-100 font-bold">
+                <td colSpan={15} className="border border-black p-0.5 text-right pr-2">TOTAL FEMALE: {females.length}</td>
+              </tr>
+
+              {/* COMBINED TOTAL */}
+              <tr className="bg-gray-200 font-bold">
+                <td colSpan={15} className="border border-black p-0.5 text-right pr-2">TOTAL: {data.summary.totalCount}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Remarks Legend */}
+        <div className="mt-2 border border-black p-1.5 text-[7px]">
+          <p className="font-bold mb-0.5">List and Code of Indicators under REMARK column:</p>
+          <div className="grid grid-cols-4 gap-x-4 gap-y-0.5">
+            <div>T/O — Transferred Out</div>
+            <div>T/I — Transferred In</div>
+            <div>DRP — Dropped Out</div>
+            <div>B/A — Balik-Aral</div>
+            <div>CCT — 4Ps Recipient</div>
+            <div>LWD — Learner with Disability</div>
+            <div>ACL — Accelerated</div>
+            <div>LE — Late Enrollment</div>
+          </div>
+        </div>
+
+        {/* Signatures */}
+        <div className="mt-3 grid grid-cols-2 gap-4 text-[9px]">
+          <div className="text-center">
+            <div className="border-b border-gray-600 mt-8 mx-4"></div>
+            <p className="mt-0.5">Prepared by:</p>
+            <p className="text-[8px]">(Signature of Adviser over Printed Name)</p>
+            <p className="mt-1">Date: ___________</p>
+          </div>
+          <div className="text-center">
+            <div className="border-b border-gray-600 mt-8 mx-4"></div>
+            <p className="mt-0.5">Certified Correct:</p>
+            <p className="text-[8px]">(Signature of School Head over Printed Name)</p>
+            <p className="mt-1">Date: ___________</p>
+          </div>
+        </div>
+
+        {/* BoSY / EoSY dates */}
+        <div className="mt-2 flex justify-between text-[8px]">
+          <span>BoSY Date: ___________</span>
+          <span>EoSY Date: ___________</span>
+        </div>
+      </div>
+    );
+  };
+
   // Form List View
   if (viewMode === "list") {
     return (
       <div className="space-y-6 animate-fade-in">
-        {/* Breadcrumb */}
-        <Breadcrumb
-          items={[
-            { label: "Dashboard", href: "/registrar" },
-            { label: "School Forms" },
-          ]}
-        />
-        
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
@@ -1481,62 +1563,60 @@ export default function SchoolForms() {
     );
   }
 
-  // SF1 View - School Register
+  // SF1 View - School Register (DepEd-aligned)
   if (viewMode === "sf1" && sf1Data) {
-    const students = sf1Data.students || [];
-    const section = sf1Data.section || {};
-    const source = sf1Data.source || "local";
+    const handlePrint = () => executePrint(sf1PrintRef, "sf1-print-style");
+
+    const handleDownloadExcel = () => {
+      const token = sessionStorage.getItem("token_registrar");
+      const url = `${api.defaults.baseURL}/registrar/export/sf1/${sf1Data.section.id}?schoolYear=${sf1Data.section.schoolYear}`;
+      // Open in new tab with auth header via fetch
+      fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => res.blob())
+        .then((blob) => {
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = `SF1_${sf1Data.section.name}_${sf1Data.section.schoolYear}.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(blobUrl);
+        })
+        .catch((err) => console.error("Error downloading SF1:", err));
+    };
+
     return (
       <div className="space-y-6 animate-fade-in">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">SF1 - School Register</h2>
-            <p className="text-sm text-gray-500">{section.name} ({section.gradeLevel}) - {section.schoolYear}</p>
-            <p className="text-xs text-gray-400">Source: {source === "enrollpro" ? "EnrollPro" : "Local Database"}</p>
+        <div className="flex items-center justify-between print-hide">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">SF1 - School Register</h2>
+              <p className="text-sm text-gray-500">{sf1Data.section.name} ({sf1Data.section.gradeLevel?.replace("_", " ")}) - {sf1Data.section.schoolYear}</p>
+              <p className="text-xs text-gray-400">
+                {sf1Data.summary.maleCount} Male, {sf1Data.summary.femaleCount} Female, {sf1Data.summary.totalCount} Total
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={handleDownloadExcel} variant="outline" className="rounded-xl">
+              <Download className="w-4 h-4 mr-2" />
+              Download Excel
+            </Button>
+            <Button onClick={handlePrint} className="rounded-xl text-white" style={{ backgroundColor: themeColors.primary }}>
+              <Printer className="w-4 h-4 mr-2" />
+              Print SF1
+            </Button>
           </div>
         </div>
-        <Card className="border-0 shadow-lg rounded-2xl">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="px-4 py-3 text-left font-semibold">#</th>
-                    <th className="px-4 py-3 text-left font-semibold">LRN</th>
-                    <th className="px-4 py-3 text-left font-semibold">Last Name</th>
-                    <th className="px-4 py-3 text-left font-semibold">First Name</th>
-                    <th className="px-4 py-3 text-left font-semibold">Middle Name</th>
-                    <th className="px-4 py-3 text-left font-semibold">Gender</th>
-                    <th className="px-4 py-3 text-left font-semibold">Birth Date</th>
-                    <th className="px-4 py-3 text-left font-semibold">Address</th>
-                    <th className="px-4 py-3 text-left font-semibold">Guardian</th>
-                    <th className="px-4 py-3 text-left font-semibold">Contact</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((s: any) => (
-                    <tr key={s.index} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3">{s.index}</td>
-                      <td className="px-4 py-3 font-mono text-xs">{s.lrn}</td>
-                      <td className="px-4 py-3 font-medium">{s.lastName}</td>
-                      <td className="px-4 py-3">{s.firstName}</td>
-                      <td className="px-4 py-3">{s.middleName || "-"}</td>
-                      <td className="px-4 py-3">{s.gender || "-"}</td>
-                      <td className="px-4 py-3">{s.birthDate ? new Date(s.birthDate).toLocaleDateString() : "-"}</td>
-                      <td className="px-4 py-3 text-xs max-w-[150px] truncate" title={s.address}>{s.address || "-"}</td>
-                      <td className="px-4 py-3 text-xs">{s.guardianName || "-"}</td>
-                      <td className="px-4 py-3 text-xs">{s.guardianContact || "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+
+        <div ref={sf1PrintRef}>
+          {renderSF1Content(sf1Data)}
+        </div>
       </div>
     );
   }
@@ -1592,75 +1672,27 @@ export default function SchoolForms() {
 
   // SF5 View - Promotion Report
   if (viewMode === "sf5" && sf5Data) {
-    const students = sf5Data.students || [];
-    const section = sf5Data.section || {};
-    const summary = sf5Data.summary || {};
+    const handlePrint = () => executePrint(sf5PrintRef, "sf5-print-style");
+
     return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="flex items-center gap-4">
+      <div className="space-y-6 animate-fade-in max-w-[900px] mx-auto">
+        {/* Action Buttons — hidden when printing */}
+        <div className="flex items-center justify-between print-hide">
           <Button variant="ghost" onClick={handleBack} className="rounded-xl">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           <div>
             <h2 className="text-xl font-bold text-gray-900">SF5 - Report on Promotion</h2>
-            <p className="text-sm text-gray-500">{section.name} ({section.gradeLevel}) - {section.schoolYear}</p>
+            <p className="text-sm text-gray-500">{sf5Data.section.name} ({sf5Data.section.gradeLevel}) - {sf5Data.section.schoolYear}</p>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="border-0 shadow-md rounded-xl">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">{summary.promoted || 0}</p>
-              <p className="text-sm text-gray-500">Promoted</p>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-md rounded-xl">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-red-600">{summary.retained || 0}</p>
-              <p className="text-sm text-gray-500">Retained</p>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-md rounded-xl">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-gray-400">{summary.noGrades || 0}</p>
-              <p className="text-sm text-gray-500">No Grades</p>
-            </CardContent>
-          </Card>
-        </div>
-        <Card className="border-0 shadow-lg rounded-2xl">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="px-4 py-3 text-left font-semibold">LRN</th>
-                    <th className="px-4 py-3 text-left font-semibold">Name</th>
-                    <th className="px-4 py-3 text-center font-semibold">General Average</th>
-                    <th className="px-4 py-3 text-center font-semibold">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((s: any, i: number) => (
-                    <tr key={i} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono text-xs">{s.lrn}</td>
-                      <td className="px-4 py-3 font-medium">{s.name}</td>
-                      <td className="px-4 py-3 text-center font-semibold">{s.generalAverage ?? "-"}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          s.promotionStatus === "Promoted" ? "bg-green-100 text-green-700" :
-                          s.promotionStatus === "Retained" ? "bg-red-100 text-red-700" :
-                          "bg-gray-100 text-gray-500"
-                        }`}>
-                          {s.promotionStatus}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+
+        <SF5Form
+          ref={sf5PrintRef}
+          data={sf5Data}
+          onPrint={handlePrint}
+        />
       </div>
     );
   }

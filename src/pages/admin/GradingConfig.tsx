@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { adminApi } from "@/lib/api";
-import type { GradingConfig as GradingConfigType } from "@/lib/api";
+import type { GradingConfig as GradingConfigType, TermLabels } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 
 const subjectTypeInfo: Record<string, { label: string; subjects: string[]; icon: React.ElementType; defaultWeights: string; groupWith?: string; followsNote?: string }> = {
@@ -77,12 +77,20 @@ export default function GradingConfig() {
   const [subjectWeightsLoading, setSubjectWeightsLoading] = useState(false);
   const [subjectFilter, setSubjectFilter] = useState<string>("ALL");
 
+  // Term display labels
+  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+  const [termLabelsDirty, setTermLabelsDirty] = useState(false);
+  const [termLabelsSaving, setTermLabelsSaving] = useState(false);
+
   const fetchConfigs = async () => {
     try {
       setLoading(true);
       const response = await adminApi.getGradingConfig();
       setConfigs(response.data.configs);
       setOriginalConfigs(response.data.configs);
+      if (response.data.termLabels) {
+        setTermLabels(response.data.termLabels);
+      }
       setError(null);
     } catch (err) {
       console.error("Failed to fetch grading config:", err);
@@ -281,6 +289,9 @@ export default function GradingConfig() {
       const response = await adminApi.resetGradingConfig();
       setConfigs(response.data.configs);
       setOriginalConfigs(response.data.configs);
+      if (response.data.termLabels) {
+        setTermLabels(response.data.termLabels);
+      }
       setHasChanges(false);
       setSaveSuccess(true);
       
@@ -297,6 +308,29 @@ export default function GradingConfig() {
       alert("Failed to reset to defaults");
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleSaveTermLabels = async () => {
+    try {
+      setTermLabelsSaving(true);
+      await adminApi.updateTermLabels({
+        termLabelT1: termLabels.T1,
+        termLabelT2: termLabels.T2,
+        termLabelT3: termLabels.T3,
+      });
+      setTermLabelsDirty(false);
+      setSaveSuccess(true);
+      setConfigHistory(prev => [{
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        user: 'Admin',
+        change: `Updated term labels: T1="${termLabels.T1}", T2="${termLabels.T2}", T3="${termLabels.T3}"`
+      }, ...prev.slice(0, 4)]);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "Failed to save term labels");
+    } finally {
+      setTermLabelsSaving(false);
     }
   };
 
@@ -399,6 +433,64 @@ export default function GradingConfig() {
                   <span className="text-xs font-semibold" style={{ color: '#111827' }}>WW 20% · PT 60% · TA 20%</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Term Display Labels */}
+      <Card className="p-0 gap-0 border-0 shadow-md overflow-hidden" style={{ backgroundColor: `${colors.primary}08` }}>
+        <CardContent className="p-5">
+          <div className="flex items-start gap-4">
+            <div className="p-2.5 rounded-xl shrink-0" style={{ backgroundColor: `${colors.primary}18` }}>
+              <BookOpen className="w-5 h-5" style={{ color: colors.primary }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-sm mb-1" style={{ color: '#111827' }}>Term Display Labels</h3>
+              <p className="text-xs text-gray-500 mb-4">
+                Customize the labels shown for each grading term. These appear in teacher dashboards, class records, and school forms.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {(["T1", "T2", "T3"] as const).map((term) => (
+                  <div key={term} className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{term}</Label>
+                    <Input
+                      value={termLabels[term]}
+                      onChange={(e) => {
+                        setTermLabels(prev => ({ ...prev, [term]: e.target.value }));
+                        setTermLabelsDirty(true);
+                      }}
+                      className="h-9 text-sm border-gray-200 rounded-lg"
+                      placeholder={`e.g. Quarterly ${term.slice(1)}`}
+                    />
+                  </div>
+                ))}
+              </div>
+              {termLabelsDirty && (
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="gap-1.5 text-white text-xs font-semibold rounded-lg"
+                    style={{ backgroundColor: colors.primary }}
+                    onClick={handleSaveTermLabels}
+                    disabled={termLabelsSaving}
+                  >
+                    {termLabelsSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                    Save Labels
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs text-gray-500"
+                    onClick={() => {
+                      setTermLabels({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+                      setTermLabelsDirty(false);
+                    }}
+                  >
+                    Reset
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

@@ -101,8 +101,6 @@ src/                              # Frontend (React)
         ├── StudentRecords.tsx    # Student master list
         ├── SectionRosterViewer.tsx # Section rosters
         ├── EOSYFinalization.tsx  # End-of-school-year
-        ├── ApplicationTracker.tsx # Enrollment tracking
-        ├── BOSYQueue.tsx         # Beginning-of-school-year
         ├── RemedialTracker.tsx   # Remedial classes
         ├── TeachingLoad.tsx      # Teacher load
         ├── SchoolForms.tsx       # Form generation
@@ -192,7 +190,6 @@ Each portal (admin/teacher/registrar) has its own sessionStorage keys:
 ### Role Authorization (Two Layers)
 1. **Frontend:** Layout components check `sessionStorage` role → redirect if mismatch
 2. **Backend:** `authorizeRoles()` middleware checks JWT role → 403 if not allowed
-- Developer bypass: only active in development mode (`isDeveloper` flag)
 
 ### Term Sync
 - Current term always fetched live from EnrollPro (`resolveCurrentTerm()`)
@@ -232,11 +229,12 @@ Each portal (admin/teacher/registrar) has its own sessionStorage keys:
 
 ## Gotchas
 - EnrollPro offline = term sync uses DB fallback (correct behavior)
-- Dev user (`999999`) bypasses role checks in development mode only
 - `gradeLock` prevents edits even for current term
 - Past terms are view-only unless teacher has approved edit request
 - Frontend is in `src/` (not `client/src/`)
 - Backend is in `server/src/`
+- **isActive/isArchived query rule:** operational queries (current dashboards, teacher current classes, BOSY) filter `ClassAssignment.isActive` / `Enrollment.isArchived`. Historical/SF-form queries (SF1/SF5/SF10, registrar year-scoped views, EnrollPro sync-grades pull, promotion/EOSY libs) must filter by `schoolYear` string ONLY — never by isActive/isArchived, or prior-year data disappears after rollover archiving.
+- **Grade lock precedence (T2/A1):** archived → year lock → term lock → legacy system-wide `gradeLock`. An APPROVED `GradeEditRequest` bypasses the TERM lock only; it never bypasses archived/year locks (only registrar unfinalize + admin unlock open those). Scheduler locks terms on their end dates and the year on T3 end.
 
 ## Communication
 - English, terse responses

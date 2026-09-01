@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
 import { verifyAccessToken } from "../lib/tokens";
-import { isDevelopment } from "../config/env";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -10,7 +9,6 @@ export interface AuthRequest extends Request {
     username: string;
     role: string;
     email?: string;
-    isDeveloper?: boolean;
     status?: string;
   };
 }
@@ -58,11 +56,6 @@ export const authorizeRoles = (...allowedRoles: string[]) => {
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
-    }
-
-    // Developer bypass: only active in development mode
-    if (isDevelopment() && req.user.isDeveloper) {
-      return next();
     }
 
     if (!allowedRoles.includes(req.user.role)) {

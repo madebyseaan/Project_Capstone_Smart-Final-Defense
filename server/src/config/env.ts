@@ -30,6 +30,25 @@ export function validateEnv(): void {
     console.error("Generate a secure secret: node -e \"console.log(require('crypto').randomBytes(64).toString('hex'))\"\n");
     process.exit(1);
   }
+
+  // Production: verify school-scoped env vars are set
+  if (isProduction()) {
+    const schoolVars = [
+      "ENROLLPRO_SCHOOL_YEAR_ID",
+      "ATLAS_SCHOOL_ID",
+      "ATLAS_SCHOOL_YEAR_ID",
+    ];
+    const missing = schoolVars.filter((v) => !process.env[v]);
+    if (missing.length > 0) {
+      console.error("\n[FATAL] Missing school-scoped environment variables (required in production):");
+      for (const v of missing) {
+        console.error(`  - ${v}`);
+      }
+      console.error("\nSet these in server/.env. Each school deployment MUST have its own values.");
+      console.error("Wrong values = wrong students silently synced.\n");
+      process.exit(1);
+    }
+  }
 }
 
 /**

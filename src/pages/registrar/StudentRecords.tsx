@@ -43,7 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { registrarApi, type Section } from "@/lib/api";
-import { Breadcrumb } from "@/components/ui/breadcrumb";
+
 import { Tooltip, HelpTooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSyncStream } from "@/hooks/useSyncStream";
@@ -323,14 +323,6 @@ export default function StudentRecords() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Breadcrumb */}
-      <Breadcrumb
-        items={[
-          { label: "Dashboard", href: "/registrar" },
-          { label: "Student Records" },
-        ]}
-      />
-      
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>

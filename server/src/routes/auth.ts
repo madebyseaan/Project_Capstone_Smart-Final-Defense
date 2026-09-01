@@ -6,8 +6,8 @@ import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 import { createAuditLog } from "../lib/audit";
 import { validateEnrollProTeacherCredentials } from "../lib/enrollproClient";
+import { getCachedEnrollProTeachers } from "../lib/syncCache";
 import { triggerImmediateSync } from "../lib/syncCoordinator";
-import { isDevelopment } from "../config/env";
 import { logger } from "../lib/logger";
 import { validate } from "../middleware/validate";
 import { loginSchema } from "../schemas/auth";
@@ -50,7 +50,6 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
 
     let user = null;
     let isValidPassword = false;
-    let isDeveloper = false;
     let epAuthResult = null;
     let isEpServiceReachable = false;
 
@@ -74,8 +73,31 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
       if (localMatch) {
         user = localUser;
         isValidPassword = true;
-        isDeveloper = isDevelopment() && user.username === (process.env.DEV_USERNAME || "999999");
-        logger.info(`[Auth] Authenticated local user "${user.username}" (isDeveloper: ${isDeveloper}).`);
+        logger.info(`[Auth] Authenticated local user "${user.username}".`);
+      }
+    }
+
+    // 1b. Faculty gate for locally-authenticated teachers (5-min staleness closer)
+    if (user && isValidPassword && user.role === 'TEACHER') {
+      try {
+        const epFaculty = await getCachedEnrollProTeachers();
+        const employeeId = user.username;
+        if (epFaculty.length > 0 && !epFaculty.some((t) => String(t.employeeId ?? '').trim() === employeeId)) {
+          await createAuditLog(
+            AuditAction.LOGIN,
+            { id: user.id, firstName: user.firstName, lastName: user.lastName, role: user.role },
+            `Login blocked: ${user.username} (not in EnrollPro faculty)`,
+            'Auth',
+            `Login attempt blocked — teacher not enrolled in EnrollPro for current school year`,
+            ipAddress,
+            AuditSeverity.WARNING,
+          );
+          res.status(401).json({ message: 'Account is not enrolled in EnrollPro for the current school year' });
+          return;
+        }
+      } catch {
+        // EP unreachable — fall back to local status check only
+        logger.warn('[Auth] EP faculty list unreachable during login gate — falling back to local status');
       }
     }
 
@@ -100,12 +122,33 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
         const isRegistrarRole = rolesList.some((r) => ['REGISTRAR', 'HEAD_REGISTRAR', 'SCHOOL_REGISTRAR', 'REGISTRATION_OFFICER'].includes(String(r).toUpperCase()));
         const assignedRole = isAdminRole ? 'ADMIN' : (isRegistrarRole ? 'REGISTRAR' : 'TEACHER');
 
+        // Faculty gate: TEACHER must be in EP faculty list
+        let isFacultyMember = true;
+        if (assignedRole === 'TEACHER') {
+          try {
+            const epFaculty = await getCachedEnrollProTeachers();
+            isFacultyMember = epFaculty.length > 0 && epFaculty.some((t) => String(t.employeeId ?? '').trim() === empId);
+          } catch {
+            // EP unreachable — for live-auth, allow existing users only
+            isFacultyMember = false;
+          }
+        }
+
         // Find local user by username or email
         const existingUser = await prisma.user.findFirst({
           where: { OR: [{ username: empId }, { email: userEmail }, { email }] },
         });
 
         if (!existingUser) {
+          if (!isFacultyMember) {
+            // Cannot verify membership or not a faculty member — block
+            res.status(401).json({
+              message: assignedRole === 'TEACHER'
+                ? 'Authenticated on EnrollPro but not a current faculty member. Contact your school administrator.'
+                : 'Authentication failed.',
+            });
+            return;
+          }
           user = await prisma.user.create({
             data: {
               username: empId,
@@ -117,6 +160,18 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
             },
           });
         } else {
+          // Never modify status via live-auth — only prune engine or admin changes status
+          if (!isFacultyMember) {
+            // Block login if not faculty — but don't touch the existing user
+            if (existingUser.status !== 'ACTIVE') {
+              res.status(401).json({ message: 'Authentication failed.' });
+              return;
+            }
+            res.status(401).json({
+              message: 'Authenticated on EnrollPro but not a current faculty member. Contact your school administrator.',
+            });
+            return;
+          }
           user = await prisma.user.update({
             where: { id: existingUser.id },
             data: {
@@ -125,6 +180,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
               role: assignedRole,
               firstName: epUser.firstName ?? existingUser.firstName,
               lastName: epUser.lastName ?? existingUser.lastName,
+              // NOTE: status is NEVER modified here — prune engine or admin owns status
             },
           });
         }
@@ -134,8 +190,8 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
       }
     }
 
-    // Ensure teacher profile exists if teacher or developer
-    if (user && isValidPassword && (user.role === 'TEACHER' || isDeveloper)) {
+    // Ensure teacher profile exists if teacher
+    if (user && isValidPassword && user.role === 'TEACHER') {
       const empId = user.username || email;
       try {
         await prisma.teacher.upsert({
@@ -143,9 +199,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
           update: { userId: user.id },
           create: { employeeId: empId, userId: user.id },
         });
-        if (user.role === 'TEACHER' && !isDeveloper) {
-          triggerImmediateSync('login');
-        }
+        triggerImmediateSync('login');
       } catch (tErr: any) {
         logger.warn(`[Auth] Failed to upsert Teacher record for ${empId}:`, tErr.message);
       }
@@ -169,7 +223,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
     // Check user status — suspended/deactivated users cannot log in
     if (user.status !== "ACTIVE") {
       const statusMessage = user.status === "SUSPENDED"
-        ? "Your account has been suspended. Contact administration."
+        ? "Your account was removed from EnrollPro and can no longer access SMART."
         : "Your account has been deactivated.";
       await createAuditLog(
         AuditAction.LOGIN,
@@ -184,13 +238,32 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
       return;
     }
 
+    if (user.role === "TEACHER") {
+      const sysSettings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+      if (sysSettings?.transitionLock) {
+        await createAuditLog(
+          AuditAction.LOGIN,
+          { id: user.id, firstName: user.firstName, lastName: user.lastName, role: user.role },
+          `Login blocked: ${user.username} (transition lock)`,
+          "Auth",
+          `Login attempt blocked — school year transition in progress`,
+          ipAddress,
+          AuditSeverity.WARNING
+        );
+        res.status(403).json({
+          code: "TRANSITION_LOCKED",
+          message: sysSettings.transitionNote || "School year transition in progress. Please try again later.",
+        });
+        return;
+      }
+    }
+
     // Issue access + refresh token pair
     const accessToken = signAccessToken({
       id: user.id,
       username: user.username,
       email: user.email ?? undefined,
       role: user.role,
-      isDeveloper,
     });
 
     const { raw: refreshRaw, hashed: refreshHashed, expiresAt, familyId } = generateRefreshTokenPair();
@@ -215,7 +288,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
       { id: user.id, firstName: user.firstName, lastName: user.lastName, role: user.role },
       `Login: ${user.email}`,
       "Auth",
-      `${user.firstName || ""} ${user.lastName || ""} (${isDeveloper ? 'DEVELOPER' : user.role}) logged in successfully`,
+      `${user.firstName || ""} ${user.lastName || ""} (${user.role}) logged in successfully`,
       ipAddress,
       AuditSeverity.INFO
     );
@@ -231,7 +304,6 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
         role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
-        isDeveloper,
       },
     });
   } catch (error) {
@@ -311,7 +383,6 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
       username: dbUser.username,
       email: dbUser.email ?? undefined,
       role: dbUser.role,
-      isDeveloper: isDevelopment() && dbUser.username === (process.env.DEV_USERNAME || "999999"),
     });
 
     const { raw: newRefreshRaw, hashed: newRefreshHashed, expiresAt: newExpiresAt } = generateRefreshTokenPair(record.familyId);
@@ -356,14 +427,7 @@ router.get("/me", authenticateToken, async (req: AuthRequest, res: Response): Pr
       return;
     }
 
-    const isDeveloper =
-      isDevelopment() && user.username === (process.env.DEV_USERNAME || "999999") ||
-      Boolean(req.user?.isDeveloper);
-
-    res.json({
-      ...user,
-      isDeveloper,
-    });
+    res.json(user);
   } catch (error) {
     logger.error("Get user error:", error);
     res.status(500).json({ message: "Internal server error" });

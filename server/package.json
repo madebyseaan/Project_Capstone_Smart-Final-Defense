@@ -16,7 +16,8 @@
     "prisma:seed-fresh": "ts-node prisma/seed-grades-fresh.ts",
     "prisma:studio": "prisma studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:wipe": "ts-node scripts/wipe.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

@@ -631,3 +631,11 @@ code {
 .print-form div {
   color: inherit !important;
 }
+
+@media print {
+  .no-print { display: none !important; }
+  .sf1-print-area { font-size: 9px; }
+  .sf1-print-area table { page-break-inside: auto; }
+  .sf1-print-area tr { page-break-inside: avoid; }
+  @page { size: legal landscape; margin: 10mm; }
+}

@@ -9,8 +9,9 @@ import {
 } from './enrollproClient';
 import { resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID } from './sync/httpClient';
 
+import { getAtlasSchoolId } from '../config/schoolEnv';
 const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
-const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1');
+const ATLAS_SCHOOL_ID = getAtlasSchoolId();
 
 export interface TeacherDashboardSnapshot {
   teacher: {

@@ -10,6 +10,7 @@ interface GradeStatusBannerProps {
   editRequestStatus?: "idle" | "pending" | "approved" | "rejected";
   editTimeRemaining?: string;
   onRequestEdit?: () => void;
+  termLabels?: { T1: string; T2: string; T3: string };
 }
 
 function daysBetween(a: Date, b: Date): number {
@@ -17,8 +18,11 @@ function daysBetween(a: Date, b: Date): number {
   return Math.ceil((a.getTime() - b.getTime()) / msPerDay);
 }
 
-function getTermLabel(term: string): string {
-  return term === "T1" ? "Term 1" : term === "T2" ? "Term 2" : term === "T3" ? "Term 3" : term;
+const DEFAULT_LABELS: Record<string, string> = { T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" };
+
+function getTermLabel(term: string, labels?: { T1: string; T2: string; T3: string }): string {
+  if (labels && term in labels) return labels[term as keyof typeof labels];
+  return DEFAULT_LABELS[term] ?? term;
 }
 
 const TERM_ORDER: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
@@ -32,6 +36,7 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
   editRequestStatus = "idle",
   editTimeRemaining,
   onRequestEdit,
+  termLabels,
 }: GradeStatusBannerProps) {
   const isViewingPastTerm = selectedTerm && currentTerm && TERM_ORDER[selectedTerm] < TERM_ORDER[currentTerm];
 
@@ -63,7 +68,7 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
               <span className="font-semibold text-emerald-800">
-                Editing {getTermLabel(selectedTerm!)}
+                Editing {getTermLabel(selectedTerm!, termLabels)}
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
@@ -97,7 +102,7 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
         <div className="flex items-center gap-2">
           <CheckCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <span className="text-slate-600">
-            {getTermLabel(selectedTerm!)} is finalized — read-only
+            {getTermLabel(selectedTerm!, termLabels)} is finalized — read-only
           </span>
         </div>
         {onRequestEdit && (
@@ -164,7 +169,7 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
     <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs mb-3">
       <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
       <span className="text-amber-700">
-        {getTermLabel(currentTerm)} ended — grades editable until locked
+        {getTermLabel(currentTerm, termLabels)} ended — grades editable until locked
       </span>
     </div>
   );

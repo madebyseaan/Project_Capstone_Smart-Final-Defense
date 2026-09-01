@@ -13,6 +13,7 @@
 
 import http from 'http';
 import https from 'https';
+import { getAtlasSchoolId, getAtlasSchoolYearId } from '../../config/schoolEnv';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 3;
@@ -138,7 +139,7 @@ export async function httpPost(
 // ---------------------------------------------------------------------------
 
 const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
-const ATLAS_SCHOOL_ID = Number(process.env.ATLAS_SCHOOL_ID ?? '1');
+const ATLAS_SCHOOL_ID = getAtlasSchoolId();
 
 function atlasAuthHeader(): Record<string, string> {
   const token = process.env.ATLAS_SYSTEM_TOKEN;
@@ -168,7 +169,7 @@ export async function atlasPost(path: string, body: unknown): Promise<any> {
 // Atlas school year resolution
 // ---------------------------------------------------------------------------
 
-const DEFAULT_ATLAS_SCHOOL_YEAR_ID = parseInt(process.env.ATLAS_SCHOOL_YEAR_ID ?? '3', 10);
+const DEFAULT_ATLAS_SCHOOL_YEAR_ID = getAtlasSchoolYearId();
 const ATLAS_SY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 let cachedAtlasSY: { id: number; source: string } | null = null;
@@ -218,6 +219,29 @@ export async function resolveAtlasSchoolYear(): Promise<{ id: number; source: st
   cachedAtlasSY = { id: DEFAULT_ATLAS_SCHOOL_YEAR_ID, source: 'env-fallback' };
   cachedAtlasSYAt = now;
   return cachedAtlasSY;
+}
+
+export interface AtlasRuntimeContext {
+  activeSchoolYearId: number;
+  source: string;
+  upstreamVerified: boolean;
+  activeTerm: {
+    source: string;
+    reachable: boolean;
+    verified: boolean;
+    activeTerm: string;
+    termIndex: number;
+    schoolYearId: number;
+    matchedSchoolYear: boolean;
+  } | null;
+}
+
+export async function getAtlasRuntimeContext(): Promise<AtlasRuntimeContext | null> {
+  try {
+    const data = await atlasGet(`/runtime/context?schoolId=${ATLAS_SCHOOL_ID}&verifyUpstream=true`);
+    if (data?.activeSchoolYearId != null) return data;
+  } catch { /* ATLAS unreachable or no runtime context */ }
+  return null;
 }
 
 export { ATLAS_BASE, ATLAS_SCHOOL_ID, DEFAULT_ATLAS_SCHOOL_YEAR_ID };

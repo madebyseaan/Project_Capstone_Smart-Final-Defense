@@ -34,7 +34,6 @@ import templateRoutes from "./routes/templates";
 import syncRoutes from "./routes/sync";
 import integrationRoutes from "./routes/integration";
 import { startUnifiedSyncScheduler, stopUnifiedSyncScheduler } from "./lib/syncCoordinator";
-import { ensureDevAccount } from "./lib/ensureDevAccount";
 import { prisma } from "./lib/prisma";
 import { globalLimiter } from "./middleware/rateLimiter";
 import { csrfProtection } from "./middleware/csrf";
@@ -194,9 +193,6 @@ const server = app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
 
   // Startup validation: warn if critical env vars are missing
-  if (!process.env.ENROLLPRO_WEBHOOK_KEY) {
-    console.warn("[Startup] WARNING: ENROLLPRO_WEBHOOK_KEY is not set. Webhook endpoints are unprotected.");
-  }
   if (!process.env.CSRF_SECRET && !process.env.JWT_SECRET) {
     console.warn("[Startup] WARNING: Neither CSRF_SECRET nor JWT_SECRET is set. CSRF protection uses fallback secret.");
   }
@@ -205,8 +201,6 @@ const server = app.listen(PORT, async () => {
   if (typeof process.send === "function") {
     process.send("ready");
   }
-  // Ensure universal developer account is ready
-  await ensureDevAccount();
   // Fix SPA/SPS subject types (one-time cleanup, safe to run on every start)
   await reclassifySpecialProgramSubjects();
   // Auto-seed transmutation table if empty (safe to run on every start)
@@ -215,6 +209,8 @@ const server = app.listen(PORT, async () => {
   startUnifiedSyncScheduler();
   // Start auto-term advancement scheduler
   startAutoTermScheduler();
+  // Start retention cleanup scheduler
+  startRetentionCleanupScheduler();
 });
 
 // ── Graceful Shutdown ───────────────────────────────────────────────────────
@@ -274,31 +270,34 @@ function startAutoTermScheduler() {
       if (!settings) return;
 
       const now = new Date();
-      const { currentTerm, t1EndDate, t2EndDate, t3EndDate, gradeLock } = settings;
+      const { t1EndDate, t2EndDate, t3EndDate } = settings;
 
       // NOTE: Term advancement is handled exclusively by resolveCurrentTerm()
       // which queries EnrollPro's /integration/v1/active-term live.
       // The scheduler does NOT advance terms — that would conflict with the live source of truth.
 
-      // Auto-lock grades when current term's end date has passed
-      if (!gradeLock) {
+      // Auto-lock per-term / per-year when term end dates pass (never writes term state)
+      try {
+        const { getActiveSchoolYear } = await import("./lib/schoolYearResolver");
+        const { setTermLock, setYearLock } = await import("./lib/gradeLocks");
+        const activeYear = await getActiveSchoolYear();
+        const actor = { id: "scheduler", name: "Auto-Term Scheduler" };
         const termEndDates: Record<string, Date | null> = {
           T1: t1EndDate,
           T2: t2EndDate,
           T3: t3EndDate,
         };
-        const endDate = termEndDates[currentTerm ?? 'T1'];
-        if (endDate && now > endDate) {
-          await prisma.systemSettings.update({
-            where: { id: "main" },
-            data: { gradeLock: true },
-          });
-          console.log(`[Scheduler] Auto-locked grades for term ${currentTerm} (end date ${endDate.toISOString()} passed)`);
-          // Broadcast lock state change via SSE
-          const { broadcastSettingsUpdate } = await import("./lib/sseManager");
-          const updated = await prisma.systemSettings.findUnique({ where: { id: "main" } });
-          if (updated) broadcastSettingsUpdate(updated);
+        for (const term of ["T1", "T2", "T3"] as const) {
+          const endDate = termEndDates[term];
+          if (endDate && now > endDate) {
+            await setTermLock(activeYear.id, term, true, actor);
+          }
         }
+        if (t3EndDate && now > t3EndDate) {
+          await setYearLock(activeYear.id, true, actor);
+        }
+      } catch (err: any) {
+        console.error("[Scheduler] Failed to apply per-term/year grade locks:", err.message);
       }
 
       // Auto-expire grade edit requests
@@ -322,5 +321,51 @@ function startAutoTermScheduler() {
   // Then run every hour
   setInterval(checkAndAdvanceTerm, CHECK_INTERVAL_MS);
   console.log("[Scheduler] Auto-term advancement scheduler started (checks every 1 hour)");
+}
+
+function startRetentionCleanupScheduler() {
+  const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+  const runCleanup = async () => {
+    try {
+      const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+      if (!settings) return;
+      const now = new Date();
+
+      if (settings.auditLogRetentionDays > 0) {
+        const cutoff = new Date(now.getTime() - settings.auditLogRetentionDays * 86400000);
+        const { count } = await prisma.auditLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+        if (count > 0) console.log(`[Retention] Deleted ${count} audit log(s) older than ${settings.auditLogRetentionDays} days`);
+      }
+
+      if (settings.syncHistoryRetentionDays > 0) {
+        const cutoff = new Date(now.getTime() - settings.syncHistoryRetentionDays * 86400000);
+        const { count } = await prisma.syncHistory.deleteMany({ where: { createdAt: { lt: cutoff } } });
+        if (count > 0) console.log(`[Retention] Deleted ${count} sync history record(s) older than ${settings.syncHistoryRetentionDays} days`);
+      }
+
+      if (settings.gradeSnapshotRetentionDays > 0) {
+        const cutoff = new Date(now.getTime() - settings.gradeSnapshotRetentionDays * 86400000);
+        const count = await prisma.$executeRaw`
+          DELETE FROM "GradeSnapshot" WHERE id IN (
+            SELECT id FROM "GradeSnapshot"
+            WHERE "createdAt" < ${cutoff}
+            AND id NOT IN (
+              SELECT DISTINCT ON ("studentId", "classAssignmentId", "term") id
+              FROM "GradeSnapshot"
+              WHERE "createdAt" < ${cutoff}
+              ORDER BY "studentId", "classAssignmentId", "term", "createdAt" DESC
+            )
+          )`;
+        if (count > 0) console.log(`[Retention] Cleaned ${count} old grade snapshot(s)`);
+      }
+    } catch (err: any) {
+      console.error("[Retention] Cleanup failed:", err.message);
+    }
+  };
+
+  setTimeout(runCleanup, 30_000);
+  setInterval(runCleanup, CHECK_INTERVAL_MS);
+  console.log("[Scheduler] Retention cleanup scheduler started (runs daily)");
 }
 

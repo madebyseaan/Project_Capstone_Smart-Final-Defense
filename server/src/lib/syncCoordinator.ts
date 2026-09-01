@@ -19,6 +19,7 @@ import { runEnrollProSync, getEnrollProSyncStatus } from './enrollproSync';
 import { runAtlasSync, getSyncStatus as getAtlasSyncStatus } from './atlasSync';
 import { syncEnrollProBranding } from './enrollproBrandingSync';
 import { runStudentProfileSync } from './studentProfileSync';
+import { runPruneFromLiveSources } from './prune';
 import { broadcastSyncStatus } from './sseManager';
 import { prisma } from './prisma';
 import { invalidateAllCaches } from './syncCache';
@@ -247,6 +248,25 @@ export async function runUnifiedSync(options?: {
         teachersMatched: 0,
         errors: [err.message],
       };
+    }
+
+    // ── Step 1b: Auto-prune (SSOT enforcement) ──────────────────────────
+    // Runs after successful EnrollPro sync. Fire-and-forget with error logging.
+    if (enrollproResult && enrollproResult.errors.length === 0) {
+      try {
+        const pruneResult = await runPruneFromLiveSources();
+        if (!pruneResult.aborted) {
+          logger.info(
+            `[SyncCoordinator] Prune completed: suspended=${pruneResult.phases.teachersSuspended}, ` +
+            `deleted=${pruneResult.phases.teachersDeleted}, sections=${pruneResult.phases.sectionsDeleted}, ` +
+            `students=${pruneResult.phases.studentsDeleted}`,
+          );
+        } else {
+          logger.warn(`[SyncCoordinator] Prune aborted: ${pruneResult.abortReason}`);
+        }
+      } catch (err: any) {
+        logger.error('[SyncCoordinator] Prune failed (non-fatal):', err.message);
+      }
     }
 
     // ── Step 2: Atlas Sync ──────────────────────────────────────────────

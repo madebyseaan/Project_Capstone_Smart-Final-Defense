@@ -65,3 +65,21 @@ export function broadcastSyncStatus(status: object) {
     }
   }
 }
+
+export function broadcastSseEvent(eventType: string, payload: object) {
+  const message = `event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const client of syncClients) {
+    try {
+      client.write(message);
+    } catch {
+      syncClients.delete(client);
+    }
+  }
+  for (const client of settingsClients) {
+    try {
+      client.write(message);
+    } catch {
+      settingsClients.delete(client);
+    }
+  }
+}

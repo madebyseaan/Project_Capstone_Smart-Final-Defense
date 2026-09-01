@@ -149,6 +149,8 @@ async function cleanup() {
   }
   await prisma.student.deleteMany({ where: { id: studentId } }).catch(() => {});
   await prisma.schoolYear.deleteMany({ where: { label: { in: [YEAR_A, YEAR_B] } } }).catch(() => {});
+  // Clean up user created during seedBase (Teacher cascade does NOT delete User)
+  await prisma.user.deleteMany({ where: { username: { startsWith: 'test-teacher-' } } }).catch(() => {});
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { registrarApi } from "@/lib/api";
-import { Breadcrumb } from "@/components/ui/breadcrumb";
+
 import { useTheme } from "@/contexts/ThemeContext";
 
 import EOSYOverviewTab from "./components/EOSYOverviewTab";
@@ -261,7 +261,7 @@ export default function EOSYFinalization() {
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
   const handleEosyFinalize = async () => {
-    if (!localSection || !selectedSyLabel) return;
+    if (!localSection || !selectedSyLabel || eosyFinalizing) return;
     setConfirmDialog({
       open: true,
       title: "Finalize EOSY?",
@@ -291,6 +291,7 @@ export default function EOSYFinalization() {
   };
 
   const handleFinalizeAll = async () => {
+    if (finalizingSubject) return;
     if (!selectedSectionId || !localSection) {
       setFinalizeMessage("Section not found in SMART database");
       setTimeout(() => setFinalizeMessage(null), 6000);
@@ -312,32 +313,31 @@ export default function EOSYFinalization() {
         setFinalizingSubject("all");
         setFinalizeMessage(null);
         try {
-          const token = sessionStorage.getItem("token_registrar") || "";
-          const csrfCookie = document.cookie.split("; ").find(row => row.startsWith("x-csrf-token="))?.split("=")[1] || "";
           const draftSubjects = allTermStatus.filter((s) => s.totalDraft > 0);
           let totalFinalized = 0;
-          const terms = ["T1", "T2", "T3"];
+          let failed = 0;
+          const terms = ["T1", "T2", "T3"] as const;
           for (const subject of draftSubjects) {
             const subjectIds = (subject.subjectId ?? "").split(",").filter(Boolean);
             for (const term of terms) {
               if (subject.terms[term]?.draft > 0) {
                 for (const subjectId of subjectIds) {
-                  const res = await fetch("/api/registrar/finalize-grades", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${token}`,
-                      "x-csrf-token": csrfCookie,
-                    },
-                    body: JSON.stringify({ sectionId: localSection.id, term, subjectId }),
-                  });
-                  const data = await res.json();
-                  if (res.ok) totalFinalized += data.finalizedCount || 0;
+                  try {
+                    const res = await registrarApi.finalizeGrades(localSection.id, term, subjectId);
+                    totalFinalized += res.data?.finalizedCount || 0;
+                  } catch {
+                    failed++;
+                  }
+                  await new Promise((r) => setTimeout(r, 100));
                 }
               }
             }
           }
-          setFinalizeMessage(`Finalized ${totalFinalized} grades across ${draftSubjects.length} subjects (all terms)`);
+          setFinalizeMessage(
+            failed > 0
+              ? `Finalized ${totalFinalized} grades, ${failed} request(s) failed — try again for remaining`
+              : `Finalized ${totalFinalized} grades across ${draftSubjects.length} subjects (all terms)`,
+          );
           void loadFinalizeStatus(localSection.id);
           void loadAllTermStatus(localSection.id);
           setTimeout(() => setFinalizeMessage(null), 6000);
@@ -352,6 +352,7 @@ export default function EOSYFinalization() {
   };
 
   const handleUnfinalizeAll = async () => {
+    if (finalizingSubject) return;
     if (!selectedSectionId || !localSection) {
       setFinalizeMessage("Section not found in SMART database");
       setTimeout(() => setFinalizeMessage(null), 6000);
@@ -373,31 +374,30 @@ export default function EOSYFinalization() {
         setFinalizingSubject("all");
         setFinalizeMessage(null);
         try {
-          const token = sessionStorage.getItem("token_registrar") || "";
-          const csrfCookie = document.cookie.split("; ").find(row => row.startsWith("x-csrf-token="))?.split("=")[1] || "";
           let totalUnfinalized = 0;
-          const terms = ["T1", "T2", "T3"];
+          let failed = 0;
+          const terms = ["T1", "T2", "T3"] as const;
           for (const subject of finalizedSubjects) {
             const subjectIds = (subject.subjectId ?? "").split(",").filter(Boolean);
             for (const term of terms) {
               if (subject.terms[term]?.finalized > 0) {
                 for (const subjectId of subjectIds) {
-                  const res = await fetch("/api/registrar/unfinalize-grades", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${token}`,
-                      "x-csrf-token": csrfCookie,
-                    },
-                    body: JSON.stringify({ sectionId: localSection.id, term, subjectId }),
-                  });
-                  const data = await res.json();
-                  if (res.ok) totalUnfinalized += data.unfinalizedCount || 0;
+                  try {
+                    const res = await registrarApi.unfinalizeGrades(localSection.id, term, subjectId);
+                    totalUnfinalized += res.data?.unfinalizedCount || 0;
+                  } catch {
+                    failed++;
+                  }
+                  await new Promise((r) => setTimeout(r, 100));
                 }
               }
             }
           }
-          setFinalizeMessage(`Unfinalized ${totalUnfinalized} grades across ${finalizedSubjects.length} subjects (all terms)`);
+          setFinalizeMessage(
+            failed > 0
+              ? `Unfinalized ${totalUnfinalized} grades, ${failed} request(s) failed — try again for remaining`
+              : `Unfinalized ${totalUnfinalized} grades across ${finalizedSubjects.length} subjects (all terms)`,
+          );
           void loadFinalizeStatus(localSection.id);
           void loadAllTermStatus(localSection.id);
           setTimeout(() => setFinalizeMessage(null), 6000);
@@ -505,8 +505,6 @@ export default function EOSYFinalization() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <Breadcrumb items={[{ label: "Dashboard", href: "/registrar" }, { label: "EOSY Finalization" }]} />
-
       <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
         <CardHeader className="border-b border-slate-100 bg-white pb-6">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">

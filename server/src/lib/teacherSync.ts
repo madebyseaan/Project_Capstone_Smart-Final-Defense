@@ -47,7 +47,8 @@ import {
 } from './sync/utils';
 
 import { getActiveSchoolYearLabel } from './schoolYearResolver';
-const DEFAULT_ENROLLPRO_SCHOOL_YEAR_ID = parseInt(process.env.ENROLLPRO_SCHOOL_YEAR_ID ?? '38', 10);
+import { getEnrollProSchoolYearId } from '../config/schoolEnv';
+const DEFAULT_ENROLLPRO_SCHOOL_YEAR_ID = getEnrollProSchoolYearId();
 
 // ---------------------------------------------------------------------------
 // Upsert a learner (student + enrollment) into SMART
@@ -419,27 +420,6 @@ export async function syncTeacherOnLogin(
       const assignmentsPayload = assignmentsData?.assignments ?? assignmentsData?.data ?? assignmentsData ?? [];
       let assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
 
-      // Fallback: If primary schoolYearId returned no sectionIds/sections, try alternate active schoolYearIds
-      const hasDirectSections = assignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0));
-      if (!hasDirectSections) {
-            const fallbackSYs = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 5, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
-        for (const fallbackSY of fallbackSYs) {
-          try {
-            const fbDetail = await atlasGet(
-              `/faculty-assignments/${atlasMember.id}?schoolYearId=${fallbackSY}`,
-            );
-            const fbPayload = fbDetail?.assignments ?? fbDetail?.data ?? fbDetail ?? [];
-            const fbAssignments: any[] = Array.isArray(fbPayload) ? fbPayload : [];
-            if (fbAssignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0))) {
-              assignments = fbAssignments;
-              break;
-            }
-          } catch {
-            // Ignore fallback errors
-          }
-        }
-      }
-
       const flatAssignments: any[] = assignments.filter((a) => a && (a.subjectCode || a.sectionId));
       const nestedAssignments: any[] = assignments.filter((a) => a && (a.subject?.code || a.sections));
 
@@ -448,7 +428,7 @@ export async function syncTeacherOnLogin(
       let pubEntries: any[] = [];
       try {
         const pubData = await atlasGet(
-          `/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${atlasMember.id}`,
+          `/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${atlasMember.id}?termIndex=active`,
         );
         pubEntries = pubData?.entries ?? [];
       } catch (e: any) {
@@ -744,11 +724,9 @@ export async function syncTeacherOnLogin(
       }
 
       // IMPORTANT DATA-SAFETY POLICY:
-      // Never archive/deactivate class assignments in teacher login/manual sync.
-      // Atlas responses can be partial per teacher and would cause stale flips on every login,
-      // which shows up as repeatedly growing archived class records in the UI.
-      //
-      // Stale cleanup is handled only by the dedicated global Atlas sync flow.
+      // Teacher login sync still never deactivates class assignments (per-teacher Atlas
+      // responses are partial). Active-year reconciliation is owned by the prune engine
+      // + global Atlas sync stale-check.
       if (desiredAssignmentPairs.size === 0) {
         console.log(
           `[TeacherSync] Skip stale class-assignment checks for teacherId=${smartTeacherId}: ` +
@@ -774,23 +752,6 @@ export async function syncTeacherOnLogin(
           let thisAdviser = atlasAdvisers.find(
             (a: any) => String(a.facultyId ?? a.teacherId ?? '') === String(atlasMember!.id),
           );
-
-          if (!thisAdviser) {
-        const fallbackSYs = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 5, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
-            for (const fallbackSY of fallbackSYs) {
-              try {
-                const fbAdvisers = await atlasGet(
-                  `/faculty/advisers?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${fallbackSY}`,
-                );
-                const list = fbAdvisers?.advisers ?? fbAdvisers?.data ?? [];
-                const match = list.find((a: any) => String(a.facultyId ?? a.teacherId ?? '') === String(atlasMember!.id));
-                if (match) {
-                  thisAdviser = match;
-                  break;
-                }
-              } catch {}
-            }
-          }
 
           if (thisAdviser) {
             const sectionName: string = thisAdviser.sectionName ?? thisAdviser.advisorySectionName ?? '';

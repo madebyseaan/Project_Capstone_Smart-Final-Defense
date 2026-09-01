@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { gradesApi } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Breadcrumb } from "@/components/ui/breadcrumb";
+
 import { ApproveModal, RejectModal, RevokeModal } from "./components/EditRequestModals";
 
 interface EditRequest {
@@ -94,8 +94,6 @@ export default function EditRequests() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <Breadcrumb items={[{ label: "Dashboard", href: "/admin" }, { label: "Grade Edit Requests" }]} />
-
       <Card className="border-0 shadow-xl shadow-gray-200/50 bg-white overflow-hidden rounded-2xl">
         <CardHeader className="border-b border-gray-100 px-6 py-5">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

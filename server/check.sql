@@ -1,0 +1,1 @@
+SELECT s.lrn, s."firstName", s."lastName", e.status, e."schoolYear", sec.name as section FROM "Enrollment" e JOIN "Student" s ON e."studentId" = s.id JOIN "Section" sec ON e."sectionId" = sec.id ORDER BY e."updatedAt" DESC;

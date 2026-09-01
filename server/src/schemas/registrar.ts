@@ -31,3 +31,10 @@ export const unfinalizeGradesSchema = z.object({
     subjectId: z.string().min(1, 'subjectId is required'),
   }),
 });
+
+export const eosyFinalizeSchema = z.object({
+  body: z.object({
+    sectionId: z.string().min(1, 'sectionId is required'),
+    schoolYear: z.string().min(1, 'schoolYear is required'),
+  }),
+});

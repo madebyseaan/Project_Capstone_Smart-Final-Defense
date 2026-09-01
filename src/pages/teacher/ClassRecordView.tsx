@@ -9,9 +9,11 @@ import {
 } from "lucide-react";
 import {
   gradesApi,
+  adminApi,
   type ClassAssignment,
   type ClassRecord,
   type ScoreItem,
+  type TermLabels,
 } from "@/lib/api";
 import { ClassRecordTable } from "./components/ClassRecordTable";
 import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
@@ -84,6 +86,14 @@ export default function ClassRecordView() {
   const [currentTerm, setCurrentTerm] = useState<string>("T1");
   const [termDates, setTermDates] = useState<{ t1EndDate?: string | null; t2EndDate?: string | null; t3EndDate?: string | null } | null>(null);
   const [gradeLock, setGradeLock] = useState(false);
+  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+
+  // Fetch term labels on mount
+  useEffect(() => {
+    adminApi.getSettings().then((res) => {
+      if (res.data.termLabels) setTermLabels(res.data.termLabels);
+    }).catch(() => {});
+  }, []);
 
   // Edit request state (must be declared before isViewOnly)
   const [editRequestModalOpen, setEditRequestModalOpen] = useState(false);
@@ -923,6 +933,7 @@ export default function ClassRecordView() {
         editRequestStatus={isPastTerm ? editRequestStatus : "idle"}
         editTimeRemaining={editTimeRemaining}
         onRequestEdit={isPastTerm && !gradeLock && editRequestStatus === "idle" ? () => setEditRequestModalOpen(true) : undefined}
+        termLabels={termLabels}
       />
 
       {isHGClass && (

@@ -127,6 +127,7 @@ model Subject {
   writtenWorkWeight     Int?
   perfTaskWeight        Int?
   quarterlyAssessWeight Int?
+  isNonPromotional      Boolean           @default(false)
   // Atlas rotation metadata — null = non-rotating subject
   rotationTermGroupId   String? // e.g. "SCIENCE", "TLE_EXPLORATORY"
   rotationTermRank      Int? // 1, 2, or 3 — maps to T1, T2, T3 on SF9
@@ -168,6 +169,7 @@ model ScheduleEntry {
   subjectId  String
   sectionId  String
   schoolYear String
+  termIndex  Int?     // ATLAS term membership (1, 2, or 3) — durable schedule truth
   day        String
   startTime  String
   endTime    String
@@ -194,7 +196,12 @@ model Enrollment {
   isArchived     Boolean          @default(false)
   archivedAt     DateTime?
   archivedReason String?
+  dropOutDate    DateTime?
+  transferOutDate DateTime?
+  dropOutReason  String?
   profileSnapshot Json?            // Student profile snapshot at enrollment time (immutable)
+  promotionStatus      PromotionStatus?
+  promotedToGradeLevel GradeLevel?
   section        Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   student        Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -346,6 +353,9 @@ model SchoolYear {
   label      String    @unique // "2026-2027"
   externalId Int?      @unique  // EnrollPro numeric ID — primary align key
   status     String    @default("ACTIVE") // DRAFT, ACTIVE, ARCHIVED, COMPLETED
+  termLabelT1 String   @default("Quarterly 1") // configurable display label for T1
+  termLabelT2 String   @default("Quarterly 2") // configurable display label for T2
+  termLabelT3 String   @default("Quarterly 3") // configurable display label for T3
   startDate  DateTime?
   endDate    DateTime?
   archivedAt DateTime?
@@ -354,6 +364,37 @@ model SchoolYear {
 
   // Reverse relation: which SystemSettings points to this year
   systemSettings SystemSettings[]
+  yearGradeLock  YearGradeLock?
+  termGradeLocks TermGradeLock[]
+}
+
+model YearGradeLock {
+  id           String     @id @default(cuid())
+  schoolYearId String     @unique
+  isLocked     Boolean    @default(false)
+  lockedBy     String?
+  lockedAt     DateTime?
+  unlockedBy   String?
+  unlockedAt   DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  schoolYear   SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+}
+
+model TermGradeLock {
+  id           String     @id @default(cuid())
+  schoolYearId String
+  term         Term
+  isLocked     Boolean    @default(false)
+  lockedBy     String?
+  lockedAt     DateTime?
+  unlockedBy   String?
+  unlockedAt   DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  schoolYear   SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolYearId, term])
 }
 
 model SystemSettings {
@@ -388,6 +429,17 @@ model SystemSettings {
   t3StartDate        DateTime?
   lastEnrollProSync  DateTime?
   gradeLock          Boolean   @default(false)  // When true, teachers cannot edit grades (EOSY lock)
+  transitionLock     Boolean   @default(false)  // When true, teachers cannot log in (year transition window)
+  transitionNote     String?
+  auditLogRetentionDays      Int       @default(365)
+  syncHistoryRetentionDays   Int       @default(90)
+  gradeSnapshotRetentionDays Int       @default(0)  // 0 = disabled (DepEd policy TBD)
+
+  // EnrollPro credentials (dynamic — admin can update without restart)
+  enrollproUrl             String?
+  enrollproAccountName     String?
+  enrollproPassword        String?   // stored as-is, not encrypted (same as .env)
+  enrollproIntegrationKey  String?
 }
 
 model GradingConfig {
@@ -490,6 +542,13 @@ enum EnrollmentStatus {
   PENDING
   DROPPED
   TRANSFERRED
+}
+
+enum PromotionStatus {
+  PROMOTED
+  CONDITIONALLY_PROMOTED
+  RETAINED
+  JHS_COMPLETER
 }
 
 enum AuditAction {

@@ -14,14 +14,12 @@ import {
   FlaskConical,
   Layers,
   GraduationCap,
-  BarChart3,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getAcronym } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
-import DevPortalSwitcher from "@/components/DevPortalSwitcher";
-
+import RolloverBanner from "@/components/RolloverBanner";
 interface UserData {
   id: string;
   username: string;
@@ -29,7 +27,6 @@ interface UserData {
   firstName?: string;
   lastName?: string;
   email?: string;
-  isDeveloper?: boolean;
 }
 
 interface NavItem {
@@ -70,7 +67,6 @@ const navigationGroups: NavGroup[] = [
     items: [
       { name: "Student Records", href: "/registrar/students", icon: Users },
       { name: "Former Students", href: "/registrar/alumni", icon: GraduationCap },
-      { name: "Teaching Load", href: "/registrar/teaching-load", icon: BarChart3 },
       { name: "School Forms", href: "/registrar/forms", icon: FolderOpen },
     ]
   }
@@ -96,8 +92,7 @@ export default function RegistrarLayout() {
     }
 
     const parsedUser = JSON.parse(userData);
-    const isDev = Boolean(parsedUser.isDeveloper || parsedUser.username === "999999" || parsedUser.role === "ADMIN");
-    if (parsedUser.role !== "REGISTRAR" && !isDev) {
+    if (parsedUser.role !== "REGISTRAR") {
       navigate("/login");
       return;
     }
@@ -140,6 +135,7 @@ export default function RegistrarLayout() {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <RolloverBanner />
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -366,9 +362,6 @@ export default function RegistrarLayout() {
                   S.Y. {currentSchoolYear}
                 </span>
               )}
-              {/* Dev Portal Quick Switcher */}
-              <DevPortalSwitcher user={user} />
-
               {/* User Avatar and Name */}
               <div className="flex items-center gap-3 pl-3 border-l border-slate-100">
                 <div className="hidden sm:flex flex-col items-end mr-1">

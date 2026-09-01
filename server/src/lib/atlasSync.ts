@@ -367,17 +367,17 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
           // 1. Try discovered or configured school year
           const yearToTry = discoveredPubYearId ?? atlasSchoolYearId;
-          pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/school-years/${yearToTry}/schedules/published/faculty/${af.id}`);
+          pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/school-years/${yearToTry}/schedules/published/faculty/${af.id}?termIndex=active`);
           if (pubEntries.length > 0) {
             logger.debug(`[AtlasSync] Faculty ${af.firstName} ${af.lastName}: ${pubEntries.length} entries (year ${yearToTry})`);
           }
 
           // 2. Try current-year endpoint (ATLAS resolves active year automatically)
           if (pubEntries.length === 0 && yearToTry !== atlasSchoolYearId) {
-            pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published/faculty/${af.id}`);
+            pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published/faculty/${af.id}?termIndex=active`);
           }
           if (pubEntries.length === 0) {
-            pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`);
+            pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}?termIndex=active`);
           }
 
         return { af, detail: assignments, pubEntries };
@@ -596,6 +596,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       const allScheduleEntries: Array<{
         teacherId: string; subjectCode: string; sectionName: string;
         gradeLevel: GradeLevel; day: string; startTime: string; endTime: string; roomId: number | null;
+        termIndex: number | null;
       }> = [];
       let totalPubEntries = 0;
       let skippedNoDay = 0;
@@ -615,11 +616,18 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           if (entry?.faculty?.isPlaceholder) continue;
           // ATLAS nested structure: entry.subject.code (not entry.subjectCode)
           const subjectCode = normalizeAtlasSubjectCode(entry?.subject?.code ?? entry?.subjectCode);
-          if (!subjectCode) { skippedNoSubject++; continue; }
+          if (!subjectCode) {
+            skippedNoSubject++;
+            logger.debug(`[AtlasSync] Skipped entry (no subject): day=${day} ${startTime}-${endTime} subject.raw=${JSON.stringify(entry?.subject)} label=${JSON.stringify(entry?.label ?? entry?.name ?? entry?.type)}`);
+            continue;
+          }
           // ATLAS nested structure: entry.section.externalId (EnrollPro section ID for cross-system matching)
           // Falls back to entry.section.id (backward-compatible alias) then entry.sectionId
           const sectionId = Number(entry?.section?.externalId ?? entry?.section?.id ?? entry?.sectionId);
-          if (!Number.isFinite(sectionId)) continue;
+          if (!Number.isFinite(sectionId)) {
+            logger.debug(`[AtlasSync] Skipped entry (no section): day=${day} ${startTime}-${endTime} subject=${subjectCode} section.raw=${JSON.stringify(entry?.section)}`);
+            continue;
+          }
           let epSection = epSectionById.get(sectionId);
           // Fallback: match by section name from ATLAS nested response
           if (!epSection?.name) {
@@ -638,6 +646,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           allScheduleEntries.push({
             teacherId: smartTeacherId, subjectCode, sectionName: epSection.name,
             gradeLevel, day, startTime, endTime, roomId: Number.isFinite(Number(roomId)) ? Number(roomId) : null,
+            termIndex: Number.isFinite(Number(entry?.termIndex)) ? Number(entry.termIndex) : null,
           });
         }
       }
@@ -688,10 +697,11 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
                   day: entry.day, startTime: entry.startTime,
                 },
               },
-              update: { endTime: entry.endTime, roomId: entry.roomId },
+              update: { endTime: entry.endTime, roomId: entry.roomId, termIndex: entry.termIndex },
               create: {
                 teacherId: entry.teacherId, subjectId: subject.id,
                 sectionId: section.id, schoolYear: schoolYearLabel,
+                termIndex: entry.termIndex,
                 day: entry.day, startTime: entry.startTime,
                 endTime: entry.endTime, roomId: entry.roomId,
               },

@@ -7,9 +7,11 @@ import {
   getAllIntegrationV1Sections,
   getIntegrationV1LearnersPage,
   resolveEnrollProSchoolYear,
+  getEnrollProSectionRoster,
 } from "../../lib/enrollproClient";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
+import { withSectionLock } from "../../lib/sectionLock";
 import { validate } from "../../middleware/validate";
 import { enrollmentStatusSchema, finalizeGradesSchema } from "../../schemas/registrar";
 import {
@@ -1151,57 +1153,66 @@ router.post("/finalize-grades", authenticateToken, validate(finalizeGradesSchema
 
     const { sectionId, term, subjectId } = req.body;
 
-    // Find the class assignment for this section/term/subject
-    const classAssignment = await prisma.classAssignment.findFirst({
-      where: {
-        sectionId,
-        subjectId,
-        schoolYear: await getActiveSchoolYearLabel(),
-      },
+    const lockResult = await withSectionLock(`finalize-grades:${sectionId}:${term}:${subjectId}`, async () => {
+      const schoolYearLabel = await getActiveSchoolYearLabel();
+
+      // Find ALL class assignments for this section/subject/year (handles teacher changes)
+      const classAssignments = await prisma.classAssignment.findMany({
+        where: {
+          sectionId,
+          subjectId,
+          schoolYear: schoolYearLabel,
+        },
+      });
+
+      if (classAssignments.length === 0) {
+        return { status: 404 as const, body: { message: "No class assignment found for this section/subject/year" } };
+      }
+
+      const caIds = classAssignments.map((ca) => ca.id);
+
+      // Find all DRAFT grades across ALL class assignments for this section/subject/term
+      const draftGrades = await prisma.grade.findMany({
+        where: {
+          classAssignmentId: { in: caIds },
+          term: term as Term,
+          status: "DRAFT",
+        },
+      });
+
+      if (draftGrades.length === 0) {
+        return { status: 200 as const, body: { message: "No draft grades to finalize", finalizedCount: 0 } };
+      }
+
+      // Finalize all draft grades across all matching class assignments
+      const result = await prisma.grade.updateMany({
+        where: {
+          classAssignmentId: { in: caIds },
+          term: term as Term,
+          status: "DRAFT",
+        },
+        data: {
+          status: "FINALIZED",
+          finalizedBy: user.id,
+          finalizedAt: new Date(),
+        },
+      });
+
+      logger.info(`[Registrar] ${user.username} finalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
+
+      return {
+        status: 200 as const,
+        body: {
+          message: `Finalized ${result.count} grades`,
+          finalizedCount: result.count,
+          sectionId,
+          term,
+          subjectId,
+        },
+      };
     });
 
-    if (!classAssignment) {
-      res.status(404).json({ message: "No class assignment found for this section/subject/year" });
-      return;
-    }
-
-    // Find all DRAFT grades for this class assignment and term
-    const draftGrades = await prisma.grade.findMany({
-      where: {
-        classAssignmentId: classAssignment.id,
-        term: term as Term,
-        status: "DRAFT",
-      },
-    });
-
-    if (draftGrades.length === 0) {
-      res.status(200).json({ message: "No draft grades to finalize", finalizedCount: 0 });
-      return;
-    }
-
-    // Finalize all draft grades
-    const result = await prisma.grade.updateMany({
-      where: {
-        classAssignmentId: classAssignment.id,
-        term: term as Term,
-        status: "DRAFT",
-      },
-      data: {
-        status: "FINALIZED",
-        finalizedBy: user.id,
-        finalizedAt: new Date(),
-      },
-    });
-
-    logger.info(`[Registrar] ${user.username} finalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
-
-    res.json({
-      message: `Finalized ${result.count} grades`,
-      finalizedCount: result.count,
-      sectionId,
-      term,
-      subjectId,
-    });
+    res.status(lockResult.status).json(lockResult.body);
   } catch (error) {
     logger.error("Error finalizing grades:", error);
     res.status(500).json({ message: "Failed to finalize grades" });
@@ -1219,38 +1230,48 @@ router.post("/unfinalize-grades", authenticateToken, validate(finalizeGradesSche
 
     const { sectionId, term, subjectId } = req.body;
 
-    const classAssignment = await prisma.classAssignment.findFirst({
-      where: {
-        sectionId,
-        subjectId,
-        schoolYear: await getActiveSchoolYearLabel(),
-      },
+    const lockResult = await withSectionLock(`unfinalize-grades:${sectionId}:${term}:${subjectId}`, async () => {
+      const schoolYearLabel = await getActiveSchoolYearLabel();
+
+      const classAssignments = await prisma.classAssignment.findMany({
+        where: {
+          sectionId,
+          subjectId,
+          schoolYear: schoolYearLabel,
+        },
+      });
+
+      if (classAssignments.length === 0) {
+        return { status: 404 as const, body: { message: "No class assignment found for this section/subject/year" } };
+      }
+
+      const caIds = classAssignments.map((ca) => ca.id);
+
+      const result = await prisma.grade.updateMany({
+        where: {
+          classAssignmentId: { in: caIds },
+          term: term as Term,
+          status: "FINALIZED",
+        },
+        data: {
+          status: "DRAFT",
+          finalizedBy: null,
+          finalizedAt: null,
+        },
+      });
+
+      logger.info(`[Registrar] ${user.username} unfinalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
+
+      return {
+        status: 200 as const,
+        body: {
+          message: `Unfinalized ${result.count} grades`,
+          unfinalizedCount: result.count,
+        },
+      };
     });
 
-    if (!classAssignment) {
-      res.status(404).json({ message: "No class assignment found for this section/subject/year" });
-      return;
-    }
-
-    const result = await prisma.grade.updateMany({
-      where: {
-        classAssignmentId: classAssignment.id,
-        term: term as Term,
-        status: "FINALIZED",
-      },
-      data: {
-        status: "DRAFT",
-        finalizedBy: null,
-        finalizedAt: null,
-      },
-    });
-
-    logger.info(`[Registrar] ${user.username} unfinalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
-
-    res.json({
-      message: `Unfinalized ${result.count} grades`,
-      unfinalizedCount: result.count,
-    });
+    res.status(lockResult.status).json(lockResult.body);
   } catch (error) {
     logger.error("Error unfinalizing grades:", error);
     res.status(500).json({ message: "Failed to unfinalize grades" });
@@ -1775,6 +1796,33 @@ router.get("/sections", authenticateToken, async (req: AuthRequest, res: Respons
   } catch (error) {
     logger.error("Error fetching sections:", error);
     res.status(500).json({ message: "Failed to fetch sections" });
+  }
+});
+
+// Section Roster — fetch learners for a section from EnrollPro
+router.get("/section-roster/:enrollProId", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const enrollProId = Number(req.params.enrollProId);
+    if (!Number.isFinite(enrollProId) || enrollProId <= 0) {
+      res.status(400).json({ message: "Invalid EnrollPro section ID." });
+      return;
+    }
+
+    const learners = await getEnrollProSectionRoster(enrollProId);
+    res.json({
+      section: { enrollProId },
+      learners,
+      total: learners.length,
+    });
+  } catch (error: any) {
+    logger.error("[registrar/section-roster]", error.message);
+    res.status(500).json({ message: error.message ?? "Failed to fetch roster from EnrollPro." });
   }
 });
 

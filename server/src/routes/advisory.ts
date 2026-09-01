@@ -6,6 +6,7 @@ import { invalidateEnrollProToken } from "../lib/enrollproClient";
 import { broadcastSyncStatus } from "../lib/sseManager";
 import { getActiveSchoolYearLabel } from "../lib/schoolYearResolver";
 import { logger } from "../lib/logger";
+import { mergeRotationSubjects, SubjectTermInput } from "../lib/promotion";
 
 import type { Student, Enrollment, Section, ClassAssignment, Subject, Teacher, User, Grade } from "@prisma/client";
 
@@ -697,17 +698,34 @@ router.get(
 
       const studentAverages: StudentAverage[] = await Promise.all(
         advisorySection.enrollments.map(async (enrollment: EnrollmentWithStudent) => {
-          const academicSubjects = classAssignments;
+          // Merge rotational subjects (TLE, Science) so each rotation group = one subject
+          const rotationInputs: SubjectTermInput[] = classAssignments.map((ca) => {
+            const caGrades = ca.grades.filter((g: Grade) => g.studentId === enrollment.studentId);
+            const terms: Record<string, number | null> = { T1: null, T2: null, T3: null };
+            for (const g of caGrades) {
+              if (g.quarterlyGrade !== null && !terms[g.term]) {
+                terms[g.term] = g.quarterlyGrade;
+              }
+            }
+            return {
+              subjectCode: ca.subject.code,
+              subjectName: ca.subject.code,
+              T1: terms.T1,
+              T2: terms.T2,
+              T3: terms.T3,
+              rotationTermGroupId: (ca.subject as any).rotationTermGroupId ?? null,
+              rotationTermRank: (ca.subject as any).rotationTermRank ?? null,
+              rotationOutputLabel: (ca.subject as any).rotationOutputLabel ?? null,
+            };
+          });
 
-          // Compute per-subject final grade from available terms, then average across subjects
-          const subjectFinals = academicSubjects.map((ca) => {
-            const termGrades = ca.grades
-              .filter((g: Grade) => g.studentId === enrollment.studentId && g.quarterlyGrade !== null)
-              .map((g: Grade) => g.quarterlyGrade as number);
-            return termGrades.length > 0
-              ? Math.round(termGrades.reduce((a, b) => a + b, 0) / termGrades.length)
-              : null;
-          }).filter((g): g is number => g !== null);
+          const mergedSubjects = mergeRotationSubjects(rotationInputs);
+          const subjectFinals = mergedSubjects
+            .map((row) => {
+              const vals = [row.T1, row.T2, row.T3].filter((v): v is number => v !== null);
+              return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+            })
+            .filter((g): g is number => g !== null);
 
           const average = subjectFinals.length > 0
             ? subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length
@@ -720,7 +738,7 @@ router.get(
             gender: enrollment.student.gender,
             average,
             gradedSubjects: subjectFinals.length,
-            totalSubjects: academicSubjects.length,
+            totalSubjects: mergedSubjects.length,
           };
         })
       );

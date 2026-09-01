@@ -29,6 +29,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { adminApi, SERVER_URL, getPortalToken } from "@/lib/api";
 import type { SystemSettings as SystemSettingsType } from "@/lib/api";
+import GradeLocksPanel from "./components/GradeLocksPanel";
+import RolloverStatusCard from "./components/RolloverStatusCard";
 import { useTheme } from "@/contexts/ThemeContext";
 
 
@@ -198,6 +200,7 @@ export default function SystemSettings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [schoolYears, setSchoolYears] = useState<Array<{ id: string; label: string; status: string }>>([]);
   const [gradeLockModalOpen, setGradeLockModalOpen] = useState(false);
+  const [transitionLockLoading, setTransitionLockLoading] = useState(false);
   const { refreshTheme, colors: themeColors } = useTheme();
   const hasAutoSyncedRef = useRef(false);
 
@@ -438,6 +441,10 @@ export default function SystemSettings() {
           </div>
         </CardHeader>
         <CardContent className="p-6">
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 text-sm text-blue-700">
+            <Info className="w-4 h-4 flex-shrink-0" />
+            School information is synced from EnrollPro and cannot be edited manually.
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="schoolName" className="text-sm font-semibold text-gray-700">
@@ -446,8 +453,8 @@ export default function SystemSettings() {
               <Input
                 id="schoolName"
                 value={settings.schoolName}
-                onChange={(e) => handleChange("schoolName", e.target.value)}
-                className="rounded-xl border-gray-200"
+                disabled
+                className="rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
@@ -457,56 +464,31 @@ export default function SystemSettings() {
               <Input
                 id="schoolId"
                 value={settings.schoolId}
-                onChange={(e) => handleChange("schoolId", e.target.value)}
-                className="rounded-xl border-gray-200"
+                disabled
+                className="rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="division" className="text-sm font-semibold text-gray-700">
                 Division
               </Label>
-              <Select value={settings.division} onValueChange={(val) => val && handleChange("division", val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select division" />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {DEPED_DIVISIONS.map((division) => (
-                    <SelectItem key={division} value={division}>
-                      {division}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                id="division"
+                value={settings.division}
+                disabled
+                className="rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="region" className="text-sm font-semibold text-gray-700">
                 Region
               </Label>
-              <Select value={settings.region} onValueChange={(val) => val && handleChange("region", val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select region" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="NCR (National Capital Region)">NCR (National Capital Region)</SelectItem>
-                  <SelectItem value="CAR (Cordillera Administrative Region)">CAR (Cordillera Administrative Region)</SelectItem>
-                  <SelectItem value="Region I (Ilocos Region)">Region I (Ilocos Region)</SelectItem>
-                  <SelectItem value="Region II (Cagayan Valley)">Region II (Cagayan Valley)</SelectItem>
-                  <SelectItem value="Region III (Central Luzon)">Region III (Central Luzon)</SelectItem>
-                  <SelectItem value="Region IV-A (CALABARZON)">Region IV-A (CALABARZON)</SelectItem>
-                  <SelectItem value="Region IV-B (MIMAROPA)">Region IV-B (MIMAROPA)</SelectItem>
-                  <SelectItem value="Region V (Bicol Region)">Region V (Bicol Region)</SelectItem>
-                  <SelectItem value="Region VI (Western Visayas)">Region VI (Western Visayas)</SelectItem>
-                  <SelectItem value="Negros Island Region (NIR)">Negros Island Region (NIR)</SelectItem>
-                  <SelectItem value="Region VII (Central Visayas)">Region VII (Central Visayas)</SelectItem>
-                  <SelectItem value="Region VIII (Eastern Visayas)">Region VIII (Eastern Visayas)</SelectItem>
-                  <SelectItem value="Region IX (Zamboanga Peninsula)">Region IX (Zamboanga Peninsula)</SelectItem>
-                  <SelectItem value="Region X (Northern Mindanao)">Region X (Northern Mindanao)</SelectItem>
-                  <SelectItem value="Region XI (Davao Region)">Region XI (Davao Region)</SelectItem>
-                  <SelectItem value="Region XII (SOCCSKSARGEN)">Region XII (SOCCSKSARGEN)</SelectItem>
-                  <SelectItem value="Region XIII (CARAGA)">Region XIII (CARAGA)</SelectItem>
-                  <SelectItem value="BARMM (Bangsamoro Autonomous Region)">BARMM (Bangsamoro Autonomous Region)</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="region"
+                value={settings.region}
+                disabled
+                className="rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
+              />
             </div>
           </div>
         </CardContent>
@@ -598,6 +580,41 @@ export default function SystemSettings() {
               </Button>
             </div>
           </div>
+
+          <GradeLocksPanel />
+
+          {/* Transition Lock Control */}
+          <div className="mb-8 p-4 rounded-xl border border-gray-200 bg-gray-50">
+            <Label className="text-sm font-semibold text-gray-700 mb-2 block">Teacher Login Lock (Transition)</Label>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">
+                  {settings.transitionLock ? "Teachers are BLOCKED from logging in. Admin/Registrar unaffected." : "Teachers can log in normally."}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Enable during year transition to prevent teachers from accessing the system while data migrates.
+                </p>
+              </div>
+              <Button
+                variant={settings.transitionLock ? "destructive" : "default"}
+                size="sm"
+                disabled={transitionLockLoading}
+                onClick={async () => {
+                  setTransitionLockLoading(true);
+                  try {
+                    const res = await adminApi.toggleTransitionLock(!settings.transitionLock);
+                    setSettings({ ...settings!, transitionLock: res.data.transitionLock });
+                  } finally {
+                    setTransitionLockLoading(false);
+                  }
+                }}
+              >
+                {settings.transitionLock ? "Unlock Teachers" : "Lock Teachers"}
+              </Button>
+            </div>
+          </div>
+
+          <RolloverStatusCard />
 
           {/* School Logo (read-only) */}
           <div className="mb-8">
@@ -976,6 +993,44 @@ export default function SystemSettings() {
                   <SelectItem value="12">12 characters</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <Separator className="my-6" />
+
+          <div className="space-y-4">
+            <p className="text-sm font-semibold text-gray-700">Data Retention</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs text-gray-500">Audit Logs (days)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={3650}
+                  value={settings.auditLogRetentionDays ?? 365}
+                  onChange={(e) => handleChange("auditLogRetentionDays", parseInt(e.target.value) || 0)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-gray-500">Sync History (days)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={3650}
+                  value={settings.syncHistoryRetentionDays ?? 90}
+                  onChange={(e) => handleChange("syncHistoryRetentionDays", parseInt(e.target.value) || 0)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-gray-500">Grade Snapshots (days, 0=off)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={3650}
+                  value={settings.gradeSnapshotRetentionDays ?? 0}
+                  onChange={(e) => handleChange("gradeSnapshotRetentionDays", parseInt(e.target.value) || 0)}
+                />
+              </div>
             </div>
           </div>
 

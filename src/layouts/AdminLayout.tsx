@@ -20,8 +20,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getAcronym } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
-import DevPortalSwitcher from "@/components/DevPortalSwitcher";
-
+import RolloverBanner from "@/components/RolloverBanner";
 interface UserData {
   id: string;
   username: string;
@@ -29,7 +28,6 @@ interface UserData {
   firstName?: string;
   lastName?: string;
   email?: string;
-  isDeveloper?: boolean;
 }
 
 interface NavItem {
@@ -100,8 +98,7 @@ export default function AdminLayout() {
     }
 
     const parsedUser = JSON.parse(userData);
-    const isDev = Boolean(parsedUser.isDeveloper || parsedUser.username === "999999");
-    if (parsedUser.role !== "ADMIN" && !isDev) {
+    if (parsedUser.role !== "ADMIN") {
       navigate("/login");
       return;
     }
@@ -163,6 +160,7 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <RolloverBanner />
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -532,9 +530,6 @@ export default function AdminLayout() {
                   S.Y. {currentSchoolYear}
                 </span>
               )}
-              {/* Dev Portal Quick Switcher */}
-              <DevPortalSwitcher user={user} />
-
               {/* User Avatar and Name */}
               <div className="flex items-center gap-3 pl-3 border-l border-slate-100">
                 <div className="hidden sm:flex flex-col items-end mr-1">

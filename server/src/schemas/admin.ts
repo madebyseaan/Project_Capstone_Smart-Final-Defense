@@ -70,6 +70,9 @@ export const settingsUpdateSchema = z.object({
     passwordMinLength: z.number().min(4).max(32).optional(),
     requireSpecialChar: z.boolean().optional(),
     autoAdvanceTerm: z.boolean().optional(),
+    auditLogRetentionDays: z.number().min(0).max(3650).optional(),
+    syncHistoryRetentionDays: z.number().min(0).max(3650).optional(),
+    gradeSnapshotRetentionDays: z.number().min(0).max(3650).optional(),
   }),
 });
 
@@ -82,6 +85,32 @@ export const colorSettingsSchema = z.object({
 });
 
 export const gradeLockSchema = z.object({
+  body: z.object({
+    locked: z.boolean(),
+  }),
+});
+
+export const transitionLockSchema = z.object({
+  body: z.object({
+    locked: z.boolean(),
+    note: z.string().max(500).optional(),
+  }),
+});
+
+export const yearLockToggleSchema = z.object({
+  params: z.object({
+    schoolYearId: z.string().min(1, 'schoolYearId is required'),
+  }),
+  body: z.object({
+    locked: z.boolean(),
+  }),
+});
+
+export const termLockToggleSchema = z.object({
+  params: z.object({
+    schoolYearId: z.string().min(1, 'schoolYearId is required'),
+    term: z.enum(['T1', 'T2', 'T3']),
+  }),
   body: z.object({
     locked: z.boolean(),
   }),
