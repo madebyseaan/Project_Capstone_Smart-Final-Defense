@@ -16,8 +16,8 @@ import { prisma } from './prisma';
 import { logger } from './logger';
 import { getEnrollProTeachers, getAllIntegrationV1Sections, resolveEnrollProSchoolYear } from './enrollproClient';
 import { syncAdvisoryWorkloadEntry } from './workload';
-import { setCachedAtlasFaculty } from './syncCache';
-import { atlasGet, ATLAS_BASE, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID } from './sync/httpClient';
+import { setCachedAtlasFaculty, setCachedEffectiveTeachingLoad } from './syncCache';
+import { atlasGet, ATLAS_BASE, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID, fetchEffectiveTeachingLoad } from './sync/httpClient';
 import {
   mapGradeLevel,
   resolveSubjectCode,
@@ -276,41 +276,23 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       }
     }
 
-    // 5. Fetch teaching loads from ATLAS per faculty
+    // 5. Fetch teaching loads via ATLAS Effective Annual Endpoint (ATLAS Contract)
+    // Single call replaces per-faculty fetching. EMPTY state = valid, no fallback to prior years.
     const loads: Array<{ smartTeacherId: string; subjectCode: string; sectionName: string; gradeLevel: GradeLevel }> = [];
     const desiredAssignmentPairs = new Set<string>();
-    // Only teachers with at least 1 successfully resolved load are eligible for stale-check.
-    // Teachers whose loads fail (e.g. section-ID lookup returns nothing in EnrollPro) are skipped
-    // from the stale check so their existing assignments are not incorrectly archived.
-    const teacherIdsWithLoads = new Set<string>();
+    // ALL Atlas-matched teacher IDs (for stale-check scope — not just those with resolved loads)
+    const allAtlasMatchedTeacherIds = Array.from(atlasIdToSmartTeacherId.values());
+    let effectiveLoadState: 'EMPTY' | 'POPULATED' | 'UNAVAILABLE' = 'UNAVAILABLE';
 
-    // 5.1 Pre-fetch all faculty assignments in parallel (with concurrency limit)
-    const CONCURRENT_LIMIT = 5;
-
-    // Discover which school year has a published schedule (check once, reuse for all faculty)
-    let discoveredPubYearId: number | null = null;
+    // Build ATLAS subjectId → code lookup from already-fetched atlasSubjects
+    const atlasSubjectIdToCode = new Map<number, string>();
     try {
-      const schoolWide = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/schedules/published`);
-      if (schoolWide?.source?.schoolYearId) {
-        discoveredPubYearId = schoolWide.source.schoolYearId;
-        logger.info(`[AtlasSync] Discovered published schedule in school year ${discoveredPubYearId} (label=${schoolWide.source.schoolYearLabel})`);
+      const atlasSubjectsData = await atlasGet(`/subjects?schoolId=${ATLAS_SCHOOL_ID}`);
+      const atlasSubjects: any[] = atlasSubjectsData.subjects ?? [];
+      for (const s of atlasSubjects) {
+        if (s.id && s.code) atlasSubjectIdToCode.set(Number(s.id), normalizeAtlasSubjectCode(s.code));
       }
-    } catch { /* no school-wide published schedule for active year */ }
-
-    // If no published year discovered, probe known year IDs to find one with data
-    if (!discoveredPubYearId) {
-      const probeYears = [atlasSchoolYearId, 2, 3, 5, 6, 1, 8].filter((v, i, a) => a.indexOf(v) === i); // deduplicate
-      for (const probeYear of probeYears) {
-        try {
-          const probeData = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/school-years/${probeYear}/schedules/published`);
-          if (probeData?.entries?.length > 0 || probeData?.source?.schoolYearId) {
-            discoveredPubYearId = probeYear;
-            logger.info(`[AtlasSync] Discovered published schedule in school year ${discoveredPubYearId} via probe`);
-            break;
-          }
-        } catch { /* this year has no published schedule */ }
-      }
-    }
+    } catch { /* non-critical — will use ID as fallback */ }
 
     type FacultyAssignmentResult = {
       af: any;
@@ -319,224 +301,189 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       error?: string;
     };
 
-    async function fetchFacultyAssignment(af: any): Promise<FacultyAssignmentResult> {
-      try {
-        const detail = await atlasGet(
-          `/faculty-assignments/${af.id}?schoolYearId=${atlasSchoolYearId}`,
-        );
-        const assignmentsPayload = detail?.assignments ?? detail?.data ?? detail ?? [];
-        let assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
+    const fetchResults: FacultyAssignmentResult[] = [];
 
-        // Fallback: If primary schoolYearId returned no sectionIds, try alternate active schoolYearId (e.g. 6 or 1)
-        const hasDirectSections = assignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0));
-        if (!hasDirectSections) {
-          const fallbackSYs = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 5, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
-          for (const fallbackSY of fallbackSYs) {
-            try {
-              const fbDetail = await atlasGet(
-                `/faculty-assignments/${af.id}?schoolYearId=${fallbackSY}`,
-              );
-              const fbPayload = fbDetail?.assignments ?? fbDetail?.data ?? fbDetail ?? [];
-              const fbAssignments: any[] = Array.isArray(fbPayload) ? fbPayload : [];
-              if (fbAssignments.some(a => (a?.sectionIds && a.sectionIds.length > 0) || (a?.sections && a.sections.length > 0))) {
-                assignments = fbAssignments;
-                break;
-              }
-            } catch {
-              // Ignore fallback errors
-            }
+    // 5.1 Fetch effective annual teaching load (single call, no cross-year fallback)
+    const effectiveLoad = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+    if (effectiveLoad) {
+      // Cache the response for consumption by teacherSync and teacherDashboardComposer
+      setCachedEffectiveTeachingLoad(ATLAS_SCHOOL_ID, atlasSchoolYearId, effectiveLoad);
+      effectiveLoadState = effectiveLoad.source.state;
+      logger.info(
+        `[AtlasSync] Effective teaching load: state=${effectiveLoad.source.state}, ` +
+        `assignments=${effectiveLoad.assignments.length}, version=${effectiveLoad.source.version}`,
+      );
+
+      if (effectiveLoad.source.state === 'EMPTY') {
+        // Contract: EMPTY is valid current-year truth. No fallback to prior years.
+        // All current-year ClassAssignments for Atlas-matched teachers are stale.
+        logger.info('[AtlasSync] Teaching load state is EMPTY — all current-year assignments for Atlas-matched teachers will be archived.');
+      } else {
+        // POPULATED: map effective assignments to SMART teacher loads
+        for (const assignment of effectiveLoad.assignments) {
+          const smartTeacherId = atlasIdToSmartTeacherId.get(assignment.facultyId);
+          if (!smartTeacherId) continue;
+
+          const subjectCode = atlasSubjectIdToCode.get(Number(assignment.subjectId))
+            ?? normalizeAtlasSubjectCode(String(assignment.subjectId));
+          const sectionId = Number(assignment.sectionId);
+          if (!Number.isFinite(sectionId)) continue;
+
+          let epSection = epSectionById.get(sectionId);
+          if (!epSection?.name) {
+            errors.push(`ATLAS sectionId=${sectionId} not found in EnrollPro sections`);
+            continue;
+          }
+          const gradeLevel = mapGradeLevel(epSection.gradeLevel?.name ?? epSection.gradeLevelName ?? epSection.name);
+          if (gradeLevel) {
+            loads.push({ smartTeacherId, subjectCode, sectionName: epSection.name, gradeLevel });
           }
         }
+      }
+    } else {
+      errors.push('Failed to fetch effective teaching load from ATLAS');
+      logger.warn('[AtlasSync] Effective teaching load fetch failed');
+    }
 
-        const smartTeacherId = atlasIdToSmartTeacherId.get(af.id);
-        if (!smartTeacherId) return { af, detail: null, pubEntries: [] };
+    // 5.2 Fetch published schedules per faculty (for ScheduleEntry records)
+    // Published schedule endpoint is still valid per ATLAS contract — only teaching load ownership changed.
+    // Fetch using active school year only — no cross-year probing.
+    const CONCURRENT_LIMIT = 5;
 
-        const flatAssignments = assignments.filter((a) => a && (a.subjectCode || a.sectionId));
-        const nestedAssignments = assignments.filter((a) => a && (a.subject?.code || a.sections));
-          // Always fetch published schedule — needed for teaching load fallback AND schedule entries
-          // ATLAS uses path-based routing: /school-years/:schoolYearId/schedules/published/faculty/:facultyId
-          // Uses pre-discovered year or configured year, falls back to current-year auto-resolve
-          let pubEntries: any[] = [];
-
-          async function fetchPubEntries(path: string): Promise<any[]> {
-            try {
-              const data = await atlasGet(path);
-              return Array.isArray(data?.entries) ? data.entries : [];
-            } catch { return []; }
-          }
-
-          // 1. Try discovered or configured school year
-          const yearToTry = discoveredPubYearId ?? atlasSchoolYearId;
-          pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/school-years/${yearToTry}/schedules/published/faculty/${af.id}?termIndex=active`);
-          if (pubEntries.length > 0) {
-            logger.debug(`[AtlasSync] Faculty ${af.firstName} ${af.lastName}: ${pubEntries.length} entries (year ${yearToTry})`);
-          }
-
-          // 2. Try current-year endpoint (ATLAS resolves active year automatically)
-          if (pubEntries.length === 0 && yearToTry !== atlasSchoolYearId) {
-            pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published/faculty/${af.id}?termIndex=active`);
-          }
-          if (pubEntries.length === 0) {
-            pubEntries = await fetchPubEntries(`/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}?termIndex=active`);
-          }
-
-        return { af, detail: assignments, pubEntries };
-      } catch (err: any) {
-        return { af, detail: null, pubEntries: [], error: `${af.firstName} ${af.lastName}: ${err.message}` };
+    // Pre-resolve desired assignment pairs from effective loads (for stale-check)
+    const allSectionsPre = await prisma.section.findMany({ where: { schoolYear: schoolYearLabel } });
+    const sectionByKeyPre = new Map(allSectionsPre.map(s => [`${s.name.trim()}:${s.gradeLevel}`, s]));
+    for (const load of loads) {
+      const section = sectionByKeyPre.get(`${load.sectionName.trim()}:${load.gradeLevel}`);
+      if (!section) continue;
+      const smartSubjectCode = resolveSubjectCode(load.subjectCode, section.gradeLevel);
+      const subject = subjectByCode.get(smartSubjectCode);
+      if (subject) {
+        desiredAssignmentPairs.add(`${load.smartTeacherId}:${subject.id}:${section.id}`);
       }
     }
 
-    // Run with concurrency limit
-    const fetchResults: FacultyAssignmentResult[] = [];
+    async function fetchPubEntriesForFaculty(af: any): Promise<any[]> {
+      try {
+        const data = await atlasGet(
+          `/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published/faculty/${af.id}?termIndex=active`,
+        );
+        return Array.isArray(data?.entries) ? data.entries : [];
+      } catch {
+        // Try school-wide endpoint as fallback
+        try {
+          const data = await atlasGet(
+            `/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}?termIndex=active`,
+          );
+          return Array.isArray(data?.entries) ? data.entries : [];
+        } catch { return []; }
+      }
+    }
+
     for (let i = 0; i < atlasFaculty.length; i += CONCURRENT_LIMIT) {
       const batch = atlasFaculty.slice(i, i + CONCURRENT_LIMIT);
-      const batchResults = await Promise.all(batch.map(af => fetchFacultyAssignment(af)));
+      const batchResults = await Promise.all(batch.map(async (af) => {
+        const pubEntries = await fetchPubEntriesForFaculty(af);
+        return { af, detail: null, pubEntries };
+      }));
       fetchResults.push(...batchResults);
     }
 
-    // 5.2 Process results sequentially (same logic as before)
-    for (const result of fetchResults) {
-      if (result.error) {
-        errors.push(result.error);
-        continue;
-      }
+    // 6. Stale-check: archive assignments not in the effective load
+    // Scope: ALL Atlas-matched teachers (not just those with resolved loads this cycle).
+    // When effective load is EMPTY, archive ALL current-year assignments for Atlas-matched teachers.
+    // When POPULATED, archive assignments not in the desired set.
+    if (allAtlasMatchedTeacherIds.length > 0) {
+      const currentAssignments = await prisma.classAssignment.findMany({
+        where: {
+          teacherId: { in: allAtlasMatchedTeacherIds },
+          schoolYear: schoolYearLabel,
+        },
+        select: { id: true, teacherId: true, subjectId: true, sectionId: true, isActive: true },
+      });
 
-      const { af, detail: assignments, pubEntries } = result;
-      if (!assignments) continue;
+      const archiveIds: string[] = [];
+      const reactivateIds: string[] = [];
+      let preservedMissingCount = 0;
 
-      const smartTeacherId = atlasIdToSmartTeacherId.get(af.id);
-      if (!smartTeacherId) continue;
+      for (const assignment of currentAssignments) {
+        const key = `${assignment.teacherId}:${assignment.subjectId}:${assignment.sectionId}`;
+        const shouldBeActive = desiredAssignmentPairs.has(key);
 
-        const flatAssignments = assignments.filter((a: any) => a && (a.subjectCode || a.sectionId));
-        const nestedAssignments = assignments.filter((a: any) => a && (a.subject?.code || a.sections));
-        const teacherLoads: Array<{ smartTeacherId: string; subjectCode: string; sectionName: string; gradeLevel: GradeLevel }> = [];
-        const MAX_SANE_SECTIONS = 10;
-
-        if (flatAssignments.length > 0 && flatAssignments.some((a: any) => a?.sectionId ?? a?.section?.id)) {
-          // Trust Gate: Group by subject to detect broad over-assignment
-          const flatBySubject = new Map<string, number>();
-          for (const a of flatAssignments) {
-            const code = normalizeAtlasSubjectCode(a?.subjectCode ?? a?.subject?.code);
-            if (code) flatBySubject.set(code, (flatBySubject.get(code) || 0) + 1);
+        if (shouldBeActive) {
+          // Assignment is in the effective load — reactivate if it was archived
+          if (!assignment.isActive) {
+            reactivateIds.push(assignment.id);
           }
-
-          for (const a of flatAssignments) {
-            const subjectCode = normalizeAtlasSubjectCode(a?.subjectCode ?? a?.subject?.code);
-            if (!subjectCode) continue;
-
-            if ((flatBySubject.get(subjectCode) || 0) > MAX_SANE_SECTIONS) {
-              // Broad assignment detected - global sync only keeps these if verified by other sources
-              // or if they are advisory (not easily checked in global loop without more lookups).
-              // For now, we skip broad flat assignments in global sync to prevent bulk over-assignment.
-              continue;
-            }
-
-            const sectionId = Number(a?.sectionId ?? a?.section?.id);
-            if (!Number.isFinite(sectionId)) continue;
-            let epSection = epSectionById.get(sectionId);
-            // Fallback: ATLAS and EnrollPro use different integer IDs for same section — match by name
-            if (!epSection?.name && (a?.sectionName || a?.section?.name)) {
-              const sectionName = (a?.sectionName || a?.section?.name || '').trim().toLowerCase();
-              epSection = epSectionByName.get(sectionName) ?? null;
-            }
-            if (!epSection?.name) {
-              errors.push(`ATLAS sectionId=${sectionId} not found in EnrollPro sections`);
-              continue;
-            }
-            const gradeLevel = mapGradeLevel(epSection.gradeLevel?.name ?? epSection.gradeLevelName ?? epSection.name);
-            if (gradeLevel) {
-              teacherLoads.push({ smartTeacherId, subjectCode, sectionName: epSection.name, gradeLevel });
-            }
-          }
-        } else if (nestedAssignments.length > 0 && nestedAssignments.some((a: any) => (a.sections ?? []).length > 0)) {
-          for (const a of nestedAssignments) {
-            const subjectCode = normalizeAtlasSubjectCode(a.subject?.code ?? '');
-            if (!subjectCode) continue;
-            const sections: any[] = a.sections ?? [];
-
-            if (sections.length > MAX_SANE_SECTIONS) {
-              logger.warn(`[AtlasSync] Rejecting broad nested assignment for ${subjectCode} (${sections.length} sections)`);
-              continue;
-            }
-
-            for (const sec of sections) {
-              if (!sec?.name) continue;
-              const gradeLevel = mapGradeLevel(sec.gradeLevelName ?? sec.name);
-              if (gradeLevel) {
-                teacherLoads.push({ smartTeacherId, subjectCode, sectionName: sec.name, gradeLevel });
-              }
-            }
-          }
-        } else if (pubEntries.length > 0) {
-          // The published schedule endpoint returns one entry per time slot.
-          // Filter to this faculty only (defensive: endpoint may return all-school data)
-          // and deduplicate by {subjectCode:sectionId} to collapse slots to unique teaching pairs.
-          const seen = new Set<string>();
-          for (const entry of pubEntries) {
-            if (entry.facultyId != null && Number(entry.facultyId) !== af.id) continue;
-            const subjectCode = normalizeAtlasSubjectCode(entry?.subjectCode);
-            const sectionId = Number(entry?.sectionId);
-            if (!subjectCode || !Number.isFinite(sectionId)) continue;
-            const key = `${subjectCode}:${sectionId}`;
-            if (seen.has(key)) continue; // deduplicate time slots
-            seen.add(key);
-            let epSection = epSectionById.get(sectionId);
-            // Fallback: ATLAS and EnrollPro use different integer IDs for same section — match by name
-            if (!epSection?.name && (entry?.sectionName || entry?.section?.name)) {
-              const sectionName = (entry?.sectionName || entry?.section?.name || '').trim().toLowerCase();
-              epSection = epSectionByName.get(sectionName) ?? null;
-            }
-            if (!epSection?.name) {
-              errors.push(`ATLAS published sectionId=${sectionId} not found in EnrollPro sections`);
-              continue;
-            }
-            const gradeLevel = mapGradeLevel(epSection.gradeLevel?.name ?? epSection.gradeLevelName ?? epSection.name);
-            if (gradeLevel) {
-              teacherLoads.push({ smartTeacherId, subjectCode, sectionName: epSection.name, gradeLevel });
-            }
-          }
-        } else if (Array.isArray(af.facultySubjects) && af.facultySubjects.length > 0) {
-          // Fallback: use facultySubjects list from the main /faculty response
-          // This is often populated even when the detail/published endpoints are not.
-          for (const fs of af.facultySubjects) {
-            const subjectCode = normalizeAtlasSubjectCode(fs.subject?.code);
-            if (!subjectCode) continue;
-            const sectionIds: number[] = Array.isArray(fs.sectionIds) ? fs.sectionIds : [];
-            for (const sid of sectionIds) {
-              const epSection = epSectionById.get(sid);
-              if (epSection?.name) {
-                const gradeLevel = mapGradeLevel(epSection.gradeLevel?.name ?? epSection.gradeLevelName ?? epSection.name);
-                if (gradeLevel) {
-                  teacherLoads.push({ smartTeacherId, subjectCode, sectionName: epSection.name, gradeLevel });
-                }
-              }
-            }
+        } else {
+          // Assignment is NOT in the effective load — stale
+          if (effectiveLoadState === 'EMPTY') {
+            // EMPTY: all current-year assignments for Atlas-matched teachers are stale
+            archiveIds.push(assignment.id);
+          } else if (effectiveLoadState === 'POPULATED' && assignment.isActive) {
+            // POPULATED: only archive ACTIVE assignments not in desired set
+            // Preserve assignments already archived by a previous cycle
+            archiveIds.push(assignment.id);
+          } else {
+            preservedMissingCount++;
           }
         }
+      }
 
-        if (teacherLoads.length === 0) continue;
-        teachersWithLoads++;
-        teacherIdsWithLoads.add(smartTeacherId);
-        loads.push(...teacherLoads);
+      // Batch DELETE stale assignments (remove entirely instead of soft-archive)
+      if (archiveIds.length > 0) {
+        try {
+          await prisma.classAssignment.deleteMany({
+            where: { id: { in: archiveIds } },
+          });
+          console.log(
+            `[AtlasSync] Deleted ${archiveIds.length} stale ClassAssignment(s) ` +
+            `(effectiveLoadState=${effectiveLoadState}, schoolYear=${schoolYearLabel})`,
+          );
+        } catch (err: any) {
+          logger.warn(`[AtlasSync] Batch delete failed: ${err.message}`);
+        }
+      }
+
+      // Also purge any previously-archived records for this school year (cleanup legacy soft-archives)
+      try {
+        const purged = await prisma.classAssignment.deleteMany({
+          where: {
+            teacherId: { in: allAtlasMatchedTeacherIds },
+            schoolYear: schoolYearLabel,
+            isActive: false,
+          },
+        });
+        if (purged.count > 0) {
+          console.log(`[AtlasSync] Purged ${purged.count} previously-archived ClassAssignment(s)`);
+        }
+      } catch (err: any) {
+        logger.warn(`[AtlasSync] Archive purge failed: ${err.message}`);
+      }
+
+      // Batch reactivation
+      if (reactivateIds.length > 0) {
+        try {
+          await prisma.classAssignment.updateMany({
+            where: { id: { in: reactivateIds } },
+            data: { isActive: true, archivedAt: null, archivedReason: null },
+          });
+        } catch (err: any) {
+          logger.warn(`[AtlasSync] Batch reactivation failed: ${err.message}`);
+        }
+      }
+
+      if (archiveIds.length > 0 || reactivateIds.length > 0 || preservedMissingCount > 0) {
+        console.log(
+          `[AtlasSync] Stale-check: archived=${archiveIds.length}, reactivated=${reactivateIds.length}, preserved=${preservedMissingCount}.`,
+        );
+      }
     }
 
-    // 6. Data-safety note: stale-check runs ONLY for teachers who had ≥1 successfully resolved
-    // load this cycle. Teachers whose loads could not be resolved (e.g. EnrollPro section-ID
-    // lookup returned nothing) are excluded — their existing assignments must NOT be archived just
-    // because this sync cycle couldn't confirm them. This prevents the bug where assignments are
-    // repeatedly archived/re-created when the EnrollPro section lookup is temporarily unavailable.
-    const matchedTeacherIds = Array.from(atlasIdToSmartTeacherId.values());
-    const staleCandidateIds = Array.from(teacherIdsWithLoads);
-    if (matchedTeacherIds.length > 0) {
-      const skippedCount = matchedTeacherIds.length - staleCandidateIds.length;
-      console.log(
-        `[AtlasSync] Stale-check scope: ${staleCandidateIds.length}/${matchedTeacherIds.length} ` +
-        `Atlas-matched teachers had loads resolved. ${skippedCount} teacher(s) skipped (no loads resolved — assignments preserved).`,
-      );
-    }
-
-    const allSections = await prisma.section.findMany({ where: { schoolYear: schoolYearLabel } });
-    const sectionByKey = new Map(allSections.map(s => [`${s.name.trim()}:${s.gradeLevel}`, s]));
+    // 6.5 Upsert loads from effective endpoint into ClassAssignment
+    // Reuse pre-resolved section data from step 5.2
+    const allSections = allSectionsPre;
+    const sectionByKey = sectionByKeyPre;
 
     for (const load of loads) {
       const section = sectionByKey.get(`${load.sectionName.trim()}:${load.gradeLevel}`);
@@ -589,9 +536,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       }
     }
 
-    // 5.3 Persist published schedule entries as ScheduleEntry records
-    // ATLAS published schedule uses NESTED objects: entry.subject.code, entry.section.externalId, etc.
-    // See AIMS integration guide for full schema reference.
+    // 6.6 Persist published schedule entries as ScheduleEntry records
     {
       const allScheduleEntries: Array<{
         teacherId: string; subjectCode: string; sectionName: string;
@@ -612,24 +557,18 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           const startTime = entry?.startTime;
           const endTime = entry?.endTime;
           if (!day || !startTime || !endTime) { skippedNoDay++; continue; }
-          // Skip placeholder faculty entries (test/dummy data per AIMS guide)
           if (entry?.faculty?.isPlaceholder) continue;
-          // ATLAS nested structure: entry.subject.code (not entry.subjectCode)
           const subjectCode = normalizeAtlasSubjectCode(entry?.subject?.code ?? entry?.subjectCode);
           if (!subjectCode) {
             skippedNoSubject++;
-            logger.debug(`[AtlasSync] Skipped entry (no subject): day=${day} ${startTime}-${endTime} subject.raw=${JSON.stringify(entry?.subject)} label=${JSON.stringify(entry?.label ?? entry?.name ?? entry?.type)}`);
             continue;
           }
-          // ATLAS nested structure: entry.section.externalId (EnrollPro section ID for cross-system matching)
-          // Falls back to entry.section.id (backward-compatible alias) then entry.sectionId
           const sectionId = Number(entry?.section?.externalId ?? entry?.section?.id ?? entry?.sectionId);
           if (!Number.isFinite(sectionId)) {
-            logger.debug(`[AtlasSync] Skipped entry (no section): day=${day} ${startTime}-${endTime} subject=${subjectCode} section.raw=${JSON.stringify(entry?.section)}`);
+            skippedNoSection++;
             continue;
           }
           let epSection = epSectionById.get(sectionId);
-          // Fallback: match by section name from ATLAS nested response
           if (!epSection?.name) {
             const atlasSectionName = entry?.section?.name ?? entry?.sectionName;
             if (atlasSectionName) {
@@ -637,11 +576,9 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
             }
           }
           if (!epSection?.name) { skippedNoSection++; continue; }
-          // ATLAS nested: entry.section.gradeLevelName or entry.section.gradeLevel (number)
           const gradeLevelRaw = epSection.gradeLevel?.name ?? epSection.gradeLevelName ?? epSection.name;
           const gradeLevel = mapGradeLevel(gradeLevelRaw);
           if (!gradeLevel) continue;
-          // ATLAS nested: entry.room?.id (not entry.roomId)
           const roomId = entry?.room?.id ?? entry?.roomId ?? null;
           allScheduleEntries.push({
             teacherId: smartTeacherId, subjectCode, sectionName: epSection.name,
@@ -722,56 +659,12 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           console.log(`[AtlasSync] Schedule entries: created=${scheduleCreated}, cleaned=${scheduleCleaned}`);
         }
       }
-      // Always log schedule diagnostics with school year info
       if (totalPubEntries > 0) {
-        console.log(`[AtlasSync] Schedule diag: totalPub=${totalPubEntries}, skippedNoDay=${skippedNoDay}, skippedNoSubject=${skippedNoSubject}, skippedNoSection=${skippedNoSection}, resolved=${allScheduleEntries.length}, atlasSY=${atlasSchoolYearId}${discoveredPubYearId ? `, discoveredSY=${discoveredPubYearId}` : ''}`);
+        console.log(`[AtlasSync] Schedule diag: totalPub=${totalPubEntries}, skippedNoDay=${skippedNoDay}, skippedNoSubject=${skippedNoSubject}, skippedNoSection=${skippedNoSection}, resolved=${allScheduleEntries.length}, atlasSY=${atlasSchoolYearId}`);
       } else {
-        console.log(`[AtlasSync] Schedule diag: no published schedule entries found from ATLAS (tried atlasSY=${atlasSchoolYearId}, current-year${discoveredPubYearId ? `, discoveredSY=${discoveredPubYearId}` : ''})`);
+        console.log(`[AtlasSync] Schedule diag: no published schedule entries found from ATLAS (atlasSY=${atlasSchoolYearId})`);
       }
     }
-
-    if (staleCandidateIds.length > 0) {
-      const currentAssignments = await prisma.classAssignment.findMany({
-        where: {
-          teacherId: { in: staleCandidateIds },
-          schoolYear: schoolYearLabel,
-        },
-        select: { id: true, teacherId: true, subjectId: true, sectionId: true, isActive: true },
-      });
-
-      let preservedMissingCount = 0;
-      const reactivateIds: string[] = [];
-
-      for (const assignment of currentAssignments) {
-        const key = `${assignment.teacherId}:${assignment.subjectId}:${assignment.sectionId}`;
-        const shouldBeActive = desiredAssignmentPairs.has(key);
-        if (shouldBeActive && !assignment.isActive) {
-          reactivateIds.push(assignment.id);
-        } else if (!shouldBeActive && assignment.isActive) {
-          preservedMissingCount++;
-        }
-      }
-
-      // Batch reactivation
-      if (reactivateIds.length > 0) {
-        try {
-          await prisma.classAssignment.updateMany({
-            where: { id: { in: reactivateIds } },
-            data: { isActive: true, archivedAt: null, archivedReason: null },
-          });
-        } catch (err: any) {
-          logger.warn(`[AtlasSync] Batch reactivation failed: ${err.message}`);
-        }
-      }
-
-      if (reactivateIds.length > 0 || preservedMissingCount > 0) {
-        console.log(
-          `[AtlasSync] Stale-check (safe mode): reactivated=${reactivateIds.length}, preservedMissing=${preservedMissingCount}.`,
-        );
-      }
-    }
-
-
 
     // 7. Sync section advisers from ATLAS /faculty/advisers
     try {
@@ -828,15 +721,15 @@ export function getSyncStatus() {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch teaching load summary from ATLAS.
- * GET /faculty-assignments/summary?schoolId=<id>&schoolYearId=<id>
- * Requires ATLAS_SYSTEM_TOKEN.
+ * Fetch effective annual teaching load from ATLAS.
+ * GET /faculty-assignments/effective?schoolId=<id>&schoolYearId=<id>
+ * This is the contract-compliant endpoint for integration consumers.
  */
-export async function getAtlasTeachingLoadSummary(
+export async function getAtlasEffectiveTeachingLoad(
   atlasSchoolYearId?: number,
 ): Promise<any> {
   const syId = atlasSchoolYearId ?? DEFAULT_ATLAS_SCHOOL_YEAR_ID;
-  return atlasGet(`/faculty-assignments/summary?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${syId}`);
+  return fetchEffectiveTeachingLoad(syId);
 }
 
 /**

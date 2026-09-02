@@ -679,24 +679,19 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
 
     const canonicalEnrollments = Array.from(enrollmentBySchoolYear.values());
 
-    // Determine the student's CURRENT grade level from their latest enrollment
-    const gradeOrder = ['GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10'];
     // Sort canonicalEnrollments by school year desc to get the latest
     const sortedByYear = [...canonicalEnrollments].sort((a: any, b: any) => b.schoolYear.localeCompare(a.schoolYear));
     const currentEnrollment = sortedByYear[0];
-    const currentGradeLevel = currentEnrollment?.section?.gradeLevel ?? 'GRADE_10';
-    const currentGradeIdx = gradeOrder.indexOf(currentGradeLevel);
     const currentSchoolYear = currentEnrollment?.schoolYear ?? await getActiveSchoolYearLabel();
 
-    // SF10 only shows grades up to the student's current grade level.
-    // Grade 7 → 1 year, Grade 8 → 2 years, Grade 9 → 3 years, Grade 10 → 4 years.
-    // Filter enrollments to only include those within the student's JHS range.
+    // SF10 shows ALL of the student's JHS enrollment history (Grades 7-10).
+    // Retained students may have more years than their current grade level index.
+    // Only exclude future school years (yearDiff < 0).
     const filteredCanonicalEnrollments = canonicalEnrollments.filter((e: any) => {
       const syStart = parseInt(e.schoolYear.split('-')[0]);
       const currentStart = parseInt(currentSchoolYear.split('-')[0]);
       const yearDiff = currentStart - syStart;
-      // Only include years within the student's JHS range (0 = current, up to currentGradeIdx back)
-      return yearDiff >= 0 && yearDiff <= currentGradeIdx;
+      return yearDiff >= 0;
     });
 
     // Build set of allowed school years for the grades loop
@@ -733,6 +728,19 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
         }
       }
     });
+
+    // Fetch all remedial classes for this student (for SF10 remedial section)
+    const enrollmentIds = filteredCanonicalEnrollments.map((e: any) => e.id);
+    const allRemedialClasses = await prisma.remedialClass.findMany({
+      where: { enrollmentId: { in: enrollmentIds } },
+      orderBy: { subjectName: "asc" },
+    });
+    const remedialByEnrollment = new Map<string, typeof allRemedialClasses>();
+    for (const rc of allRemedialClasses) {
+      const list = remedialByEnrollment.get(rc.enrollmentId) ?? [];
+      list.push(rc);
+      remedialByEnrollment.set(rc.enrollmentId, list);
+    }
 
     // Fallback: if no Grade records found, try GradeSnapshot
     if (grades.length === 0) {
@@ -942,7 +950,17 @@ router.get("/forms/sf10/:studentId", authenticateToken, async (req: AuthRequest,
         generalAverage,
         honors: generalAverage ? (generalAverage >= 98 ? "With Highest Honors" : generalAverage >= 95 ? "With High Honors" : generalAverage >= 90 ? "With Honors" : null) : null,
         promotionStatus: generalAverage ? (subjectGrades.every((s: any) => !s.final || s.final >= 75) ? "Promoted" : "Retained") : null,
-        remedialClasses: [],
+        remedialClasses: enrollmentForYear
+          ? (remedialByEnrollment.get(enrollmentForYear.id) ?? []).map((rc) => ({
+              learningAreas: rc.subjectName,
+              finalRating: String(rc.originalGrade),
+              remedialClassMark: rc.remedialMark != null ? String(rc.remedialMark) : undefined,
+              conductedFrom: rc.conductedFrom?.toISOString(),
+              conductedTo: rc.conductedTo?.toISOString(),
+              status: rc.status,
+              outcome: rc.outcome,
+            }))
+          : [],
         profileSnapshot,
       };
     });

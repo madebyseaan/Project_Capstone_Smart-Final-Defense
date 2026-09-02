@@ -18,6 +18,8 @@ import {
   resolveEnrollProSchoolYear,
   type EnrollProTeacher,
 } from './enrollproClient';
+import type { AtlasEffectiveTeachingLoadResponse } from './sync/httpClient';
+import { logger } from './logger';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -142,6 +144,68 @@ export function getCachedAtlasFaculty(): any[] | undefined {
  */
 export function setCachedAtlasFaculty(faculty: any[]): void {
   syncCache.set('atlas:faculty', faculty);
+}
+
+// ---------------------------------------------------------------------------
+// Atlas Effective Teaching Load cache (ATLAS Annual Contract)
+// ---------------------------------------------------------------------------
+// Contract cache key: atlas-teaching-load:{schoolId}:{schoolYearId}:{version}
+// Implementation: store by schoolId:schoolYearId (get doesn't know version),
+// but track the version separately so set() can invalidate stale entries
+// when ATLAS bumps the version.
+
+let atlasTLVersionByScope = new Map<string, number>();
+
+function atlasTLSchoolYearKey(schoolId: number, schoolYearId: number): string {
+  return `atlas-teaching-load:${schoolId}:${schoolYearId}`;
+}
+
+/**
+ * Get cached effective teaching load for a school year.
+ * Returns undefined if not cached.
+ */
+export function getCachedEffectiveTeachingLoad(
+  schoolId: number,
+  schoolYearId: number,
+): AtlasEffectiveTeachingLoadResponse | undefined {
+  return syncCache.get<AtlasEffectiveTeachingLoadResponse>(
+    atlasTLSchoolYearKey(schoolId, schoolYearId),
+  );
+}
+
+/**
+ * Set effective teaching load in cache.
+ * Invalidates stale entries when ATLAS bumps the version (contract compliance).
+ */
+export function setCachedEffectiveTeachingLoad(
+  schoolId: number,
+  schoolYearId: number,
+  data: AtlasEffectiveTeachingLoadResponse,
+): void {
+  const scopeKey = atlasTLSchoolYearKey(schoolId, schoolYearId);
+  const newVersion = data.source.version;
+  const prevVersion = atlasTLVersionByScope.get(scopeKey);
+
+  // If version changed, invalidate old entry first (contract: refetch on version change)
+  if (prevVersion != null && prevVersion !== newVersion) {
+    syncCache.invalidate(scopeKey);
+    logger.debug(`[SyncCache] Teaching load version changed: ${prevVersion} → ${newVersion} for schoolYear ${schoolYearId}`);
+  }
+
+  atlasTLVersionByScope.set(scopeKey, newVersion);
+  syncCache.set(scopeKey, data);
+}
+
+/**
+ * Invalidate cached teaching load for a specific school year.
+ */
+export function invalidateEffectiveTeachingLoad(
+  schoolId: number,
+  schoolYearId: number,
+): void {
+  const scopeKey = atlasTLSchoolYearKey(schoolId, schoolYearId);
+  syncCache.invalidate(scopeKey);
+  atlasTLVersionByScope.delete(scopeKey);
 }
 
 /**

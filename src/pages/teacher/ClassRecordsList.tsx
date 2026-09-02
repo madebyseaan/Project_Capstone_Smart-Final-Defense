@@ -605,12 +605,12 @@ export default function ClassRecordsList() {
 
       {activeClasses.length === 0 && archivedClasses.length === 0 && (
         <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] bg-white overflow-hidden">
-          <CardContent className="py-32 text-center">
-            <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-sm">
+          <CardContent className="py-32 flex flex-col items-center justify-center text-center">
+            <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-sm">
               <BookOpen className="w-10 h-10 text-slate-200" />
             </div>
             <h3 className="font-black text-slate-900 text-2xl mb-3">No Classes Found</h3>
-            <p className="text-slate-400 max-w-sm mx-auto font-medium text-lg leading-relaxed">
+            <p className="text-slate-400 font-medium text-lg leading-relaxed max-w-sm text-center">
               {searchTerm
                 ? "We couldn't find any classes matching your current search parameters."
                 : "You don't have any assigned classes for this academic year yet."}

@@ -753,10 +753,9 @@ export function ClassRecordTable({
                       const isLocked = !!lockedTerm && q !== lockedTerm;
                       const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
                       const isPastTerm = currentTerm && termOrder[q] < termOrder[currentTerm];
-                      const isFutureTerm = currentTerm && termOrder[q] > termOrder[currentTerm];
                       const isReadOnly = isPastTerm; // Past terms are view-only
-                      const disabled = isLocked || isFutureTerm; // Future terms are not available at all
-                      const label = isPastTerm ? "Past term — view only" : isFutureTerm ? "Not yet available" : undefined;
+                      const disabled = isLocked; // Allow future terms for testing
+                      const label = isPastTerm ? "Past term — view only" : undefined;
                       return (
                         <SelectItem
                           key={q}
@@ -768,7 +767,7 @@ export function ClassRecordTable({
                           title={isLocked ? `This rotating subject is only taught in ${lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'}` : label}
                         >
                           {q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3"}
-                          {isLocked ? " (Locked)" : isPastTerm ? " (View Only)" : isFutureTerm ? " (Locked)" : ""}
+                          {isLocked ? " (Locked)" : isPastTerm ? " (View Only)" : ""}
                         </SelectItem>
                       );
                     })}

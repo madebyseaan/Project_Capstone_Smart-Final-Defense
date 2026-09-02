@@ -16,7 +16,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getAcronym } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
-import RolloverBanner from "@/components/RolloverBanner";
 interface UserData {
   id: string;
   username: string;
@@ -139,7 +138,6 @@ export default function TeacherLayout() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <RolloverBanner />
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -155,7 +153,7 @@ export default function TeacherLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           sidebarCollapsed ? "lg:w-[70px] w-[280px]" : "w-[280px]"
         )}
-        style={{ fontFamily: "'Inter', 'Poppins', sans-serif" }}
+        style={{ fontFamily: "'DM Sans', 'Poppins', sans-serif" }}
       >
         {/* Logo Header */}
         <div className={cn(

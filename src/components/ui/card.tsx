@@ -66,7 +66,7 @@ function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-description"
       className={cn(
-        "font-mono text-xs tracking-wider font-medium text-zinc-400 uppercase",
+        "font-sans text-xs tracking-wide font-medium text-zinc-400 uppercase",
         className
       )}
       {...props}

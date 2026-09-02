@@ -204,6 +204,7 @@ model Enrollment {
   promotedToGradeLevel GradeLevel?
   section        Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   student        Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  remedialClasses RemedialClass[]
 
   @@unique([studentId, sectionId, schoolYear])
   @@index([schoolYear, status])
@@ -577,6 +578,35 @@ enum FormType {
   SF9
   SF10
   SF7
+}
+
+model RemedialClass {
+  id              String    @id @default(cuid())
+  enrollmentId    String
+  schoolYear      String
+  gradeLevel      GradeLevel
+
+  subjectCode     String
+  subjectName     String
+  originalGrade   Float
+
+  remedialMark    Float?
+  recomputedGrade Float?
+  outcome         String?
+
+  conductedFrom   DateTime?
+  conductedTo     DateTime?
+
+  status          String    @default("PENDING")
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  enrollment      Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, subjectCode])
+  @@index([status])
+  @@index([schoolYear])
 }
 
 model GradeEditRequest {

@@ -52,7 +52,6 @@ src/                              # Frontend (React)
 ├── main.tsx                      # Entry point
 ├── components/                   # Reusable UI
 │   ├── ui/                       # shadcn/ui primitives
-│   ├── DevPortalSwitcher.tsx     # Dev role switcher
 │   ├── ExcelRenderer.tsx         # Excel file viewer
 │   ├── GradeDeadlineBanner.tsx   # Grade deadline warnings
 │   └── GradeStatusBanner.tsx     # Grade status display
@@ -141,7 +140,6 @@ server/src/                       # Backend (Express)
 │   ├── logger.ts                 # Winston logger
 │   ├── tokens.ts                 # JWT generation/verification
 │   ├── audit.ts                  # Audit logging
-│   ├── ensureDevAccount.ts       # Dev user bypass setup
 │   ├── schoolYearResolver.ts     # Current school year logic
 │   ├── transmutationValidation.ts # Grade transmutation rules
 │   ├── transmutationCache.ts     # Cache for transmutation tables

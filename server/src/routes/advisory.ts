@@ -144,33 +144,6 @@ router.get(
         },
       }) as SectionWithEnrollments | null;
 
-      // Fallback: if no section for currentSchoolYear, try any section assigned to teacher
-      if (!advisorySection) {
-        advisorySection = await prisma.section.findFirst({
-          where: { adviserId: teacher.id },
-          include: {
-            enrollments: {
-              where: { status: "ENROLLED" },
-              include: {
-                student: true,
-              },
-              orderBy: {
-                student: {
-                  lastName: "asc",
-                },
-              },
-            },
-            _count: {
-              select: {
-                enrollments: {
-                  where: { status: "ENROLLED" }
-                },
-              },
-            },
-          },
-        }) as SectionWithEnrollments | null;
-      }
-
       if (!advisorySection) {
         res.json({ 
           hasAdvisory: false,

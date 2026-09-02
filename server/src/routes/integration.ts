@@ -371,6 +371,7 @@ router.get(
         where: {
           teacherId: teacher.id,
           schoolYear: currentSchoolYear,
+          isActive: true,
         },
         include: {
           subject: true,

@@ -7,11 +7,12 @@ import {
   getEnrollProTeachers,
   resolveEnrollProSchoolYear,
 } from './enrollproClient';
-import { resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID } from './sync/httpClient';
+import { resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID, fetchEffectiveTeachingLoad, ATLAS_SCHOOL_ID } from './sync/httpClient';
+import { getCachedEffectiveTeachingLoad } from './syncCache';
 
 import { getAtlasSchoolId } from '../config/schoolEnv';
-const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
-const ATLAS_SCHOOL_ID = getAtlasSchoolId();
+const ATLAS_BASE_URL = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
+const ATLAS_SCHOOL_ID_LOCAL = getAtlasSchoolId();
 
 export interface TeacherDashboardSnapshot {
   teacher: {
@@ -121,7 +122,7 @@ function fetchJSON(url: string, headers: Record<string, string> = {}): Promise<a
 }
 
 async function fetchAtlasFaculty(atlasToken: string): Promise<AtlasFaculty[]> {
-  const result = await fetchJSON(`${ATLAS_BASE}/faculty?schoolId=${ATLAS_SCHOOL_ID}`, {
+  const result = await fetchJSON(`${ATLAS_BASE_URL}/faculty?schoolId=${ATLAS_SCHOOL_ID_LOCAL}`, {
     Authorization: `Bearer ${atlasToken}`,
   });
   return (result?.faculty ?? []) as AtlasFaculty[];
@@ -132,32 +133,29 @@ async function fetchAtlasAssignments(atlasFacultyId: number, atlasToken: string)
     const resolvedAtlasSY = await resolveAtlasSchoolYear();
     const atlasSchoolYearId = resolvedAtlasSY.id;
 
-    const result = await fetchJSON(
-      `${ATLAS_BASE}/faculty-assignments/${atlasFacultyId}?schoolYearId=${atlasSchoolYearId}`,
-      { Authorization: `Bearer ${atlasToken}` },
-    );
-    const payload = result?.assignments ?? result?.data ?? result ?? [];
-    let items = Array.isArray(payload) ? (payload as AtlasAssignment[]) : [];
-
-    const hasSections = items.some(a => (a?.sections && a.sections.length > 0) || a?.sectionId);
-    if (!hasSections) {
-      const fallbackSYs = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 5, 6, 1, 8].filter(id => id !== atlasSchoolYearId);
-      for (const fallbackSY of fallbackSYs) {
-        try {
-          const fbRes = await fetchJSON(
-            `${ATLAS_BASE}/faculty-assignments/${atlasFacultyId}?schoolYearId=${fallbackSY}`,
-            { Authorization: `Bearer ${atlasToken}` },
-          );
-          const fbPayload = fbRes?.assignments ?? fbRes?.data ?? fbRes ?? [];
-          const fbItems = Array.isArray(fbPayload) ? (fbPayload as AtlasAssignment[]) : [];
-          if (fbItems.some(a => (a?.sections && a.sections.length > 0) || a?.sectionId)) {
-            items = fbItems;
-            break;
-          }
-        } catch {}
-      }
+    // Read from cached effective teaching load (ATLAS contract-compliant)
+    let effectiveLoad = getCachedEffectiveTeachingLoad(ATLAS_SCHOOL_ID, atlasSchoolYearId) ?? undefined;
+    if (!effectiveLoad) {
+      effectiveLoad = (await fetchEffectiveTeachingLoad(atlasSchoolYearId)) ?? undefined;
     }
-    return items;
+
+    if (!effectiveLoad || effectiveLoad.source.state === 'EMPTY') {
+      return [];
+    }
+
+    // Filter assignments for this faculty member and map to AtlasAssignment format
+    const facultyAssignments = effectiveLoad.assignments.filter(
+      (a) => Number(a.facultyId) === atlasFacultyId,
+    );
+
+    return facultyAssignments.map((a) => ({
+      id: null,
+      subjectCode: String(a.subjectId),
+      subject: { code: String(a.subjectId), name: a.specializationLabel ?? null, type: null },
+      sectionId: a.sectionId,
+      section: { id: a.sectionId, name: null },
+      sections: [{ id: a.sectionId, name: null }],
+    }));
   } catch {
     return [];
   }

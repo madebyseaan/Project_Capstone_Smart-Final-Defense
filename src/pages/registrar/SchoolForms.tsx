@@ -686,9 +686,9 @@ export default function SchoolForms() {
   };
 
   // Map individual ATLAS subject codes to SF10 grouped codes
-  // Science: SCI_BIO, SCI_CHEM, SCI_ES → SCI (grouped)
-  // TLE: TLE_AFA, TLE_FCS, TLE_ICT (with or without _EXP suffix) → TLE (grouped)
-  // MAPEH: MUSIC, ARTS, PE, HEALTH → MAPEH (grouped, for historical seed data)
+  // Science: SCI_BIO, SCI_CHEM, SCI_ES â†’ SCI (grouped)
+  // TLE: TLE_AFA, TLE_FCS, TLE_ICT (with or without _EXP suffix) â†’ TLE (grouped)
+  // MAPEH: MUSIC, ARTS, PE, HEALTH â†’ MAPEH (grouped, for historical seed data)
   const SF10_GROUP_MAP: Record<string, string> = {
     SCI_BIO: 'SCI', SCI_CHEM: 'SCI', SCI_ES: 'SCI', SCI: 'SCI',
     TLE_AFA: 'TLE', TLE_AFA_EXP: 'TLE',
@@ -743,7 +743,7 @@ export default function SchoolForms() {
     return { t1: avg('T1'), t2: avg('T2'), t3: avg('T3'), final: avg('final') };
   };
 
-  // Render SF10 Content Helper — Official DepEd SF10-JHS Layout
+  // Render SF10 Content Helper â€” Official DepEd SF10-JHS Layout
   const renderSF10Content = (data: SF10Data) => {
     const studentFirstName = data.student.firstName || data.student.name.split(',')[1]?.trim().split(' ')[0] || '';
     const studentLastName = data.student.lastName || data.student.name.split(',')[0]?.trim() || '';
@@ -757,7 +757,7 @@ export default function SchoolForms() {
         <span className="font-bold text-gray-900 text-xs">SF10-JHS</span>
       </div>
 
-      {/* Header — Republic / DepEd centered */}
+      {/* Header â€” Republic / DepEd centered */}
       <div className="text-center mb-3">
         <p className="font-bold text-gray-900">Republic of the Philippines</p>
         <p className="font-bold text-gray-900">Department of Education</p>
@@ -819,7 +819,7 @@ export default function SchoolForms() {
         <div className="p-2">
           {/* Row 1: Elementary School Completer + General Average */}
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-gray-900">☐ Elementary School Completer</span>
+            <span className="text-gray-900">â˜ Elementary School Completer</span>
             <span className="ml-auto">
               <span className="font-bold text-gray-900">General Average:</span>
               <span className="border-b border-gray-600 ml-1 inline-block min-w-[60px] text-gray-900">&nbsp;</span>
@@ -834,7 +834,7 @@ export default function SchoolForms() {
             <span className="font-bold text-gray-900">Other Credential Presented</span>
           </div>
           <div className="flex items-center gap-2 mb-1 ml-4">
-            <span className="text-gray-900">☐ PEPT Passer</span>
+            <span className="text-gray-900">â˜ PEPT Passer</span>
             <span className="ml-4">
               <span className="font-bold text-gray-900">Rating:</span>
               <span className="border-b border-gray-600 ml-1 inline-block min-w-[60px] text-gray-900">&nbsp;</span>
@@ -845,12 +845,12 @@ export default function SchoolForms() {
             <span className="border-b border-gray-600 ml-1 inline-block min-w-[100px] text-gray-900">&nbsp;</span>
           </div>
           <div className="flex items-center gap-2 ml-4">
-            <span className="text-gray-900">☐ ALS A &amp; E Passer</span>
+            <span className="text-gray-900">â˜ ALS A &amp; E Passer</span>
           </div>
         </div>
       </div>
 
-      {/* SCHOLASTIC RECORD — one per grade level */}
+      {/* SCHOLASTIC RECORD â€” one per grade level */}
       {data.schoolRecords.map((record: any, recordIndex: number) => (
         <div key={recordIndex} className="mb-3 border border-black page-break-inside-avoid">
           {/* School / Grade / Section / SY Header */}
@@ -912,7 +912,7 @@ export default function SchoolForms() {
                 const cellClass = (val: number | null) =>
                   `border-r border-black p-0.5 text-center ${(val ?? 0) < 75 && val != null ? 'text-red-600 font-bold' : 'text-gray-900'}`;
 
-                // Backend quarterlyGrade values are already transmuted — display as-is
+                // Backend quarterlyGrade values are already transmuted â€” display as-is
                 const t1 = vals.t1;
                 const t2 = vals.t2;
                 const t3 = vals.t3;
@@ -955,9 +955,21 @@ export default function SchoolForms() {
               <span className="font-bold text-gray-900">Remedial Classes</span>
               <span className="text-gray-900 ml-4">
                 Conducted from (mm/dd/yyyy)
-                <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
+                {record.remedialClasses?.length > 0 && record.remedialClasses[0].conductedFrom ? (
+                  <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">
+                    {new Date(record.remedialClasses[0].conductedFrom).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })}
+                  </span>
+                ) : (
+                  <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
+                )}
                 to
-                <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
+                {record.remedialClasses?.length > 0 && record.remedialClasses[0].conductedTo ? (
+                  <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">
+                    {new Date(record.remedialClasses[0].conductedTo).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })}
+                  </span>
+                ) : (
+                  <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
+                )}
               </span>
             </div>
             <table className="w-full text-[10px] border-collapse mt-1">
@@ -969,11 +981,16 @@ export default function SchoolForms() {
                 </tr>
               </thead>
               <tbody>
-                {[0, 1, 2].map((i) => (
+                {(record.remedialClasses?.length > 0
+                  ? record.remedialClasses
+                  : [{ learningAreas: "", finalRating: "", remedialClassMark: "" },
+                     { learningAreas: "", finalRating: "", remedialClassMark: "" },
+                     { learningAreas: "", finalRating: "", remedialClassMark: "" }]
+                ).map((rc: any, i: number) => (
                   <tr key={i} className="border-b border-black">
-                    <td className="border-r border-black p-0.5 h-4">&nbsp;</td>
-                    <td className="border-r border-black p-0.5">&nbsp;</td>
-                    <td className="p-0.5">&nbsp;</td>
+                    <td className="border-r border-black p-0.5 h-4 text-gray-900">{rc.learningAreas || ""}</td>
+                    <td className="border-r border-black p-0.5 text-center text-gray-900">{rc.finalRating || ""}</td>
+                    <td className="p-0.5 text-center text-gray-900">{rc.remedialClassMark || ""}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1125,14 +1142,14 @@ export default function SchoolForms() {
         <div className="mt-2 border border-black p-1.5 text-[7px]">
           <p className="font-bold mb-0.5">List and Code of Indicators under REMARK column:</p>
           <div className="grid grid-cols-4 gap-x-4 gap-y-0.5">
-            <div>T/O — Transferred Out</div>
-            <div>T/I — Transferred In</div>
-            <div>DRP — Dropped Out</div>
-            <div>B/A — Balik-Aral</div>
-            <div>CCT — 4Ps Recipient</div>
-            <div>LWD — Learner with Disability</div>
-            <div>ACL — Accelerated</div>
-            <div>LE — Late Enrollment</div>
+            <div>T/O â€” Transferred Out</div>
+            <div>T/I â€” Transferred In</div>
+            <div>DRP â€” Dropped Out</div>
+            <div>B/A â€” Balik-Aral</div>
+            <div>CCT â€” 4Ps Recipient</div>
+            <div>LWD â€” Learner with Disability</div>
+            <div>ACL â€” Accelerated</div>
+            <div>LE â€” Late Enrollment</div>
           </div>
         </div>
 
@@ -1399,11 +1416,11 @@ export default function SchoolForms() {
                       <DropdownMenuContent align="end" className="w-52">
                         <DropdownMenuItem onClick={() => handleBulkPrint('sf9')}>
                           <FileText className="w-4 h-4 mr-2" />
-                          SF9 — Report Cards
+                          SF9 â€” Report Cards
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleBulkPrint('sf10')}>
                           <FolderOpen className="w-4 h-4 mr-2" />
-                          SF10 — Permanent Records
+                          SF10 â€” Permanent Records
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1418,11 +1435,11 @@ export default function SchoolForms() {
                     <DropdownMenuContent align="end" className="w-52">
                       <DropdownMenuItem onClick={() => handleBulkPrint('sf9', true)}>
                         <FileText className="w-4 h-4 mr-2" />
-                        SF9 — Report Cards
+                        SF9 â€” Report Cards
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleBulkPrint('sf10', true)}>
                         <FolderOpen className="w-4 h-4 mr-2" />
-                        SF10 — Permanent Records
+                        SF10 â€” Permanent Records
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1430,7 +1447,7 @@ export default function SchoolForms() {
                   <div className="relative w-48">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                     <Input
-                      placeholder="Search students…"
+                      placeholder="Search studentsâ€¦"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-8 rounded-xl h-9 text-sm"
@@ -1676,7 +1693,7 @@ export default function SchoolForms() {
 
     return (
       <div className="space-y-6 animate-fade-in max-w-[900px] mx-auto">
-        {/* Action Buttons — hidden when printing */}
+        {/* Action Buttons â€” hidden when printing */}
         <div className="flex items-center justify-between print-hide">
           <Button variant="ghost" onClick={handleBack} className="rounded-xl">
             <ArrowLeft className="w-4 h-4 mr-2" />

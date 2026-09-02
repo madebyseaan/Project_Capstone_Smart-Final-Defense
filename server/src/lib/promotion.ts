@@ -14,8 +14,9 @@
  * ClassAssignment.isActive / Enrollment.isArchived, so data survives rollover archiving.
  */
 
-import { GradeLevel, PromotionStatus, Term } from "@prisma/client";
+import { GradeLevel, PromotionStatus, Term, AuditAction, AuditSeverity } from "@prisma/client";
 import { prisma } from "./prisma";
+import { createAuditLog } from "./audit";
 
 export const PASSING_GRADE = 75;
 
@@ -504,8 +505,86 @@ export async function finalizeSectionEosy(opts: {
           promotedToGradeLevel: enrollment.decision.promotedToGradeLevel,
         },
       });
+
+      if (enrollment.decision.promotionStatus === "CONDITIONALLY_PROMOTED") {
+        const failingRows = enrollment.subjects.filter(
+          (r) => r.finalRating !== null && r.finalRating < PASSING_GRADE
+        );
+        if (failingRows.length > 0) {
+          await tx.remedialClass.createMany({
+            data: failingRows.map((row) => ({
+              enrollmentId: enrollment.enrollmentId,
+              schoolYear: opts.schoolYear,
+              gradeLevel: promotions.section.gradeLevel,
+              subjectCode: row.subjectCode,
+              subjectName: row.subjectName,
+              originalGrade: row.finalRating!,
+              status: "PENDING",
+            })),
+          });
+        }
+      }
     }
   });
 
   return { ok: true, processed: promotions.enrollments.length, snapshotsCreated };
+}
+
+export async function unfinalizeSectionEosy(opts: {
+  sectionId: string;
+  schoolYear: string;
+  actor: { id: string; name: string; role: string };
+}): Promise<
+  | { ok: false; error: "SECTION_NOT_FOUND" | "NOT_FINALIZED" }
+  | { ok: true; deletedSnapshots: number; deletedRemedial: number }
+> {
+  const section = await prisma.section.findFirst({
+    where: { id: opts.sectionId, schoolYear: opts.schoolYear },
+  });
+  if (!section) return { ok: false, error: "SECTION_NOT_FOUND" };
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: { sectionId: section.id, schoolYear: opts.schoolYear, status: "ENROLLED" },
+  });
+
+  const hasStoredStatus = enrollments.some((e) => e.promotionStatus !== null);
+  if (!hasStoredStatus) return { ok: false, error: "NOT_FINALIZED" };
+
+  const enrollmentIds = enrollments.map((e) => e.id);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const deletedSnapshots = await tx.gradeSnapshot.deleteMany({
+      where: {
+        sectionId: section.id,
+        schoolYear: opts.schoolYear,
+        snapshot: { path: ["source"], equals: EOSY_SNAPSHOT_SOURCE },
+      },
+    });
+
+    const deletedRemedial = await tx.remedialClass.deleteMany({
+      where: { enrollmentId: { in: enrollmentIds } },
+    });
+
+    await tx.enrollment.updateMany({
+      where: { id: { in: enrollmentIds } },
+      data: {
+        promotionStatus: null,
+        promotedToGradeLevel: null,
+      },
+    });
+
+    return { deletedSnapshots: deletedSnapshots.count, deletedRemedial: deletedRemedial.count };
+  });
+
+  await createAuditLog(
+    AuditAction.UPDATE,
+    opts.actor,
+    `EOSY Unfinalize: ${opts.sectionId} (${opts.schoolYear})`,
+    "EOSY",
+    `EOSY unfinalize for section ${opts.sectionId} SY ${opts.schoolYear}: ${result.deletedSnapshots} snapshots, ${result.deletedRemedial} remedial records deleted`,
+    undefined,
+    AuditSeverity.WARNING
+  );
+
+  return { ok: true, ...result };
 }

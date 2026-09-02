@@ -787,7 +787,10 @@ export interface SF10Data {
       learningAreas: string;
       finalRating: string;
       conductedFrom?: string;
+      conductedTo?: string;
       remedialClassMark?: string;
+      status?: string;
+      outcome?: string;
     }[];
   }[];
   schoolSettings?: {
@@ -1011,9 +1014,18 @@ export const registrarApi = {
   getSections: (params?: { schoolYear?: string; gradeLevel?: string }) =>
     api.get<Section[]>("/registrar/sections", { params }),
 
-  // Remedial (Phase 1)
-  getRemedialPending: (params?: { page?: number; limit?: number; search?: string; gradeLevel?: string }) =>
+  // Remedial
+  getRemedialPending: (params?: { page?: number; limit?: number; schoolYear?: string; gradeLevel?: string }) =>
     api.get("/registrar/remedial/pending", { params }),
+
+  updateRemedialRow: (id: string, data: { remedialMark: number; conductedFrom?: string; conductedTo?: string }) =>
+    api.patch(`/registrar/remedial/${id}`, data),
+
+  completeRemedial: (enrollmentId: string, opts?: { retentionOverride?: boolean }) =>
+    api.post(`/registrar/remedial/${enrollmentId}/complete`, opts ?? {}),
+
+  getRemedialCertificate: (enrollmentId: string) =>
+    api.get(`/registrar/remedial/${enrollmentId}/certificate`),
 
   // Section Roster (Phase 1)
   getSectionRoster: (sectionId: number) =>

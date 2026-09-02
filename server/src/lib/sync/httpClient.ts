@@ -178,11 +178,13 @@ let cachedAtlasSYAt: number = 0;
 /**
  * Dynamically resolve the active Atlas school year ID.
  *
- * Resolution order:
+ * Resolution order (ATLAS contract-compliant):
  *   1. In-memory cache (5 min TTL)
- *   2. GET /schools/{id}/schedules/published → source.schoolYearId
- *   3. Probe known year IDs for a published schedule
- *   4. Fall back to env ATLAS_SCHOOL_YEAR_ID
+ *   2. GET /runtime/context?schoolId=X&verifyUpstream=true → activeSchoolYearId
+ *   3. Fall back to env ATLAS_SCHOOL_YEAR_ID
+ *
+ * NOTE: Cross-year probing is intentionally removed per the ATLAS Annual Teaching
+ * Load Contract. Probing other school year IDs can surface stale legacy data.
  */
 export async function resolveAtlasSchoolYear(): Promise<{ id: number; source: string }> {
   const now = Date.now();
@@ -190,32 +192,18 @@ export async function resolveAtlasSchoolYear(): Promise<{ id: number; source: st
     return cachedAtlasSY;
   }
 
-  // 1. Try school-wide published schedule
+  // 1. Try runtime context (contract-compliant resolution)
   try {
-    const pub = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/schedules/published`);
-    const pubYearId = pub?.source?.schoolYearId;
-    if (Number.isFinite(pubYearId) && pubYearId > 0) {
-      cachedAtlasSY = { id: pubYearId, source: 'published-schedule' };
+    const ctx = await atlasGet(`/runtime/context?schoolId=${ATLAS_SCHOOL_ID}&verifyUpstream=true`);
+    const activeYearId = ctx?.activeSchoolYearId;
+    if (Number.isFinite(activeYearId) && activeYearId > 0) {
+      cachedAtlasSY = { id: activeYearId, source: 'runtime-context' };
       cachedAtlasSYAt = now;
       return cachedAtlasSY;
     }
-  } catch { /* continue to probe */ }
+  } catch { /* ATLAS unreachable or no runtime context */ }
 
-  // 2. Probe known year IDs for a published schedule
-  const probeYears = [DEFAULT_ATLAS_SCHOOL_YEAR_ID, 2, 3, 5, 6, 1, 8]
-    .filter((v, i, a) => a.indexOf(v) === i); // deduplicate
-  for (const probeYear of probeYears) {
-    try {
-      const data = await atlasGet(`/schools/${ATLAS_SCHOOL_ID}/school-years/${probeYear}/schedules/published`);
-      if (data?.entries?.length > 0 || data?.source?.schoolYearId) {
-        cachedAtlasSY = { id: probeYear, source: 'probe' };
-        cachedAtlasSYAt = now;
-        return cachedAtlasSY;
-      }
-    } catch { /* this year has no published schedule */ }
-  }
-
-  // 3. Fall back to env default
+  // 2. Fall back to env default
   cachedAtlasSY = { id: DEFAULT_ATLAS_SCHOOL_YEAR_ID, source: 'env-fallback' };
   cachedAtlasSYAt = now;
   return cachedAtlasSY;
@@ -242,6 +230,66 @@ export async function getAtlasRuntimeContext(): Promise<AtlasRuntimeContext | nu
     if (data?.activeSchoolYearId != null) return data;
   } catch { /* ATLAS unreachable or no runtime context */ }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Effective Teaching Load (ATLAS Annual Contract)
+// ---------------------------------------------------------------------------
+
+export interface AtlasEffectiveAssignment {
+  subjectId: number;
+  sectionId: number;
+  facultyId: number;
+  facultyName: string;
+  specializationCode: string | null;
+  specializationLabel: string | null;
+}
+
+export interface AtlasEffectiveSource {
+  schoolId: number;
+  schoolYearId: number;
+  state: 'EMPTY' | 'POPULATED';
+  version: number;
+  initializedAt: string;
+  updatedAt: string;
+  isActiveSchoolYear: boolean;
+}
+
+export interface AtlasEffectiveTeachingLoadResponse {
+  source: AtlasEffectiveSource;
+  assignments: AtlasEffectiveAssignment[];
+  coverageTotals: {
+    assignedPairs: number;
+    activeAssignedPairs: number;
+    realFacultyAssignedPairs: number;
+    syntheticPlaceholderPairs: number;
+    rawAssignedPairs: number;
+    totalPairs: number;
+    unassignedPairs: number;
+    rawUnassignedPairs: number;
+  };
+}
+
+/**
+ * Fetch the effective annual teaching load from ATLAS.
+ * GET /faculty-assignments/effective?schoolId={schoolId}&schoolYearId={schoolYearId}
+ *
+ * This is the ONLY correct endpoint for integration consumers per the ATLAS
+ * Annual Teaching Load Contract. Returns EMPTY state when no assignments exist
+ * for the requested year — this is valid and must not be treated as an error.
+ */
+export async function fetchEffectiveTeachingLoad(
+  schoolYearId: number,
+): Promise<AtlasEffectiveTeachingLoadResponse | null> {
+  try {
+    const data = await atlasGet(
+      `/faculty-assignments/effective?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${schoolYearId}`,
+    );
+    if (data && data.source) return data as AtlasEffectiveTeachingLoadResponse;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export { ATLAS_BASE, ATLAS_SCHOOL_ID, DEFAULT_ATLAS_SCHOOL_YEAR_ID };

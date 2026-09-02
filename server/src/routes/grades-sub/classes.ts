@@ -47,6 +47,7 @@ export default function registerClasses(router: Router): void {
           where: {
             teacherId: teacher.id,
             schoolYear: currentSchoolYear,
+            isActive: true,
           },
           include: {
             subject: true,

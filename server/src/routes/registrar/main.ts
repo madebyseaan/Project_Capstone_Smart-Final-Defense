@@ -922,10 +922,13 @@ router.get("/alumni", authenticateToken, async (req: AuthRequest, res: Response)
         if (currentlyEnrolled.has(enr.studentId)) return false;
         // Students with PROMOTED/CONDITIONALLY_PROMOTED/RETAINED status and no current-year
         // enrollment are awaiting re-enrollment, not alumni — unless they are JHS completers
-        // or have a later TRANSFERRED/DROPPED enrollment
+        // or have a later TRANSFERRED/DROPPED enrollment.
+        // Students with null promotionStatus + ENROLLED status are also awaiting
+        // re-enrollment (e.g. after EnrollPro rollover where EOSY wasn't finalized in SMART).
         const ps = enr.promotionStatus;
         const isContinuing = ps === 'PROMOTED' || ps === 'CONDITIONALLY_PROMOTED' || ps === 'RETAINED';
-        if (isContinuing && ps !== 'JHS_COMPLETER') {
+        const isPendingPromotion = ps === null && enr.status === 'ENROLLED';
+        if ((isContinuing || isPendingPromotion) && ps !== 'JHS_COMPLETER') {
           // Check if student has a newer enrollment with terminal status
           const latestForStudent = allEnrollments.filter((e: any) => e.studentId === enr.studentId);
           const hasTerminal = latestForStudent.some((e: any) =>
@@ -1851,10 +1854,13 @@ export function isStudentAlumni(
   // JHS completers are always alumni
   if (latestEnrollment.promotionStatus === "JHS_COMPLETER") return true;
   // PROMOTED/CONDITIONALLY_PROMOTED/RETAINED without current-year enrollment
-  // are awaiting re-enrollment, not alumni — unless they have a terminal enrollment
+  // are awaiting re-enrollment, not alumni — unless they have a terminal enrollment.
+  // Students with null promotionStatus + ENROLLED status are also awaiting
+  // re-enrollment (e.g. after EnrollPro rollover where EOSY wasn't finalized in SMART).
   const ps = latestEnrollment.promotionStatus;
   const isContinuing = ps === "PROMOTED" || ps === "CONDITIONALLY_PROMOTED" || ps === "RETAINED";
-  if (isContinuing) {
+  const isPendingPromotion = ps === null && latestEnrollment.status === "ENROLLED";
+  if (isContinuing || isPendingPromotion) {
     const hasTerminal = allEnrollments.some(
       (e) =>
         e.studentId === latestEnrollment.studentId &&

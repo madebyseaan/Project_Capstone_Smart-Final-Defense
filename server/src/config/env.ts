@@ -72,10 +72,4 @@ export function isDevelopment(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-/**
- * Whether to create the dev account.
- * Only in development mode or when explicitly enabled.
- */
-export function shouldCreateDevAccount(): boolean {
-  return isDevelopment() || process.env.CREATE_DEV_ACCOUNT === "true";
-}
+

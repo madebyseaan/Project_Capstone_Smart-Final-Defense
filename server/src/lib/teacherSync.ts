@@ -28,6 +28,7 @@ import {
   getCachedSchoolYear,
   getCachedAtlasFaculty,
   setCachedAtlasFaculty,
+  getCachedEffectiveTeachingLoad,
 } from './syncCache';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import type { GradeLevel } from '@prisma/client';
@@ -108,7 +109,7 @@ export async function syncTeacherOnLogin(
     logger.warn('[TeacherSync] Could not resolve school year from EnrollPro, using defaults');
   }
 
-  // Resolve Atlas school year dynamically (published schedule → probe → env fallback)
+  // Resolve Atlas school year dynamically (runtime/context → env fallback)
   let atlasSchoolYearId = DEFAULT_ATLAS_SCHOOL_YEAR_ID;
   try {
     const resolvedAtlasSY = await resolveAtlasSchoolYear();
@@ -413,15 +414,35 @@ export async function syncTeacherOnLogin(
     } else {
       logger.debug(`[TeacherSync] Atlas: matched faculty id=${atlasMember.id}`);
 
-      // Try 1: faculty-assignments (subject-grade assignments, may have section info)
-      const assignmentsData = await atlasGet(
-        `/faculty-assignments/${atlasMember.id}?schoolYearId=${atlasSchoolYearId}`,
-      );
-      const assignmentsPayload = assignmentsData?.assignments ?? assignmentsData?.data ?? assignmentsData ?? [];
-      let assignments: any[] = Array.isArray(assignmentsPayload) ? assignmentsPayload : [];
+      // Read from cached effective teaching load (populated by background atlasSync).
+      // This is the ATLAS contract-compliant source. EMPTY = valid, no cross-year fallback.
+      let effectiveLoad = getCachedEffectiveTeachingLoad(ATLAS_SCHOOL_ID, atlasSchoolYearId) ?? undefined;
+      if (!effectiveLoad) {
+        // Cache miss — background sync hasn't run yet for this year. Fetch live.
+        const { fetchEffectiveTeachingLoad } = await import('./sync/httpClient');
+        effectiveLoad = (await fetchEffectiveTeachingLoad(atlasSchoolYearId)) ?? undefined;
+      }
 
-      const flatAssignments: any[] = assignments.filter((a) => a && (a.subjectCode || a.sectionId));
-      const nestedAssignments: any[] = assignments.filter((a) => a && (a.subject?.code || a.sections));
+      const effectiveAssignments = effectiveLoad?.assignments ?? [];
+      const effectiveFaculty = effectiveAssignments.filter(
+        (a: any) => Number(a.facultyId) === Number(atlasMember.id),
+      );
+
+      // Build ATLAS subjectId → code lookup for mapping effective assignments
+      const atlasSubjectIdToCode = new Map<number, string>();
+      try {
+        const atlasSubjectsData = await atlasGet(`/subjects?schoolId=${ATLAS_SCHOOL_ID}`);
+        const atlasSubjs: any[] = atlasSubjectsData.subjects ?? [];
+        for (const s of atlasSubjs) {
+          if (s.id && s.code) atlasSubjectIdToCode.set(Number(s.id), (s.code ?? '').trim().toUpperCase());
+        }
+      } catch { /* non-critical */ }
+
+      const flatAssignments: any[] = effectiveFaculty.map((a: any) => ({
+        subjectCode: atlasSubjectIdToCode.get(Number(a.subjectId)) ?? String(a.subjectId),
+        sectionId: a.sectionId,
+      }));
+      const nestedAssignments: any[] = [];
 
       // Always try published schedule first. It is the most specific source for
       // actual teacher-to-section assignments and avoids broad over-assignment.

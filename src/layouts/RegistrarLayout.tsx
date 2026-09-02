@@ -19,7 +19,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getAcronym } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
-import RolloverBanner from "@/components/RolloverBanner";
 interface UserData {
   id: string;
   username: string;
@@ -68,6 +67,7 @@ const navigationGroups: NavGroup[] = [
       { name: "Student Records", href: "/registrar/students", icon: Users },
       { name: "Former Students", href: "/registrar/alumni", icon: GraduationCap },
       { name: "School Forms", href: "/registrar/forms", icon: FolderOpen },
+      { name: "Teaching Load", href: "/registrar/teaching-load", icon: BookOpen },
     ]
   }
 ];
@@ -135,7 +135,6 @@ export default function RegistrarLayout() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <RolloverBanner />
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -151,7 +150,7 @@ export default function RegistrarLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           sidebarCollapsed ? "lg:w-[70px] w-[280px]" : "w-[280px]"
         )}
-        style={{ fontFamily: "'Inter', 'Poppins', sans-serif" }}
+        style={{ fontFamily: "'DM Sans', 'Poppins', sans-serif" }}
       >
         {/* Logo Header */}
         <div className={cn(
