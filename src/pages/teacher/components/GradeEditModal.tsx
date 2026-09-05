@@ -1,4 +1,4 @@
-import React from "react";
+
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import type { ClassRecord } from "@/lib/api";
@@ -36,7 +36,7 @@ export function GradeEditModal({
   open,
   onOpenChange,
   selectedRecord,
-  selectedTerm,
+  selectedTerm: _selectedTerm,
   mobileEditorTab,
   onTabChange,
   wwCount,

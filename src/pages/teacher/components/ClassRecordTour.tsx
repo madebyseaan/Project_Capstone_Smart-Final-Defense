@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Sparkles,
@@ -8,7 +8,6 @@ import {
   Lightbulb,
   Check,
   BookOpen,
-  FileSpreadsheet,
   BarChart3,
   Users,
   Calendar,

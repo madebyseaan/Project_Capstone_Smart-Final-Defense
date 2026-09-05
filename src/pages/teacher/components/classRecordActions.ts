@@ -17,7 +17,7 @@ interface ScoreUpdateArgs {
   studentId: string;
   category: ScoreCategory;
   index: number;
-  newValue: number;
+  newValue: number | "A" | "E";
   qaMeta: { description: string; date: string };
   getCellKey: (sid: string, cat: ScoreCategory, idx: number) => string;
   getMaxForCell: (cat: ScoreCategory, idx: number) => number;

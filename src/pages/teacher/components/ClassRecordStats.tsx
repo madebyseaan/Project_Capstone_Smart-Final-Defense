@@ -1,4 +1,3 @@
-import React from "react";
 import { Award, Target, TrendingDown, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 

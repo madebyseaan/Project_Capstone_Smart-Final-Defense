@@ -209,7 +209,7 @@ const LedgerRow = React.memo(
             {(() => {
               const invalid = !isHps && isCellInvalid(studentId, "WW", i);
               const scoreVal = isHps ? wwScores[i]?.maxScore || 0 : ((wwScores[i] as any)?.status || (wwScores[i]?.score === 0 ? "" : (wwScores[i]?.score ?? "")));
-              const scoreStatus = !isHps && ((wwScores[i] as any)?.status || (wwScores[i]?.score === "A" || wwScores[i]?.score === "E" ? wwScores[i]?.score : ""));
+              const scoreStatus = !isHps && ((wwScores[i] as any)?.status || "");
               return (
                 <input
                   type={isHps ? "number" : "text"}
@@ -218,8 +218,8 @@ const LedgerRow = React.memo(
                   disabled={isViewOnly && !isHps}
                   placeholder="0"
                   className={`${inputClass} ${isHps ? "text-indigo-300 font-black" : (
-                    scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
-                    scoreStatus === "E" ? "text-indigo-600 bg-indigo-55 font-black rounded-lg" :
+                    scoreStatus === "A" ? "text-rose-600 bg-rose-500/10 font-black rounded-lg" :
+                    scoreStatus === "E" ? "text-indigo-600 bg-indigo-500/10 font-black rounded-lg" :
                     "text-slate-600"
                   )} ${
                     invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
@@ -298,7 +298,7 @@ const LedgerRow = React.memo(
             {(() => {
               const invalid = !isHps && isCellInvalid(studentId, "PT", i);
               const scoreVal = isHps ? ptScores[i]?.maxScore || 0 : ((ptScores[i] as any)?.status || (ptScores[i]?.score === 0 ? "" : (ptScores[i]?.score ?? "")));
-              const scoreStatus = !isHps && ((ptScores[i] as any)?.status || (ptScores[i]?.score === "A" || ptScores[i]?.score === "E" ? ptScores[i]?.score : ""));
+              const scoreStatus = !isHps && ((ptScores[i] as any)?.status || "");
               return (
                 <input
                   type={isHps ? "number" : "text"}
@@ -307,8 +307,8 @@ const LedgerRow = React.memo(
                   disabled={isViewOnly && !isHps}
                   placeholder="0"
                   className={`${inputClass} ${isHps ? "text-purple-300 font-black" : (
-                    scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
-                    scoreStatus === "E" ? "text-indigo-600 bg-indigo-55 font-black rounded-lg" :
+                    scoreStatus === "A" ? "text-rose-600 bg-rose-500/10 font-black rounded-lg" :
+                    scoreStatus === "E" ? "text-indigo-600 bg-indigo-500/10 font-black rounded-lg" :
                     "text-slate-600"
                   )} ${
                     invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
@@ -385,7 +385,7 @@ const LedgerRow = React.memo(
           {(() => {
             const invalid = !isHps && isCellInvalid(studentId, "QA", 0);
             const scoreVal = isHps ? qaMax : ((grade as any)?.qaStatus || (grade?.quarterlyAssessScore === 0 ? "" : (grade?.quarterlyAssessScore ?? "")));
-            const scoreStatus = !isHps && ((grade as any)?.qaStatus || (grade?.quarterlyAssessScore === "A" || grade?.quarterlyAssessScore === "E" ? grade?.quarterlyAssessScore : ""));
+            const scoreStatus = !isHps && ((grade as any)?.qaStatus || "");
             return (
               <input
                 type={isHps ? "number" : "text"}
@@ -394,8 +394,8 @@ const LedgerRow = React.memo(
                 disabled={isViewOnly && !isHps}
                 placeholder="0"
                 className={`${inputClass} ${isHps ? "text-amber-300 font-black" : (
-                  scoreStatus === "A" ? "text-rose-600 bg-rose-55 font-black rounded-lg" :
-                  scoreStatus === "E" ? "text-indigo-600 bg-indigo-55 font-black rounded-lg" :
+                  scoreStatus === "A" ? "text-rose-600 bg-rose-500/10 font-black rounded-lg" :
+                  scoreStatus === "E" ? "text-indigo-600 bg-indigo-500/10 font-black rounded-lg" :
                   "text-slate-600"
                 )} ${
                   invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
@@ -540,8 +540,8 @@ export function ClassRecordTable({
   showAssessmentDetails,
   onToggleAssessmentDetails,
   topNavHeight,
-  ledgerHeaderHeight,
-  stickyOffset,
+  ledgerHeaderHeight: _ledgerHeaderHeight,
+  stickyOffset: _stickyOffset,
   wwCount,
   ptCount,
   hpsData,
@@ -562,7 +562,7 @@ export function ClassRecordTable({
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [confirmingClear, setConfirmingClear] = useState(false);
-  const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch transmutation table from API (single source of truth)
   const [transmutationTable, setTransmutationTable] = useState<Array<{ minGrade: number; maxGrade: number; transmutedGrade: number }>>([]);
@@ -600,8 +600,8 @@ export function ClassRecordTable({
   // ── Measure header rows for nested sticky within the scroll container ────
   const groupRowRef = useRef<HTMLTableRowElement | null>(null);
   const subRowRef = useRef<HTMLTableRowElement | null>(null);
-  const [groupRowH, setGroupRowH] = useState(36);
-  const [subRowH, setSubRowH] = useState(36);
+  const [_groupRowH, setGroupRowH] = useState(36);
+  const [_subRowH, setSubRowH] = useState(36);
 
   useEffect(() => {
     const nodes = [groupRowRef.current, subRowRef.current];
@@ -753,7 +753,6 @@ export function ClassRecordTable({
                       const isLocked = !!lockedTerm && q !== lockedTerm;
                       const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
                       const isPastTerm = currentTerm && termOrder[q] < termOrder[currentTerm];
-                      const isReadOnly = isPastTerm; // Past terms are view-only
                       const disabled = isLocked; // Allow future terms for testing
                       const label = isPastTerm ? "Past term — view only" : undefined;
                       return (

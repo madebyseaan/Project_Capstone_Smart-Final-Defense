@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -73,7 +73,6 @@ export default function ClassRecordView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [savingDescriptorStudentId, setSavingDescriptorStudentId] = useState<string | null>(null);
   const [showAssessmentDetails, setShowAssessmentDetails] = useState(false);
   const [currentTerm, setCurrentTerm] = useState<string>("T1");
   const [termDates, setTermDates] = useState<{ t1EndDate?: string | null; t2EndDate?: string | null; t3EndDate?: string | null } | null>(null);
@@ -655,26 +654,6 @@ export default function ClassRecordView() {
       isViewOnly,
     });
   }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, qaMeta, applyMetaToScores, fetchClassRecord]);
-
-  const handleDescriptorUpdate = async (studentId: string, descriptor: string) => {
-    if (isViewOnly) return;
-    if (!classAssignmentId) return;
-    try {
-      setSavingDescriptorStudentId(studentId);
-      await gradesApi.saveGrade({
-        studentId,
-        classAssignmentId,
-        term: selectedTerm,
-        qualitativeDescriptor: descriptor,
-      });
-      setSuccess('Descriptor saved');
-      fetchClassRecord(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to save descriptor');
-    } finally {
-      setSavingDescriptorStudentId(null);
-    }
-  };
 
   const addTask = useCallback(async (category: 'WW' | 'PT') => {
     if (isViewOnly) return;

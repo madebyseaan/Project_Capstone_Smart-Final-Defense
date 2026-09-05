@@ -1,4 +1,4 @@
-import React from "react";
+
 import { ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {

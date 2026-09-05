@@ -340,6 +340,20 @@ export const gradesApi = {
         qa: number;
         source: "subject-override" | "subject-type" | "generic-fallback";
       };
+      termDates?: {
+        t1StartDate?: string | null;
+        t1EndDate?: string | null;
+        t2StartDate?: string | null;
+        t2EndDate?: string | null;
+        t3StartDate?: string | null;
+        t3EndDate?: string | null;
+      };
+      gradeLock?: boolean;
+      locks?: {
+        systemLocked: boolean;
+        yearLocked: boolean;
+        termLocks: { T1: boolean; T2: boolean; T3: boolean };
+      };
     }>(`/grades/class-record/${classAssignmentId}`, {
       params: term ? { term } : {},
     }),
@@ -1395,7 +1409,7 @@ export const adminApi = {
   exportLogs: () => api.get("/admin/logs/export", { responseType: "blob" }),
 
   // System Settings
-  getSettings: () => api.get<{ settings: SystemSettings }>("/admin/settings"),
+  getSettings: () => api.get<{ settings: SystemSettings; termLabels: TermLabels }>("/admin/settings"),
 
   updateSettings: (data: Partial<SystemSettings>) =>
     api.put<{ message: string; settings: SystemSettings }>("/admin/settings", data),
