@@ -16,6 +16,8 @@ export function useAssessmentMeta(opts: {
   fetchClassRecord: () => Promise<void>;
   isViewOnly: boolean;
 }) {
+  const { classRecord, selectedTerm, classAssignmentId, setSuccess, setError, fetchClassRecord, isViewOnly } = opts;
+
   const [wwMeta, setWwMeta] = useState<AssessmentTaskMeta[]>([]);
   const [ptMeta, setPtMeta] = useState<AssessmentTaskMeta[]>([]);
   const [qaMeta, setQaMeta] = useState<{ description: string; date: string }>({ description: "", date: "" });
@@ -34,26 +36,26 @@ export function useAssessmentMeta(opts: {
 
   const wwCount = useMemo(() => {
     let max = 1;
-    opts.classRecord.forEach((r) => {
-      const grade = r.grades.find((g) => g.term === opts.selectedTerm);
+    classRecord.forEach((r) => {
+      const grade = r.grades.find((g) => g.term === selectedTerm);
       if (grade?.writtenWorkScores) max = Math.max(max, (grade.writtenWorkScores as any[]).length);
     });
     return max;
-  }, [opts.classRecord, opts.selectedTerm]);
+  }, [classRecord, selectedTerm]);
 
   const ptCount = useMemo(() => {
     let max = 1;
-    opts.classRecord.forEach((r) => {
-      const grade = r.grades.find((g) => g.term === opts.selectedTerm);
+    classRecord.forEach((r) => {
+      const grade = r.grades.find((g) => g.term === selectedTerm);
       if (grade?.perfTaskScores) max = Math.max(max, (grade.perfTaskScores as any[]).length);
     });
     return max;
-  }, [opts.classRecord, opts.selectedTerm]);
+  }, [classRecord, selectedTerm]);
 
   // Derive meta from query data
   useEffect(() => {
-    const gradeSamples = opts.classRecord
-      .map((r) => r.grades.find((g) => g.term === opts.selectedTerm))
+    const gradeSamples = classRecord
+      .map((r) => r.grades.find((g) => g.term === selectedTerm))
       .filter(Boolean) as Array<any>;
 
     const wwSample = gradeSamples.find((g) => Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0);
@@ -80,7 +82,7 @@ export function useAssessmentMeta(opts: {
         date: qaSample?.qaDate || prev.date || "",
       };
     });
-  }, [opts.classRecord, opts.selectedTerm, wwCount, ptCount]);
+  }, [classRecord, selectedTerm, wwCount, ptCount]);
 
   const openMetaEditor = useCallback((type: "WW" | "PT" | "QA", index: number) => {
     setSelectedColumn({ type, number: index + 1 });
@@ -94,7 +96,7 @@ export function useAssessmentMeta(opts: {
   }, [wwMeta, ptMeta, qaMeta]);
 
   const saveColumnMeta = useCallback(async () => {
-    if (!opts.classAssignmentId || !selectedColumn) return;
+    if (!classAssignmentId || !selectedColumn) return;
     const nextWwMeta = [...wwMeta];
     const nextPtMeta = [...ptMeta];
     const nextQaMeta = { ...qaMeta };
@@ -117,35 +119,37 @@ export function useAssessmentMeta(opts: {
     setSavingMeta(true);
 
     const result = await saveMetaToAllStudents({
-      classAssignmentId: opts.classAssignmentId, classRecord: opts.classRecord, selectedTerm: opts.selectedTerm,
+      classAssignmentId: classAssignmentId, classRecord: classRecord, selectedTerm: selectedTerm,
       wwMeta: nextWwMeta, ptMeta: nextPtMeta, qaMeta: nextQaMeta,
       wwCount, ptCount, applyMetaToScores,
     });
-    if (result.ok) {
-      opts.setSuccess("Assessment metadata applied to the selected column");
-      opts.fetchClassRecord();
-      setSelectedColumn(null);
-    } else {
-      opts.setError(result.error || "Failed to save assessment metadata");
-      opts.fetchClassRecord();
+    if (!result.ok) {
+      setError(result.error || "Failed to save assessment metadata");
+      fetchClassRecord();
+      setSavingMeta(false);
+      return;
     }
+    setSuccess("Assessment metadata applied to the selected column");
+    fetchClassRecord();
+    setSelectedColumn(null);
     setSavingMeta(false);
-  }, [opts.classAssignmentId, selectedColumn, wwMeta, ptMeta, qaMeta, metaEditorDraft, opts.classRecord, opts.selectedTerm, wwCount, ptCount, opts.fetchClassRecord]);
+  }, [classAssignmentId, selectedColumn, wwMeta, ptMeta, qaMeta, metaEditorDraft, classRecord, selectedTerm, wwCount, ptCount, applyMetaToScores, setSuccess, setError, fetchClassRecord]);
 
   const saveAssessmentDetails = useCallback(async () => {
-    if (opts.isViewOnly || !opts.classAssignmentId) return;
-    if (opts.classRecord.length === 0) { opts.setSuccess("No learners to update yet."); return; }
+    if (isViewOnly || !classAssignmentId) return;
+    if (classRecord.length === 0) { setSuccess("No learners to update yet."); return; }
 
     const result = await saveMetaToAllStudents({
-      classAssignmentId: opts.classAssignmentId, classRecord: opts.classRecord, selectedTerm: opts.selectedTerm,
+      classAssignmentId: classAssignmentId, classRecord: classRecord, selectedTerm: selectedTerm,
       wwMeta, ptMeta, qaMeta, wwCount, ptCount, applyMetaToScores,
     });
-    if (result.ok) { opts.setSuccess("Assessment details saved"); opts.fetchClassRecord(); }
-    else { opts.setError(result.error || "Failed to save assessment details"); }
-  }, [opts.isViewOnly, opts.classAssignmentId, opts.classRecord, opts.selectedTerm, wwMeta, ptMeta, qaMeta, wwCount, ptCount, opts.fetchClassRecord]);
+    if (!result.ok) { setError(result.error || "Failed to save assessment details"); return; }
+    setSuccess("Assessment details saved");
+    fetchClassRecord();
+  }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, wwMeta, ptMeta, qaMeta, wwCount, ptCount, applyMetaToScores, setSuccess, setError, fetchClassRecord]);
 
   const applyColumnMetaFromMobile = useCallback(async (category: "WW" | "PT" | "QA", index: number, description: string, date: string) => {
-    if (!opts.classAssignmentId) return;
+    if (!classAssignmentId) return;
     const nextWwMeta = [...wwMeta];
     const nextPtMeta = [...ptMeta];
     const nextQaMeta = { ...qaMeta };
@@ -166,20 +170,21 @@ export function useAssessmentMeta(opts: {
     setQaMeta(nextQaMeta);
 
     const result = await saveMetaToAllStudents({
-      classAssignmentId: opts.classAssignmentId, classRecord: opts.classRecord, selectedTerm: opts.selectedTerm,
+      classAssignmentId: classAssignmentId, classRecord: classRecord, selectedTerm: selectedTerm,
       wwMeta: nextWwMeta, ptMeta: nextPtMeta, qaMeta: nextQaMeta,
       wwCount, ptCount, applyMetaToScores,
     });
-    if (result.ok) { opts.setSuccess("Assessment metadata synced for the class"); opts.fetchClassRecord(); }
-    else { opts.setError(result.error || "Failed to sync assessment metadata"); opts.fetchClassRecord(); }
-  }, [opts.classAssignmentId, wwMeta, ptMeta, qaMeta, opts.classRecord, opts.selectedTerm, wwCount, ptCount, opts.fetchClassRecord]);
+    if (!result.ok) { setError(result.error || "Failed to sync assessment metadata"); fetchClassRecord(); return; }
+    setSuccess("Assessment metadata synced for the class");
+    fetchClassRecord();
+  }, [classAssignmentId, wwMeta, ptMeta, qaMeta, classRecord, selectedTerm, wwCount, ptCount, applyMetaToScores, setSuccess, setError, fetchClassRecord]);
 
   const addTask = useCallback((category: "WW" | "PT") => {
-    if (opts.isViewOnly) return;
+    if (isViewOnly) return;
     const targetIdx = category === "WW" ? wwCount : ptCount;
     if (category === "WW") setWwMeta((prev) => [...prev, { description: `WW ${targetIdx + 1}`, date: "" }]);
     else setPtMeta((prev) => [...prev, { description: `PT ${targetIdx + 1}`, date: "" }]);
-  }, [opts.isViewOnly, wwCount, ptCount]);
+  }, [isViewOnly, wwCount, ptCount]);
 
   return {
     wwMeta, setWwMeta, ptMeta, setPtMeta, qaMeta, setQaMeta,

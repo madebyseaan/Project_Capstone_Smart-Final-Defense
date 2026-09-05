@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Plus, Minus, Trash2 } from "lucide-react";
+import { Plus, Minus, Trash2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -639,7 +639,7 @@ export function ClassRecordTable({
             <div id="tutorial-period-controls" className="flex items-center gap-3">
               {isViewOnly && (
                 <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded-md px-2 py-0.5 flex items-center gap-1">
-                  👁️ View Only — Past term grades are finalized
+                  <Eye className="w-3 h-3" /> View Only — Past term grades are finalized
                 </span>
               )}
               {onClearScores && !isViewOnly && (

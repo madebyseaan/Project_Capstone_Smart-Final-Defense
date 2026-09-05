@@ -16,6 +16,8 @@ export function useMobileEditor(opts: {
   setError: (msg: string) => void;
   isViewOnly: boolean;
 }) {
+  const { selectedTerm, getMaxForCell, getCellKey, handleScoreUpdate, setInvalidCells, setError, isViewOnly } = opts;
+
   const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
   const [mobileEditorStudentId, setMobileEditorStudentId] = useState<string | null>(null);
   const [mobileEditorTab, setMobileEditorTab] = useState<"WW" | "PT" | "QA">("WW");
@@ -27,53 +29,53 @@ export function useMobileEditor(opts: {
   );
 
   const openMobileEditor = useCallback((studentId: string) => {
-    if (opts.isViewOnly) return;
+    if (isViewOnly) return;
     setMobileEditorStudentId(studentId);
     setMobileEditorOpen(true);
     setMobileScoreDraft({});
     setMobileEditorTab("WW");
-  }, [opts.isViewOnly]);
+  }, [isViewOnly]);
 
   const handleMobileDraftChange = useCallback((studentId: string, category: ScoreCategory, index: number, value: string) => {
-    if (opts.isViewOnly) return;
+    if (isViewOnly) return;
     const key = getMobileDraftKey(studentId, category, index);
     if (value === "") { setMobileScoreDraft((prev) => ({ ...prev, [key]: "" })); return; }
 
     const parsed = Number(value);
-    const maxAllowed = opts.getMaxForCell(category, index);
+    const maxAllowed = getMaxForCell(category, index);
     if (Number.isNaN(parsed) || parsed < 0 || parsed > maxAllowed) {
       setMobileScoreDraft((prev) => ({ ...prev, [key]: "" }));
-      opts.setInvalidCells((prev) => ({ ...prev, [opts.getCellKey(studentId, category, index)]: `Score cannot exceed ${maxAllowed}.` }));
+      setInvalidCells((prev) => ({ ...prev, [getCellKey(studentId, category, index)]: `Score cannot exceed ${maxAllowed}.` }));
       return;
     }
 
     setMobileScoreDraft((prev) => ({ ...prev, [key]: value }));
-    opts.setInvalidCells((prev) => {
-      const cellKey = opts.getCellKey(studentId, category, index);
+    setInvalidCells((prev) => {
+      const cellKey = getCellKey(studentId, category, index);
       if (!prev[cellKey]) return prev;
       const next = { ...prev };
       delete next[cellKey];
       return next;
     });
-  }, [opts.isViewOnly, opts.getMaxForCell, opts.getCellKey]);
+  }, [isViewOnly, getMaxForCell, getCellKey, setInvalidCells]);
 
   const commitMobileScore = useCallback((record: ClassRecord, category: ScoreCategory, index: number) => {
-    if (opts.isViewOnly) return;
+    if (isViewOnly) return;
     const key = getMobileDraftKey(record.student.id, category, index);
-    const value = mobileScoreDraft[key] ?? getScoreFromGrade(record, opts.selectedTerm, category, index);
+    const value = mobileScoreDraft[key] ?? getScoreFromGrade(record, selectedTerm, category, index);
     const normalized = value.trim() === "" ? 0 : Number(value);
-    const maxAllowed = opts.getMaxForCell(category, index);
+    const maxAllowed = getMaxForCell(category, index);
 
     if (Number.isNaN(normalized) || normalized < 0 || normalized > maxAllowed) {
       setMobileScoreDraft((prev) => ({ ...prev, [key]: "" }));
-      opts.setError(`${category} ${category === "QA" ? "" : index + 1} score cannot exceed MAX (${maxAllowed}).`.trim());
-      opts.setInvalidCells((prev) => ({ ...prev, [opts.getCellKey(record.student.id, category, index)]: `Score cannot exceed ${maxAllowed}.` }));
+      setError(`${category} ${category === "QA" ? "" : index + 1} score cannot exceed MAX (${maxAllowed}).`.trim());
+      setInvalidCells((prev) => ({ ...prev, [getCellKey(record.student.id, category, index)]: `Score cannot exceed ${maxAllowed}.` }));
       return;
     }
 
     setMobileScoreDraft((prev) => ({ ...prev, [key]: normalized === 0 ? "" : String(normalized) }));
-    opts.handleScoreUpdate(record.student.id, category, index, normalized);
-  }, [opts.isViewOnly, mobileScoreDraft, opts.selectedTerm, opts.getMaxForCell, opts.handleScoreUpdate, opts.getCellKey]);
+    handleScoreUpdate(record.student.id, category, index, normalized);
+  }, [isViewOnly, mobileScoreDraft, selectedTerm, getMaxForCell, handleScoreUpdate, getCellKey, setError, setInvalidCells]);
 
   return {
     mobileEditorOpen, setMobileEditorOpen,
