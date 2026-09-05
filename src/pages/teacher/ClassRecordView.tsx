@@ -27,25 +27,18 @@ import { EditRequestModal } from "./components/EditRequestModal";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
-import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
+import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate, saveMetaToAllStudents } from "./components/classRecordActions";
 import {
   getDisplayFinalGrade as computeDisplayFinalGrade,
   getMobileDraftKey,
   getScoreFromGrade as computeScoreFromGrade,
 } from "./components/classRecordMobileUtils";
+import { getGradeColor, type TransmutationRow } from "@/lib/gradeMath";
+import { useElementHeight } from "@/hooks/useElementHeight";
 
 interface AssessmentTaskMeta {
   description: string;
   date: string;
-}
-
-function getGradeColor(grade: number | null): string {
-  if (grade === null) return "text-slate-300";
-  if (grade >= 90) return "text-emerald-600";
-  if (grade >= 85) return "text-blue-600";
-  if (grade >= 80) return "text-amber-600";
-  if (grade >= 75) return "text-orange-600";
-  return "text-rose-600";
 }
 
 
@@ -78,12 +71,20 @@ export default function ClassRecordView() {
   const [termDates, setTermDates] = useState<{ t1EndDate?: string | null; t2EndDate?: string | null; t3EndDate?: string | null } | null>(null);
   const [gradeLock, setGradeLock] = useState(false);
   const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+  const [transmutationTable, setTransmutationTable] = useState<TransmutationRow[]>([]);
 
   // Fetch term labels on mount
   useEffect(() => {
     adminApi.getSettings().then((res) => {
       if (res.data.termLabels) setTermLabels(res.data.termLabels);
     }).catch(() => {});
+  }, []);
+
+  // Fetch transmutation table on mount (shared by ledger, stats, mobile)
+  useEffect(() => {
+    gradesApi.getTransmutationTable()
+      .then(res => setTransmutationTable(res.data))
+      .catch(() => {});
   }, []);
 
   // Edit request state (must be declared before isViewOnly)
@@ -155,11 +156,12 @@ export default function ClassRecordView() {
     ? `T${classAssignment.subject.rotationTermRank}`
     : null;
   const ledgerHeaderRef = useRef<HTMLDivElement | null>(null);
-  const [ledgerHeaderHeight, setLedgerHeaderHeight] = useState(0);
   const assessmentDetailsRef = useRef<HTMLDivElement | null>(null);
-  const [assessmentDetailsHeight, setAssessmentDetailsHeight] = useState(0);
   const metaEditorRef = useRef<HTMLDivElement | null>(null);
-  const [metaEditorHeight, setMetaEditorHeight] = useState(0);
+
+  const ledgerHeaderHeight = useElementHeight(ledgerHeaderRef, !!classAssignment?.id);
+  const assessmentDetailsHeight = useElementHeight(assessmentDetailsRef, showAssessmentDetails);
+  const metaEditorHeight = useElementHeight(metaEditorRef, !!selectedColumn);
 
   // Dynamic Column Counts
   const wwCount = useMemo(() => {
@@ -387,34 +389,20 @@ export default function ClassRecordView() {
     setQaMeta(nextQaMeta);
 
     setSavingMeta(true);
-    try {
-      const updatePromises = classRecord.map((record) => {
-        const grade = record.grades.find((g) => g.term === selectedTerm);
-        const wwScores = applyMetaToScores([...(grade?.writtenWorkScores || []) as ScoreItem[]], 'WW', wwCount, nextWwMeta);
-        const ptScores = applyMetaToScores([...(grade?.perfTaskScores || []) as ScoreItem[]], 'PT', ptCount, nextPtMeta);
-
-        return gradesApi.saveGrade({
-          studentId: record.student.id,
-          classAssignmentId,
-          term: selectedTerm,
-          writtenWorkScores: wwScores,
-          perfTaskScores: ptScores,
-          qaDescription: nextQaMeta.description || undefined,
-          qaDate: nextQaMeta.date || undefined,
-        });
-      });
-
-      await Promise.all(updatePromises);
+    const result = await saveMetaToAllStudents({
+      classAssignmentId, classRecord, selectedTerm,
+      wwMeta: nextWwMeta, ptMeta: nextPtMeta, qaMeta: nextQaMeta,
+      wwCount, ptCount, applyMetaToScores,
+    });
+    if (result.ok) {
       setSuccess('Assessment metadata applied to the selected column');
       fetchClassRecord(true);
       setSelectedColumn(null);
-    } catch (err: any) {
-      console.error('Failed to save column metadata:', err);
-      setError(err?.response?.data?.message || 'Failed to save assessment metadata');
+    } else {
+      setError(result.error || 'Failed to save assessment metadata');
       fetchClassRecord(true);
-    } finally {
-      setSavingMeta(false);
     }
+    setSavingMeta(false);
   }, [classAssignmentId, selectedColumn, wwMeta, ptMeta, qaMeta, metaEditorDraft, classRecord, selectedTerm, applyMetaToScores, wwCount, ptCount, fetchClassRecord]);
 
   const applyColumnMetaFromMobile = async (
@@ -433,18 +421,12 @@ export default function ClassRecordView() {
       while (nextWwMeta.length <= index) {
         nextWwMeta.push({ description: `WW ${nextWwMeta.length + 1}`, date: '' });
       }
-      nextWwMeta[index] = {
-        description: description || `WW ${index + 1}`,
-        date: date || '',
-      };
+      nextWwMeta[index] = { description: description || `WW ${index + 1}`, date: date || '' };
     } else if (category === 'PT') {
       while (nextPtMeta.length <= index) {
         nextPtMeta.push({ description: `PT ${nextPtMeta.length + 1}`, date: '' });
       }
-      nextPtMeta[index] = {
-        description: description || `PT ${index + 1}`,
-        date: date || '',
-      };
+      nextPtMeta[index] = { description: description || `PT ${index + 1}`, date: date || '' };
     } else {
       nextQaMeta.description = description;
       nextQaMeta.date = date;
@@ -454,29 +436,16 @@ export default function ClassRecordView() {
     setPtMeta(nextPtMeta);
     setQaMeta(nextQaMeta);
 
-    try {
-      const updatePromises = classRecord.map((record) => {
-        const grade = record.grades.find((g) => g.term === selectedTerm);
-        const wwScores = applyMetaToScores([...(grade?.writtenWorkScores || []) as ScoreItem[]], 'WW', wwCount, nextWwMeta);
-        const ptScores = applyMetaToScores([...(grade?.perfTaskScores || []) as ScoreItem[]], 'PT', ptCount, nextPtMeta);
-
-        return gradesApi.saveGrade({
-          studentId: record.student.id,
-          classAssignmentId,
-          term: selectedTerm,
-          writtenWorkScores: wwScores,
-          perfTaskScores: ptScores,
-          qaDescription: nextQaMeta.description || undefined,
-          qaDate: nextQaMeta.date || undefined,
-        });
-      });
-
-      await Promise.all(updatePromises);
+    const result = await saveMetaToAllStudents({
+      classAssignmentId, classRecord, selectedTerm,
+      wwMeta: nextWwMeta, ptMeta: nextPtMeta, qaMeta: nextQaMeta,
+      wwCount, ptCount, applyMetaToScores,
+    });
+    if (result.ok) {
       setSuccess('Assessment metadata synced for the class');
       fetchClassRecord(true);
-    } catch (err: any) {
-      console.error('Failed to sync mobile column metadata:', err);
-      setError(err?.response?.data?.message || 'Failed to sync assessment metadata');
+    } else {
+      setError(result.error || 'Failed to sync assessment metadata');
       fetchClassRecord(true);
     }
   };
@@ -539,71 +508,6 @@ export default function ClassRecordView() {
       return () => clearTimeout(timer);
     }
   }, [error, success]);
-
-  useEffect(() => {
-    const node = ledgerHeaderRef.current;
-    if (!node) {
-      setLedgerHeaderHeight(0);
-      return;
-    }
-    const update = () => setLedgerHeaderHeight(node.offsetHeight || 0);
-    update();
-
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(update);
-      observer.observe(node);
-    }
-    window.addEventListener('resize', update);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', update);
-    };
-  }, [classAssignment?.id]);
-
-  useEffect(() => {
-    if (!showAssessmentDetails) {
-      setAssessmentDetailsHeight(0);
-      return;
-    }
-    const node = assessmentDetailsRef.current;
-    if (!node) return;
-    const update = () => setAssessmentDetailsHeight(node.offsetHeight || 0);
-    update();
-
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(update);
-      observer.observe(node);
-    }
-    window.addEventListener('resize', update);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', update);
-    };
-  }, [showAssessmentDetails, wwCount, ptCount]);
-
-  useEffect(() => {
-    if (!selectedColumn) {
-      setMetaEditorHeight(0);
-      return;
-    }
-    const node = metaEditorRef.current;
-    if (!node) return;
-    const update = () => setMetaEditorHeight(node.offsetHeight || 0);
-    update();
-
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(update);
-      observer.observe(node);
-    }
-    window.addEventListener('resize', update);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', update);
-    };
-  }, [selectedColumn]);
 
 
   const handleScoreUpdate = useCallback(async (
@@ -701,36 +605,23 @@ export default function ClassRecordView() {
     if (isViewOnly) return;
     if (!classAssignmentId) return;
 
-    try {
-      const updatePromises = classRecord.map((record) => {
-        const grade = record.grades.find((g) => g.term === selectedTerm);
-        const wwScores = applyMetaToScores([...(grade?.writtenWorkScores || []) as ScoreItem[]], 'WW', wwCount);
-        const ptScores = applyMetaToScores([...(grade?.perfTaskScores || []) as ScoreItem[]], 'PT', ptCount);
+    if (classRecord.length === 0) {
+      setSuccess('No learners to update yet.');
+      return;
+    }
 
-        return gradesApi.saveGrade({
-          studentId: record.student.id,
-          classAssignmentId,
-          term: selectedTerm,
-          writtenWorkScores: wwScores,
-          perfTaskScores: ptScores,
-          qaDescription: qaMeta.description || undefined,
-          qaDate: qaMeta.date || undefined,
-        });
-      });
-
-      if (updatePromises.length === 0) {
-        setSuccess('No learners to update yet.');
-        return;
-      }
-
-      await Promise.all(updatePromises);
+    const result = await saveMetaToAllStudents({
+      classAssignmentId, classRecord, selectedTerm,
+      wwMeta, ptMeta, qaMeta,
+      wwCount, ptCount, applyMetaToScores,
+    });
+    if (result.ok) {
       setSuccess('Assessment details saved');
       fetchClassRecord(true);
-    } catch (err: any) {
-      console.error('Failed to save assessment details:', err);
-      setError(err?.response?.data?.message || 'Failed to save assessment details');
+    } else {
+      setError(result.error || 'Failed to save assessment details');
     }
-  }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, applyMetaToScores, wwCount, ptCount, qaMeta, fetchClassRecord]);
+  }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, applyMetaToScores, wwCount, ptCount, qaMeta, wwMeta, ptMeta, fetchClassRecord]);
 
   const handleClearScores = useCallback(async () => {
     if (isViewOnly) return;
@@ -759,7 +650,7 @@ export default function ClassRecordView() {
   }), [effectiveWeights, classAssignment?.subject?.writtenWorkWeight, classAssignment?.subject?.perfTaskWeight, classAssignment?.subject?.quarterlyAssessWeight]);
 
   const getDisplayFinalGrade = useCallback((record: ClassRecord): number | null =>
-    computeDisplayFinalGrade(record, selectedTerm, activeWeights), [selectedTerm, activeWeights]);
+    computeDisplayFinalGrade(record, selectedTerm, activeWeights, transmutationTable), [selectedTerm, activeWeights, transmutationTable]);
 
   const stats = useMemo(() => {
     if (classRecord.length === 0) return null;
@@ -956,6 +847,7 @@ export default function ClassRecordView() {
             onScoreCommit={commitScoreInput}
             onCellFocus={openMetaEditor}
             isCellInvalid={isCellInvalid}
+            transmutationTable={transmutationTable}
             assessmentHeaderNode={
               <AssessmentHeader
                 showAssessmentDetails={showAssessmentDetails}

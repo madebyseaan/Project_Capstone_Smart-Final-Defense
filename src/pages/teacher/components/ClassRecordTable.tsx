@@ -17,51 +17,93 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ClassAssignment, ClassRecord, ScoreItem } from "@/lib/api";
-import { gradesApi } from "@/lib/api";
+import { getGradeColor, transmuteGrade, type TransmutationRow } from "@/lib/gradeMath";
 
 const terms = ["T1", "T2", "T3"] as const;
 
-function getGradeColor(grade: number | null): string {
-  if (grade === null) return "text-slate-300";
-  if (grade >= 90) return "text-emerald-600";
-  if (grade >= 85) return "text-blue-600";
-  if (grade >= 80) return "text-amber-600";
-  if (grade >= 75) return "text-orange-600";
-  return "text-rose-600";
+// ─── LedgerScoreCell ─────────────────────────────────────────────────────────
+
+interface LedgerScoreCellProps {
+  cat: "WW" | "PT" | "QA";
+  index: number;
+  value: string | number;
+  status?: string;
+  isHps: boolean;
+  invalid?: string;
+  disabled?: boolean;
+  hpsColorClass: string;
+  onCommit: (inputEl: HTMLInputElement) => void;
+  onHps: (val: number) => void;
+  onFocus: () => void;
+  rowIndex: number;
+  ariaLabel: string;
 }
 
-type TransmutationRow = { minGrade: number; maxGrade: number; transmutedGrade: number };
-
-function transmuteGrade(initialGrade: number, table?: TransmutationRow[]): number {
-  const roundedGrade = Math.round(initialGrade * 100) / 100;
-  if (table && table.length > 0) {
-    for (const entry of table) {
-      if (roundedGrade >= entry.minGrade && roundedGrade <= entry.maxGrade) {
-        return entry.transmutedGrade;
-      }
-    }
-    return 60;
-  }
-  // Fallback: hardcoded DepEd table (used when table not yet loaded)
-  if (roundedGrade >= 99.5) return 100;
-  const fallback: [number, number, number][] = [
-    [97.5, 99.49, 99], [96.0, 97.49, 98], [95.0, 95.99, 97], [94.0, 94.99, 96],
-    [93.0, 93.99, 95], [92.0, 92.99, 94], [91.0, 91.99, 93], [90.0, 90.99, 92],
-    [89.0, 89.99, 91], [88.0, 88.99, 90], [87.0, 87.99, 89], [86.0, 86.99, 88],
-    [85.0, 85.99, 87], [84.0, 84.99, 86], [83.0, 83.99, 85], [82.0, 82.99, 84],
-    [81.0, 81.99, 83], [80.0, 80.99, 82], [79.0, 79.99, 81], [78.0, 78.99, 80],
-    [77.0, 77.99, 79], [76.0, 76.99, 78], [75.0, 75.99, 77], [73.0, 74.99, 76],
-    [70.0, 72.99, 75], [68.0, 69.99, 74], [66.0, 67.99, 73], [64.0, 65.99, 72],
-    [62.0, 63.99, 71], [60.0, 61.99, 70], [58.0, 59.99, 69], [56.0, 57.99, 68],
-    [54.0, 55.99, 67], [52.0, 53.99, 66], [50.0, 51.99, 65], [48.0, 49.99, 64],
-    [46.0, 47.99, 63], [43.0, 45.99, 62], [40.0, 42.99, 61], [25.0, 39.99, 60],
-    [0.0,  24.99, 60],
-  ];
-  for (const [min, max, grade] of fallback) {
-    if (roundedGrade >= min && roundedGrade <= max) return grade;
-  }
-  return 60;
-}
+const LedgerScoreCell = React.memo(function LedgerScoreCell({
+  cat,
+  index,
+  value,
+  status,
+  isHps,
+  invalid,
+  disabled,
+  hpsColorClass,
+  onCommit,
+  onHps,
+  onFocus,
+  rowIndex,
+  ariaLabel,
+}: LedgerScoreCellProps) {
+  return (
+    <input
+      type={isHps ? "number" : "text"}
+      inputMode="decimal"
+      defaultValue={value}
+      disabled={disabled}
+      placeholder="0"
+      aria-label={ariaLabel}
+      aria-invalid={!!invalid}
+      title={invalid}
+      className={`w-full text-center text-[11px] font-bold border-0 outline-none bg-transparent tabular-nums ${isHps ? hpsColorClass : (
+        status === "A" ? "text-rose-600 bg-rose-500/10 font-black rounded-lg" :
+        status === "E" ? "text-indigo-600 bg-indigo-500/10 font-black rounded-lg" :
+        "text-slate-600"
+      )} ${
+        invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
+      } ${disabled ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
+      onFocus={(e) => {
+        onFocus();
+        e.currentTarget.select();
+        e.currentTarget.dataset.prev = e.currentTarget.value;
+      }}
+      onBlur={(e) => {
+        if (isHps) {
+          const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
+          onHps(val);
+        } else {
+          onCommit(e.currentTarget);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        if (isHps) {
+          const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
+          onHps(val);
+        } else {
+          onCommit(e.currentTarget);
+        }
+        const nextInput = document.querySelector<HTMLInputElement>(
+          `[data-row-index="${rowIndex + 1}"][data-cat="${cat}"][data-col="${index}"]`
+        );
+        nextInput?.focus();
+      }}
+      data-row-index={isHps ? -1 : rowIndex}
+      data-cat={cat}
+      data-col={index}
+    />
+  );
+});
 
 // ─── LedgerRow ────────────────────────────────────────────────────────────────
 
@@ -147,8 +189,6 @@ const LedgerRow = React.memo(
     const displayQuarterlyGrade = displayInitialGrade !== null ? transmuteGrade(displayInitialGrade, transmutationTable) : null;
 
     const cellClass = "text-center text-[11px] font-bold border-r border-slate-200 p-0 h-9 w-14 min-w-[56px] max-w-[56px]";
-    const inputClass =
-      "w-full h-full bg-transparent text-center focus:bg-white focus:ring-1 focus:ring-inset focus:ring-indigo-500/30 outline-none transition-all px-0.5 font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
     return (
       <TableRow
@@ -206,57 +246,21 @@ const LedgerRow = React.memo(
             className={`${cellClass} border-b border-slate-200 ${isHps ? "bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
             style={rowStyle}
           >
-            {(() => {
-              const invalid = !isHps && isCellInvalid(studentId, "WW", i);
-              const scoreVal = isHps ? wwScores[i]?.maxScore || 0 : ((wwScores[i] as any)?.status || (wwScores[i]?.score === 0 ? "" : (wwScores[i]?.score ?? "")));
-              const scoreStatus = !isHps && ((wwScores[i] as any)?.status || "");
-              return (
-                <input
-                  type={isHps ? "number" : "text"}
-                  inputMode="decimal"
-                  defaultValue={scoreVal}
-                  disabled={isViewOnly && !isHps}
-                  placeholder="0"
-                  className={`${inputClass} ${isHps ? "text-indigo-300 font-black" : (
-                    scoreStatus === "A" ? "text-rose-600 bg-rose-500/10 font-black rounded-lg" :
-                    scoreStatus === "E" ? "text-indigo-600 bg-indigo-500/10 font-black rounded-lg" :
-                    "text-slate-600"
-                  )} ${
-                    invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
-                  } ${isViewOnly && !isHps ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
-                  onFocus={(e) => {
-                    onCellFocus("WW", i);
-                    e.currentTarget.select();
-                    e.currentTarget.dataset.prev = e.currentTarget.value;
-                  }}
-                  onBlur={(e) => {
-                    if (isHps) {
-                      const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
-                      onHpsUpdate("WW", i, val);
-                    } else {
-                      onScoreCommit(e.currentTarget, studentId, "WW", i);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    if (isHps) {
-                      const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
-                      onHpsUpdate("WW", i, val);
-                    } else {
-                      onScoreCommit(e.currentTarget, studentId, "WW", i);
-                    }
-                    const nextInput = document.querySelector<HTMLInputElement>(
-                      `[data-row-index="${rowIndex + 1}"][data-cat="WW"][data-col="${i}"]`
-                    );
-                    nextInput?.focus();
-                  }}
-                  data-row-index={isHps ? -1 : rowIndex}
-                  data-cat="WW"
-                  data-col={i}
-                />
-              );
-            })()}
+            <LedgerScoreCell
+              cat="WW"
+              index={i}
+              value={isHps ? wwScores[i]?.maxScore || 0 : ((wwScores[i] as any)?.status || (wwScores[i]?.score === 0 ? "" : (wwScores[i]?.score ?? "")))}
+              status={!isHps ? (wwScores[i] as any)?.status : undefined}
+              isHps={!!isHps}
+              invalid={!isHps ? isCellInvalid(studentId, "WW", i) : undefined}
+              disabled={isViewOnly && !isHps}
+              hpsColorClass="text-indigo-300 font-black"
+              onCommit={(el) => onScoreCommit(el, studentId, "WW", i)}
+              onHps={(val) => onHpsUpdate("WW", i, val)}
+              onFocus={() => onCellFocus("WW", i)}
+              rowIndex={rowIndex}
+              ariaLabel={`WW ${i + 1} score for student, max ${wwScores[i]?.maxScore || 0}`}
+            />
           </TableCell>
         ))}
 
@@ -295,57 +299,21 @@ const LedgerRow = React.memo(
             className={`${cellClass} border-b border-slate-200 ${isHps ? "bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
             style={rowStyle}
           >
-            {(() => {
-              const invalid = !isHps && isCellInvalid(studentId, "PT", i);
-              const scoreVal = isHps ? ptScores[i]?.maxScore || 0 : ((ptScores[i] as any)?.status || (ptScores[i]?.score === 0 ? "" : (ptScores[i]?.score ?? "")));
-              const scoreStatus = !isHps && ((ptScores[i] as any)?.status || "");
-              return (
-                <input
-                  type={isHps ? "number" : "text"}
-                  inputMode="decimal"
-                  defaultValue={scoreVal}
-                  disabled={isViewOnly && !isHps}
-                  placeholder="0"
-                  className={`${inputClass} ${isHps ? "text-purple-300 font-black" : (
-                    scoreStatus === "A" ? "text-rose-600 bg-rose-500/10 font-black rounded-lg" :
-                    scoreStatus === "E" ? "text-indigo-600 bg-indigo-500/10 font-black rounded-lg" :
-                    "text-slate-600"
-                  )} ${
-                    invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
-                  } ${isViewOnly && !isHps ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
-                  onFocus={(e) => {
-                    onCellFocus("PT", i);
-                    e.currentTarget.select();
-                    e.currentTarget.dataset.prev = e.currentTarget.value;
-                  }}
-                  onBlur={(e) => {
-                    if (isHps) {
-                      const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
-                      onHpsUpdate("PT", i, val);
-                    } else {
-                      onScoreCommit(e.currentTarget, studentId, "PT", i);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    if (isHps) {
-                      const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
-                      onHpsUpdate("PT", i, val);
-                    } else {
-                      onScoreCommit(e.currentTarget, studentId, "PT", i);
-                    }
-                    const nextInput = document.querySelector<HTMLInputElement>(
-                      `[data-row-index="${rowIndex + 1}"][data-cat="PT"][data-col="${i}"]`
-                    );
-                    nextInput?.focus();
-                  }}
-                  data-row-index={isHps ? -1 : rowIndex}
-                  data-cat="PT"
-                  data-col={i}
-                />
-              );
-            })()}
+            <LedgerScoreCell
+              cat="PT"
+              index={i}
+              value={isHps ? ptScores[i]?.maxScore || 0 : ((ptScores[i] as any)?.status || (ptScores[i]?.score === 0 ? "" : (ptScores[i]?.score ?? "")))}
+              status={!isHps ? (ptScores[i] as any)?.status : undefined}
+              isHps={!!isHps}
+              invalid={!isHps ? isCellInvalid(studentId, "PT", i) : undefined}
+              disabled={isViewOnly && !isHps}
+              hpsColorClass="text-purple-300 font-black"
+              onCommit={(el) => onScoreCommit(el, studentId, "PT", i)}
+              onHps={(val) => onHpsUpdate("PT", i, val)}
+              onFocus={() => onCellFocus("PT", i)}
+              rowIndex={rowIndex}
+              ariaLabel={`PT ${i + 1} score for student, max ${ptScores[i]?.maxScore || 0}`}
+            />
           </TableCell>
         ))}
 
@@ -382,57 +350,21 @@ const LedgerRow = React.memo(
           className={`${cellClass} border-b border-slate-200 ${isHps ? "bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
           style={rowStyle}
         >
-          {(() => {
-            const invalid = !isHps && isCellInvalid(studentId, "QA", 0);
-            const scoreVal = isHps ? qaMax : ((grade as any)?.qaStatus || (grade?.quarterlyAssessScore === 0 ? "" : (grade?.quarterlyAssessScore ?? "")));
-            const scoreStatus = !isHps && ((grade as any)?.qaStatus || "");
-            return (
-              <input
-                type={isHps ? "number" : "text"}
-                inputMode="decimal"
-                defaultValue={scoreVal}
-                disabled={isViewOnly && !isHps}
-                placeholder="0"
-                className={`${inputClass} ${isHps ? "text-amber-300 font-black" : (
-                  scoreStatus === "A" ? "text-rose-600 bg-rose-500/10 font-black rounded-lg" :
-                  scoreStatus === "E" ? "text-indigo-600 bg-indigo-500/10 font-black rounded-lg" :
-                  "text-slate-600"
-                )} ${
-                  invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
-                } ${isViewOnly && !isHps ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
-                onFocus={(e) => {
-                  onCellFocus("QA", 0);
-                  e.currentTarget.select();
-                  e.currentTarget.dataset.prev = e.currentTarget.value;
-                }}
-                onBlur={(e) => {
-                  if (isHps) {
-                    const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
-                    onHpsUpdate("QA", 0, val);
-                  } else {
-                    onScoreCommit(e.currentTarget, studentId, "QA", 0);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  e.preventDefault();
-                  if (isHps) {
-                    const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
-                    onHpsUpdate("QA", 0, val);
-                  } else {
-                    onScoreCommit(e.currentTarget, studentId, "QA", 0);
-                  }
-                  const nextInput = document.querySelector<HTMLInputElement>(
-                    `[data-row-index="${rowIndex + 1}"][data-cat="QA"][data-col="0"]`
-                  );
-                  nextInput?.focus();
-                }}
-                data-row-index={isHps ? -1 : rowIndex}
-                data-cat="QA"
-                data-col={0}
-              />
-            );
-          })()}
+          <LedgerScoreCell
+            cat="QA"
+            index={0}
+            value={isHps ? qaMax : ((grade as any)?.qaStatus || (grade?.quarterlyAssessScore === 0 ? "" : (grade?.quarterlyAssessScore ?? "")))}
+            status={!isHps ? (grade as any)?.qaStatus : undefined}
+            isHps={!!isHps}
+            invalid={!isHps ? isCellInvalid(studentId, "QA", 0) : undefined}
+            disabled={isViewOnly && !isHps}
+            hpsColorClass="text-amber-300 font-black"
+            onCommit={(el) => onScoreCommit(el, studentId, "QA", 0)}
+            onHps={(val) => onHpsUpdate("QA", 0, val)}
+            onFocus={() => onCellFocus("QA", 0)}
+            rowIndex={rowIndex}
+            ariaLabel={`QA score for student, max ${qaMax}`}
+          />
         </TableCell>
         {/* QA PS */}
         <TableCell
@@ -523,6 +455,7 @@ interface ClassRecordTableProps {
   assessmentHeaderNode?: React.ReactNode;
   ledgerHeaderRef?: React.RefObject<HTMLDivElement | null>;
   onClearScores?: () => void;
+  transmutationTable?: TransmutationRow[];
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -557,20 +490,13 @@ export function ClassRecordTable({
   assessmentHeaderNode,
   ledgerHeaderRef,
   onClearScores,
+  transmutationTable,
 }: ClassRecordTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [confirmingClear, setConfirmingClear] = useState(false);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Fetch transmutation table from API (single source of truth)
-  const [transmutationTable, setTransmutationTable] = useState<Array<{ minGrade: number; maxGrade: number; transmutedGrade: number }>>([]);
-  useEffect(() => {
-    gradesApi.getTransmutationTable()
-      .then(res => setTransmutationTable(res.data))
-      .catch(() => {});
-  }, []);
 
   const handleClearClick = () => {
     if (!confirmingClear) {

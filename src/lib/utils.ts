@@ -5,6 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function getErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object" && "response" in err) {
+    const resp = (err as { response?: { data?: { message?: string } } }).response;
+    if (resp?.data?.message) return resp.data.message;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
+
 export function getAcronym(name: string): string {
   // Replace "high school" or "highschool" with a special marker that becomes "HS"
   const processedName = name.replace(/high\s*school/gi, 'HSPLACEHOLDER');

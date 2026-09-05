@@ -10,6 +10,55 @@ type ApplyMetaToScores = (
   metaOverride?: Array<{ description: string; date: string }>,
 ) => ScoreItem[];
 
+interface SaveMetaArgs {
+  classAssignmentId: string;
+  classRecord: ClassRecord[];
+  selectedTerm: string;
+  wwMeta: Array<{ description: string; date: string }>;
+  ptMeta: Array<{ description: string; date: string }>;
+  qaMeta: { description: string; date: string };
+  wwCount: number;
+  ptCount: number;
+  applyMetaToScores: ApplyMetaToScores;
+}
+
+export async function saveMetaToAllStudents({
+  classAssignmentId,
+  classRecord,
+  selectedTerm,
+  wwMeta,
+  ptMeta,
+  qaMeta,
+  wwCount,
+  ptCount,
+  applyMetaToScores,
+}: SaveMetaArgs): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const updatePromises = classRecord.map((record) => {
+      const grade = record.grades.find((g) => g.term === selectedTerm);
+      const wwScores = applyMetaToScores([...(grade?.writtenWorkScores || []) as ScoreItem[]], 'WW', wwCount, wwMeta);
+      const ptScores = applyMetaToScores([...(grade?.perfTaskScores || []) as ScoreItem[]], 'PT', ptCount, ptMeta);
+
+      return gradesApi.saveGrade({
+        studentId: record.student.id,
+        classAssignmentId,
+        term: selectedTerm,
+        writtenWorkScores: wwScores,
+        perfTaskScores: ptScores,
+        qaDescription: qaMeta.description || undefined,
+        qaDate: qaMeta.date || undefined,
+      });
+    });
+
+    await Promise.all(updatePromises);
+    return { ok: true };
+  } catch (err: unknown) {
+    const message = (err as any)?.response?.data?.message || 'Failed to save assessment metadata';
+    console.error('Failed to save meta to all students:', err);
+    return { ok: false, error: message };
+  }
+}
+
 interface ScoreUpdateArgs {
   classAssignmentId: string | undefined;
   classRecord: ClassRecord[];
