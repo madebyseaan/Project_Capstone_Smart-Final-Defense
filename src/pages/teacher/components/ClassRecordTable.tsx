@@ -456,6 +456,7 @@ interface ClassRecordTableProps {
   ledgerHeaderRef?: React.RefObject<HTMLDivElement | null>;
   onClearScores?: () => void;
   transmutationTable?: TransmutationRow[];
+  dataUpdatedAt?: number;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -491,6 +492,7 @@ export function ClassRecordTable({
   ledgerHeaderRef,
   onClearScores,
   transmutationTable,
+  dataUpdatedAt,
 }: ClassRecordTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
@@ -869,7 +871,7 @@ export function ClassRecordTable({
                     );
                     maleRecords.forEach((r, i) =>
                       rows.push(
-                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+                        <LedgerRow key={`${r.student.id}-${dataUpdatedAt}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
                       )
                     );
                   }
@@ -886,14 +888,14 @@ export function ClassRecordTable({
                     );
                     femaleRecords.forEach((r, i) =>
                       rows.push(
-                        <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+                        <LedgerRow key={`${r.student.id}-${dataUpdatedAt}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
                       )
                     );
                   }
                 } else {
                   sortedRecords.forEach((r, i) =>
                     rows.push(
-                      <LedgerRow key={r.student.id} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+                      <LedgerRow key={`${r.student.id}-${dataUpdatedAt}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
                     )
                   );
                 }

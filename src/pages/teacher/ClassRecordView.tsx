@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle,
@@ -10,7 +11,6 @@ import {
 import {
   gradesApi,
   adminApi,
-  type ClassAssignment,
   type ClassRecord,
   type ScoreItem,
   type TermLabels,
@@ -33,8 +33,9 @@ import {
   getMobileDraftKey,
   getScoreFromGrade as computeScoreFromGrade,
 } from "./components/classRecordMobileUtils";
-import { getGradeColor, type TransmutationRow } from "@/lib/gradeMath";
+import { getGradeColor } from "@/lib/gradeMath";
 import { useElementHeight } from "@/hooks/useElementHeight";
+import { useClassRecordQuery, useTransmutationTable } from "./hooks/useClassRecord";
 
 interface AssessmentTaskMeta {
   description: string;
@@ -45,6 +46,7 @@ interface AssessmentTaskMeta {
 export default function ClassRecordView() {
   const { classAssignmentId } = useParams();
   const { colors } = useTheme();
+  const queryClient = useQueryClient();
 
   const userName = useMemo(() => {
     try {
@@ -53,38 +55,62 @@ export default function ClassRecordView() {
     } catch { return "—"; }
   }, []);
 
-  const [classAssignment, setClassAssignment] = useState<ClassAssignment | null>(null);
-  const [classRecord, setClassRecord] = useState<ClassRecord[]>([]);
-  const [effectiveWeights, setEffectiveWeights] = useState<{
-    ww: number;
-    pt: number;
-    qa: number;
-    source: "subject-override" | "subject-type" | "generic-fallback";
-  } | null>(null);
   const [selectedTerm, setSelectedTerm] = useState<string>("T1");
   const [termInitialized, setTermInitialized] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showAssessmentDetails, setShowAssessmentDetails] = useState(false);
-  const [currentTerm, setCurrentTerm] = useState<string>("T1");
-  const [termDates, setTermDates] = useState<{ t1EndDate?: string | null; t2EndDate?: string | null; t3EndDate?: string | null } | null>(null);
-  const [gradeLock, setGradeLock] = useState(false);
   const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
-  const [transmutationTable, setTransmutationTable] = useState<TransmutationRow[]>([]);
+
+  // React Query hooks
+  const classRecordQuery = useClassRecordQuery(classAssignmentId, selectedTerm);
+  const transmutationQuery = useTransmutationTable();
+
+  const classRecord = classRecordQuery.data?.classRecord ?? [];
+  const classAssignment = classRecordQuery.data?.classAssignment ?? null;
+  const effectiveWeights = classRecordQuery.data?.effectiveWeights ?? null;
+  const currentTerm = classRecordQuery.data?.currentTerm ?? "T1";
+  const termDates = classRecordQuery.data?.termDates ?? null;
+  const gradeLock = classRecordQuery.data?.gradeLock ?? false;
+  const loading = classRecordQuery.isLoading;
+  const transmutationTable = transmutationQuery.data ?? [];
+
+  // setClassRecord wrapper for action functions that need optimistic cache updates
+  const setClassRecord = useCallback((updater: React.SetStateAction<ClassRecord[]>) => {
+    queryClient.setQueryData(
+      ["class-record", classAssignmentId, selectedTerm],
+      (old: any) => {
+        if (!old) return old;
+        const newClassRecord = typeof updater === "function" ? updater(old.classRecord) : updater;
+        return { ...old, classRecord: newClassRecord };
+      }
+    );
+  }, [queryClient, classAssignmentId, selectedTerm]);
+
+  // fetchClassRecord wrapper for action functions
+  const fetchClassRecord = useCallback(async (_silent?: boolean) => {
+    await classRecordQuery.refetch();
+  }, [classRecordQuery]);
+
+  // Term initialization (F9 fix)
+  useEffect(() => {
+    if (!termInitialized && classRecordQuery.data?.currentTerm) {
+      setTermInitialized(true);
+      const forcedTerm = classAssignment?.subject?.rotationTermRank
+        ? `T${classAssignment.subject.rotationTermRank}`
+        : null;
+      const termToSet = forcedTerm ?? classRecordQuery.data.currentTerm;
+      if (termToSet !== selectedTerm) {
+        setSelectedTerm(termToSet);
+      }
+    }
+  }, [termInitialized, classRecordQuery.data?.currentTerm, classAssignment?.subject?.rotationTermRank, selectedTerm]);
 
   // Fetch term labels on mount
   useEffect(() => {
     adminApi.getSettings().then((res) => {
       if (res.data.termLabels) setTermLabels(res.data.termLabels);
     }).catch(() => {});
-  }, []);
-
-  // Fetch transmutation table on mount (shared by ledger, stats, mobile)
-  useEffect(() => {
-    gradesApi.getTransmutationTable()
-      .then(res => setTransmutationTable(res.data))
-      .catch(() => {});
   }, []);
 
   // Edit request state (must be declared before isViewOnly)
@@ -283,44 +309,6 @@ export default function ClassRecordView() {
     });
   }, [wwMeta, ptMeta]);
 
-  const fetchClassRecord = useCallback(async (silent = false) => {
-    if (!classAssignmentId) return;
-    try {
-      if (!silent) setLoading(true);
-      const response = await gradesApi.getClassRecord(classAssignmentId, selectedTerm);
-
-      if (!termInitialized && response.data.currentTerm) {
-        setTermInitialized(true);
-        const forcedTerm = classAssignment?.subject?.rotationTermRank
-          ? `T${classAssignment.subject.rotationTermRank}`
-          : null;
-        const termToSet = forcedTerm ?? response.data.currentTerm;
-        if (termToSet !== selectedTerm) {
-          setSelectedTerm(termToSet);
-          return;
-        }
-      }
-
-      setClassAssignment(response.data.classAssignment);
-      setClassRecord(response.data.classRecord);
-      setEffectiveWeights(response.data.effectiveWeights ?? null);
-      if (response.data.currentTerm) {
-        setCurrentTerm(response.data.currentTerm);
-      }
-      if (response.data.termDates) {
-        setTermDates(response.data.termDates);
-      }
-      if (response.data.gradeLock !== undefined) {
-        setGradeLock(response.data.gradeLock);
-      }
-    } catch (err) {
-      console.error("Failed to fetch class record:", err);
-      if (!silent) setError("Failed to load class record");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [classAssignmentId, selectedTerm, termInitialized, classAssignment?.subject?.rotationTermRank]);
-
   const getCellKey = useCallback((sid: string, cat: 'WW' | 'PT' | 'QA', idx: number) => `${sid}:${cat}:${idx}`, []);
 
   const getMaxForCell = useCallback((cat: 'WW' | 'PT' | 'QA', idx: number): number => {
@@ -496,10 +484,6 @@ export default function ClassRecordView() {
   };
 
   useEffect(() => {
-    fetchClassRecord();
-  }, [classAssignmentId, selectedTerm]);
-
-  useEffect(() => {
     if (error || success) {
       const timer = setTimeout(() => {
         setError(null);
@@ -627,16 +611,12 @@ export default function ClassRecordView() {
     if (isViewOnly) return;
     if (!classAssignmentId) return;
     try {
-      setLoading(true);
       await gradesApi.clearScores(classAssignmentId, selectedTerm);
       setSuccess("Successfully cleared all scores for the current term.");
       await fetchClassRecord();
     } catch (err: any) {
       console.error("Failed to clear scores:", err);
       setError(err?.response?.data?.message || "Failed to clear scores");
-      await fetchClassRecord();
-    } finally {
-      setLoading(false);
     }
   }, [isViewOnly, classAssignmentId, selectedTerm, fetchClassRecord]);
 
@@ -848,6 +828,7 @@ export default function ClassRecordView() {
             onCellFocus={openMetaEditor}
             isCellInvalid={isCellInvalid}
             transmutationTable={transmutationTable}
+            dataUpdatedAt={classRecordQuery.dataUpdatedAt}
             assessmentHeaderNode={
               <AssessmentHeader
                 showAssessmentDetails={showAssessmentDetails}
