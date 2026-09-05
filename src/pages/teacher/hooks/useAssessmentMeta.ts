@@ -1,0 +1,185 @@
+import { useState, useMemo, useCallback, useEffect } from "react";
+import type { ClassRecord, ScoreItem } from "@/lib/api";
+import { saveMetaToAllStudents } from "../components/classRecordActions";
+
+interface AssessmentTaskMeta {
+  description: string;
+  date: string;
+}
+
+export function useAssessmentMeta(opts: {
+  classRecord: ClassRecord[];
+  selectedTerm: string;
+  classAssignmentId?: string;
+  applyMetaToScores: (scores: ScoreItem[], category: "WW" | "PT", minLength?: number, metaOverride?: AssessmentTaskMeta[]) => ScoreItem[];
+  setSuccess: (msg: string) => void;
+  setError: (msg: string) => void;
+  fetchClassRecord: () => Promise<void>;
+  isViewOnly: boolean;
+}) {
+  const [wwMeta, setWwMeta] = useState<AssessmentTaskMeta[]>([]);
+  const [ptMeta, setPtMeta] = useState<AssessmentTaskMeta[]>([]);
+  const [qaMeta, setQaMeta] = useState<{ description: string; date: string }>({ description: "", date: "" });
+  const [selectedColumn, setSelectedColumn] = useState<{ type: "WW" | "PT" | "QA"; number: number } | null>(null);
+  const [metaEditorDraft, setMetaEditorDraft] = useState<{ description: string; date: string }>({ description: "", date: "" });
+  const [savingMeta, setSavingMeta] = useState(false);
+
+  const wwCount = useMemo(() => {
+    let max = 1;
+    opts.classRecord.forEach((r) => {
+      const grade = r.grades.find((g) => g.term === opts.selectedTerm);
+      if (grade?.writtenWorkScores) max = Math.max(max, (grade.writtenWorkScores as any[]).length);
+    });
+    return max;
+  }, [opts.classRecord, opts.selectedTerm]);
+
+  const ptCount = useMemo(() => {
+    let max = 1;
+    opts.classRecord.forEach((r) => {
+      const grade = r.grades.find((g) => g.term === opts.selectedTerm);
+      if (grade?.perfTaskScores) max = Math.max(max, (grade.perfTaskScores as any[]).length);
+    });
+    return max;
+  }, [opts.classRecord, opts.selectedTerm]);
+
+  // Derive meta from query data
+  useEffect(() => {
+    const gradeSamples = opts.classRecord
+      .map((r) => r.grades.find((g) => g.term === opts.selectedTerm))
+      .filter(Boolean) as Array<any>;
+
+    const wwSample = gradeSamples.find((g) => Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0);
+    const ptSample = gradeSamples.find((g) => Array.isArray(g.perfTaskScores) && g.perfTaskScores.length > 0);
+    const wwSource = (wwSample?.writtenWorkScores || []) as ScoreItem[];
+    const ptSource = (ptSample?.perfTaskScores || []) as ScoreItem[];
+
+    setWwMeta((prev) =>
+      Array.from({ length: wwCount }, (_, i) => ({
+        description: wwSource[i]?.description || wwSource[i]?.name || prev[i]?.description || `WW ${i + 1}`,
+        date: wwSource[i]?.date || prev[i]?.date || "",
+      }))
+    );
+    setPtMeta((prev) =>
+      Array.from({ length: ptCount }, (_, i) => ({
+        description: ptSource[i]?.description || ptSource[i]?.name || prev[i]?.description || `PT ${i + 1}`,
+        date: ptSource[i]?.date || prev[i]?.date || "",
+      }))
+    );
+    setQaMeta((prev) => {
+      const qaSample = gradeSamples.find((g) => g.qaDescription || g.qaDate);
+      return {
+        description: qaSample?.qaDescription || prev.description || "",
+        date: qaSample?.qaDate || prev.date || "",
+      };
+    });
+  }, [opts.classRecord, opts.selectedTerm, wwCount, ptCount]);
+
+  const openMetaEditor = useCallback((type: "WW" | "PT" | "QA", index: number) => {
+    setSelectedColumn({ type, number: index + 1 });
+    if (type === "WW") {
+      setMetaEditorDraft({ description: wwMeta[index]?.description || `WW ${index + 1}`, date: wwMeta[index]?.date || "" });
+    } else if (type === "PT") {
+      setMetaEditorDraft({ description: ptMeta[index]?.description || `PT ${index + 1}`, date: ptMeta[index]?.date || "" });
+    } else {
+      setMetaEditorDraft({ description: qaMeta.description || "Term Assessment", date: qaMeta.date || "" });
+    }
+  }, [wwMeta, ptMeta, qaMeta]);
+
+  const saveColumnMeta = useCallback(async () => {
+    if (!opts.classAssignmentId || !selectedColumn) return;
+    const nextWwMeta = [...wwMeta];
+    const nextPtMeta = [...ptMeta];
+    const nextQaMeta = { ...qaMeta };
+    const index = selectedColumn.number - 1;
+
+    if (selectedColumn.type === "WW") {
+      while (nextWwMeta.length <= index) nextWwMeta.push({ description: `WW ${nextWwMeta.length + 1}`, date: "" });
+      nextWwMeta[index] = { description: metaEditorDraft.description || `WW ${selectedColumn.number}`, date: metaEditorDraft.date || "" };
+    } else if (selectedColumn.type === "PT") {
+      while (nextPtMeta.length <= index) nextPtMeta.push({ description: `PT ${nextPtMeta.length + 1}`, date: "" });
+      nextPtMeta[index] = { description: metaEditorDraft.description || `PT ${selectedColumn.number}`, date: metaEditorDraft.date || "" };
+    } else {
+      nextQaMeta.description = metaEditorDraft.description;
+      nextQaMeta.date = metaEditorDraft.date;
+    }
+
+    setWwMeta(nextWwMeta);
+    setPtMeta(nextPtMeta);
+    setQaMeta(nextQaMeta);
+    setSavingMeta(true);
+
+    const result = await saveMetaToAllStudents({
+      classAssignmentId: opts.classAssignmentId, classRecord: opts.classRecord, selectedTerm: opts.selectedTerm,
+      wwMeta: nextWwMeta, ptMeta: nextPtMeta, qaMeta: nextQaMeta,
+      wwCount, ptCount, applyMetaToScores: opts.applyMetaToScores,
+    });
+    if (result.ok) {
+      opts.setSuccess("Assessment metadata applied to the selected column");
+      opts.fetchClassRecord();
+      setSelectedColumn(null);
+    } else {
+      opts.setError(result.error || "Failed to save assessment metadata");
+      opts.fetchClassRecord();
+    }
+    setSavingMeta(false);
+  }, [opts.classAssignmentId, selectedColumn, wwMeta, ptMeta, qaMeta, metaEditorDraft, opts.classRecord, opts.selectedTerm, opts.applyMetaToScores, wwCount, ptCount, opts.fetchClassRecord]);
+
+  const saveAssessmentDetails = useCallback(async () => {
+    if (opts.isViewOnly || !opts.classAssignmentId) return;
+    if (opts.classRecord.length === 0) { opts.setSuccess("No learners to update yet."); return; }
+
+    const result = await saveMetaToAllStudents({
+      classAssignmentId: opts.classAssignmentId, classRecord: opts.classRecord, selectedTerm: opts.selectedTerm,
+      wwMeta, ptMeta, qaMeta, wwCount, ptCount, applyMetaToScores: opts.applyMetaToScores,
+    });
+    if (result.ok) { opts.setSuccess("Assessment details saved"); opts.fetchClassRecord(); }
+    else { opts.setError(result.error || "Failed to save assessment details"); }
+  }, [opts.isViewOnly, opts.classAssignmentId, opts.classRecord, opts.selectedTerm, wwMeta, ptMeta, qaMeta, wwCount, ptCount, opts.applyMetaToScores, opts.fetchClassRecord]);
+
+  const applyColumnMetaFromMobile = useCallback(async (category: "WW" | "PT" | "QA", index: number, description: string, date: string) => {
+    if (!opts.classAssignmentId) return;
+    const nextWwMeta = [...wwMeta];
+    const nextPtMeta = [...ptMeta];
+    const nextQaMeta = { ...qaMeta };
+
+    if (category === "WW") {
+      while (nextWwMeta.length <= index) nextWwMeta.push({ description: `WW ${nextWwMeta.length + 1}`, date: "" });
+      nextWwMeta[index] = { description: description || `WW ${index + 1}`, date: date || "" };
+    } else if (category === "PT") {
+      while (nextPtMeta.length <= index) nextPtMeta.push({ description: `PT ${nextPtMeta.length + 1}`, date: "" });
+      nextPtMeta[index] = { description: description || `PT ${index + 1}`, date: date || "" };
+    } else {
+      nextQaMeta.description = description;
+      nextQaMeta.date = date;
+    }
+
+    setWwMeta(nextWwMeta);
+    setPtMeta(nextPtMeta);
+    setQaMeta(nextQaMeta);
+
+    const result = await saveMetaToAllStudents({
+      classAssignmentId: opts.classAssignmentId, classRecord: opts.classRecord, selectedTerm: opts.selectedTerm,
+      wwMeta: nextWwMeta, ptMeta: nextPtMeta, qaMeta: nextQaMeta,
+      wwCount, ptCount, applyMetaToScores: opts.applyMetaToScores,
+    });
+    if (result.ok) { opts.setSuccess("Assessment metadata synced for the class"); opts.fetchClassRecord(); }
+    else { opts.setError(result.error || "Failed to sync assessment metadata"); opts.fetchClassRecord(); }
+  }, [opts.classAssignmentId, wwMeta, ptMeta, qaMeta, opts.classRecord, opts.selectedTerm, wwCount, ptCount, opts.applyMetaToScores, opts.fetchClassRecord]);
+
+  const addTask = useCallback((category: "WW" | "PT") => {
+    if (opts.isViewOnly) return;
+    const targetIdx = category === "WW" ? wwCount : ptCount;
+    if (category === "WW") setWwMeta((prev) => [...prev, { description: `WW ${targetIdx + 1}`, date: "" }]);
+    else setPtMeta((prev) => [...prev, { description: `PT ${targetIdx + 1}`, date: "" }]);
+  }, [opts.isViewOnly, wwCount, ptCount]);
+
+  return {
+    wwMeta, setWwMeta, ptMeta, setPtMeta, qaMeta, setQaMeta,
+    wwCount, ptCount,
+    selectedColumn, setSelectedColumn,
+    metaEditorDraft, setMetaEditorDraft,
+    savingMeta,
+    openMetaEditor, saveColumnMeta, saveAssessmentDetails,
+    applyColumnMetaFromMobile, addTask,
+  };
+}
