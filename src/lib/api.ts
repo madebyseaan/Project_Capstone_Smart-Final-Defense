@@ -371,6 +371,20 @@ export const gradesApi = {
     qualitativeDescriptor?: string;
   }) => api.post<Grade>("/grades/grade", data),
 
+  saveGradeBatch: (data: {
+    classAssignmentId: string;
+    term: string;
+    updates: Array<{
+      studentId: string;
+      writtenWorkScores?: ScoreItem[];
+      perfTaskScores?: ScoreItem[];
+      quarterlyAssessScore?: number;
+      quarterlyAssessMax?: number;
+      qaDescription?: string;
+      qaDate?: string;
+    }>;
+  }) => api.post<{ savedCount: number; skipped: Array<{ studentId: string; reason: string }> }>("/grades/grade/batch", data),
+
   deleteGrade: (gradeId: string) => api.delete(`/grades/grade/${gradeId}`),
 
   clearScores: (classAssignmentId: string, term: string) =>

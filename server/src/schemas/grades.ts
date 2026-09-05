@@ -10,6 +10,9 @@ const scoreItemSchema = z.object({
   name: z.string().min(1),
   score: z.number().min(0),
   maxScore: z.number().positive(),
+  description: z.string().optional(),
+  date: z.string().optional(),
+  status: z.enum(['A', 'E']).optional(),
 });
 
 export const gradeSaveSchema = z.object({
@@ -71,5 +74,23 @@ export const editRequestRejectSchema = z.object({
 export const classAssignmentDeleteSchema = z.object({
   params: z.object({
     id: z.string().min(1, 'id is required'),
+  }),
+});
+
+export const batchGradeSaveSchema = z.object({
+  body: z.object({
+    classAssignmentId: z.string().min(1),
+    term: termEnum,
+    updates: z.array(
+      z.object({
+        studentId: z.string().min(1),
+        writtenWorkScores: z.array(scoreItemSchema).optional(),
+        perfTaskScores: z.array(scoreItemSchema).optional(),
+        quarterlyAssessScore: z.number().min(0).optional(),
+        quarterlyAssessMax: z.number().positive().optional(),
+        qaDescription: z.string().optional(),
+        qaDate: z.string().optional(),
+      })
+    ).min(1).max(200),
   }),
 });

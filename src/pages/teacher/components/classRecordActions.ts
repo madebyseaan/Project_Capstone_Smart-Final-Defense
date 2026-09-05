@@ -32,26 +32,48 @@ export async function saveMetaToAllStudents({
   wwCount,
   ptCount,
   applyMetaToScores,
-}: SaveMetaArgs): Promise<{ ok: boolean; error?: string }> {
+}: SaveMetaArgs): Promise<{ ok: boolean; error?: string; skipped?: Array<{ studentId: string; reason: string }> }> {
   try {
-    const updatePromises = classRecord.map((record) => {
+    // Build updates array for batch endpoint
+    const updates = classRecord.map((record) => {
       const grade = record.grades.find((g) => g.term === selectedTerm);
       const wwScores = applyMetaToScores([...(grade?.writtenWorkScores || []) as ScoreItem[]], 'WW', wwCount, wwMeta);
       const ptScores = applyMetaToScores([...(grade?.perfTaskScores || []) as ScoreItem[]], 'PT', ptCount, ptMeta);
 
-      return gradesApi.saveGrade({
+      return {
         studentId: record.student.id,
-        classAssignmentId,
-        term: selectedTerm,
         writtenWorkScores: wwScores,
         perfTaskScores: ptScores,
         qaDescription: qaMeta.description || undefined,
         qaDate: qaMeta.date || undefined,
-      });
+      };
     });
 
-    await Promise.all(updatePromises);
-    return { ok: true };
+    if (updates.length === 0) return { ok: true };
+
+    // Try batch endpoint first; fall back to per-student if 404
+    try {
+      const res = await gradesApi.saveGradeBatch({
+        classAssignmentId,
+        term: selectedTerm,
+        updates,
+      });
+      return { ok: true, skipped: res.data.skipped };
+    } catch (batchErr: any) {
+      if (batchErr?.response?.status === 404) {
+        // Older backend — fall back to per-student saves
+        const updatePromises = updates.map((u) =>
+          gradesApi.saveGrade({
+            classAssignmentId,
+            term: selectedTerm,
+            ...u,
+          })
+        );
+        await Promise.all(updatePromises);
+        return { ok: true };
+      }
+      throw batchErr;
+    }
   } catch (err: unknown) {
     const message = (err as any)?.response?.data?.message || 'Failed to save assessment metadata';
     console.error('Failed to save meta to all students:', err);

@@ -11,6 +11,7 @@ import {
   gradeDeleteSchema,
   clearScoresSchema,
   classAssignmentDeleteSchema,
+  batchGradeSaveSchema,
 } from "../../schemas/grades";
 import {
   EnrollmentWithStudent,
@@ -425,6 +426,195 @@ export default function registerClasses(router: Router): void {
         res.json(grade);
       } catch (error) {
         logger.error("Error saving grade:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  );
+
+  // Batch save grades for multiple students
+  router.post(
+    "/grade/batch",
+    authenticateToken,
+    authorizeRoles("TEACHER"),
+    validate(batchGradeSaveSchema),
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        const { classAssignmentId, term, updates } = req.body;
+
+        const teacher = await prisma.teacher.findUnique({
+          where: { userId: req.user?.id },
+        });
+        if (!teacher) {
+          res.status(404).json({ message: "Teacher profile not found" });
+          return;
+        }
+
+        const classAssignment = await prisma.classAssignment.findFirst({
+          where: { id: classAssignmentId, teacherId: teacher.id },
+          include: { subject: true, section: true },
+        });
+        if (!classAssignment) {
+          res.status(403).json({ message: "Not authorized for this class" });
+          return;
+        }
+
+        const isHG = isHomeroomGuidanceSubjectCode(classAssignment.subject.code);
+        if (isHG) {
+          res.status(400).json({ message: "Homeroom Guidance is a location, not a subject. Cannot save grades for HG." });
+          return;
+        }
+
+        // Class-level lock check (uses first existing grade's archived state)
+        const sampleGrade = await prisma.grade.findFirst({
+          where: { classAssignmentId, term },
+          select: { isArchived: true },
+        });
+        const lockBlock = await checkGradeEditLocks({
+          teacherUserId: teacher.userId,
+          schoolYearLabel: classAssignment.schoolYear,
+          term: term as any,
+          isArchived: sampleGrade?.isArchived ?? false,
+        });
+        if (lockBlock) {
+          res.status(403).json({ code: lockBlock.code, message: lockBlock.message });
+          return;
+        }
+
+        // Current-term check with APPROVED edit-request bypass
+        const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+        const currentTerm = await resolveCurrentTerm();
+        const currentTermNum = termOrder[currentTerm] ?? 1;
+        const requestTermNum = termOrder[term as string] ?? 0;
+        if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
+          let hasEditAccess = false;
+          const editRequest = await prisma.gradeEditRequest.findFirst({
+            where: {
+              teacherId: teacher.userId,
+              term: term as string,
+              status: "APPROVED",
+              expiresAt: { gt: new Date() },
+            },
+          });
+          hasEditAccess = !!editRequest;
+          if (!hasEditAccess) {
+            const relation = requestTermNum < currentTermNum ? "past" : "future";
+            res.status(403).json({
+              message: `Cannot edit grades for ${term} (${relation} term). The current term is ${currentTerm}. Only current term grades can be edited.`,
+            });
+            return;
+          }
+        }
+
+        const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
+        const skipped: Array<{ studentId: string; reason: string }> = [];
+
+        // Pre-check: gather enrollments and existing grades
+        const studentIds = updates.map((u: any) => u.studentId);
+        const [enrollments, existingGrades] = await Promise.all([
+          prisma.enrollment.findMany({
+            where: { studentId: { in: studentIds }, sectionId: classAssignment.sectionId, schoolYear: classAssignment.schoolYear },
+          }),
+          prisma.grade.findMany({
+            where: { studentId: { in: studentIds }, classAssignmentId, term },
+          }),
+        ]);
+
+        const enrollmentMap = new Map(enrollments.map((e: any) => [e.studentId, e]));
+        const gradeMap = new Map(existingGrades.map((g: any) => [g.studentId, g]));
+
+        // Filter out students that should be skipped
+        const validUpdates = updates.filter((update: any) => {
+          const enrollment = enrollmentMap.get(update.studentId);
+          if (enrollment && (enrollment.status === "DROPPED" || enrollment.status === "TRANSFERRED")) {
+            skipped.push({ studentId: update.studentId, reason: `Student is ${enrollment.status.toLowerCase()}` });
+            return false;
+          }
+          const existing = gradeMap.get(update.studentId);
+          if (existing?.status === "FINALIZED") {
+            skipped.push({ studentId: update.studentId, reason: "Grade is finalized" });
+            return false;
+          }
+          if (existing?.isArchived) {
+            skipped.push({ studentId: update.studentId, reason: "Grade is archived" });
+            return false;
+          }
+          return true;
+        });
+
+        // Transaction: upsert all valid updates
+        await prisma.$transaction(async (tx) => {
+          for (const update of validUpdates) {
+            const existing = gradeMap.get(update.studentId);
+
+            const mergedWrittenWorkScores = update.writtenWorkScores !== undefined
+              ? update.writtenWorkScores
+              : (existing?.writtenWorkScores as any[] ?? null);
+            const mergedPerfTaskScores = update.perfTaskScores !== undefined
+              ? update.perfTaskScores
+              : (existing?.perfTaskScores as any[] ?? null);
+            const mergedQuarterlyAssessScore = update.quarterlyAssessScore !== undefined
+              ? update.quarterlyAssessScore
+              : (existing?.quarterlyAssessScore ?? 0);
+            const mergedQuarterlyAssessMax = update.quarterlyAssessMax !== undefined
+              ? update.quarterlyAssessMax
+              : (existing?.quarterlyAssessMax ?? 100);
+            const mergedQaDescription = update.qaDescription !== undefined
+              ? update.qaDescription
+              : (existing?.qaDescription ?? null);
+            const mergedQaDate = update.qaDate !== undefined
+              ? update.qaDate
+              : (existing?.qaDate ?? null);
+
+            const calculated = await calculateGrades(
+              mergedWrittenWorkScores,
+              mergedPerfTaskScores,
+              mergedQuarterlyAssessScore,
+              mergedQuarterlyAssessMax || 100,
+              effectiveWeights.ww,
+              effectiveWeights.pt,
+              effectiveWeights.qa
+            );
+
+            const gradePayload = {
+              writtenWorkScores: mergedWrittenWorkScores,
+              perfTaskScores: mergedPerfTaskScores,
+              quarterlyAssessScore: mergedQuarterlyAssessScore,
+              quarterlyAssessMax: mergedQuarterlyAssessMax,
+              qaDescription: mergedQaDescription,
+              qaDate: mergedQaDate,
+              writtenWorkPS: calculated.writtenWorkPS,
+              perfTaskPS: calculated.perfTaskPS,
+              quarterlyAssessPS: calculated.quarterlyAssessPS,
+              initialGrade: calculated.initialGrade,
+              quarterlyGrade: calculated.quarterlyGrade,
+              qualitativeDescriptor: null,
+            };
+
+            await tx.grade.upsert({
+              where: {
+                studentId_classAssignmentId_term: {
+                  studentId: update.studentId,
+                  classAssignmentId,
+                  term,
+                },
+              },
+              update: gradePayload,
+              create: {
+                studentId: update.studentId,
+                classAssignmentId,
+                term,
+                ...gradePayload,
+              },
+            });
+          }
+        });
+
+        res.json({
+          savedCount: validUpdates.length,
+          skipped,
+        });
+      } catch (error) {
+        logger.error("Error batch saving grades:", error);
         res.status(500).json({ message: "Internal server error" });
       }
     }
