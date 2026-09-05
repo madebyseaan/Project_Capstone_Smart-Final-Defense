@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { gradesApi } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 import { ApproveModal, RejectModal, RevokeModal } from "./components/EditRequestModals";
 
@@ -42,7 +43,7 @@ const StatusBadge = React.memo(function StatusBadge({ status }: { status: EditRe
     case "REJECTED":
       return <Badge className="bg-red-100 text-red-700 border-red-200"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
     case "EXPIRED":
-      return <Badge className="bg-gray-100 text-gray-600 border-gray-200"><Timer className="w-3 h-3 mr-1" />Expired</Badge>;
+      return <Badge className="bg-muted text-muted-foreground border-border"><Timer className="w-3 h-3 mr-1" />Expired</Badge>;
     default:
       return <Badge>{status}</Badge>;
   }
@@ -96,19 +97,10 @@ export default function EditRequests() {
     <div className="space-y-6 animate-fade-in">
       <Card className="border-0 shadow-xl shadow-gray-200/50 bg-white overflow-hidden rounded-2xl">
         <CardHeader className="border-b border-gray-100 px-6 py-5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <CardTitle className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                <div className="p-2 rounded-xl" style={{ backgroundColor: `${colors.primary}15` }}>
-                  <FileText className="w-5 h-5" style={{ color: colors.primary }} />
-                </div>
-                Grade Edit Requests
-              </CardTitle>
-              <CardDescription className="mt-2 font-medium text-slate-500">
-                Review and manage teacher requests to edit past-term grades
-              </CardDescription>
-            </div>
-          </div>
+          <PageHeader
+            title="Grade Edit Requests"
+            description="Review and manage teacher requests to edit past-term grades"
+          />
         </CardHeader>
 
         <div className="px-6 py-3 border-b border-gray-100 flex gap-2">
@@ -119,7 +111,7 @@ export default function EditRequests() {
               className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                 filter === f
                   ? "text-white shadow-md"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  : "bg-muted text-muted-foreground hover:bg-accent"
               }`}
               style={filter === f ? { backgroundColor: colors.primary } : undefined}
             >
@@ -135,8 +127,8 @@ export default function EditRequests() {
             </div>
           ) : requests.length === 0 ? (
             <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">No {filter.toLowerCase()} requests</p>
+              <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground font-medium">No {filter.toLowerCase()} requests</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -153,37 +145,37 @@ export default function EditRequests() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-gray-900">{req.teacherName}</h3>
+                          <h3 className="font-semibold text-foreground">{req.teacherName}</h3>
                           <StatusBadge status={req.status} />
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-sm text-gray-600 flex-wrap">
+                        <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
                           <span className="flex items-center gap-1">
-                            <GraduationCap className="w-3.5 h-3.5 text-gray-400" />
+                            <GraduationCap className="w-3.5 h-3.5 text-muted-foreground" />
                             {gradeLabel(req.gradeLevel)}
                           </span>
                           {req.section && (
                             <span className="flex items-center gap-1">
-                              <Layers className="w-3.5 h-3.5 text-gray-400" />
+                              <Layers className="w-3.5 h-3.5 text-muted-foreground" />
                               {req.section}
                             </span>
                           )}
                           {req.subject && (
                             <span className="flex items-center gap-1">
-                              <BookOpen className="w-3.5 h-3.5 text-gray-400" />
+                              <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
                               {req.subject}
                             </span>
                           )}
-                          <span className="text-gray-300">|</span>
+                          <span className="text-muted-foreground">|</span>
                           <span>{termLabel(req.term)}</span>
-                          <span className="text-gray-300">|</span>
+                          <span className="text-muted-foreground">|</span>
                           <span>{req.schoolYear}</span>
                         </div>
                         {req.approvedByName && (
-                          <p className="text-xs text-gray-400 mt-1">
+                          <p className="text-xs text-muted-foreground mt-1">
                             Approved by {req.approvedByName} · Expires: {req.expiresAt ? new Date(req.expiresAt).toLocaleString() : "N/A"}
                           </p>
                         )}
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           Submitted: {new Date(req.createdAt).toLocaleString()}
                         </p>
                       </div>
@@ -244,7 +236,7 @@ export default function EditRequests() {
 
           {detailReq && (
             <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="rounded-xl border border-border overflow-hidden">
                 <div className="bg-slate-700 text-white px-4 py-2 flex items-center justify-between text-xs font-medium">
                   <span>GRADE EDIT REQUEST</span>
                   <span className="opacity-70">
@@ -260,36 +252,36 @@ export default function EditRequests() {
                 <div className="px-4 py-3 space-y-3">
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Teacher</span>
-                      <p className="text-slate-800 font-medium">{detailReq.teacherName}</p>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Teacher</span>
+                      <p className="text-foreground font-medium">{detailReq.teacherName}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Status</span>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Status</span>
                       <div className="mt-0.5"><StatusBadge status={detailReq.status} /></div>
                     </div>
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Grade Level</span>
-                      <p className="text-slate-800 font-medium">{gradeLabel(detailReq.gradeLevel)}</p>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Grade Level</span>
+                      <p className="text-foreground font-medium">{gradeLabel(detailReq.gradeLevel)}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Section</span>
-                      <p className="text-slate-800 font-medium">{detailReq.section || "—"}</p>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Section</span>
+                      <p className="text-foreground font-medium">{detailReq.section || "—"}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Subject</span>
-                      <p className="text-slate-800 font-medium">{detailReq.subject || "—"}</p>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Subject</span>
+                      <p className="text-foreground font-medium">{detailReq.subject || "—"}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Term</span>
-                      <p className="text-slate-800 font-medium">{termLabel(detailReq.term)} · {detailReq.schoolYear}</p>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Term</span>
+                      <p className="text-foreground font-medium">{termLabel(detailReq.term)} · {detailReq.schoolYear}</p>
                     </div>
                   </div>
-                  <div className="border-t border-slate-100 pt-2.5">
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Reason</span>
-                    <p className="text-sm text-slate-700 mt-0.5">{detailReq.reason}</p>
+                  <div className="border-t border-border pt-2.5">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Reason</span>
+                    <p className="text-sm text-foreground mt-0.5">{detailReq.reason}</p>
                   </div>
                   {detailReq.approvedByName && (
-                    <div className="border-t border-slate-100 pt-2.5 text-xs text-gray-500">
+                    <div className="border-t border-border pt-2.5 text-xs text-muted-foreground">
                       Approved by <span className="font-medium">{detailReq.approvedByName}</span> · Expires:{" "}
                       {detailReq.expiresAt ? new Date(detailReq.expiresAt).toLocaleString() : "N/A"}
                     </div>

@@ -236,7 +236,7 @@ export class TemplateService {
       worksheet.eachRow((row) => {
         row.eachCell((cell) => {
           if (cell.value && typeof cell.value === 'string') {
-            const matches = cell.value.matchAll(/\{\{[#\/]?([\w.-]+)\}\}/g);
+            const matches = cell.value.matchAll(/\{\{[#/]?([\w.-]+)\}\}/g);
             for (const match of matches) {
               placeholders.add(match[1]);
             }

@@ -31,6 +31,7 @@ import {
   Loader2,
   AlertTriangle,
 } from "lucide-react";
+import { PageHeader } from "../../components/layout/PageHeader";
 
 interface SchoolYear {
   id: string;
@@ -43,7 +44,7 @@ interface SchoolYear {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-700",
+  DRAFT: "bg-gray-100 text-foreground",
   ACTIVE: "bg-green-100 text-green-700",
   ARCHIVED: "bg-yellow-100 text-yellow-700",
   COMPLETED: "bg-blue-100 text-blue-700",
@@ -121,15 +122,15 @@ export default function SchoolYears() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">School Years</h1>
-          <p className="text-muted-foreground">Manage school year lifecycle and archival</p>
-        </div>
-        <Button onClick={() => setShowCreate(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> Add Year
-        </Button>
-      </div>
+      <PageHeader
+        title="School Years"
+        description="Manage school year lifecycle and archival"
+        actions={
+          <Button onClick={() => setShowCreate(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Add Year
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>

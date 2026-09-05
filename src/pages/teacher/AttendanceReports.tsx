@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL, getPortalToken } from "@/lib/api";
 import axios from "axios";
@@ -244,19 +245,16 @@ export default function AttendanceReports() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-7xl mx-auto pb-12">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl text-white shadow-xl" style={{ backgroundColor: colors.primary }}>
-              <FileSpreadsheet className="w-6 h-6" />
-            </div>
+    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+      <PageHeader
+        title="Attendance Reports"
+        description="View and download attendance summaries"
+        actions={
+          <div className="p-2.5 rounded-2xl text-white shadow-xl" style={{ backgroundColor: colors.primary }}>
+            <FileSpreadsheet className="w-6 h-6" />
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Attendance Reports</h1>
-          <p className="text-slate-500 font-medium text-lg">View and download attendance summaries</p>
-        </div>
-      </div>
+        }
+      />
 
       {/* Filters */}
       <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden bg-white/90 backdrop-blur-md">
@@ -266,15 +264,15 @@ export default function AttendanceReports() {
               <Filter className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-sm font-black text-slate-900 tracking-tight">Attendance Report</p>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Advisory section — auto-loaded for current month</p>
+              <p className="text-sm font-bold text-foreground tracking-tight">Attendance Report</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Advisory section — auto-loaded for current month</p>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
             <div className="space-y-2">
-              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Advisory Section</Label>
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Advisory Section</Label>
               <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center px-4">
-                <span className="text-sm font-bold text-slate-900">
+                <span className="text-sm font-bold text-foreground">
                   {sections.length > 0
                     ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
                     : "Loading..."}
@@ -283,7 +281,7 @@ export default function AttendanceReports() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="startDate" className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Start Date</Label>
+              <Label htmlFor="startDate" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start Date</Label>
               <Input
                 id="startDate"
                 type="date"
@@ -295,7 +293,7 @@ export default function AttendanceReports() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="endDate" className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">End Date</Label>
+              <Label htmlFor="endDate" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End Date</Label>
               <Input
                 id="endDate"
                 type="date"
@@ -338,8 +336,8 @@ export default function AttendanceReports() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Students</p>
-                  <p className="text-2xl font-black text-slate-800">{summary.length}</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Students</p>
+                  <p className="text-2xl font-bold text-foreground">{summary.length}</p>
                 </div>
                 <div className="p-3 rounded-2xl text-white" style={{ backgroundColor: colors.primary }}>
                   <FileSpreadsheet className="w-6 h-6" />
@@ -351,8 +349,8 @@ export default function AttendanceReports() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Avg. Attendance</p>
-                  <p className="text-2xl font-black text-emerald-600">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Avg. Attendance</p>
+                  <p className="text-2xl font-bold text-emerald-600">
                     {summary.length > 0
                       ? (
                           (summary.reduce((acc, s) => acc + s.present, 0) /
@@ -372,8 +370,8 @@ export default function AttendanceReports() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Days</p>
-                  <p className="text-2xl font-black text-slate-800">{summary[0]?.total || 0}</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Days</p>
+                  <p className="text-2xl font-bold text-foreground">{summary[0]?.total || 0}</p>
                 </div>
                 <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
                   <Calendar className="w-6 h-6" />
@@ -385,8 +383,8 @@ export default function AttendanceReports() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Export</p>
-                  <p className="text-sm font-black text-slate-800">SF2 Download</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Export</p>
+                  <p className="text-sm font-bold text-foreground">SF2 Download</p>
                 </div>
                 <Button
                   onClick={downloadExcel}
@@ -411,15 +409,15 @@ export default function AttendanceReports() {
         <CardHeader className="p-8 border-b border-slate-50 bg-slate-50/30">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-xl font-black text-slate-900 tracking-tight">Attendance Summary</CardTitle>
-              <CardDescription className="text-slate-500 font-sans normal-case font-medium tracking-normal mt-1">
+              <CardTitle className="text-xl font-bold text-foreground tracking-tight">Attendance Summary</CardTitle>
+              <CardDescription className="text-muted-foreground font-sans normal-case font-medium tracking-normal mt-1">
                 {summary.length > 0
                   ? `Showing ${summary.length} students from ${startDate} to ${endDate}`
                   : "Select filters and click 'View Report' to see data"}
               </CardDescription>
             </div>
             {summary.length > 0 && (
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 py-1.5 rounded-full bg-slate-100">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-3 py-1.5 rounded-full bg-slate-100">
                 {summary.length} Records
               </span>
             )}
@@ -432,7 +430,7 @@ export default function AttendanceReports() {
                 <div className="w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm" style={{ backgroundColor: `${colors.primary}15` }}>
                   <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
                 </div>
-                <p className="text-slate-500 font-black text-xs uppercase tracking-widest">Compiling SF2 Daily Grid...</p>
+                <p className="text-muted-foreground font-bold text-xs uppercase tracking-widest">Compiling SF2 Daily Grid...</p>
               </div>
             </div>
           ) : summary.length > 0 ? (
@@ -483,7 +481,7 @@ export default function AttendanceReports() {
                   <>
                     {/* Gender Group Divider */}
                     <TableRow className="bg-slate-100/60 hover:bg-slate-100/60">
-                      <TableCell colSpan={activeSchoolDays.length + 8} className="py-2.5 px-6 text-[10px] font-black text-slate-500 tracking-widest uppercase">
+                      <TableCell colSpan={activeSchoolDays.length + 8} className="py-2.5 px-6 text-[10px] font-bold text-muted-foreground tracking-widest uppercase">
                         {groupLabel} ({studentList.length} Learners)
                       </TableCell>
                     </TableRow>
@@ -494,16 +492,16 @@ export default function AttendanceReports() {
                       return (
                         <TableRow key={student.studentId} className="hover:bg-slate-50/50 transition-all border-slate-100 group">
                           {/* LRN - Sticky left */}
-                          <TableCell className="font-mono text-xs text-slate-400 font-bold group-hover:text-slate-900 transition-colors border-r border-slate-100 px-4">
+                          <TableCell className="font-mono text-xs text-muted-foreground font-bold group-hover:text-foreground transition-colors border-r border-slate-100 px-4">
                             {student.lrn}
                           </TableCell>
                           
                           {/* Learner Name - Sticky left */}
-                          <TableCell className="font-bold text-slate-900 tracking-tight border-r border-slate-100 whitespace-nowrap min-w-[200px] px-4">
+                          <TableCell className="font-bold text-foreground tracking-tight border-r border-slate-100 whitespace-nowrap min-w-[200px] px-4">
                             <div className="flex items-center justify-between gap-3">
                               <span>{student.lastName}, {student.firstName}</span>
                               {hasConsecAbsence && (
-                                <span className="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse shrink-0">
+                                <span className="bg-rose-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse shrink-0">
                                   5+ Abs
                                 </span>
                               )}
@@ -518,7 +516,7 @@ export default function AttendanceReports() {
                             return (
                               <TableCell 
                                 key={date} 
-                                className="text-center font-black text-xs border-r border-slate-100 p-0 w-10 min-w-[40px] max-w-[40px]"
+                                className="text-center font-bold text-xs border-r border-slate-100 p-0 w-10 min-w-[40px] max-w-[40px]"
                               >
                                 {status === "ABSENT" ? (
                                   <span className="text-rose-600 bg-rose-50 w-full h-full flex items-center justify-center py-2">X</span>
@@ -534,14 +532,14 @@ export default function AttendanceReports() {
                           })}
 
                           {/* Right Summaries */}
-                          <TableCell className="text-center font-black text-xs text-emerald-600 border-r border-slate-100">{student.present}</TableCell>
-                          <TableCell className="text-center font-black text-xs text-rose-600 border-r border-slate-100">{student.absent}</TableCell>
-                          <TableCell className="text-center font-black text-xs text-amber-600 border-r border-slate-100">{student.late}</TableCell>
-                          <TableCell className="text-center font-black text-xs text-indigo-600 border-r border-slate-100">{student.excused}</TableCell>
-                          <TableCell className="text-center font-bold text-xs text-slate-500 border-r border-slate-100">{student.total}</TableCell>
+                          <TableCell className="text-center font-bold text-xs text-emerald-600 border-r border-slate-100">{student.present}</TableCell>
+                          <TableCell className="text-center font-bold text-xs text-rose-600 border-r border-slate-100">{student.absent}</TableCell>
+                          <TableCell className="text-center font-bold text-xs text-amber-600 border-r border-slate-100">{student.late}</TableCell>
+                          <TableCell className="text-center font-bold text-xs text-indigo-600 border-r border-slate-100">{student.excused}</TableCell>
+                          <TableCell className="text-center font-bold text-xs text-muted-foreground border-r border-slate-100">{student.total}</TableCell>
                           <TableCell className="text-center border-r border-slate-100 px-3">
                             <span
-                              className={`font-black text-xs ${
+                              className={`font-bold text-xs ${
                                 parseFloat(getAttendanceRate(student.present, student.total)) >= 90
                                   ? "text-emerald-600"
                                   : parseFloat(getAttendanceRate(student.present, student.total)) >= 75
@@ -564,26 +562,26 @@ export default function AttendanceReports() {
                   <Table className="border-collapse table-fixed min-w-full">
                     <TableHeader>
                       <TableRow className="bg-slate-50 border-b border-slate-200">
-                        <TableHead className="w-36 text-[10px] font-black text-slate-400 uppercase tracking-widest border-r border-slate-200 px-4">LRN</TableHead>
-                        <TableHead className="w-56 text-[10px] font-black text-slate-400 uppercase tracking-widest border-r border-slate-200 px-4">Student Name</TableHead>
+                        <TableHead className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-r border-slate-200 px-4">LRN</TableHead>
+                        <TableHead className="w-56 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-r border-slate-200 px-4">Student Name</TableHead>
                         
                         {/* Daily Columns Headers */}
                         {activeSchoolDays.map((date) => (
                           <TableHead 
                             key={date} 
-                            className="w-10 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0"
+                            className="w-10 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0"
                             title={date}
                           >
                             {new Date(date).getDate()}
                           </TableHead>
                         ))}
 
-                        <TableHead className="w-12 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">P</TableHead>
-                        <TableHead className="w-12 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">A</TableHead>
-                        <TableHead className="w-12 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">L</TableHead>
-                        <TableHead className="w-12 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">E</TableHead>
-                        <TableHead className="w-16 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center border-r border-slate-200 p-0">Total</TableHead>
-                        <TableHead className="w-20 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center px-2">Rate %</TableHead>
+                        <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">P</TableHead>
+                        <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">A</TableHead>
+                        <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">L</TableHead>
+                        <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">E</TableHead>
+                        <TableHead className="w-16 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">Total</TableHead>
+                        <TableHead className="w-20 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center px-2">Rate %</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -596,13 +594,13 @@ export default function AttendanceReports() {
                         <>
                           {/* Daily Present count */}
                           <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 font-bold border-t-2 border-slate-200">
-                            <TableCell colSpan={2} className="text-right text-[10px] font-black uppercase text-slate-400 tracking-wider px-4 py-3">
+                            <TableCell colSpan={2} className="text-right text-[10px] font-bold uppercase text-muted-foreground tracking-wider px-4 py-3">
                               Daily Attendance count
                             </TableCell>
                             {activeSchoolDays.map((date) => {
                               const presentCount = getDailyAttendanceStats(date);
                               return (
-                                <TableCell key={`cnt-${date}`} className="text-center font-black text-slate-800 text-xs py-3 border-r border-slate-100">
+                                <TableCell key={`cnt-${date}`} className="text-center font-bold text-foreground text-xs py-3 border-r border-slate-100">
                                   {presentCount}
                                 </TableCell>
                               );
@@ -612,14 +610,14 @@ export default function AttendanceReports() {
 
                           {/* Daily Attendance Rate % */}
                           <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 font-bold">
-                            <TableCell colSpan={2} className="text-right text-[10px] font-black uppercase text-slate-400 tracking-wider px-4 py-3">
+                            <TableCell colSpan={2} className="text-right text-[10px] font-bold uppercase text-muted-foreground tracking-wider px-4 py-3">
                               Daily Attendance Rate %
                             </TableCell>
                             {activeSchoolDays.map((date) => {
                               const presentCount = getDailyAttendanceStats(date);
                               const rate = summary.length > 0 ? (presentCount / summary.length) * 100 : 0;
                               return (
-                                <TableCell key={`rate-${date}`} className="text-center font-black text-[10px] py-3 border-r border-slate-100" style={{ color: colors.primary }}>
+                                <TableCell key={`rate-${date}`} className="text-center font-bold text-[10px] py-3 border-r border-slate-100" style={{ color: colors.primary }}>
                                   {rate.toFixed(0)}%
                                 </TableCell>
                               );
@@ -636,10 +634,10 @@ export default function AttendanceReports() {
           ) : (
             <div className="py-32 text-center px-8">
               <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-sm">
-                <Calendar className="w-10 h-10 text-slate-200" />
+                <Calendar className="w-10 h-10 text-muted-foreground" />
               </div>
-              <h3 className="font-black text-slate-900 text-2xl mb-3">No Attendance Data</h3>
-              <p className="text-slate-400 font-medium text-lg leading-relaxed">Select a section and date range to view the report</p>
+              <h3 className="font-bold text-foreground text-2xl mb-3">No Attendance Data</h3>
+              <p className="text-muted-foreground font-medium text-lg leading-relaxed">Select a section and date range to view the report</p>
             </div>
           )}
         </CardContent>

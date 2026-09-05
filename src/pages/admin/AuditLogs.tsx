@@ -41,6 +41,7 @@ import {
 import { adminApi, getPortalToken } from "@/lib/api";
 import type { AdminAuditLog } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const actionLabels: Record<string, string> = {
   create: "Created",
@@ -56,7 +57,7 @@ const actionColors: Record<string, string> = {
   update: "action-theme-25",
   delete: "bg-red-100 text-red-700",
   login: "action-theme-35",
-  logout: "bg-gray-100 text-gray-600",
+  logout: "bg-muted text-muted-foreground",
   config: "action-theme-45",
 };
 
@@ -70,7 +71,7 @@ const actionIcons: Record<string, React.ReactNode> = {
 };
 
 const severityConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
-  info: { icon: <Info className="w-3.5 h-3.5" />, color: "bg-gray-100 text-gray-600", label: "Info" },
+  info: { icon: <Info className="w-3.5 h-3.5" />, color: "bg-muted text-muted-foreground", label: "Info" },
   warning: { icon: <AlertTriangle className="w-3.5 h-3.5" />, color: "bg-amber-100 text-amber-700", label: "Warning" },
   critical: { icon: <AlertTriangle className="w-3.5 h-3.5" />, color: "bg-red-100 text-red-700", label: "Critical" },
 };
@@ -230,7 +231,7 @@ export default function AuditLogs() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-          <p className="text-gray-500">Loading audit logs...</p>
+          <p className="text-muted-foreground">Loading audit logs...</p>
         </div>
       </div>
     );
@@ -241,7 +242,7 @@ export default function AuditLogs() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-12 h-12 text-amber-500" />
-          <p className="text-gray-700 font-medium">{error}</p>
+          <p className="text-foreground font-medium">{error}</p>
           <Button onClick={fetchLogs} variant="outline" className="gap-2">
             <RefreshCw className="w-4 h-4" />
             Retry
@@ -252,44 +253,33 @@ export default function AuditLogs() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#111827' }}>
-            Audit Logs
-          </h1>
-          <p style={{ color: '#6b7280' }} className="mt-1">
-            Track all system activities and changes
-            {liveCount > 0 && (
-              <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
-                {liveCount} new live
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            className="gap-2 rounded-xl border-gray-200"
-            onClick={fetchLogs}
-            disabled={loading}
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button 
-            onClick={handleExport}
-            disabled={exporting}
-            className="gap-2 text-white font-semibold rounded-xl shadow-lg"
-            style={{ backgroundColor: colors.primary }}
-          >
-            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            Export Logs
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader
+        title="Audit Logs"
+        description={`Track all system activities and changes${liveCount > 0 ? ` — ${liveCount} new live` : ""}`}
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="gap-2 rounded-xl"
+              onClick={fetchLogs}
+              disabled={loading}
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              onClick={handleExport}
+              disabled={exporting}
+              className="gap-2 text-white font-semibold rounded-xl shadow-lg"
+              style={{ backgroundColor: colors.primary }}
+            >
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Export Logs
+            </Button>
+          </div>
+        }
+      />
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
@@ -297,8 +287,8 @@ export default function AuditLogs() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Total Logs</p>
-                <p className="text-2xl font-bold" style={{ color: '#111827' }}>{counts.total}</p>
+                <p className="text-xs font-medium text-muted-foreground">Total Logs</p>
+                <p className="text-2xl font-bold text-foreground">{counts.total}</p>
               </div>
               <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.primary}15` }}>
                 <Activity className="w-5 h-5" style={{ color: colors.primary }} />
@@ -310,7 +300,7 @@ export default function AuditLogs() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Creates</p>
+                <p className="text-xs font-medium text-muted-foreground">Creates</p>
                 <p className="text-2xl font-bold" style={{ color: colors.secondary }}>{counts.creates}</p>
               </div>
               <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.secondary}15` }}>
@@ -323,7 +313,7 @@ export default function AuditLogs() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Updates</p>
+                <p className="text-xs font-medium text-muted-foreground">Updates</p>
                 <p className="text-2xl font-bold" style={{ color: colors.secondary }}>{counts.updates}</p>
               </div>
               <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.secondary}15` }}>
@@ -336,7 +326,7 @@ export default function AuditLogs() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Deletes</p>
+                <p className="text-xs font-medium text-muted-foreground">Deletes</p>
                 <p className="text-2xl font-bold text-red-600">{counts.deletes}</p>
               </div>
               <div className="p-2 rounded-lg bg-red-100">
@@ -349,7 +339,7 @@ export default function AuditLogs() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Auth Events</p>
+                <p className="text-xs font-medium text-muted-foreground">Auth Events</p>
                 <p className="text-2xl font-bold" style={{ color: colors.primary }}>{counts.logins}</p>
               </div>
               <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.primary}15` }}>
@@ -362,7 +352,7 @@ export default function AuditLogs() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Critical</p>
+                <p className="text-xs font-medium text-muted-foreground">Critical</p>
                 <p className="text-2xl font-bold text-red-600">{counts.critical}</p>
               </div>
               <div className="p-2 rounded-lg bg-red-100">
@@ -378,7 +368,7 @@ export default function AuditLogs() {
         <CardHeader className="border-b border-gray-100">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <CardTitle className="text-lg flex items-center gap-2" style={{ color: '#111827' }}>
+              <CardTitle className="text-lg flex items-center gap-2 text-foreground">
                 <Database className="w-5 h-5" style={{ color: colors.primary }} />
                 Activity History
               </CardTitle>
@@ -386,7 +376,7 @@ export default function AuditLogs() {
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search logs..."
                   value={searchQuery}
@@ -427,21 +417,21 @@ export default function AuditLogs() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50/80">
-                  <TableHead className="font-bold text-gray-700 w-16">#</TableHead>
-                  <TableHead className="font-bold text-gray-700">Action</TableHead>
-                  <TableHead className="font-bold text-gray-700">User</TableHead>
-                  <TableHead className="font-bold text-gray-700">Target</TableHead>
-                  <TableHead className="font-bold text-gray-700">Details</TableHead>
-                  <TableHead className="font-bold text-gray-700">Severity</TableHead>
-                  <TableHead className="font-bold text-gray-700">Timestamp</TableHead>
+                  <TableHead className="font-bold text-foreground w-16">#</TableHead>
+                  <TableHead className="font-bold text-foreground">Action</TableHead>
+                  <TableHead className="font-bold text-foreground">User</TableHead>
+                  <TableHead className="font-bold text-foreground">Target</TableHead>
+                  <TableHead className="font-bold text-foreground">Details</TableHead>
+                  <TableHead className="font-bold text-foreground">Severity</TableHead>
+                  <TableHead className="font-bold text-foreground">Timestamp</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {logs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="h-32 text-center">
-                      <div className="flex flex-col items-center gap-2 text-gray-500">
-                        <Activity className="w-8 h-8 text-gray-300" />
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <Activity className="w-8 h-8 text-muted-foreground" />
                         <p>No audit logs found</p>
                       </div>
                     </TableCell>
@@ -449,12 +439,12 @@ export default function AuditLogs() {
                 ) : (
                   logs.map((log, index) => (
                     <TableRow key={log.id} className="hover:bg-gray-50/50">
-                      <TableCell className="text-sm font-semibold text-gray-500 text-center">
+                      <TableCell className="text-sm font-semibold text-muted-foreground text-center">
                         {index + 1}
                       </TableCell>
                       <TableCell>
                         <Badge 
-                          className={`${actionColors[log.action]?.startsWith('action-theme') ? '' : (actionColors[log.action] || 'bg-gray-100 text-gray-700')} border-0 font-medium flex items-center gap-1 w-fit`}
+                          className={`${actionColors[log.action]?.startsWith('action-theme') ? '' : (actionColors[log.action] || 'bg-muted text-foreground')} border-0 font-medium flex items-center gap-1 w-fit`}
                           style={actionColors[log.action]?.startsWith('action-theme') ? { backgroundColor: `${colors.primary}${actionColors[log.action].split('-').pop()}`, color: colors.primary } : undefined}
                         >
                           {actionIcons[log.action] || <Activity className="w-3.5 h-3.5" />}
@@ -463,36 +453,36 @@ export default function AuditLogs() {
                       </TableCell>
                       <TableCell>
                         <div>
-                          <p className="font-semibold text-sm" style={{ color: '#111827' }}>{log.user}</p>
-                          <p className="text-xs text-gray-500">{log.userRole}</p>
+                          <p className="font-semibold text-sm text-foreground">{log.user}</p>
+                          <p className="text-xs text-muted-foreground">{log.userRole}</p>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <div className="p-1.5 rounded-lg bg-gray-100 text-gray-600">
+                          <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
                             {targetTypeIcons[log.targetType] || <FileText className="w-4 h-4" />}
                           </div>
-                          <span className="text-sm text-gray-700">{log.target}</span>
+                          <span className="text-sm text-foreground">{log.target}</span>
                         </div>
                       </TableCell>
                       <TableCell className="max-w-xs">
-                        <p className="text-sm text-gray-600 truncate" title={log.details}>
+                        <p className="text-sm text-muted-foreground truncate" title={log.details}>
                           {log.details}
                         </p>
                       </TableCell>
                       <TableCell>
-                        <Badge className={`${severityConfig[log.severity]?.color || 'bg-gray-100 text-gray-600'} border-0 font-medium flex items-center gap-1 w-fit`}>
+                        <Badge className={`${severityConfig[log.severity]?.color || 'bg-muted text-muted-foreground'} border-0 font-medium flex items-center gap-1 w-fit`}>
                           {severityConfig[log.severity]?.icon || <Info className="w-3.5 h-3.5" />}
                           {severityConfig[log.severity]?.label || log.severity}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <div className="flex items-center gap-1 font-medium" style={{ color: '#111827' }}>
-                            <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          <div className="flex items-center gap-1 font-medium text-foreground">
+                            <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                             {log.timestamp}
                           </div>
-                          <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Calendar className="w-3 h-3" />
                             {log.date}
                           </div>

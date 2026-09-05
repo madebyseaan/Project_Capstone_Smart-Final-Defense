@@ -1,5 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -11,7 +11,7 @@
   --text: #64748b;
   --text-h: #0f172a;
   --bg: #fafbfc;
-  --border: oklch(0.922 0 0);
+  --border: oklch(0.922 0 0 / 65%);
   --code-bg: #f1f5f9;
   --accent: oklch(0.97 0 0);
   --accent-bg: rgba(16, 185, 129, 0.08);
@@ -32,7 +32,6 @@
   --shadow-emerald-sm: 0 4px 14px -3px rgba(16, 185, 129, 0.2);
 
   --sans: 'DM Sans', system-ui, -apple-system, sans-serif;
-  --heading: 'Poppins', 'DM Sans', system-ui, -apple-system, sans-serif;
   --mono: 'SF Mono', ui-monospace, Consolas, monospace;
 
   font: 16px/1.6 var(--sans);
@@ -111,27 +110,6 @@
   --sidebar-ring: oklch(0.696 0.17 162.48)
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #94a3b8;
-    --text-h: #f1f5f9;
-    --bg: #0f172a;
-    --border: #1e293b;
-    --code-bg: #1e293b;
-    --accent: #34d399;
-    --accent-bg: rgba(52, 211, 153, 0.12);
-    --accent-border: rgba(52, 211, 153, 0.4);
-    --social-bg: rgba(30, 41, 59, 0.8);
-    
-    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
-    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.25);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.35);
-    --shadow-emerald: 0 10px 30px -5px rgba(16, 185, 129, 0.35);
-  }
-}
-
 /* Reset and base styles */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -157,7 +135,7 @@ body {
 
 /* Typography - Let Tailwind handle colors */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--heading);
+  font-family: var(--sans);
   font-weight: 600;
   letter-spacing: -0.025em;
   line-height: 1.25;
@@ -426,8 +404,7 @@ code {
 }
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'DM Sans', 'Poppins', sans-serif;
+  --font-sans: 'DM Sans', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -500,6 +477,22 @@ code {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Custom palette for dark mode */
+  --text: #94a3b8;
+  --text-h: #f1f5f9;
+  --bg: #0f172a;
+  --code-bg: #1e293b;
+  --accent: #34d399;
+  --accent-bg: rgba(52, 211, 153, 0.12);
+  --accent-border: rgba(52, 211, 153, 0.4);
+  --social-bg: rgba(30, 41, 59, 0.8);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.35);
+  --shadow-emerald: 0 10px 30px -5px rgba(16, 185, 129, 0.35);
 }
 
 @layer base {

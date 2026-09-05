@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 interface PrintJob {
   id: string;
@@ -122,46 +123,42 @@ export default function PrintCenter() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#111827' }}>
-            Print Center
-          </h1>
-          <p style={{ color: '#6b7280' }} className="mt-1">
-            Manage print jobs and batch print school forms
-          </p>
-        </div>
-        <Button 
-          className="gap-2 text-white font-semibold rounded-xl shadow-lg w-fit"
-          style={{ backgroundColor: colors.primary }}
-        >
-          <Printer className="w-4 h-4" />
-          New Print Job
-        </Button>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader
+        title="Print Center"
+        description="Manage print jobs and batch print school forms"
+        actions={
+          <Button
+            variant="default"
+            size="sm"
+            className="font-semibold text-xs shadow-sm shadow-primary/20"
+          >
+            <Printer className="w-4 h-4 mr-1.5" />
+            New Print Job
+          </Button>
+        }
+      />
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
+        <Card className="border-0 shadow-lg shadow-muted/50 rounded-xl bg-card p-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Total Jobs</p>
-                <p className="text-2xl font-bold text-gray-900">{jobCounts.total}</p>
+                <p className="text-xs font-medium text-muted-foreground">Total Jobs</p>
+                <p className="text-2xl font-bold text-foreground">{jobCounts.total}</p>
               </div>
-              <div className="p-2 rounded-lg bg-gray-100">
-                <Layers className="w-5 h-5 text-gray-600" />
+              <div className="p-2 rounded-lg bg-muted">
+                <Layers className="w-5 h-5 text-muted-foreground" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
+        <Card className="border-0 shadow-lg shadow-muted/50 rounded-xl bg-card p-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Completed</p>
+                <p className="text-xs font-medium text-muted-foreground">Completed</p>
                 <p className="text-2xl font-bold" style={{ color: colors.primary }}>{jobCounts.completed}</p>
               </div>
               <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.primary}20` }}>
@@ -170,11 +167,11 @@ export default function PrintCenter() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
+        <Card className="border-0 shadow-lg shadow-muted/50 rounded-xl bg-card p-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">In Progress</p>
+                <p className="text-xs font-medium text-muted-foreground">In Progress</p>
                 <p className="text-2xl font-bold" style={{ color: colors.secondary }}>{jobCounts.inProgress}</p>
               </div>
               <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.secondary}20` }}>
@@ -183,11 +180,11 @@ export default function PrintCenter() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
+        <Card className="border-0 shadow-lg shadow-muted/50 rounded-xl bg-card p-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Queued</p>
+                <p className="text-xs font-medium text-muted-foreground">Queued</p>
                 <p className="text-2xl font-bold" style={{ color: colors.accent }}>{jobCounts.queued}</p>
               </div>
               <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.accent}20` }}>
@@ -196,11 +193,11 @@ export default function PrintCenter() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
+        <Card className="border-0 shadow-lg shadow-muted/50 rounded-xl bg-card p-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-gray-500">Failed</p>
+                <p className="text-xs font-medium text-muted-foreground">Failed</p>
                 <p className="text-2xl font-bold text-red-600">{jobCounts.failed}</p>
               </div>
               <div className="p-2 rounded-lg bg-red-100">
@@ -212,9 +209,9 @@ export default function PrintCenter() {
       </div>
 
       {/* Quick Print Options */}
-      <Card className="border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white p-0">
+      <Card className="border-0 shadow-xl shadow-muted/50 rounded-2xl bg-card p-0">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg" style={{ color: '#111827' }}>Quick Print</CardTitle>
+          <CardTitle className="text-lg text-foreground">Quick Print</CardTitle>
           <CardDescription>Start a batch print job for common documents</CardDescription>
         </CardHeader>
         <CardContent>
@@ -222,7 +219,7 @@ export default function PrintCenter() {
             {quickPrintOptions.map((option) => (
               <div
                 key={option.id}
-                className={`p-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-${option.color}-300 hover:bg-${option.color}-50/50 cursor-pointer transition-all group`}
+                className={`p-4 rounded-xl border-2 border-dashed border-border hover:border-primary/30 hover:bg-muted/50 cursor-pointer transition-all group`}
               >
                 <div className="flex items-start gap-3">
                   <div className={`p-2 rounded-lg bg-${option.color}-100 text-${option.color}-600 group-hover:bg-${option.color}-200 transition-colors`}>
@@ -234,8 +231,8 @@ export default function PrintCenter() {
                         {option.form}
                       </Badge>
                     </div>
-                    <h4 className="font-semibold text-gray-900 text-sm">{option.name}</h4>
-                    <p className="text-xs text-gray-500 mt-0.5">{option.description}</p>
+                    <h4 className="font-semibold text-foreground text-sm">{option.name}</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">{option.description}</p>
                   </div>
                 </div>
               </div>
@@ -245,21 +242,21 @@ export default function PrintCenter() {
       </Card>
 
       {/* Print Jobs Table */}
-      <Card className="border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white p-0">
-        <CardHeader className="border-b border-gray-100">
+      <Card className="border-0 shadow-xl shadow-muted/50 rounded-2xl bg-card p-0">
+        <CardHeader className="border-b border-border">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <CardTitle className="text-lg" style={{ color: '#111827' }}>Print Queue</CardTitle>
+              <CardTitle className="text-lg text-foreground">Print Queue</CardTitle>
               <CardDescription>Recent and pending print jobs</CardDescription>
             </div>
             <div className="flex items-center gap-4">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search jobs..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-64 rounded-xl border-gray-200"
+                  className="pl-9 w-64 rounded-xl border-border"
                 />
               </div>
               <Select value={statusFilter} onValueChange={(val) => val && setStatusFilter(val)}>
@@ -278,37 +275,37 @@ export default function PrintCenter() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <Table className="w-full table-fixed">
             <TableHeader>
-              <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
-                <TableHead className="font-semibold text-gray-600">Job ID</TableHead>
-                <TableHead className="font-semibold text-gray-600">Document</TableHead>
-                <TableHead className="font-semibold text-gray-600">Form</TableHead>
-                <TableHead className="font-semibold text-gray-600">Copies</TableHead>
-                <TableHead className="font-semibold text-gray-600">Status</TableHead>
-                <TableHead className="font-semibold text-gray-600">Created</TableHead>
-                <TableHead className="w-12"></TableHead>
+              <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-left">Job ID</TableHead>
+                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[28%] text-left">Document</TableHead>
+                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">Form</TableHead>
+                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-center">Copies</TableHead>
+                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">Status</TableHead>
+                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[16%] text-left">Created</TableHead>
+                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[8%] text-right"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredJobs.map((job) => (
-                <TableRow key={job.id} className="hover:bg-gray-50/50">
-                  <TableCell className="font-mono text-sm" style={{ color: colors.primary }}>{job.id}</TableCell>
-                  <TableCell>
+                <TableRow key={job.id} className="hover:bg-muted/50">
+                  <TableCell className="font-mono text-sm py-3.5 px-4 align-middle whitespace-nowrap" style={{ color: colors.primary }}>{job.id}</TableCell>
+                  <TableCell className="py-3.5 px-4 align-middle">
                     <div>
-                      <p className="font-medium text-gray-900">{job.documentName}</p>
-                      <p className="text-xs text-gray-500">by {job.requestedBy}</p>
+                      <p className="font-medium text-foreground">{job.documentName}</p>
+                      <p className="text-xs text-muted-foreground">by {job.requestedBy}</p>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="font-semibold">
+                  <TableCell className="py-3.5 px-4 align-middle">
+                    <Badge variant="outline" className="font-semibold whitespace-nowrap">
                       {job.documentType}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-gray-600">{job.copies}</TableCell>
-                  <TableCell>{getStatusBadge(job.status)}</TableCell>
-                  <TableCell className="text-gray-500 text-sm">{job.createdAt}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-muted-foreground py-3.5 px-4 text-center align-middle tabular-nums">{job.copies}</TableCell>
+                  <TableCell className="py-3.5 px-4 align-middle">{getStatusBadge(job.status)}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm py-3.5 px-4 align-middle whitespace-nowrap">{job.createdAt}</TableCell>
+                  <TableCell className="py-3.5 px-4 text-right align-middle">
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" />}>
                           <MoreVertical className="w-4 h-4" />

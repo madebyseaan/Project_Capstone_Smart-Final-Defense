@@ -73,7 +73,7 @@ export default function registerDashboard(router: Router): void {
         });
 
         const activeTeachingAssignments = classAssignments.filter(
-          (ca: ClassAssignmentWithRelations) => !isHomeroomGuidanceSubjectCode(ca.subject.code)
+          (ca: ClassAssignmentWithRelations) => !isHomeroomGuidanceSubjectCode(ca.subject.code) && ca.section._count.enrollments > 0
         );
 
         const uniqueSectionEnrollments = new Map<string, number>();
@@ -210,7 +210,14 @@ export default function registerDashboard(router: Router): void {
 
           const gradesWithScore = isHG
             ? []
-            : gradesForStats.filter((g: any) => g.quarterlyGrade !== null);
+            : gradesForStats.filter((g: any) => {
+                const hasWW = Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0 &&
+                  g.writtenWorkScores.some((s: any) => s.score > 0);
+                const hasPT = Array.isArray(g.perfTaskScores) && g.perfTaskScores.length > 0 &&
+                  g.perfTaskScores.some((s: any) => s.score > 0);
+                const hasQA = typeof g.quarterlyAssessScore === 'number' && g.quarterlyAssessScore > 0;
+                return hasWW || hasPT || hasQA;
+              });
           const gradedCount = gradesWithScore.length;
 
           // Calculate average grade
@@ -224,7 +231,15 @@ export default function registerDashboard(router: Router): void {
 
           // Find students needing attention (below 75)
           const studentsAtRisk = isHG ? [] : gradesForStats
-            .filter((g: any) => g.quarterlyGrade !== null && g.quarterlyGrade < 75)
+            .filter((g: any) => {
+              const hasWW = Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0 &&
+                g.writtenWorkScores.some((s: any) => s.score > 0);
+              const hasPT = Array.isArray(g.perfTaskScores) && g.perfTaskScores.length > 0 &&
+                g.perfTaskScores.some((s: any) => s.score > 0);
+              const hasQA = typeof g.quarterlyAssessScore === 'number' && g.quarterlyAssessScore > 0;
+              const hasScores = hasWW || hasPT || hasQA;
+              return hasScores && g.quarterlyGrade !== null && g.quarterlyGrade < 75;
+            })
             .map((g: any) => {
               const enrollment = ca.section.enrollments.find((e: any) => e.student.id === g.studentId);
               return enrollment ? {
@@ -238,7 +253,14 @@ export default function registerDashboard(router: Router): void {
 
           // Find honors students (90+) and with honors (85-89)
           const honorsStudents = isHG ? [] : gradesForStats
-            .filter((g: any) => g.quarterlyGrade !== null && g.quarterlyGrade >= 90)
+            .filter((g: any) => {
+              const hasWW = Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0 &&
+                g.writtenWorkScores.some((s: any) => s.score > 0);
+              const hasPT = Array.isArray(g.perfTaskScores) && g.perfTaskScores.length > 0 &&
+                g.perfTaskScores.some((s: any) => s.score > 0);
+              const hasQA = typeof g.quarterlyAssessScore === 'number' && g.quarterlyAssessScore > 0;
+              return (hasWW || hasPT || hasQA) && g.quarterlyGrade !== null && g.quarterlyGrade >= 90;
+            })
             .map((g: any) => {
               const enrollment = ca.section.enrollments.find((e: any) => e.student.id === g.studentId);
               return enrollment ? {
@@ -251,7 +273,14 @@ export default function registerDashboard(router: Router): void {
             .filter(Boolean);
 
           const withHonorsStudents = isHG ? [] : gradesForStats
-            .filter((g: any) => g.quarterlyGrade !== null && g.quarterlyGrade >= 85 && g.quarterlyGrade < 90)
+            .filter((g: any) => {
+              const hasWW = Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0 &&
+                g.writtenWorkScores.some((s: any) => s.score > 0);
+              const hasPT = Array.isArray(g.perfTaskScores) && g.perfTaskScores.length > 0 &&
+                g.perfTaskScores.some((s: any) => s.score > 0);
+              const hasQA = typeof g.quarterlyAssessScore === 'number' && g.quarterlyAssessScore > 0;
+              return (hasWW || hasPT || hasQA) && g.quarterlyGrade !== null && g.quarterlyGrade >= 85 && g.quarterlyGrade < 90;
+            })
             .map((g: any) => {
               const enrollment = ca.section.enrollments.find((e: any) => e.student.id === g.studentId);
               return enrollment ? {
@@ -320,16 +349,22 @@ export default function registerDashboard(router: Router): void {
           }
         }
         const uniqueSections = Array.from(sectionGradedMap.values());
-        const gradeSubmissionRate = uniqueSections.length > 0
-          ? Math.round(uniqueSections.filter((s) => s.graded >= s.total).length / uniqueSections.length * 100)
+        // Sections with 0 enrolled students are not gradeable — exclude from both
+        // numerator and denominator, otherwise 0 >= 0 counts them as "submitted".
+        const gradeableSections = uniqueSections.filter((s) => s.total > 0);
+        const gradeSubmissionRate = gradeableSections.length > 0
+          ? Math.round(gradeableSections.filter((s) => s.graded >= s.total).length / gradeableSections.length * 100)
           : 0;
 
         const gradeDeadline = await resolveTermDeadline(teacher.id, currentSY);
 
+        // Filter out classes with 0 students (not yet enrolled)
+        const activeClassStats = classStats.filter((cs: any) => cs.totalStudents > 0);
+
         res.json({
-          classStats,
+          classStats: activeClassStats,
           summary: {
-            totalClasses: classStats.length,
+            totalClasses: activeClassStats.length,
             totalStudents,
             totalGraded,
             gradeSubmissionRate,

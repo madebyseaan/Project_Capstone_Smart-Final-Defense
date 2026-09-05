@@ -16,9 +16,6 @@ export {
   resolveSubjectName,
   normalizeSubjectLabel,
   sanitizeSubjectName,
-  ensureHomeroomGuidanceLabel,
-  HOMEROOM_GUIDANCE_LABEL,
-  HOMEROOM_GUIDANCE_MINUTES,
 } from '../atlasUtils';
 
 // ---------------------------------------------------------------------------

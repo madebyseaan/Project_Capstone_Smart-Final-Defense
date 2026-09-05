@@ -37,6 +37,9 @@ export interface StudentProfileSnapshot {
   is4PsBeneficiary: boolean | null;
   disability: string | null;
   isBalikAral: boolean | null;
+  previousSchool: string | null;
+  lastGradeCompleted: string | null;
+  transferCertNo: string | null;
 }
 
 /**
@@ -68,6 +71,9 @@ export function createProfileSnapshot(student: Record<string, any>): StudentProf
     is4PsBeneficiary: student.is4PsBeneficiary ?? null,
     disability: student.disability ?? null,
     isBalikAral: student.isBalikAral ?? null,
+    previousSchool: student.previousSchool ?? null,
+    lastGradeCompleted: student.lastGradeCompleted ?? null,
+    transferCertNo: student.transferCertNo ?? null,
   };
 }
 

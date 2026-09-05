@@ -45,8 +45,8 @@ export default function SF1Form({ sectionId, schoolYear }: SF1Props) {
       .finally(() => setLoading(false));
   }, [sectionId, schoolYear]);
 
-  if (loading) return <div className="flex items-center gap-2 py-8 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading SF1...</div>;
-  if (error) return <div className="py-8 text-red-500 text-sm">{error}</div>;
+  if (loading) return <div className="flex items-center gap-2 py-8 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading SF1...</div>;
+  if (error) return <div className="py-8 text-destructive text-sm">{error}</div>;
   if (!data) return null;
 
   const students: SF1Student[] = data.students ?? [];
@@ -59,7 +59,7 @@ export default function SF1Form({ sectionId, schoolYear }: SF1Props) {
 
   const renderBlock = (label: string, rows: SF1Student[], startIndex: number) => (
     <>
-      <tr className="bg-slate-100 font-semibold text-xs">
+      <tr className="bg-muted font-semibold text-xs">
         <td colSpan={17} className="px-2 py-1 border">{label}</td>
       </tr>
       {rows.map((s, i) => (
@@ -83,7 +83,7 @@ export default function SF1Form({ sectionId, schoolYear }: SF1Props) {
           <td className="border px-1 py-0.5">{s.remarks.join(", ")}</td>
         </tr>
       ))}
-      <tr className="bg-slate-50 font-semibold text-xs">
+      <tr className="bg-muted/50 font-semibold text-xs">
         <td colSpan={1} className="border px-1 py-0.5 text-right">TOTAL {label.replace(" STUDENTS", "")}:</td>
         <td colSpan={16} className="border px-1 py-0.5 text-right">{rows.length}</td>
       </tr>
@@ -93,7 +93,7 @@ export default function SF1Form({ sectionId, schoolYear }: SF1Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between no-print">
-        <h3 className="font-semibold text-gray-900">SF1 — School Register</h3>
+        <h3 className="font-semibold text-foreground">SF1 — School Register</h3>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-1" /> Print
@@ -108,7 +108,7 @@ export default function SF1Form({ sectionId, schoolYear }: SF1Props) {
               a.download = `SF1_${section.name}_${schoolYear}.xlsx`;
               a.click();
               URL.revokeObjectURL(url);
-            } catch {}
+            } catch { /* intentionally empty */ }
           }}>
             <Download className="w-4 h-4 mr-1" /> Export
           </Button>
@@ -118,7 +118,7 @@ export default function SF1Form({ sectionId, schoolYear }: SF1Props) {
       <div className="sf1-print-area overflow-x-auto">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="bg-slate-200">
+            <tr className="bg-muted">
               <th className="border px-1 py-1 w-8">#</th>
               <th className="border px-1 py-1 w-24">LRN</th>
               <th className="border px-1 py-1 w-40">Name (Last, First, Middle)</th>
@@ -141,14 +141,14 @@ export default function SF1Form({ sectionId, schoolYear }: SF1Props) {
           <tbody>
             {renderBlock("MALE STUDENTS", males, 0)}
             {renderBlock("FEMALE STUDENTS", females, males.length)}
-            <tr className="bg-slate-200 font-bold text-xs">
+            <tr className="bg-muted font-bold text-xs">
               <td colSpan={1} className="border px-1 py-0.5 text-right">TOTAL:</td>
               <td colSpan={16} className="border px-1 py-0.5 text-right">{students.length}</td>
             </tr>
           </tbody>
         </table>
 
-        <div className="mt-6 text-[10px] text-gray-600 border-t pt-4 grid grid-cols-2 gap-8">
+        <div className="mt-6 text-[10px] text-muted-foreground border-t pt-4 grid grid-cols-2 gap-8">
           <div>
             <p className="font-semibold mb-2">Remarks Codes:</p>
             <p>T/O — Transferred Out | T/I — Transferred In | DRP — Dropped | B/A — Balik-Aral</p>

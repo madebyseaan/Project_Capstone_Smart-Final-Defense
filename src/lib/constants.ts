@@ -29,14 +29,6 @@ export function getGradeColor(grade: number | null): string {
   return "text-rose-600";
 }
 
-// ── HG Descriptors ──────────────────────────────────────────────────────────
-export const HG_DESCRIPTORS = [
-  "No Improvement",
-  "Needs Improvement",
-  "Developing",
-  "Sufficiently Developed",
-] as const;
-
 // ── Philippine DepEd Divisions ──────────────────────────────────────────────
 // Source: Department of Education official division list
 export const DEPED_DIVISIONS = [

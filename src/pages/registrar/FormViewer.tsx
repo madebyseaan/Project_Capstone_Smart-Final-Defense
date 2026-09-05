@@ -55,7 +55,7 @@ export default function FormViewer() {
   const activeTemplates = templates.filter(t => t.isActive);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-background p-6">
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -79,7 +79,7 @@ export default function FormViewer() {
             <Button
               onClick={handlePrint}
               disabled={!activeSheet}
-              className="gap-2 bg-green-600 hover:bg-green-700"
+              className="gap-2 bg-primary hover:bg-primary/90"
             >
               <Printer className="w-4 h-4" />
               Print Form
@@ -183,10 +183,10 @@ export default function FormViewer() {
 
       {/* Info Banner */}
       <div className="max-w-7xl mx-auto mb-6">
-        <Card className="p-4 bg-blue-50 border-blue-200">
+        <Card className="p-4 bg-muted/50 border-border">
           <div className="flex items-start gap-3">
-            <FileSpreadsheet className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-800">
+            <FileSpreadsheet className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-foreground">
               <strong>No-Code Maintenance:</strong> This page automatically uses the latest template uploaded by the admin.
               If DepEd updates the form format, the admin can simply upload a new template through the Template Manager—no coding needed!
             </div>
@@ -200,14 +200,14 @@ export default function FormViewer() {
           {loading && (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-blue-600" />
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-primary" />
                 <p className="text-sm text-muted-foreground">Loading template...</p>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            <div className="flex items-start gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold">Failed to load template</p>
@@ -218,7 +218,7 @@ export default function FormViewer() {
 
           {!loading && !error && !activeSheet && selectedFormType && (
             <div className="text-center py-20">
-              <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+              <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <p className="text-muted-foreground">
                 No active template found for {selectedFormType}
               </p>
@@ -240,7 +240,7 @@ export default function FormViewer() {
 
           {!selectedFormType && !loading && (
             <div className="text-center py-20">
-              <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+              <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <p className="text-muted-foreground">
                 Select a form type to view the template
               </p>

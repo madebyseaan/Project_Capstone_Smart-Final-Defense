@@ -4,15 +4,13 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Users,
   BookOpen,
-  TrendingUp,
   AlertTriangle,
+  CheckCircle,
   CheckCircle2,
   BarChart3,
-  Target,
   FileCheck,
   Star,
   Medal,
-  Calendar,
   Sparkles,
   Clock,
 } from "lucide-react";
@@ -20,10 +18,11 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { gradesApi, scheduleApi, type ClassAssignment, type GradeDeadlineInfo } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { GradeDeadlineBanner } from "@/components/GradeDeadlineBanner";
+
 import {
   Select,
   SelectContent,
@@ -122,10 +121,6 @@ function fmtTime12h(time24: string): string {
   const period = h >= 12 ? "PM" : "AM";
   const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
-}
-
-function shorten(name: string, max = 14): string {
-  return name.length > max ? name.slice(0, max) + "…" : name;
 }
 
 export default function TeacherDashboard() {
@@ -325,7 +320,7 @@ export default function TeacherDashboard() {
               <Sparkles className="w-8 h-8 text-indigo-500 animate-pulse" />
             </div>
           </div>
-          <p className="text-slate-500 font-medium text-lg animate-pulse">Igniting your dashboard...</p>
+          <p className="text-muted-foreground font-medium text-lg animate-pulse">Igniting your dashboard...</p>
         </div>
       </div>
     );
@@ -334,14 +329,14 @@ export default function TeacherDashboard() {
   if (error || !data) {
     return (
       <div className="flex items-center justify-center h-[60vh] p-4">
-        <Card className="max-w-md w-full border-0 shadow-2xl rounded-3xl overflow-hidden">
+        <Card className="max-w-md w-full border border-slate-200/60 rounded-2xl overflow-hidden">
           <div className="h-2 bg-red-500" />
           <CardContent className="p-10 text-center">
             <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-red-50 flex items-center justify-center text-red-500">
               <AlertTriangle className="w-10 h-10" />
             </div>
-            <h3 className="font-bold text-slate-900 text-2xl mb-2">Oops! Something's wrong</h3>
-            <p className="text-slate-500 mb-8">{error || "We couldn't load your dashboard data right now."}</p>
+            <h3 className="font-bold text-foreground text-2xl mb-2">Oops! Something's wrong</h3>
+            <p className="text-muted-foreground mb-8">{error || "We couldn't load your dashboard data right now."}</p>
             <Button 
               onClick={() => window.location.reload()} 
               className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-lg transition-all"
@@ -355,144 +350,132 @@ export default function TeacherDashboard() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
       {/* Grade Submission Deadline Banner */}
       {data.gradeDeadline && (
         <GradeDeadlineBanner deadline={data.gradeDeadline} />
       )}
 
-      {/* Hero Welcome Section - Refined for "Professional Settings" */}
-      <div className="relative overflow-hidden rounded-[2.5rem] bg-white border border-slate-200 p-8 md:p-12 shadow-xl shadow-slate-200/50">
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-slate-50/50 -skew-x-12 translate-x-1/2" />
-        <div className="absolute top-0 right-1/4 w-px h-full bg-slate-100" />
-        
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-10">
-          <div className="max-w-2xl">
-            <div className="flex items-center gap-3 mb-6">
-              <Badge variant="secondary" className="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border"
-                style={{ backgroundColor: `${colors.primary}15`, color: colors.primary, borderColor: `${colors.primary}30` }}>
-                <Target className="w-3 h-3 mr-2" />
-                {data.currentTerm === 'T1' ? 'Term 1' : 
-                 data.currentTerm === 'T2' ? 'Term 2' : 
-                 data.currentTerm === 'T3' ? 'Term 3' : 
-                 'Teacher Portal v2.0'}
-              </Badge>
-              <div className="h-4 w-px bg-slate-200" />
-              <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
-                <Calendar className="w-3 h-3" />
-                S.Y. {data.classAssignments[0]?.schoolYear || ""}
+      {/* ── Dynamic Living Hero Banner ── */}
+      <div
+        className="relative overflow-hidden rounded-3xl p-7 md:p-8 text-white shadow-xl shadow-red-950/20 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2"
+        style={{
+          background: `linear-gradient(135deg, ${colors.primary} 0%, color-mix(in srgb, ${colors.primary} 70%, black) 100%)`,
+        }}
+      >
+        {/* Ambient subtle light sheen across the top */}
+        <div className="absolute inset-0 bg-gradient-to-b from-white/[0.08] to-transparent pointer-events-none" />
+
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          {/* Left Column: Greeting & Quick Actions (7 cols) */}
+          <div className="lg:col-span-7 space-y-5">
+            {/* Live Status Pill Row */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-semibold tracking-wide">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
+                <span>S.Y. {data.classAssignments[0]?.schoolYear || "2029-2030"}</span>
+                <span className="text-white/40">•</span>
+                <span className="text-amber-200 font-bold">
+                  {data.currentTerm === "T1" ? "Term 1" : data.currentTerm === "T2" ? "Term 2" : data.currentTerm === "T3" ? "Term 3" : "Active Term"}
+                </span>
               </div>
-            </div>
-            
-            <h1 className="text-4xl md:text-5xl font-black text-slate-900 leading-[1.1] tracking-tight">
-              Good day, <br />
-              <span className="font-black" style={{ color: colors.primary }}>
-                Teacher {data.teacher.name.split(',')[0]}
+
+              <span className="text-xs text-white/70 font-medium hidden sm:inline">
+                {data.stats.totalStudents} Enrolled Learners across {data.stats.totalClasses} Sections
               </span>
-            </h1>
-            
-            <p className="text-slate-500 text-lg mt-6 max-w-lg leading-relaxed font-medium">
-              You're currently managing <span className="text-slate-900 font-bold underline decoration-indigo-200 decoration-4 underline-offset-4">{data.stats.totalStudents} students</span> across <span className="text-slate-900 font-bold underline decoration-emerald-200 decoration-4 underline-offset-4">{data.stats.totalClasses} classes</span>.
-            </p>
-            
-            <div className="flex flex-wrap items-center gap-4 mt-10">
+            </div>
+
+            {/* Main Title & Subtitle */}
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white leading-tight">
+                Good day, Teacher {data.teacher.name.split(",")[0]}
+              </h1>
+              <p className="text-sm sm:text-base text-white/80 font-normal mt-2 max-w-xl leading-relaxed">
+                Welcome back to your academic workspace. Monitor grading deadlines, track student mastery, and manage your advisory roster.
+              </p>
+            </div>
+
+            {/* Quick Action Buttons */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <Link to="/teacher/advisory">
-                <Button className="h-14 px-8 rounded-2xl text-white shadow-xl border-0 transition-all active:scale-95 group font-bold"
-                  style={{ backgroundColor: colors.primary, boxShadow: `0 20px 25px -5px ${colors.primary}40` }}>
-                  <Users className="w-5 h-5 mr-3 group-hover:rotate-12 transition-transform" />
+                <Button className="h-11 px-5 rounded-xl bg-white text-slate-900 hover:bg-white/90 active:scale-95 font-bold text-sm transition-all shadow-md flex items-center gap-2">
+                  <Users className="w-4 h-4 text-red-900" />
                   My Advisory
                 </Button>
               </Link>
               <Link to="/teacher/classes">
-                <Button variant="outline" className="h-14 px-8 rounded-2xl bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm transition-all active:scale-95 font-bold">
-                  <BookOpen className="w-5 h-5 mr-3" />
+                <Button className="h-11 px-5 rounded-xl bg-white/20 hover:bg-white/30 active:scale-95 text-white border border-white/25 backdrop-blur-md font-semibold text-sm transition-all shadow-sm flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
                   Class Records
                 </Button>
               </Link>
             </div>
           </div>
 
-          <div className="hidden lg:flex flex-col gap-3 min-w-[280px] max-w-[320px]">
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Overall Passing</p>
-                <p className="text-3xl font-black text-slate-900 leading-none">{stats?.summary.overallPassingRate.toFixed(0)}%</p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
-                <TrendingUp className="w-5 h-5 text-emerald-500" />
-              </div>
-            </div>
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Grade Submission</p>
-                <p className="text-3xl font-black text-slate-900 leading-none">{stats?.summary.gradeSubmissionRate.toFixed(0)}%</p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
-                <FileCheck className="w-5 h-5 text-indigo-500" />
-              </div>
-            </div>
-            {/* Today's Classes — dynamic status */}
-            {classInfo.status === "empty" ? (
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Today&apos;s Classes</p>
-                  <p className="text-sm font-bold text-slate-400">No classes today</p>
+          {/* Right Column: Live Timetable & Performance Pulse (5 cols) */}
+          <div className="lg:col-span-5">
+            <div className="rounded-2xl bg-white/[0.12] hover:bg-white/[0.15] backdrop-blur-xl border border-white/20 p-5 shadow-lg shadow-black/5 space-y-4 transition-colors">
+              {/* Schedule Header */}
+              <div className="flex items-center justify-between border-b border-white/15 pb-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-300" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/90">Daily Timetable</span>
                 </div>
-                <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-slate-300" />
-                </div>
+                <Link to="/teacher/schedule" className="text-[11px] font-semibold text-amber-200 hover:underline flex items-center gap-1">
+                  Full Schedule &rarr;
+                </Link>
               </div>
-            ) : classInfo.status === "done" ? (
-              <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50 flex items-center justify-between">
-                <div>
-                  <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">All Done</p>
-                  <p className="text-sm font-black text-emerald-700">Great job today!</p>
-                </div>
-                <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                </div>
-              </div>
-            ) : classInfo.status === "before" ? (
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Upcoming</p>
-                  <p className="text-sm font-black text-slate-800 leading-tight">{shorten(classInfo.next.subject.name)}</p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">{classInfo.next.section.name} &middot; {fmtTime12h(classInfo.next.startTime)}</p>
-                </div>
-                <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
-                  <Clock className="w-5 h-5 text-amber-500" />
-                </div>
-              </div>
-            ) : classInfo.status === "active" ? (
-              <div className="p-4 rounded-2xl border-2 bg-white flex items-center justify-between" style={{ borderColor: colors.primary + "60" }}>
-                <div>
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: colors.primary }} />
-                      <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: colors.primary }} />
+
+              {/* Dynamic Class Status Card */}
+              {classInfo.status === "active" && classInfo.current ? (
+                <div className="p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-400/30">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded bg-emerald-500 text-white shadow-sm animate-pulse">
+                      In Session Now
                     </span>
-                    <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: colors.primary }}>Now Teaching</p>
+                    <span className="text-xs font-bold text-emerald-200">
+                      {fmtTime12h(classInfo.current.startTime)} – {fmtTime12h(classInfo.current.endTime)}
+                    </span>
                   </div>
-                  <p className="text-sm font-black text-slate-800 leading-tight">{shorten(classInfo.current.subject.name)}</p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">{classInfo.current.section.name} &middot; {fmtTime12h(classInfo.current.startTime)}–{fmtTime12h(classInfo.current.endTime)}</p>
+                  <p className="text-base font-bold text-white mt-1">{classInfo.current.subject.name}</p>
+                  <p className="text-xs text-white/80 font-medium">{classInfo.current.section.name}</p>
                 </div>
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary + "15" }}>
-                  <BookOpen className="w-5 h-5" style={{ color: colors.primary }} />
+              ) : (classInfo.status === "next" || classInfo.status === "before") && classInfo.next ? (
+                <div className="p-3.5 rounded-xl bg-white/[0.08] border border-white/15">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-amber-400/20 text-amber-200 border border-amber-300/30">
+                      Upcoming Next
+                    </span>
+                    <span className="text-xs font-semibold text-amber-200">
+                      {fmtTime12h(classInfo.next.startTime)}
+                    </span>
+                  </div>
+                  <p className="text-base font-bold text-white mt-1">{classInfo.next.subject.name}</p>
+                  <p className="text-xs text-white/70 font-medium">{classInfo.next.section.name}</p>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-white/[0.08] border border-white/15 text-center py-5">
+                  <CheckCircle className="w-5 h-5 text-white/50 mx-auto mb-1.5" />
+                  <p className="text-sm font-semibold text-white/90">No further classes scheduled for today</p>
+                  <p className="text-xs text-white/50 mt-0.5">Use this time for grading or lesson preparations</p>
+                </div>
+              )}
+
+              {/* Quick Micro-Progress Metrics */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="p-2.5 rounded-xl bg-white/[0.08] border border-white/15 text-center">
+                  <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest block">Passing Rate</span>
+                  <span className="text-lg font-black text-white">{stats?.summary.overallPassingRate.toFixed(0) ?? 0}%</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.08] border border-white/15 text-center">
+                  <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest block">Submissions</span>
+                  <span className="text-lg font-black text-white">{stats?.summary.gradeSubmissionRate.toFixed(0) ?? 0}%</span>
                 </div>
               </div>
-            ) : (
-              /* next */
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-indigo-200 transition-all">
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Next Class</p>
-                  <p className="text-sm font-black text-slate-800 leading-tight">{shorten(classInfo.next.subject.name)}</p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">{classInfo.next.section.name} &middot; {fmtTime12h(classInfo.next.startTime)}</p>
-                </div>
-                <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-all">
-                  <Clock className="w-5 h-5 text-amber-500" />
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
@@ -500,61 +483,58 @@ export default function TeacherDashboard() {
       {/* Stats Cards - Refined Professional Look */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { 
-            label: "Active Students", 
-            value: data.stats.totalStudents, 
-            icon: Users, 
-            bg: "bg-indigo-50", fg: "text-indigo-600",
+          {
+            label: "Active Students",
+            value: data.stats.totalStudents,
+            icon: Users,
+            color: colors.primary,
             desc: "Currently enrolled"
           },
-          { 
-            label: "Handled Classes", 
-            value: data.stats.totalClasses, 
-            icon: BookOpen, 
-            bg: "bg-emerald-50", fg: "text-emerald-600",
+          {
+            label: "Handled Classes",
+            value: data.stats.totalClasses,
+            icon: BookOpen,
+            color: "#10b981",
             desc: "Teaching assignments"
           },
-          { 
-            label: "Critical Cases", 
-            value: stats?.summary.studentsAtRiskCount || 0, 
-            icon: AlertTriangle, 
-            bg: "bg-rose-50", fg: "text-rose-600",
+          {
+            label: "Critical Cases",
+            value: stats?.summary.studentsAtRiskCount || 0,
+            icon: AlertTriangle,
+            color: "#ef4444",
             desc: "Requires immediate attention"
           },
-          { 
-            label: "Graded Items", 
-            value: stats?.summary.totalGraded || 0, 
-            icon: FileCheck, 
-            bg: "bg-amber-50", fg: "text-amber-600",
+          {
+            label: "Graded Items",
+            value: stats?.summary.totalGraded || 0,
+            icon: FileCheck,
+            color: "#f59e0b",
             desc: "Successful submissions"
           },
         ].map((stat) => (
-          <Card key={stat.label} className="border-0 shadow-lg shadow-slate-200/50 rounded-3xl overflow-hidden group hover:-translate-y-1 transition-all duration-300 bg-white">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className={`p-3 rounded-2xl ${stat.bg} ${stat.fg} group-hover:scale-110 transition-transform`}>
-                  <stat.icon className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</p>
-                  <p className="text-2xl font-black text-slate-900 mt-0.5">{stat.value}</p>
-                </div>
+          <Card key={stat.label} className="border border-slate-200/60 rounded-2xl bg-card/70 backdrop-blur-xl p-4 shadow-md shadow-slate-200/40 hover:shadow-xl transition-all group relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-20 h-20 opacity-5 rounded-full -mr-6 -mt-6" style={{ backgroundColor: stat.color }} />
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 rounded-xl text-primary-foreground shadow-md group-hover:scale-110 transition-transform" style={{ backgroundColor: stat.color }}>
+                <stat.icon className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-medium text-slate-400 pl-1">{stat.desc}</p>
-            </CardContent>
+            </div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{stat.label}</p>
+            <p className="text-2xl font-bold text-foreground mt-0.5">{stat.value}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">{stat.desc}</p>
           </Card>
         ))}
       </div>
 
       {(data.archivedClassesCount || stats?.archivedClassesCount || 0) > 0 && (
-        <Card className="border-0 shadow-2xl shadow-rose-100/40 rounded-[2.5rem] overflow-hidden bg-rose-50/70 border border-rose-100">
+        <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-rose-50/70">
           <CardContent className="p-6 md:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-rose-600">Atlas removal detected</p>
-              <h3 className="text-lg font-black text-slate-900 mt-1">{data.archivedClassesCount || stats?.archivedClassesCount || 0} subject assignment(s) were removed from the current Atlas load</h3>
-              <p className="text-sm text-slate-600 font-medium mt-1">SMART keeps the grade history, but these assignments are hidden from active dashboard counts. Contact the EnrollPro/Atlas admin if this was not intended.</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-rose-600">Atlas removal detected</p>
+              <h3 className="text-lg font-bold text-foreground mt-1">{data.archivedClassesCount || stats?.archivedClassesCount || 0} subject assignment(s) were removed from the current Atlas load</h3>
+              <p className="text-sm text-foreground font-medium mt-1">SMART keeps the grade history, but these assignments are hidden from active dashboard counts. Contact the EnrollPro/Atlas admin if this was not intended.</p>
             </div>
-            <Badge className="bg-rose-600 text-white font-black px-4 py-2 rounded-xl border-0 shadow-lg shadow-rose-300/50 text-sm self-start md:self-center">
+            <Badge className="bg-rose-600 text-white font-bold px-4 py-2 rounded-xl border-0 shadow-lg shadow-rose-300/50 text-sm self-start md:self-center">
               CONTACT ADMIN
             </Badge>
           </CardContent>
@@ -562,16 +542,16 @@ export default function TeacherDashboard() {
       )}
 
       {/* ── Performance Mastery ── Full Width */}
-      <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden flex flex-col bg-white">
-          <CardHeader className="p-8 pb-4">
+      <Card className="border border-slate-200/60 rounded-2xl overflow-hidden flex flex-col bg-white">
+          <CardHeader className="p-6 pb-3 border-b border-slate-100">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-slate-900 text-white">
                   <BarChart3 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-slate-900">Performance Mastery</h2>
-                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Distribution of student ratings</p>
+                  <h2 className="text-xl font-bold text-foreground">Performance Mastery</h2>
+                  <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest mt-1">Distribution of student ratings</p>
                 </div>
               </div>
               
@@ -664,15 +644,15 @@ export default function TeacherDashboard() {
         const remaining = classStats.length - INITIAL_COUNT;
 
         return (
-          <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
-            <CardHeader className="p-8 pb-6">
+          <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white">
+            <CardHeader className="p-6 pb-3 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-slate-100 text-slate-900">
+                <div className="p-2 rounded-xl bg-slate-100 text-foreground">
                   <FileCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-slate-900">Grading Status</h2>
-                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Submission progress per class</p>
+                  <h2 className="text-xl font-bold text-foreground">Grading Status</h2>
+                  <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest mt-1">Submission progress per class</p>
                 </div>
               </div>
             </CardHeader>
@@ -690,10 +670,10 @@ export default function TeacherDashboard() {
                         <div key={classStat.id} className="p-6 rounded-3xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-all">
                           <div className="flex items-center justify-between mb-4">
                             <div>
-                              <p className="text-sm font-black text-slate-900 leading-tight">{classStat.sectionName}</p>
-                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{classStat.subjectName}</p>
+                              <p className="text-sm font-bold text-foreground leading-tight">{classStat.sectionName}</p>
+                              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">{classStat.subjectName}</p>
                             </div>
-                            <span className="text-xl font-black" style={{ color: barColor }}>{percentage}%</span>
+                            <span className="text-xl font-bold" style={{ color: barColor }}>{percentage}%</span>
                           </div>
                           <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
                             <div
@@ -702,8 +682,8 @@ export default function TeacherDashboard() {
                             />
                           </div>
                           <div className="flex justify-between mt-3">
-                            <p className="text-[9px] font-bold text-slate-400">{classStat.gradedCount} graded</p>
-                            <p className="text-[9px] font-bold text-slate-400">{classStat.totalStudents} total</p>
+                            <p className="text-[9px] font-bold text-muted-foreground">{classStat.gradedCount} graded</p>
+                            <p className="text-[9px] font-bold text-muted-foreground">{classStat.totalStudents} total</p>
                           </div>
                         </div>
                       );
@@ -714,7 +694,7 @@ export default function TeacherDashboard() {
                       <Button
                         onClick={() => setShowAllGrading(true)}
                         variant="outline"
-                        className="w-full h-12 rounded-2xl border-dashed border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 font-black text-[10px] tracking-[0.2em] uppercase transition-all"
+                        className="w-full h-12 rounded-2xl border-dashed border-slate-200 text-muted-foreground hover:bg-slate-50 hover:text-foreground font-bold text-[10px] tracking-[0.2em] uppercase transition-all"
                       >
                         Show {remaining} more {remaining === 1 ? 'class' : 'classes'}
                       </Button>
@@ -722,14 +702,14 @@ export default function TeacherDashboard() {
                   )}
                 </>
               ) : (
-                <div className="py-16 text-center text-slate-300">
+                <div className="py-16 text-center text-muted-foreground">
                   <FileCheck className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="font-black text-sm uppercase tracking-widest">No class records found</p>
+                  <p className="font-bold text-sm uppercase tracking-widest">No class records found</p>
                 </div>
               )}
               <div className="mt-8">
                 <Link to="/teacher/classes">
-                  <Button className="w-full h-14 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-200 transition-all font-black text-[10px] tracking-[0.2em] uppercase">
+                  <Button className="w-full h-14 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-200 transition-all font-bold text-[10px] tracking-[0.2em] uppercase">
                     VIEW DETAILED REPORTS
                   </Button>
                 </Link>
@@ -749,21 +729,21 @@ export default function TeacherDashboard() {
         if (!isGradingComplete) return null;
 
         return (
-          <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
-            <CardHeader className="p-8 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white">
+            <CardHeader className="p-6 pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
                   <Medal className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-slate-900">Academic Honors</h2>
-                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Leading advisory achievements</p>
+                  <h2 className="text-xl font-bold text-foreground">Academic Honors</h2>
+                  <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest mt-1">Leading advisory achievements</p>
                 </div>
               </div>
               
               <div className="flex items-center gap-3">
                 {advisoryHonors?.hasAdvisory && (
-                  <Badge variant="secondary" className="bg-slate-50 text-slate-400 border-slate-100 font-black px-4 py-2 rounded-xl text-[10px] tracking-widest uppercase">
+                  <Badge variant="secondary" className="bg-slate-50 text-muted-foreground border-slate-100 font-bold px-4 py-2 rounded-xl text-[10px] tracking-widest uppercase">
                     ADVISORY CLASS
                   </Badge>
                 )}
@@ -791,9 +771,9 @@ export default function TeacherDashboard() {
 
                   if (allHonors.length === 0) {
                     return (
-                      <div className="py-20 text-center text-slate-300 bg-slate-50 rounded-[2rem] mt-4 border-2 border-dashed border-slate-100">
+                      <div className="py-20 text-center text-muted-foreground bg-slate-50 rounded-[2rem] mt-4 border-2 border-dashed border-slate-100">
                         <Star className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                        <p className="font-black text-sm uppercase tracking-widest">No advisory honors yet</p>
+                        <p className="font-bold text-sm uppercase tracking-widest">No advisory honors yet</p>
                         <p className="text-[10px] font-bold mt-2">Students with grades of 85 and above will appear here.</p>
                       </div>
                     );
@@ -804,10 +784,10 @@ export default function TeacherDashboard() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="bg-slate-50/50 border-b border-slate-100">
-                            <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Student</th>
-                            <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Section</th>
-                            <th className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade</th>
-                            <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                            <th className="px-6 py-4 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Student</th>
+                            <th className="px-6 py-4 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Section</th>
+                            <th className="px-6 py-4 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Grade</th>
+                            <th className="px-6 py-4 text-right text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Status</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -816,21 +796,21 @@ export default function TeacherDashboard() {
                               <td className="px-6 py-5">
                                 <div className="flex items-center gap-3">
                                   <Avatar className="w-9 h-9 border-2 border-white shadow-sm">
-                                    <AvatarFallback className="font-black text-xs text-white" style={{ backgroundColor: colors.primary }}>
+                                    <AvatarFallback className="font-bold text-xs text-white" style={{ backgroundColor: colors.primary }}>
                                       {student.name.charAt(0)}
                                     </AvatarFallback>
                                   </Avatar>
-                                  <span className="font-black text-slate-900 text-sm tracking-tight">{student.name}</span>
+                                  <span className="font-bold text-foreground text-sm tracking-tight">{student.name}</span>
                                 </div>
                               </td>
-                              <td className="px-6 py-5 text-slate-500 font-bold text-xs">{student.class}</td>
+                              <td className="px-6 py-5 text-muted-foreground font-bold text-xs">{student.class}</td>
                               <td className="px-6 py-5 text-center">
-                                <span className="font-black text-xs px-3 py-1.5 rounded-xl" style={{ color: colors.primary, backgroundColor: `${colors.primary}15` }}>
+                                <span className="font-bold text-xs px-3 py-1.5 rounded-xl" style={{ color: colors.primary, backgroundColor: `${colors.primary}15` }}>
                                   {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
                                 </span>
                               </td>
                               <td className="px-6 py-5 text-right">
-                                <Badge className="bg-emerald-500 text-white border-0 text-[9px] font-black uppercase px-3 py-1 rounded-lg shadow-lg shadow-emerald-500/20">
+                                <Badge className="bg-emerald-500 text-white border-0 text-[9px] font-bold uppercase px-3 py-1 rounded-lg shadow-lg shadow-emerald-500/20">
                                   {student.honor}
                                 </Badge>
                               </td>
@@ -872,16 +852,16 @@ export default function TeacherDashboard() {
         });
 
         return (
-          <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white border-t-[8px] border-t-rose-500">
-            <CardHeader className="p-8 pb-6">
+          <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white border-t-[8px] border-t-rose-500">
+            <CardHeader className="p-6 pb-3 border-b border-slate-100">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className="p-3 rounded-2xl bg-rose-50 text-rose-500">
                     <AlertTriangle className="w-6 h-6" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black text-slate-900">Students Needing Attention</h2>
-                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Immediate intervention required</p>
+                    <h2 className="text-2xl font-bold text-foreground">Students Needing Attention</h2>
+                    <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest mt-1">Immediate intervention required</p>
                   </div>
                 </div>
                 
@@ -919,7 +899,7 @@ export default function TeacherDashboard() {
                     </SelectContent>
                   </Select>
 
-                  <Badge className="bg-rose-500 text-white font-black px-4 py-2 rounded-xl border-0 shadow-lg shadow-rose-500/30 text-sm">
+                  <Badge className="bg-rose-500 text-white font-bold px-4 py-2 rounded-xl border-0 shadow-lg shadow-rose-500/30 text-sm">
                     {filteredStudentsAtRisk.length} students
                   </Badge>
                 </div>
@@ -936,17 +916,17 @@ export default function TeacherDashboard() {
                             <Users className="w-6 h-6" />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-sm font-black text-slate-900 truncate">{student.name}</p>
-                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-0.5 truncate">{student.class}</p>
+                            <p className="text-sm font-bold text-foreground truncate">{student.name}</p>
+                            <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest mt-0.5 truncate">{student.class}</p>
                           </div>
                         </div>
                         <div className="flex items-center justify-between pt-2 border-t border-rose-100">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade</p>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Grade</p>
                           <div className="flex items-center gap-2">
-                            <span className="text-2xl font-black text-rose-600 leading-none">
+                            <span className="text-2xl font-bold text-rose-600 leading-none">
                               {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
                             </span>
-                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg"
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg"
                               style={{ backgroundColor: student.grade <= 72 ? '#fef2f2' : '#fff7ed', color: student.grade <= 72 ? '#dc2626' : '#ea580c' }}>
                               {student.grade <= 72 ? 'INC' : 'FAILED'}
                             </span>
@@ -957,9 +937,9 @@ export default function TeacherDashboard() {
                   </div>
                 </ScrollArea>
               ) : (
-                <div className="py-24 flex flex-col items-center justify-center text-center bg-emerald-50/50 rounded-[2.5rem] border-2 border-dashed border-emerald-100">
+                <div className="py-24 flex flex-col items-center justify-center text-center bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-100">
                   <CheckCircle2 className="w-16 h-16 mb-4 text-emerald-400" />
-                  <p className="font-black text-emerald-800 text-lg uppercase tracking-widest">All students passed!</p>
+                  <p className="font-bold text-emerald-800 text-lg uppercase tracking-widest">All students passed!</p>
                   <p className="text-[10px] text-emerald-600 font-bold px-8 mt-3 leading-relaxed max-w-md text-center">
                     Great job maintaining academic performance across all classes!
                   </p>

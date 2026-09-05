@@ -18,7 +18,9 @@
 
 import { prisma } from './prisma';
 import { logger } from './logger';
+import { Prisma } from '@prisma/client';
 import type { SchoolYear } from '@prisma/client';
+import { readLiveSnapshot } from './schoolSettingsSnapshot';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -132,9 +134,9 @@ export async function ensureSchoolYearFromEnrollPro(
       logger.info(`[SchoolYearResolver] Updated SchoolYear ${year.id}: ${JSON.stringify(updates)}`);
     }
   } else {
-    // Create new
+    // Create new — capture snapshot from current live settings (W1: set once at creation)
     year = await prisma.schoolYear.create({
-      data: { label: yearLabel, externalId: enrollProId, status },
+      data: { label: yearLabel, externalId: enrollProId, status, schoolSettingsSnapshot: await readLiveSnapshot() as Prisma.InputJsonValue },
     });
     logger.info(`[SchoolYearResolver] Created SchoolYear ${year.id} (externalId=${enrollProId}, label=${yearLabel})`);
   }

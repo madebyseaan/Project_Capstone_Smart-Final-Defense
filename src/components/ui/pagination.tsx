@@ -67,7 +67,7 @@ export function Pagination({
   return (
     <div className={cn("flex flex-col sm:flex-row items-center justify-between gap-4 px-2", className)}>
       {showItemCount && totalItems !== undefined && (
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           Showing <span className="font-medium">{startItem}</span> to{" "}
           <span className="font-medium">{endItem}</span> of{" "}
           <span className="font-medium">{totalItems}</span> results
@@ -104,14 +104,14 @@ export function Pagination({
           {getPageNumbers().map((page, index) => (
             <React.Fragment key={index}>
               {page === "..." ? (
-                <span className="px-2 text-gray-400">...</span>
+                <span className="px-2 text-muted-foreground">...</span>
               ) : (
                 <Button
                   variant={currentPage === page ? "default" : "outline"}
                   size="icon"
                   className={cn(
                     "h-8 w-8 rounded-lg",
-                    currentPage === page && "bg-blue-600 hover:bg-blue-700"
+                    currentPage === page && "bg-primary hover:bg-primary/90"
                   )}
                   onClick={() => onPageChange(page as number)}
                 >

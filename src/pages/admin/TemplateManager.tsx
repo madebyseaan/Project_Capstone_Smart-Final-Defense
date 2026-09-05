@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Upload, FileSpreadsheet, Download, Trash2, Power, Info, AlertCircle, CheckCircle2, Eye, Search, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import ExcelRenderer from '@/components/ExcelRenderer';
 import { getPortalToken } from "@/lib/api";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 
@@ -482,18 +483,13 @@ export default function TemplateManager() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header Section */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Excel Template Manager</h1>
-          <p className="text-muted-foreground mt-1">
-            Upload, review, and maintain DepEd School Form templates
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Excel Template Manager"
+        description="Upload, review, and maintain DepEd School Form templates"
+      />
 
       {/* Template System Benefits - Moved up */}
-      <Card className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800">
+      <Card className="p-6 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
         <div className="flex items-start gap-3">
           <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
           <div className="space-y-2">
@@ -730,7 +726,7 @@ export default function TemplateManager() {
                         onClick={() => handleToggleActive(template)}
                         title={template.isActive ? 'Deactivate' : 'Activate'}
                       >
-                        <Power className={`w-4 h-4 ${template.isActive ? 'text-green-600' : 'text-gray-400'}`} />
+                        <Power className={`w-4 h-4 ${template.isActive ? 'text-green-600' : 'text-muted-foreground'}`} />
                       </Button>
                       <Button
                         size="sm"
@@ -1112,7 +1108,7 @@ export default function TemplateManager() {
                           </div>
                           <div className="overflow-auto border rounded-md max-h-[50vh]">
                             <table className="min-w-full text-xs border-collapse">
-                              <thead className="sticky top-0 bg-gray-100 z-10">
+                              <thead className="sticky top-0 bg-muted z-10">
                                 <tr>
                                   <th className="border px-2 py-1 text-left">#</th>
                                   {Array.from({ length: previewData?.maxCols || 0 }).map((_, index) => (

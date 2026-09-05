@@ -28,6 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { adminApi } from "@/lib/api";
 import type { AdminDashboard as AdminDashboardData, AdminAuditLog } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const quickActions = [
   { name: "Manage Users", description: "Add, edit, or deactivate users", icon: Users, href: "/admin/users", color: "blue" },
@@ -53,14 +54,14 @@ const getActionColor = (action: AdminAuditLog["action"]) => {
     case "update": return "action-theme-25";
     case "delete": return "bg-red-100 text-red-700";
     case "login": return "action-theme-35";
-    case "logout": return "bg-gray-100 text-gray-600";
+    case "logout": return "bg-gray-100 text-muted-foreground";
     case "config": return "action-theme-45";
   }
 };
 
 const getSeverityBadge = (severity: AdminAuditLog["severity"]) => {
   switch (severity) {
-    case "info": return <Badge className="bg-gray-100 text-gray-600 border-0 text-xs">Info</Badge>;
+    case "info": return <Badge className="bg-gray-100 text-muted-foreground border-0 text-xs">Info</Badge>;
     case "warning": return <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">Warning</Badge>;
     case "critical": return <Badge className="bg-red-100 text-red-700 border-0 text-xs">Critical</Badge>;
   }
@@ -105,7 +106,7 @@ export default function AdminDashboard() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-          <p className="text-gray-500">Loading dashboard...</p>
+          <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -116,7 +117,7 @@ export default function AdminDashboard() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-12 h-12 text-amber-500" />
-          <p className="text-gray-700 font-medium">{error || "Failed to load data"}</p>
+          <p className="text-foreground font-medium">{error || "Failed to load data"}</p>
           <Button onClick={fetchDashboard} variant="outline" className="gap-2">
             <RefreshCw className="w-4 h-4" />
             Retry
@@ -129,33 +130,28 @@ export default function AdminDashboard() {
   const { stats, recentLogs, systemStatus } = data;
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#111827' }}>
-            Admin Dashboard
-          </h1>
-          <p style={{ color: '#6b7280' }} className="mt-1">
-            System overview and administration
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Badge className="border-0 font-semibold flex  items-center gap-1.5 px-3 py-1.5" style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}>
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            System Online
-          </Badge>
-          <Link to="/admin/logs">
-            <Button 
-              className="gap-2 text-white font-semibold rounded-xl shadow-lg"
-              style={{ backgroundColor: colors.primary }}
-            >
-              <Activity className="w-4 h-4" />
-              View All Logs
-            </Button>
-          </Link>
-        </div>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader 
+        title="Admin Dashboard"
+        description="System overview and administration"
+        actions={
+          <div className="flex items-center gap-3">
+            <Badge className="border-0 font-semibold flex items-center gap-1.5 px-3 py-1.5" style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}>
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              System Online
+            </Badge>
+            <Link to="/admin/logs">
+              <Button 
+                className="gap-2 text-white font-semibold rounded-xl shadow-lg"
+                style={{ backgroundColor: colors.primary }}
+              >
+                <Activity className="w-4 h-4" />
+                View All Logs
+              </Button>
+            </Link>
+          </div>
+        }
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -179,8 +175,8 @@ export default function AdminDashboard() {
             <CardContent className="p-6 h-full flex flex-col">
               <div className="flex items-start justify-between flex-1">
                 <div>
-                  <p className="text-sm font-medium text-gray-500 whitespace-pre-line leading-tight">{stat.label}</p>
-                  <p className="text-3xl font-bold mt-2" style={{ color: '#111827' }}>
+                  <p className="text-sm font-medium text-muted-foreground whitespace-pre-line leading-tight">{stat.label}</p>
+                  <p className="text-3xl font-bold mt-2 text-foreground">
                     {stat.value.toLocaleString()}
                   </p>
                 </div>
@@ -191,7 +187,7 @@ export default function AdminDashboard() {
                   <stat.icon className="w-6 h-6" />
                 </div>
               </div>
-              <div className="mt-4 pt-4 border-t border-gray-100 flex items-center text-sm text-gray-500">
+              <div className="mt-4 pt-4 border-t border-gray-100 flex items-center text-sm text-muted-foreground">
                 <TrendingUp className="w-4 h-4 mr-1" style={{ color: colors.primary }} />
                 <span className="font-medium" style={{ color: colors.primary }}>{stat.footerText}</span>
               </div>
@@ -210,7 +206,7 @@ export default function AdminDashboard() {
                   <Server className="w-5 h-5" style={{ color: colors.primary }} />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">System Uptime</p>
+                  <p className="text-sm font-medium text-muted-foreground">System Uptime</p>
                   <p className="text-xl font-bold" style={{ color: colors.primary }}>{systemStatus.uptime}</p>
                 </div>
               </div>
@@ -226,7 +222,7 @@ export default function AdminDashboard() {
                   <LogIn className="w-5 h-5" style={{ color: colors.accent }} />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Today's Logins</p>
+                  <p className="text-sm font-medium text-muted-foreground">Today's Logins</p>
                   <p className="text-xl font-bold" style={{ color: colors.accent }}>{stats.todayLogins}</p>
                 </div>
               </div>
@@ -242,7 +238,7 @@ export default function AdminDashboard() {
                   <Users className="w-5 h-5" style={{ color: colors.primary }} />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Total Admins</p>
+                  <p className="text-sm font-medium text-muted-foreground">Total Admins</p>
                   <p className="text-xl font-bold" style={{ color: colors.primary }}>{stats.totalAdmins}</p>
                 </div>
               </div>
@@ -258,7 +254,7 @@ export default function AdminDashboard() {
           <CardHeader className="border-b border-gray-100 px-6 py-4" style={{ backgroundColor: `${colors.primary}08` }}>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-lg flex items-center gap-2" style={{ color: '#111827' }}>
+                <CardTitle className="text-lg flex items-center gap-2 text-foreground">
                   <Activity className="w-5 h-5" style={{ color: colors.primary }} />
                   Recent Activity
                 </CardTitle>
@@ -276,8 +272,8 @@ export default function AdminDashboard() {
             <ScrollArea className="h-[380px]">
               <div className="divide-y divide-gray-100">
                 {recentLogs.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">
-                    <Activity className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <div className="p-8 text-center text-muted-foreground">
+                    <Activity className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
                     <p>No recent activity</p>
                   </div>
                 ) : (
@@ -297,13 +293,13 @@ export default function AdminDashboard() {
                         })()}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm" style={{ color: '#111827' }}>{log.user}</span>
-                            <span className="text-gray-400">•</span>
-                            <span className="text-sm text-gray-600 capitalize">{log.action}d {log.target}</span>
+                            <span className="font-semibold text-sm text-foreground">{log.user}</span>
+                            <span className="text-muted-foreground">•</span>
+                            <span className="text-sm text-muted-foreground capitalize">{log.action}d {log.target}</span>
                             {getSeverityBadge(log.severity)}
                           </div>
-                          <p className="text-sm text-gray-500 mt-0.5">{log.details}</p>
-                          <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                          <p className="text-sm text-muted-foreground mt-0.5">{log.details}</p>
+                          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                             <Clock className="w-3 h-3" />
                             {log.timestamp} • {log.date}
                           </div>
@@ -320,7 +316,7 @@ export default function AdminDashboard() {
         {/* Quick Actions */}
         <Card className="border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white p-0">
           <CardHeader className="border-b border-gray-100 px-6 py-4">
-            <CardTitle className="text-lg" style={{ color: '#111827' }}>Quick Actions</CardTitle>
+            <CardTitle className="text-lg text-foreground">Quick Actions</CardTitle>
             <CardDescription>Common administrative tasks</CardDescription>
           </CardHeader>
           <CardContent className="p-4">
@@ -333,10 +329,10 @@ export default function AdminDashboard() {
                         <action.icon className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-semibold text-sm" style={{ color: '#111827' }}>{action.name}</h4>
-                        <p className="text-xs text-gray-500">{action.description}</p>
+                        <h4 className="font-semibold text-sm text-foreground">{action.name}</h4>
+                        <p className="text-xs text-muted-foreground">{action.description}</p>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-0.5 transition-all" />
+                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all" />
                     </div>
                   </div>
                 </Link>

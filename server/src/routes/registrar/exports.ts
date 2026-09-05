@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import { prisma } from "../../lib/prisma";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
+import { getSchoolIdentityForYear } from "../../lib/schoolSettingsSnapshot";
 import { logger } from "../../lib/logger";
 import { createAuditLog } from "../../lib/audit";
 import { AuditAction, AuditSeverity } from "@prisma/client";
@@ -325,7 +326,7 @@ router.get("/export/sf5/:sectionId", authenticateToken, async (req: AuthRequest,
     row++;
 
     sheet.getRow(row).getCell(1).value = section.adviser || "";
-    sheet.getRow(row).getCell(4).value = school.schoolName;
+    sheet.getRow(row).getCell(4).value = school.schoolHeadName || school.schoolName;
     row++;
 
     sheet.getRow(row).getCell(1).value = "Class Adviser";
@@ -409,12 +410,9 @@ router.get("/export/sf1/:sectionId", authenticateToken, async (req: AuthRequest,
       return;
     }
 
-    const schoolSettings = await (prisma as any).systemSettings.findUnique({
-      where: { id: "main" },
-      select: { schoolName: true, schoolId: true, division: true, region: true },
-    });
-
     const schoolYear = section.schoolYear;
+
+    const schoolSettings = await getSchoolIdentityForYear(schoolYear);
 
     // Helper: prefer snapshot, then live student, then empty
     const field = (snap: Record<string, any> | null, student: any, key: string): any => {
@@ -605,7 +603,7 @@ router.get("/export/year-backup", authenticateToken, async (req: AuthRequest, re
     for (const g of grades) {
       gradeSheet.addRow({
         id: g.id, studentId: g.studentId,
-        subject: g.classAssignment.subject.name, term: g.term,
+        subject: g.classAssignment.subject.displayName ?? g.classAssignment.subject.name, term: g.term,
         qg: g.quarterlyGrade ?? "", status: g.status,
       });
     }

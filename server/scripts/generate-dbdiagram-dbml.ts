@@ -59,7 +59,7 @@ function mapPrismaTypeToDbml(type: string): string {
 function parseFieldType(rawType: string) {
   const isArray = rawType.endsWith("[]");
   const isOptional = rawType.endsWith("?");
-  const baseType = rawType.replace(/[\[\]\?]/g, "");
+  const baseType = rawType.replace(/[[\]?]/g, "");
   return { isArray, isOptional, baseType };
 }
 

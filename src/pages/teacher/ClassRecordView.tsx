@@ -28,19 +28,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
-import { HGDescriptorPanel } from "./components/HGDescriptorPanel";
 import {
   getDisplayFinalGrade as computeDisplayFinalGrade,
   getMobileDraftKey,
   getScoreFromGrade as computeScoreFromGrade,
 } from "./components/classRecordMobileUtils";
-
-const HG_DESCRIPTORS = [
-  'No Improvement',
-  'Needs Improvement',
-  'Developing',
-  'Sufficiently Developed',
-] as const;
 
 interface AssessmentTaskMeta {
   description: string;
@@ -152,13 +144,12 @@ export default function ClassRecordView() {
   const [savingMeta, setSavingMeta] = useState(false);
   const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
   const [mobileEditorStudentId, setMobileEditorStudentId] = useState<string | null>(null);
-  const [mobileEditorTab, setMobileEditorTab] = useState<'WW' | 'PT' | 'QA' | 'HG'>('WW');
+  const [mobileEditorTab, setMobileEditorTab] = useState<'WW' | 'PT' | 'QA'>('WW');
   const [mobileScoreDraft, setMobileScoreDraft] = useState<Record<string, string>>({});
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [showMobileWarning, setShowMobileWarning] = useState(false);
 
   const [separateByGender, setSeparateByGender] = useState(false);
-  const isHGClass = (classAssignment?.subject?.code ?? '').startsWith('HG');
   // If the subject is a rotating subject (e.g. SCI_BIO = Term 1 only),
   // lock the term selector so the teacher can't accidentally enter grades in the wrong term.
   const lockedTerm: string | null = classAssignment?.subject?.rotationTermRank
@@ -810,7 +801,7 @@ export default function ClassRecordView() {
     setMobileEditorStudentId(studentId);
     setMobileEditorOpen(true);
     setMobileScoreDraft({});
-    setMobileEditorTab(isHGClass ? 'HG' : 'WW');
+    setMobileEditorTab('WW');
   };
 
   const selectedMobileRecord = useMemo(
@@ -909,7 +900,6 @@ export default function ClassRecordView() {
 
       <ClassRecordHero
         classAssignment={classAssignment}
-        isHGClass={isHGClass}
         effectiveWeightsSource={effectiveWeights?.source ?? null}
         onStartTour={() => {
           // Check if on mobile or tablet
@@ -936,32 +926,8 @@ export default function ClassRecordView() {
         termLabels={termLabels}
       />
 
-      {isHGClass && (
-        <>
-          <ClassRecordMobileList
-            records={sortedRecords}
-            selectedTerm={selectedTerm}
-            isHGClass
-            onTermChange={setSelectedTerm}
-            onOpenEditor={openMobileEditor}
-            getDisplayFinalGrade={getDisplayFinalGrade}
-            getGradeColor={getGradeColor}
-            isViewOnly={isViewOnly}
-          />
-          <HGDescriptorPanel
-            records={sortedRecords}
-            selectedTerm={selectedTerm}
-            onTermChange={setSelectedTerm}
-            savingDescriptorStudentId={savingDescriptorStudentId}
-            descriptors={HG_DESCRIPTORS}
-            onDescriptorUpdate={handleDescriptorUpdate}
-            isViewOnly={isViewOnly}
-          />
-        </>
-      )}
-
       {/* Analytics Insights */}
-      {!isHGClass && stats && (
+      {stats && (
         <ClassRecordStats
           avg={stats.avg}
           passed={stats.passed}
@@ -971,12 +937,10 @@ export default function ClassRecordView() {
       )}
 
       {/* Main Ledger Table */}
-      {!isHGClass && (
-        <>
+      <>
           <ClassRecordMobileList
             records={sortedRecords}
             selectedTerm={selectedTerm}
-            isHGClass={false}
             onTermChange={setSelectedTerm}
             onOpenEditor={openMobileEditor}
             getDisplayFinalGrade={getDisplayFinalGrade}
@@ -1038,7 +1002,6 @@ export default function ClassRecordView() {
             }
           />
         </>
-      )}
 
       <GradeEditModal
         open={mobileEditorOpen}
@@ -1050,9 +1013,7 @@ export default function ClassRecordView() {
           }
         }}
         selectedRecord={selectedMobileRecord}
-        isHGClass={isHGClass}
         selectedTerm={selectedTerm}
-        hgDescriptors={HG_DESCRIPTORS}
         mobileEditorTab={mobileEditorTab}
         onTabChange={setMobileEditorTab}
         wwCount={wwCount}
@@ -1068,7 +1029,6 @@ export default function ClassRecordView() {
         getMaxForCell={getMaxForCell}
         onMobileScoreDraftChange={handleMobileDraftChange}
         onMobileScoreCommit={commitMobileScore}
-        onDescriptorUpdate={handleDescriptorUpdate}
         onApplyColumnMeta={applyColumnMetaFromMobile}
         isViewOnly={isViewOnly}
       />

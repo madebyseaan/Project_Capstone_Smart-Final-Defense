@@ -13,11 +13,13 @@ import {
   remedialCompleteSchema,
   remedialManualCreateSchema,
   remedialPendingQuerySchema,
+  remedialSyncSchema,
+  remedialHistoryQuerySchema,
 } from "../../schemas/remedial";
 import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
 import { AuditAction, AuditSeverity } from "@prisma/client";
-import { completeRemedial, buildCertificate, computeRfg, determineOutcome } from "../../lib/remedial";
+import { completeRemedial, buildCertificate, computeRfg, determineOutcome, syncBackSubjectsFromEnrollPro } from "../../lib/remedial";
 import { logger } from "../../lib/logger";
 
 export default function registerRemedialRoutes(router: Router): void {
@@ -37,10 +39,17 @@ router.get("/remedial/pending", authenticateToken, validate(remedialPendingQuery
       limit?: string;
     };
 
+    let effectiveSY = schoolYear;
+    if (!effectiveSY) {
+      const { getActiveSchoolYearLabel } = await import("../../lib/schoolYearResolver");
+      effectiveSY = await getActiveSchoolYearLabel();
+    }
+
     const where: any = {
       promotionStatus: "CONDITIONALLY_PROMOTED",
+      remedialClasses: { some: { status: "PENDING" } },
     };
-    if (schoolYear) where.schoolYear = schoolYear;
+    if (effectiveSY) where.schoolYear = effectiveSY;
     if (gradeLevel) where.gradeLevel = gradeLevel;
 
     const pageNum = Math.max(1, parseInt(page || "1", 10));
@@ -103,6 +112,124 @@ router.get("/remedial/pending", authenticateToken, validate(remedialPendingQuery
   }
 });
 
+// GET /registrar/remedial/history — remedial records for a given school year (read-only)
+router.get("/remedial/history", authenticateToken, validate(remedialHistoryQuerySchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user || user.role !== "REGISTRAR") {
+    res.status(403).json({ message: "Access denied. Registrar only." });
+    return;
+  }
+  try {
+    const { schoolYear, page, limit } = req.query as {
+      schoolYear?: string;
+      page?: string;
+      limit?: string;
+    };
+
+    const pageNum = Math.max(1, parseInt(page || "1", 10));
+    const pageSize = Math.min(100, Math.max(1, parseInt(limit || "25", 10)));
+    const skip = (pageNum - 1) * pageSize;
+
+    const where: any = {};
+    if (schoolYear) where.schoolYear = schoolYear;
+
+    const remedialRows = await prisma.remedialClass.findMany({
+      where,
+      include: {
+        enrollment: {
+          include: {
+            student: true,
+            section: true,
+          },
+        },
+      },
+      orderBy: { enrollment: { student: { lastName: "asc" } } },
+      skip,
+      take: pageSize,
+    });
+
+    const total = await prisma.remedialClass.count({ where });
+
+    const enrollmentMap = new Map<string, any>();
+    for (const rc of remedialRows) {
+      const eid = rc.enrollmentId;
+      if (!enrollmentMap.has(eid)) {
+        enrollmentMap.set(eid, {
+          enrollmentId: eid,
+          studentId: rc.enrollment.studentId,
+          lrn: rc.enrollment.student.lrn,
+          firstName: rc.enrollment.student.firstName,
+          lastName: rc.enrollment.student.lastName,
+          middleName: rc.enrollment.student.middleName,
+          sex: rc.enrollment.student.gender,
+          gradeLevel: rc.enrollment.section.gradeLevel,
+          section: { name: rc.enrollment.section.name },
+          schoolYear: rc.schoolYear,
+          promotionStatus: rc.enrollment.promotionStatus,
+          remedialClasses: [],
+        });
+      }
+      enrollmentMap.get(eid).remedialClasses.push({
+        id: rc.id,
+        subjectCode: rc.subjectCode,
+        subjectName: rc.subjectName,
+        originalGrade: rc.originalGrade,
+        remedialMark: rc.remedialMark,
+        recomputedGrade: rc.recomputedGrade,
+        outcome: rc.outcome,
+        status: rc.status,
+        conductedFrom: rc.conductedFrom,
+        conductedTo: rc.conductedTo,
+      });
+    }
+
+    const items = Array.from(enrollmentMap.values());
+
+    res.json({
+      items,
+      meta: {
+        total,
+        page: pageNum,
+        limit: pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    });
+  } catch (err: any) {
+    logger.error("[registrar/remedial/history]", err.message);
+    res.status(500).json({ message: "Failed to fetch remedial history" });
+  }
+});
+
+// POST /registrar/remedial/sync-from-enrollpro — pull back-subjects from EnrollPro
+router.post("/remedial/sync-from-enrollpro", authenticateToken, validate(remedialSyncSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user || user.role !== "REGISTRAR") {
+    res.status(403).json({ message: "Access denied. Registrar only." });
+    return;
+  }
+  try {
+    const { schoolYear } = req.body as { schoolYear?: string };
+    let effectiveSY = schoolYear;
+    if (!effectiveSY) {
+      const { getActiveSchoolYearLabel } = await import("../../lib/schoolYearResolver");
+      effectiveSY = await getActiveSchoolYearLabel();
+    }
+
+    const result = await syncBackSubjectsFromEnrollPro(
+      effectiveSY,
+      { id: user.id, name: user.username, role: user.role },
+    );
+
+    res.json({
+      message: "Back-subjects sync complete",
+      ...result,
+    });
+  } catch (err: any) {
+    logger.error("[registrar/remedial/sync-from-enrollpro]", err.message);
+    res.status(500).json({ message: "Failed to sync back-subjects from EnrollPro" });
+  }
+});
+
 // PATCH /registrar/remedial/:id — update single remedial row (RCM, dates)
 router.patch("/remedial/:id", authenticateToken, validate(remedialUpdateSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
@@ -119,17 +246,18 @@ router.patch("/remedial/:id", authenticateToken, validate(remedialUpdateSchema),
       res.status(404).json({ message: "Remedial record not found" });
       return;
     }
-    if (existing.status === "COMPLETED") {
-      res.status(400).json({ message: "Cannot edit a completed remedial record" });
+    // Marks are locked once COMPLETED; conducted dates remain editable so SF10 can be completed.
+    if (existing.status === "COMPLETED" && remedialMark !== undefined) {
+      res.status(400).json({ message: "Cannot edit the mark of a completed remedial record" });
       return;
     }
 
     const updated = await prisma.remedialClass.update({
       where: { id },
       data: {
-        remedialMark,
-        ...(conductedFrom ? { conductedFrom: new Date(conductedFrom) } : {}),
-        ...(conductedTo ? { conductedTo: new Date(conductedTo) } : {}),
+        ...(remedialMark !== undefined ? { remedialMark } : {}),
+        ...(conductedFrom ? { conductedFrom: new Date(`${conductedFrom}T00:00:00.000Z`) } : {}),
+        ...(conductedTo ? { conductedTo: new Date(`${conductedTo}T00:00:00.000Z`) } : {}),
       },
     });
 
@@ -138,7 +266,9 @@ router.patch("/remedial/:id", authenticateToken, validate(remedialUpdateSchema),
       user,
       `Remedial Update: ${existing.subjectName}`,
       "RemedialClass",
-      `Updated RCM for ${existing.subjectName}: ${existing.remedialMark ?? "null"} -> ${remedialMark}`,
+      `Updated ${existing.subjectName}: mark ${existing.remedialMark ?? "null"} -> ${remedialMark ?? existing.remedialMark ?? "null"}` +
+        `${conductedFrom ? `, conductedFrom=${conductedFrom}` : ""}` +
+        `${conductedTo ? `, conductedTo=${conductedTo}` : ""}`,
       req.ip,
       AuditSeverity.INFO,
       id
@@ -160,12 +290,12 @@ router.post("/remedial/:enrollmentId/complete", authenticateToken, validate(reme
   }
   try {
     const enrollmentId = req.params.enrollmentId as string;
-    const { retentionOverride } = req.body;
+    const { retentionOverride, conductedFrom, conductedTo } = req.body;
 
     const result = await completeRemedial(
       enrollmentId,
       { id: user.id, name: user.username, role: user.role },
-      { retentionOverride }
+      { retentionOverride, conductedFrom, conductedTo }
     );
 
     res.json({
@@ -207,6 +337,11 @@ router.post("/remedial/:enrollmentId/manual-create", authenticateToken, validate
     });
     if (!enrollment) {
       res.status(404).json({ message: "Enrollment not found" });
+      return;
+    }
+
+    if (enrollment.promotionStatus !== "CONDITIONALLY_PROMOTED") {
+      res.status(400).json({ message: "Manual remedial records can only be created for conditionally promoted enrollments" });
       return;
     }
 

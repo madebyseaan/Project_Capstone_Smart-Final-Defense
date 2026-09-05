@@ -98,6 +98,14 @@ function applyThemeToDocument(colors: ThemeColors) {
   root.style.setProperty("--on-primary", primaryTextColor);
   root.style.setProperty("--on-secondary", secondaryTextColor);
   
+  // Sync Tailwind --primary so bg-primary, text-primary, border-primary reflect branding
+  root.style.setProperty("--primary", colors.primary);
+  root.style.setProperty("--color-primary", colors.primary);
+  root.style.setProperty("--primary-foreground", primaryTextColor);
+  root.style.setProperty("--color-primary-foreground", primaryTextColor);
+  root.style.setProperty("--ring", colors.primary);
+  root.style.setProperty("--color-ring", colors.primary);
+  
   // RGB values for gradient/opacity uses
   const hexToRgb = (hex: string) => {
     const h = hex.replace("#", "");
@@ -107,6 +115,7 @@ function applyThemeToDocument(colors: ThemeColors) {
   root.style.setProperty("--theme-secondary-rgb", hexToRgb(colors.secondary));
   root.style.setProperty("--theme-accent-rgb", hexToRgb(colors.accent));
   root.style.setProperty("--primary-rgb", hexToRgb(colors.primary));
+  root.style.setProperty("--chart-1", colors.primary);
 }
 
 function updateBrowserMetadata(schoolName: string, logoUrl: string | null) {
@@ -143,14 +152,14 @@ function loadCachedTheme(): { colors: ThemeColors; logoUrl: string | null; schoo
   try {
     const cached = localStorage.getItem(THEME_CACHE_KEY);
     if (cached) return JSON.parse(cached);
-  } catch {}
+  } catch { /* intentionally empty */ }
   return null;
 }
 
 function saveThemeCache(data: { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string; currentSchoolYear: string }) {
   try {
     localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(data));
-  } catch {}
+  } catch { /* intentionally empty */ }
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {

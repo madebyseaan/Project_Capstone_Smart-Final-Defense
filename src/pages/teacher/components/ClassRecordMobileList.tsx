@@ -13,7 +13,6 @@ import type { ClassRecord } from "@/lib/api";
 interface ClassRecordMobileListProps {
   records: ClassRecord[];
   selectedTerm: string;
-  isHGClass: boolean;
   onTermChange: (term: string) => void;
   onOpenEditor: (studentId: string) => void;
   getDisplayFinalGrade: (record: ClassRecord) => number | null;
@@ -26,7 +25,6 @@ const terms = ["T1", "T2", "T3"] as const;
 export function ClassRecordMobileList({
   records,
   selectedTerm,
-  isHGClass,
   onTermChange,
   onOpenEditor,
   getDisplayFinalGrade,
@@ -37,7 +35,7 @@ export function ClassRecordMobileList({
     <Card className="lg:hidden border-0 shadow-lg shadow-slate-200/40 rounded-[2rem] overflow-hidden bg-white">
       <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
         <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">
-          {isHGClass ? "Homeroom Guidance" : "Class Ledger"}
+          Class Ledger
         </h2>
         <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)} disabled={isViewOnly}>
           <SelectTrigger className="w-28 font-bold" size="sm">
@@ -60,7 +58,6 @@ export function ClassRecordMobileList({
       <CardContent className="p-4 space-y-3 bg-slate-50/40">
         {records.map((record, index) => {
           const grade = record.grades.find((g) => g.term === selectedTerm);
-          const descriptor = grade?.qualitativeDescriptor ?? "Not set";
           const finalGrade = getDisplayFinalGrade(record);
 
           // Score breakdowns
@@ -90,7 +87,7 @@ export function ClassRecordMobileList({
                   </p>
                   <p className="text-[10px] text-slate-500 font-semibold mt-0.5 font-mono">{record.student.lrn}</p>
 
-                  {!isHGClass && hasScores && (
+                  {hasScores && (
                     <div className="flex items-center gap-3 mt-2">
                       <div className="flex items-center gap-1">
                         <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">WW</span>
@@ -117,19 +114,13 @@ export function ClassRecordMobileList({
                 </div>
 
                 <div className="text-right flex-shrink-0">
-                  {isHGClass ? (
-                    <>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Descriptor</p>
-                      <p className="text-xs font-bold text-slate-700 mt-1">{descriptor}</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Grade</p>
-                      <p className={`text-xl font-black ${getGradeColor(finalGrade)}`}>{finalGrade ?? "—"}</p>
-                    </>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-slate-300 ml-auto mt-1" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Grade</p>
+                  <p className={`text-xl font-black ${getGradeColor(finalGrade)}`}>{finalGrade ?? "—"}</p>
                 </div>
+              </div>
+
+              <div className="flex justify-end mt-2">
+                <ChevronRight className="w-4 h-4 text-slate-300" />
               </div>
             </button>
           );

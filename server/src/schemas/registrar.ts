@@ -38,3 +38,27 @@ export const eosyFinalizeSchema = z.object({
     schoolYear: z.string().min(1, 'schoolYear is required'),
   }),
 });
+
+export const transfereeUpdateSchema = z.object({
+  params: z.object({
+    enrollmentId: z.string().min(1, 'enrollmentId is required'),
+  }),
+  body: z.object({
+    previousSchool: z.string().min(1).max(200).optional(),
+    lastGradeCompleted: z.string().max(100).optional(),
+    transferCertNo: z.string().max(100).optional(),
+    birthDate: z.string().datetime().optional(),
+    gender: z.enum(['MALE', 'FEMALE']).optional(),
+    transferInDate: z.string().datetime().optional(),
+  }),
+});
+
+export const transfereeTagSchema = z.object({
+  params: z.object({
+    enrollmentId: z.string().min(1, 'enrollmentId is required'),
+  }),
+  body: z.object({
+    transferInDate: z.string().datetime().optional(),
+    reason: z.string().max(300).optional(),
+  }),
+});

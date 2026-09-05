@@ -1,16 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   Search,
   FileText,
-  Loader2,
   Users,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   GraduationCap,
   ArrowRightLeft,
   RefreshCw,
+  CloudDownload,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +30,11 @@ import {
 import { registrarApi } from "@/lib/api";
 
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { StatCard } from "@/components/layout/StatCard";
+import { LoadingSkeleton, EmptyState, Dash } from "@/components/data-table";
+import { toast } from "@/lib/toast";
+import { SyncProgressModal } from "@/components/common/SyncProgressModal";
 
 interface AlumniStudent {
   id: string;
@@ -70,9 +71,9 @@ const formatName = (s: AlumniStudent) => {
 };
 
 const statusStyles: Record<string, { bg: string; text: string; border: string }> = {
-  "ENROLLED": { bg: "bg-green-50", text: "text-green-700", border: "border-green-200" },
+  "ENROLLED": { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
   "TRANSFERRED": { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
-  "GRADUATED": { bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
+  "GRADUATED": { bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200" },
 };
 
 const statusLabels: Record<string, string> = {
@@ -88,7 +89,7 @@ const tabConfig = [
 ];
 
 export default function AlumniStudents() {
-  const { theme, colors } = useTheme();
+  const { colors } = useTheme();
   const [students, setStudents] = useState<AlumniStudent[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -97,14 +98,12 @@ export default function AlumniStudents() {
   const [activeTab, setActiveTab] = useState("all");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
-  const [syncing, setSyncing] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({ all: 0, graduated: 0, TRANSFERRED: 0 });
 
   // Sync modal state
   const [syncModalOpen, setSyncModalOpen] = useState(false);
-  const [syncProgress, setSyncProgress] = useState(0);
-  const [syncStatus, setSyncStatus] = useState<"syncing" | "complete" | "error">("syncing");
-  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
+  const [syncError, setSyncError] = useState<string | undefined>();
 
   useEffect(() => {
     loadAlumni();
@@ -112,13 +111,6 @@ export default function AlumniStudents() {
 
   useEffect(() => {
     loadCounts();
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    };
   }, []);
 
   const loadCounts = async () => {
@@ -175,118 +167,144 @@ export default function AlumniStudents() {
   };
 
   const handleSync = async () => {
-    setSyncing(true);
     setSyncModalOpen(true);
     setSyncStatus("syncing");
-    setSyncProgress(0);
+    setSyncError(undefined);
 
     try {
-      // Use lightweight sync instead of full EnrollPro sync
       const result = await registrarApi.syncInactiveStudents();
-      setSyncProgress(100);
-      setSyncStatus("complete");
+      setSyncStatus("success");
+      toast.success("Student data synced successfully");
 
-      setTimeout(() => {
-        setSyncModalOpen(false);
-        setSyncing(false);
-        void handleSearch();
-        void loadCounts();
-      }, 1200);
+      void handleSearch();
+      void loadCounts();
     } catch {
       setSyncStatus("error");
-      setTimeout(() => {
-        setSyncModalOpen(false);
-        setSyncing(false);
-      }, 2000);
+      setSyncError("Failed to sync with EnrollPro. Please try again.");
     }
   };
 
-  const totalPages = Math.ceil(total / rowsPerPage);
-  const startItem = page * rowsPerPage + 1;
-  const endItem = Math.min((page + 1) * rowsPerPage, total);
+  const totalPages = Math.max(1, Math.ceil(total / rowsPerPage));
 
   return (
-    <div className={`p-6 space-y-6 ${theme === 'dark' ? 'bg-gray-900 text-gray-100' : ''}`}>
-      {/* Sync Progress Modal */}
-      {syncModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div className="relative bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4 text-center">
-            {/* Bouncing Dots */}
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <div className="w-3 h-3 rounded-full bg-[#800000] animate-bounce" style={{ animationDelay: "0ms", animationDuration: "0.6s" }} />
-              <div className="w-3 h-3 rounded-full bg-[#800000] animate-bounce" style={{ animationDelay: "150ms", animationDuration: "0.6s" }} />
-              <div className="w-3 h-3 rounded-full bg-[#800000] animate-bounce" style={{ animationDelay: "300ms", animationDuration: "0.6s" }} />
-            </div>
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <SyncProgressModal isOpen={syncModalOpen} onClose={() => { setSyncModalOpen(false); setSyncStatus("idle"); }} status={syncStatus} errorMessage={syncError} />
 
-            {/* Title */}
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
-              {syncStatus === "complete" ? "Sync Complete" : syncStatus === "error" ? "Sync Failed" : "Syncing Student Data"}
-            </h3>
-
-            {/* Subtitle */}
-            <p className="text-sm text-gray-500 mb-6">
-              {syncStatus === "complete"
-                ? "Student data has been synced successfully."
-                : syncStatus === "error"
-                ? "An error occurred during sync. Please try again."
-                : `Fetching enrollment records from EnrollPro...`}
-            </p>
-
-            {/* Progress Bar */}
-            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden mb-4">
-              <div
-                className="h-full rounded-full transition-all duration-300 ease-out"
-                style={{
-                  width: `${syncProgress}%`,
-                  backgroundColor: syncStatus === "complete" ? "#16a34a" : syncStatus === "error" ? "#dc2626" : "#800000",
-                }}
-              />
-            </div>
-
-            {/* Counter */}
-            <p className="text-sm font-semibold text-gray-700">
-              {syncStatus === "complete"
-                ? "Done!"
-                : syncStatus === "error"
-                ? "Failed"
-                : `Syncing data from EnrollPro...`}
-            </p>
+      <PageHeader
+        title="Former Students"
+        description="Archived learners who are no longer actively enrolled"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="font-semibold text-xs shadow-sm shadow-primary/20"
+              disabled={syncStatus === "syncing"}
+              onClick={() => void handleSync()}
+            >
+              <CloudDownload className="w-4 h-4 mr-1.5" />
+              Sync from EnrollPro
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+              onClick={() => void loadAlumni()}
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+            </Button>
           </div>
-        </div>
-      )}
+        }
+      />
 
-      {/* Main Card */}
-      <Card className={`rounded-2xl shadow-sm ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
-        <CardContent className="p-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl" style={{ backgroundColor: `${colors.primary}15` }}>
-                <Users className="h-5 w-5" style={{ color: colors.primary }} />
-              </div>
-              <div>
-                <h2 className={`text-lg font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                  Former Students
-                </h2>
-                <p className={`text-xs uppercase tracking-wider font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {total} Learners Found
-                </p>
-              </div>
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total"
+          value={counts.all}
+          numericValue={counts.all}
+          icon={<Users className="w-5 h-5 text-primary" />}
+          iconClassName="bg-primary/10"
+        />
+        <StatCard
+          label="Graduated"
+          value={counts.graduated}
+          numericValue={counts.graduated}
+          icon={<GraduationCap className="w-5 h-5 text-primary" />}
+          iconClassName="bg-primary/10"
+        />
+        <StatCard
+          label="Transferred"
+          value={counts.TRANSFERRED}
+          numericValue={counts.TRANSFERRED}
+          icon={<ArrowRightLeft className="w-5 h-5 text-primary" />}
+          iconClassName="bg-primary/10"
+        />
+        <StatCard
+          label="Other"
+          value={Math.max(0, counts.all - counts.graduated - counts.TRANSFERRED)}
+          numericValue={Math.max(0, counts.all - counts.graduated - counts.TRANSFERRED)}
+          icon={<FileText className="w-5 h-5 text-primary" />}
+          iconClassName="bg-primary/10"
+        />
+      </div>
+
+      {/* Main Table Card */}
+      <Card className="border border-border shadow-sm bg-card overflow-hidden rounded-xl p-0">
+        <div className="px-6 py-4 border-b border-border">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">All Former Students</h2>
+              <p className="text-sm text-muted-foreground">
+                {total} learner{total !== 1 ? "s" : ""} found
+              </p>
             </div>
-            <div className="flex items-center gap-3">
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Tabs - Pill style */}
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-muted">
+                {tabConfig.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => { setActiveTab(tab.key); setPage(0); }}
+                        className={`flex items-center gap-1.5 px-3 h-7 rounded-md text-xs font-medium transition-all ${
+                        isActive
+                          ? "bg-card shadow-sm text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{tab.label}</span>
+                      <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-semibold tabular-nums ${
+                        isActive
+                          ? "bg-muted text-foreground"
+                          : "bg-card/60 text-muted-foreground"
+                      }`}>
+                        {counts[tab.key] || 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Search by name or LRN..."
+                  placeholder="Search name or LRN..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className={`pl-9 w-64 rounded-xl ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}
+                  className="pl-8 pr-12 h-9 w-56 rounded-lg text-xs"
                 />
+                <kbd className="absolute right-2 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted rounded border border-border">
+                  ↵
+                </kbd>
               </div>
               <Select value={gradeFilter} onValueChange={(v) => { setGradeFilter(v); setPage(0); }}>
-                <SelectTrigger className={`w-[140px] rounded-xl ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                <SelectTrigger className="w-32 h-9 rounded-lg text-xs font-medium">
                   <SelectValue placeholder="All Grades">
                     {gradeLevelLabels[gradeFilter] || "All Grades"}
                   </SelectValue>
@@ -299,106 +317,91 @@ export default function AlumniStudents() {
                   <SelectItem value="GRADE_10">Grade 10</SelectItem>
                 </SelectContent>
               </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-xl"
-                disabled={syncing}
-                onClick={() => void handleSync()}
-              >
-                {syncing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
-                Sync from EnrollPro
-              </Button>
             </div>
           </div>
-
-          {/* Tabs - Pill style */}
-          <div className={`flex items-center gap-1 p-1 rounded-xl mb-6 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            {tabConfig.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => { setActiveTab(tab.key); setPage(0); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-white shadow-sm text-gray-900'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'
-                  } ${theme === 'dark' && isActive ? 'bg-gray-600 text-white' : ''} ${theme === 'dark' && !isActive ? 'text-gray-400 hover:text-gray-300' : ''}`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{tab.label}</span>
-                  <span className={`px-1.5 py-0.5 text-xs rounded-full ${
-                    isActive
-                      ? 'bg-gray-100 text-gray-600'
-                      : 'bg-gray-200/50 text-gray-400'
-                  } ${theme === 'dark' && isActive ? 'bg-gray-500 text-gray-200' : ''} ${theme === 'dark' && !isActive ? 'bg-gray-600 text-gray-400' : ''}`}>
-                    {counts[tab.key] || 0}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Table */}
-          <div className={`rounded-xl border ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-            <Table>
+        </div>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table className="w-full table-fixed">
               <TableHeader>
-                <TableRow className={`${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>LRN</TableHead>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Learner Name</TableHead>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Sex</TableHead>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Prior Grade</TableHead>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Prior Section</TableHead>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Last SY</TableHead>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Program</TableHead>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Status</TableHead>
-                  <TableHead className={`font-semibold text-xs uppercase tracking-wider text-right ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Actions</TableHead>
+                <TableRow className="hover:bg-muted/50 border-b border-border bg-muted/50">
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">LRN</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[30%] text-left">Learner Name</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[8%] text-left">Sex</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-left">Prior Grade</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[12%] text-left">Prior Section</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-left whitespace-nowrap">Last SY</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[8%] text-left">Program</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[12%] text-left">Status</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-left">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-16">
-                      <Loader2 className="w-8 h-8 animate-spin mx-auto" style={{ color: colors.primary }} />
-                    </TableCell>
-                  </TableRow>
+                  <LoadingSkeleton columnCount={9} rowCount={10} />
                 ) : students.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-16">
-                      <Users className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                      <p className="text-gray-500 font-medium">No learners found matching your criteria</p>
-                    </TableCell>
-                  </TableRow>
+                  <EmptyState
+                    columnCount={9}
+                    icon={<Users className="h-5 w-5 text-muted-foreground/60" />}
+                    title="No learners found matching your criteria"
+                    hint="Try adjusting your search or filter criteria."
+                  />
                 ) : (
                   students.map((student) => (
-                    <TableRow key={student.id} className={`hover:${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                      <TableCell className="font-mono text-sm">{student.lrn}</TableCell>
-                      <TableCell className="font-medium">{formatName(student)}</TableCell>
-                      <TableCell>{student.gender || "-"}</TableCell>
-                      <TableCell>{formatGradeLevel(student.lastGradeLevel)}</TableCell>
-                      <TableCell>{student.lastSection}</TableCell>
-                      <TableCell>{student.lastSchoolYear}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">{student.lastProgram}</Badge>
+                    <TableRow key={student.id} className="border-b border-border hover:bg-muted/50 transition-colors">
+                      <TableCell className="font-mono text-[13px] text-muted-foreground py-3.5 px-4 tabular-nums text-left align-middle whitespace-nowrap">
+                        {student.lrn || <Dash />}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-3.5 px-4 text-left align-middle">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs shrink-0"
+                            style={{ backgroundColor: colors.primary }}
+                            aria-hidden="true"
+                          >
+                            {(student.lastName || "?").charAt(0)}
+                          </div>
+                           <p className="font-semibold text-foreground text-sm truncate">{formatName(student)}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3.5 px-4 text-sm text-muted-foreground text-left align-middle whitespace-nowrap">
+                        {student.gender || <Dash />}
+                      </TableCell>
+                      <TableCell className="py-3.5 px-4 text-sm text-muted-foreground text-left align-middle whitespace-nowrap">
+                        {student.lastGradeLevel ? formatGradeLevel(student.lastGradeLevel) : <Dash />}
+                      </TableCell>
+                      <TableCell className="py-3.5 px-4 text-sm text-muted-foreground text-left align-middle whitespace-nowrap">
+                        {student.lastSection || <Dash />}
+                      </TableCell>
+                      <TableCell className="py-3.5 px-4 text-sm text-muted-foreground text-left align-middle whitespace-nowrap">
+                        {student.lastSchoolYear || <Dash />}
+                      </TableCell>
+                      <TableCell className="py-3.5 px-4 text-left align-middle">
+                        {student.lastProgram ? (
+                          <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-muted/50 text-muted-foreground border-border whitespace-nowrap">
+                            {student.lastProgram}
+                          </Badge>
+                        ) : (
+                          <Dash />
+                        )}
+                      </TableCell>
+                      <TableCell className="py-3.5 px-4 text-left align-middle">
                         <Badge
                           variant="outline"
-                          className={`text-xs border ${statusStyles[student.enrollmentStatus]?.bg || 'bg-gray-50'} ${statusStyles[student.enrollmentStatus]?.text || 'text-gray-700'} ${statusStyles[student.enrollmentStatus]?.border || 'border-gray-200'}`}
+                          className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap ${statusStyles[student.enrollmentStatus]?.bg || "bg-muted/50"} ${statusStyles[student.enrollmentStatus]?.text || "text-muted-foreground"} ${statusStyles[student.enrollmentStatus]?.border || "border-border"}`}
                         >
                           {statusLabels[student.enrollmentStatus] || student.enrollmentStatus}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-left py-3.5 px-4 align-middle">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleViewSF10(student.id)}
-                          className="rounded-lg"
+                          className="h-8 px-3 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap -ml-2.5"
                         >
-                          <FileText className="h-4 w-4 mr-1" /> SF10
+                          <FileText className="h-3.5 w-3.5 mr-1.5" />
+                          SF10
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -408,74 +411,92 @@ export default function AlumniStudents() {
             </Table>
           </div>
 
-          {/* Pagination Footer */}
-          <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between bg-gray-50/30">
-            <div className="flex items-center gap-4 text-sm font-semibold text-slate-800">
-              <span>
-                Showing {total > 0 ? startItem : 0} to {endItem} of {total} Learners
-              </span>
-              <div className="h-4 w-px bg-slate-300 mx-2" />
-              <div className="flex items-center gap-2">
-                <span>Rows per page:</span>
-                <Select value={String(rowsPerPage)} onValueChange={(v) => { setRowsPerPage(Number(v)); setPage(0); }}>
-                  <SelectTrigger className="w-20" size="sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="15">15</SelectItem>
-                    <SelectItem value="25">25</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
+          {/* Pagination */}
+          {!loading && total > 0 && (
+            <div className="border-t border-border px-6 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>
+                  Showing {page * rowsPerPage + 1}–{Math.min((page + 1) * rowsPerPage, total)} of{" "}
+                  <span className="font-medium text-foreground">{total}</span> learners
+                </span>
+                <div className="h-3.5 w-px bg-border" />
+                <div className="flex items-center gap-1.5">
+                  <span>Rows:</span>
+                  <Select value={String(rowsPerPage)} onValueChange={(v) => { setRowsPerPage(Number(v)); setPage(0); }}>
+                    <SelectTrigger className="w-16 h-7 rounded-md text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="15">15</SelectItem>
+                      <SelectItem value="25">25</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={page <= 0}
+                  onClick={() => setPage(0)}
+                  aria-label="First page"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m11 17-5-5 5-5" /><path d="m18 17-5-5 5-5" />
+                  </svg>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={page <= 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  aria-label="Previous page"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                </Button>
+
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="h-8 w-8 text-xs font-bold"
+                >
+                  {page + 1}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  aria-label="Next page"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage(totalPages - 1)}
+                  aria-label="Last page"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m6 17 5-5-5-5" /><path d="m13 17 5-5-5-5" />
+                  </svg>
+                </Button>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
-                disabled={page === 0}
-                onClick={() => setPage(0)}
-              >
-                <ChevronsLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
-                disabled={page === 0}
-                onClick={() => setPage(p => p - 1)}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                className="h-9 w-9 rounded-lg bg-[#800000] hover:bg-[#600000] text-white font-bold shadow-sm"
-              >
-                {page + 1}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage(p => p + 1)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage(totalPages - 1)}
-              >
-                <ChevronsRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

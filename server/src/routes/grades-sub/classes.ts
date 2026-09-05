@@ -18,7 +18,6 @@ import {
   resolveCurrentTerm,
   resolveEffectiveWeightsForClassAssignment,
   isHomeroomGuidanceSubjectCode,
-  HG_QUALITATIVE_DESCRIPTORS,
   calculateGrades,
   createGradeSnapshot,
 } from "./helpers";
@@ -213,7 +212,6 @@ export default function registerClasses(router: Router): void {
           quarterlyAssessMax,
           qaDescription,
           qaDate,
-          qualitativeDescriptor,
         } = req.body;
 
         const teacher = await prisma.teacher.findUnique({
@@ -293,14 +291,9 @@ export default function registerClasses(router: Router): void {
         }
 
         const isHG = isHomeroomGuidanceSubjectCode(classAssignment.subject.code);
-
         if (isHG) {
-          if (!qualitativeDescriptor || !HG_QUALITATIVE_DESCRIPTORS.includes(qualitativeDescriptor)) {
-            res.status(400).json({
-              message: `Homeroom Guidance requires a qualitative descriptor: ${HG_QUALITATIVE_DESCRIPTORS.join(', ')}`,
-            });
-            return;
-          }
+          res.status(400).json({ message: "Homeroom Guidance is a location, not a subject. Cannot save grades for HG." });
+          return;
         }
 
         let writtenWorkPS: number | null = null;
@@ -314,45 +307,32 @@ export default function registerClasses(router: Router): void {
           return;
         }
 
-        const mergedWrittenWorkScores = !isHG
-          ? ((writtenWorkScores !== undefined
+        const mergedWrittenWorkScores = (writtenWorkScores !== undefined
               ? writtenWorkScores
-              : (existingGrade?.writtenWorkScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null)
-          : null;
+              : (existingGrade?.writtenWorkScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
 
-        const mergedPerfTaskScores = !isHG
-          ? ((perfTaskScores !== undefined
+        const mergedPerfTaskScores = (perfTaskScores !== undefined
               ? perfTaskScores
-              : (existingGrade?.perfTaskScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null)
-          : null;
+              : (existingGrade?.perfTaskScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
 
-        const mergedQuarterlyAssessScore = !isHG
-          ? (quarterlyAssessScore !== undefined
+        const mergedQuarterlyAssessScore = (quarterlyAssessScore !== undefined
               ? quarterlyAssessScore
-              : (existingGrade?.quarterlyAssessScore ?? 0))
-          : null;
+              : (existingGrade?.quarterlyAssessScore ?? 0));
 
-        const mergedQuarterlyAssessMax = !isHG
-          ? (quarterlyAssessMax !== undefined
+        const mergedQuarterlyAssessMax = (quarterlyAssessMax !== undefined
               ? quarterlyAssessMax
-              : (existingGrade?.quarterlyAssessMax ?? 100))
-          : null;
+              : (existingGrade?.quarterlyAssessMax ?? 100));
 
-        const mergedQaDescription = !isHG
-          ? (qaDescription !== undefined
+        const mergedQaDescription = (qaDescription !== undefined
               ? qaDescription
-              : (existingGrade?.qaDescription ?? null))
-          : null;
+              : (existingGrade?.qaDescription ?? null));
 
-        const mergedQaDate = !isHG
-          ? (qaDate !== undefined
+        const mergedQaDate = (qaDate !== undefined
               ? qaDate
-              : (existingGrade?.qaDate ?? null))
-          : null;
+              : (existingGrade?.qaDate ?? null));
 
-        if (!isHG) {
-          const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
-          const calculated = await calculateGrades(
+        const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
+        const calculated = await calculateGrades(
             mergedWrittenWorkScores,
             mergedPerfTaskScores,
             mergedQuarterlyAssessScore,
@@ -366,24 +346,8 @@ export default function registerClasses(router: Router): void {
           quarterlyAssessPS = calculated.quarterlyAssessPS;
           initialGrade = calculated.initialGrade;
           quarterlyGrade = calculated.quarterlyGrade;
-        }
 
-        const gradePayload = isHG
-          ? {
-              writtenWorkScores: Prisma.JsonNull,
-              perfTaskScores: Prisma.JsonNull,
-              quarterlyAssessScore: null,
-              quarterlyAssessMax: null,
-              writtenWorkPS: null,
-              perfTaskPS: null,
-              quarterlyAssessPS: null,
-              initialGrade: null,
-              quarterlyGrade: null,
-              qaDescription: null,
-              qaDate: null,
-              qualitativeDescriptor,
-            }
-          : {
+        const gradePayload = {
             writtenWorkScores: mergedWrittenWorkScores,
             perfTaskScores: mergedPerfTaskScores,
             quarterlyAssessScore: mergedQuarterlyAssessScore,
@@ -451,7 +415,7 @@ export default function registerClasses(router: Router): void {
             { id: teacherUser.id, firstName: teacherUser.firstName, lastName: teacherUser.lastName, role: teacherUser.role },
             `Grade: ${student?.firstName || ""} ${student?.lastName || ""} — ${classAssignment.subject.name} (${term})`,
             "Grades",
-            `${isNew ? "Recorded" : "Updated"} grade for ${student?.firstName || ""} ${student?.lastName || ""} in ${classAssignment.subject.name} (${term}): ${isHG ? qualitativeDescriptor : quarterlyGrade}`,
+            `${isNew ? "Recorded" : "Updated"} grade for ${student?.firstName || ""} ${student?.lastName || ""} in ${classAssignment.subject.name} (${term}): ${quarterlyGrade}`,
             (req.ip as string) || req.socket?.remoteAddress,
             AuditSeverity.INFO,
             grade.id

@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import {
   Users,
-  Search,
   Plus,
   Eye,
   Edit,
-  MoreHorizontal,
   Shield,
   UserCheck,
   ClipboardList,
@@ -19,7 +17,7 @@ import {
   Trash2,
   Save,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,13 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -58,6 +49,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { adminApi } from "@/lib/api";
 import type { AdminUser } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { StatCard } from "@/components/layout/StatCard";
+import { TableToolbar } from "@/components/data-table/TableToolbar";
+import { EmptyState } from "@/components/data-table/TableStates";
 
 const roleLabels: Record<string, string> = {
   ADMIN: "Administrator",
@@ -108,7 +103,6 @@ export default function UserManagement() {
   const [selectedRole, setSelectedRole] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
 
-  // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -246,8 +240,8 @@ export default function UserManagement() {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-          <p className="text-gray-500">Loading users...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading users...</p>
         </div>
       </div>
     );
@@ -258,7 +252,7 @@ export default function UserManagement() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-12 h-12 text-amber-500" />
-          <p className="text-gray-700 font-medium">{error}</p>
+          <p className="text-foreground font-medium">{error}</p>
           <Button onClick={fetchUsers} variant="outline" className="gap-2">
             <RefreshCw className="w-4 h-4" />
             Retry
@@ -269,169 +263,94 @@ export default function UserManagement() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#111827' }}>
-            User Management
-          </h1>
-          <p style={{ color: '#6b7280' }} className="mt-1">
-            Manage system users and their access permissions
-          </p>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="User Management"
+        description="Manage system users and their access permissions"
+        actions={
+          <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Add User
+          </Button>
+        }
+      />
 
-      {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Total Users</p>
-                <p className="text-2xl font-bold" style={{ color: '#111827' }}>{userCounts.total}</p>
-              </div>
-              <div className="p-2 rounded-lg bg-gray-100">
-                <Users className="w-5 h-5 text-gray-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Admins</p>
-                <p className="text-2xl font-bold" style={{ color: colors.primary }}>{userCounts.admin}</p>
-              </div>
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.primary}15` }}>
-                <Shield className="w-5 h-5" style={{ color: colors.primary }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Teachers</p>
-                <p className="text-2xl font-bold" style={{ color: colors.secondary }}>{userCounts.teacher}</p>
-              </div>
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.secondary}15` }}>
-                <UserCheck className="w-5 h-5" style={{ color: colors.secondary }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Registrars</p>
-                <p className="text-2xl font-bold" style={{ color: colors.accent }}>{userCounts.registrar}</p>
-              </div>
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.accent}15` }}>
-                <ClipboardList className="w-5 h-5" style={{ color: colors.accent }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Active</p>
-                <p className="text-2xl font-bold" style={{ color: colors.secondary }}>{userCounts.active}</p>
-              </div>
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.secondary}15` }}>
-                <CheckCircle2 className="w-5 h-5" style={{ color: colors.secondary }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Users" value={userCounts.total} icon={<Users className="w-5 h-5 text-muted-foreground" />} />
+        <StatCard label="Admins" value={userCounts.admin} icon={<Shield className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
+        <StatCard label="Teachers" value={userCounts.teacher} icon={<UserCheck className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
+        <StatCard label="Registrars" value={userCounts.registrar} icon={<ClipboardList className="w-5 h-5" style={{ color: colors.accent }} />} iconClassName="bg-accent/10" />
+        <StatCard label="Active" value={userCounts.active} icon={<CheckCircle2 className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
       </div>
 
-      {/* Users Table */}
-      <Card className="border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white p-0">
-        <CardHeader className="border-b border-gray-100">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <CardTitle className="text-lg" style={{ color: '#111827' }}>All Users</CardTitle>
-              <CardDescription>View and manage all system users</CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search users..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-64 rounded-xl border-gray-200"
-                />
-              </div>
-              <Select value={selectedRole} onValueChange={(val) => val && setSelectedRole(val)}>
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="ADMIN">Administrator</SelectItem>
-                  <SelectItem value="TEACHER">Teacher</SelectItem>
-                  <SelectItem value="REGISTRAR">Registrar</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={selectedStatus} onValueChange={(val) => val && setSelectedStatus(val)}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
+      <Card className="border-0 shadow-lg shadow-muted/50 rounded-xl bg-card p-0">
+        <div className="px-6 py-4 border-b border-border">
+          <TableToolbar
+            searchPlaceholder="Search users..."
+            searchValue={searchQuery}
+            onSearchChange={setSearchQuery}
+            filters={[
+              {
+                label: "Role",
+                value: selectedRole,
+                onChange: setSelectedRole,
+                options: [
+                  { label: "All Roles", value: "all" },
+                  { label: "Administrator", value: "ADMIN" },
+                  { label: "Teacher", value: "TEACHER" },
+                  { label: "Registrar", value: "REGISTRAR" },
+                ],
+              },
+              {
+                label: "Status",
+                value: selectedStatus,
+                onChange: setSelectedStatus,
+                options: [
+                  { label: "All Status", value: "all" },
+                  { label: "Active", value: "Active" },
+                  { label: "Inactive", value: "Inactive" },
+                ],
+              },
+            ]}
+          />
+        </div>
+        <div className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50/80">
-                  <TableHead className="font-bold text-gray-700 pl-[52px]">User</TableHead>
-                  <TableHead className="font-bold text-gray-700">Employee ID</TableHead>
-                  <TableHead className="font-bold text-gray-700">Role</TableHead>
-                  <TableHead className="font-bold text-gray-700">Status</TableHead>
-                  <TableHead className="font-bold text-gray-700">Last Active</TableHead>
-                  <TableHead className="font-bold text-gray-700 text-right">Actions</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-[52px]">User</TableHead>
+                  <TableHead>Employee ID</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Last Active</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center">
-                      <div className="flex flex-col items-center gap-2 text-gray-500">
-                        <Users className="w-8 h-8 text-gray-300" />
-                        <p>No users found</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  <EmptyState
+                    title="No users found"
+                    hint="Try adjusting your search or filters"
+                    icon={<Users className="w-10 h-10 text-muted-foreground/50" />}
+                    columnCount={6}
+                  />
                 ) : (
                   filteredUsers.map((user) => (
-                    <TableRow key={user.id} className="hover:bg-gray-50/50">
+                    <TableRow key={user.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <Avatar className={`h-10 w-10 ring-2 ring-offset-2 ring-gray-200`}>
+                          <Avatar className="h-10 w-10 ring-2 ring-offset-2 ring-border">
                             <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: colors.primary }}>
                               {(user.firstName?.[0] || "U")}{(user.lastName?.[0] || "")}
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-semibold" style={{ color: '#111827' }}>
+                            <p className="font-semibold text-foreground">
                               {user.firstName || ""} {user.lastName || ""}
                             </p>
                             {user.email && (
-                              <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Mail className="w-3 h-3" />
                                 {user.email}
                               </div>
@@ -439,7 +358,7 @@ export default function UserManagement() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-sm text-gray-600">
+                      <TableCell className="font-mono text-sm text-muted-foreground">
                         {user.teacher?.employeeId || user.username}
                       </TableCell>
                       <TableCell>
@@ -455,14 +374,14 @@ export default function UserManagement() {
                             Active
                           </Badge>
                         ) : (
-                          <Badge className="bg-gray-100 text-gray-600 border-0 font-medium">
+                          <Badge className="bg-muted text-muted-foreground border-0 font-medium">
                             <XCircle className="w-3 h-3 mr-1" />
                             Inactive
                           </Badge>
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-gray-500">
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Calendar className="w-3.5 h-3.5" />
                           {user.lastActive}
                         </div>
@@ -471,10 +390,10 @@ export default function UserManagement() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 rounded-lg gap-1.5 px-3 font-semibold hover:bg-slate-100 transition-colors"
+                          className="h-8 gap-1.5 px-3"
                           onClick={() => openViewDialog(user)}
                         >
-                          <Eye className="w-4 h-4 text-slate-500" />
+                          <Eye className="w-4 h-4" />
                           View Details
                         </Button>
                       </TableCell>
@@ -484,7 +403,7 @@ export default function UserManagement() {
               </TableBody>
             </Table>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* Create User Dialog */}
@@ -492,8 +411,8 @@ export default function UserManagement() {
         <DialogContent className="sm:max-w-[500px] rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.primary}15` }}>
-                <Plus className="w-5 h-5" style={{ color: colors.primary }} />
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Plus className="w-5 h-5 text-primary" />
               </div>
               Create New User
             </DialogTitle>
@@ -598,8 +517,8 @@ export default function UserManagement() {
             <Button variant="outline" onClick={() => setIsCreateOpen(false)} className="rounded-xl">
               Cancel
             </Button>
-            <Button 
-              onClick={handleCreate} 
+            <Button
+              onClick={handleCreate}
               disabled={saving || !formData.username || !formData.password || !formData.firstName || !formData.lastName || (formData.role === "TEACHER" && !formData.employeeId)}
               className="gap-2 text-white rounded-xl"
               style={{ backgroundColor: colors.primary }}
@@ -616,8 +535,8 @@ export default function UserManagement() {
         <DialogContent className="sm:max-w-[500px] rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.primary}15` }}>
-                <Edit className="w-5 h-5" style={{ color: colors.primary }} />
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Edit className="w-5 h-5 text-primary" />
               </div>
               Edit User
             </DialogTitle>
@@ -716,8 +635,8 @@ export default function UserManagement() {
             <Button variant="outline" onClick={() => setIsEditOpen(false)} className="rounded-xl">
               Cancel
             </Button>
-            <Button 
-              onClick={handleUpdate} 
+            <Button
+              onClick={handleUpdate}
               disabled={saving || !formData.username || !formData.firstName || !formData.lastName}
               className="gap-2 text-white rounded-xl"
               style={{ backgroundColor: colors.primary }}
@@ -734,8 +653,8 @@ export default function UserManagement() {
         <DialogContent className="sm:max-w-[450px] rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.secondary}15` }}>
-                <Eye className="w-5 h-5" style={{ color: colors.secondary }} />
+              <div className="p-2 rounded-lg bg-secondary/10">
+                <Eye className="w-5 h-5 text-secondary" />
               </div>
               User Details
             </DialogTitle>
@@ -749,7 +668,7 @@ export default function UserManagement() {
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h3 className="text-xl font-bold" style={{ color: '#111827' }}>
+                  <h3 className="text-xl font-bold text-foreground">
                     {selectedUser.firstName} {selectedUser.lastName}
                   </h3>
                   <Badge className="border-0 mt-1" style={{ backgroundColor: `${colors.primary}${roleOpacity[selectedUser.role] || '18'}`, color: colors.primary }}>
@@ -758,28 +677,28 @@ export default function UserManagement() {
                   </Badge>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
                 <div>
-                  <p className="text-xs text-gray-500">Employee ID</p>
+                  <p className="text-xs text-muted-foreground">Employee ID</p>
                   <p className="font-mono font-medium">{selectedUser.teacher?.employeeId || selectedUser.username}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="text-xs text-muted-foreground">Email</p>
                   <p className="font-medium">{selectedUser.email || "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Status</p>
-                  <Badge className={selectedUser.status === "Active" ? "border-0" : "bg-gray-100 text-gray-600 border-0"} style={selectedUser.status === "Active" ? { backgroundColor: `${colors.primary}15`, color: colors.primary } : undefined}>
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <Badge className={selectedUser.status === "Active" ? "border-0" : "bg-muted text-muted-foreground border-0"} style={selectedUser.status === "Active" ? { backgroundColor: `${colors.primary}15`, color: colors.primary } : undefined}>
                     {selectedUser.status}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Last Active</p>
+                  <p className="text-xs text-muted-foreground">Last Active</p>
                   <p className="font-medium">{selectedUser.lastActive}</p>
                 </div>
                 {selectedUser.teacher?.specialization && (
                   <div className="col-span-2">
-                    <p className="text-xs text-gray-500">Specialization</p>
+                    <p className="text-xs text-muted-foreground">Specialization</p>
                     <p className="font-medium">{selectedUser.teacher.specialization}</p>
                   </div>
                 )}
@@ -798,9 +717,9 @@ export default function UserManagement() {
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent className="sm:max-w-[400px] rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
-              <div className="p-2 rounded-lg bg-red-100">
-                <Trash2 className="w-5 h-5 text-red-600" />
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <Trash2 className="w-5 h-5 text-destructive" />
               </div>
               Delete User
             </DialogTitle>
@@ -810,7 +729,7 @@ export default function UserManagement() {
           </DialogHeader>
           {selectedUser && (
             <div className="py-4">
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-muted">
                 <Avatar className="h-10 w-10">
                   <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: colors.primary }}>
                     {(selectedUser.firstName?.[0] || "U")}{(selectedUser.lastName?.[0] || "")}
@@ -818,7 +737,7 @@ export default function UserManagement() {
                 </Avatar>
                 <div>
                   <p className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</p>
-                  <p className="text-sm text-gray-500">@{selectedUser.username}</p>
+                  <p className="text-sm text-muted-foreground">@{selectedUser.username}</p>
                 </div>
               </div>
             </div>
@@ -827,7 +746,7 @@ export default function UserManagement() {
             <Button variant="outline" onClick={() => setIsDeleteOpen(false)} className="rounded-xl">
               Cancel
             </Button>
-            <Button 
+            <Button
               variant="destructive"
               onClick={handleDelete}
               disabled={saving}

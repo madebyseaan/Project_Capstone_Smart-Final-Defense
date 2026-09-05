@@ -36,9 +36,6 @@ import {
   mapGradeLevel,
   resolveSubjectCode,
   normalizeSubjectLabel,
-  ensureHomeroomGuidanceLabel,
-  HOMEROOM_GUIDANCE_LABEL,
-  HOMEROOM_GUIDANCE_MINUTES,
 } from './atlasUtils';
 import { atlasGet, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID } from './sync/httpClient';
 import {
@@ -456,7 +453,6 @@ export async function syncTeacherOnLogin(
         logger.warn(`[TeacherSync] Atlas published schedule lookup failed: ${e?.message ?? e}`);
       }
 
-      const homeroomLabelUpdated = new Set<string>();
       const desiredAssignmentPairs = new Set<string>();
       const rememberDesiredAssignment = (subjectId: string, sectionId: string) => {
         desiredAssignmentPairs.add(`${subjectId}:${sectionId}`);
@@ -522,8 +518,8 @@ export async function syncTeacherOnLogin(
             result.errors.push(`MISSING SUBJECT MAPPING: Atlas code "${entry.subjectCode}" (resolved "${smartCode}") - add to SMART subjects`);
             continue;
           }
-          await ensureHomeroomGuidanceLabel(subject, homeroomLabelUpdated);
-          const teachingMinutes = subject.code.startsWith('HG') ? HOMEROOM_GUIDANCE_MINUTES : null;
+          if (subject.code.toUpperCase().startsWith('HG')) { continue; }
+          const teachingMinutes = null;
           rememberDesiredAssignment(subject.id, section.id);
           try {
             await (prisma.classAssignment as any).upsert({
@@ -625,8 +621,8 @@ export async function syncTeacherOnLogin(
               continue;
             }
 
-            await ensureHomeroomGuidanceLabel(subject, homeroomLabelUpdated);
-            const teachingMinutes = subject.code.startsWith('HG') ? HOMEROOM_GUIDANCE_MINUTES : null;
+            if (subject.code.toUpperCase().startsWith('HG')) { continue; }
+            const teachingMinutes = null;
             rememberDesiredAssignment(subject.id, section.id);
 
             try {
@@ -727,8 +723,8 @@ export async function syncTeacherOnLogin(
             continue;
           }
 
-          await ensureHomeroomGuidanceLabel(subject, homeroomLabelUpdated);
-          const teachingMinutes = subject.code.startsWith('HG') ? HOMEROOM_GUIDANCE_MINUTES : null;
+          if (subject.code.toUpperCase().startsWith('HG')) { continue; }
+          const teachingMinutes = null;
           rememberDesiredAssignment(subject.id, section.id);
 
           try {
@@ -770,7 +766,7 @@ export async function syncTeacherOnLogin(
             `/faculty/advisers?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${atlasSchoolYearId}`,
           );
           const atlasAdvisers: any[] = advisersData?.advisers ?? advisersData?.data ?? [];
-          let thisAdviser = atlasAdvisers.find(
+          const thisAdviser = atlasAdvisers.find(
             (a: any) => String(a.facultyId ?? a.teacherId ?? '') === String(atlasMember!.id),
           );
 

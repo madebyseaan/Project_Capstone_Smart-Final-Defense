@@ -12,6 +12,7 @@ import { getRecentSyncHistory, runUnifiedSync } from "../../lib/syncCoordinator"
 import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
 import { getActiveTermLabels, invalidateSchoolYearCache } from "../../lib/schoolYearResolver";
+import { syncActiveYearSnapshot } from "../../lib/schoolSettingsSnapshot";
 import { logger } from "../../lib/logger";
 import { validate } from "../../middleware/validate";
 import { setYearLock, setTermLock } from "../../lib/gradeLocks";
@@ -119,6 +120,7 @@ export default function (router: Router) {
         schoolId,
         division,
         region,
+        schoolHeadName,
         address,
         contactNumber,
         email,
@@ -151,6 +153,7 @@ export default function (router: Router) {
           schoolId,
           division,
           region,
+          schoolHeadName: schoolHeadName || null,
           address,
           contactNumber,
           email,
@@ -181,6 +184,7 @@ export default function (router: Router) {
           schoolId,
           division,
           region,
+          schoolHeadName: schoolHeadName || null,
           address,
           contactNumber,
           email,
@@ -206,6 +210,9 @@ export default function (router: Router) {
           gradeSnapshotRetentionDays,
         },
       });
+
+      // Keep active year's snapshot in step with admin edits (W2)
+      await syncActiveYearSnapshot();
 
       await createAuditLog(
         AuditAction.CONFIG,

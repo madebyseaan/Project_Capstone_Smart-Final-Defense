@@ -10,6 +10,7 @@
 import { prisma } from "./prisma";
 import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE } from "./promotion";
 import { logger } from "./logger";
+import { getSchoolIdentityForYear } from "./schoolSettingsSnapshot";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,6 +67,7 @@ export interface SF5Data {
     division: string;
     region: string;
     district: string;
+    schoolHeadName?: string;
   };
 }
 
@@ -104,8 +106,8 @@ export async function composeSF5(
   });
   if (!section) throw new Error("Section not found");
 
-  // 2. Fetch school settings
-  const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+  // 2. Fetch school settings from year snapshot (W6: fallback handled)
+  const schoolIdentity = await getSchoolIdentityForYear(schoolYearLabel);
 
   // 3. Fetch enrollments (ENROLLED only — exclude DROPPED/TRANSFERRED per DepEd guidelines)
   const enrollments = await prisma.enrollment.findMany({
@@ -161,7 +163,7 @@ export async function composeSF5(
         }
         return {
           subjectCode: ca.subject.code,
-          subjectName: ca.subject.name,
+          subjectName: ca.subject.displayName ?? ca.subject.name,
           T1: terms.T1,
           T2: terms.T2,
           T3: terms.T3,
@@ -313,11 +315,12 @@ export async function composeSF5(
     students: sorted,
     summary,
     schoolSettings: {
-      schoolName: settings?.schoolName ?? "",
-      schoolId: settings?.schoolId ?? "",
-      division: settings?.division ?? "",
-      region: settings?.region ?? "",
+      schoolName: schoolIdentity.schoolName,
+      schoolId: schoolIdentity.schoolId,
+      division: schoolIdentity.division,
+      region: schoolIdentity.region,
       district: "", // No district field in SystemSettings
+      schoolHeadName: schoolIdentity.schoolHeadName,
     },
   };
 }

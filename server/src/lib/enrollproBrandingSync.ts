@@ -19,6 +19,7 @@ import { prisma } from "./prisma";
 import { getEnrollProPublicSettings, getIntegrationV1ActiveTerm, getIntegrationV1ActiveSchoolYear } from "./enrollproClient";
 import { ensureSchoolYearFromEnrollPro, invalidateSchoolYearCache } from "./schoolYearResolver";
 import { broadcastSettingsUpdate } from "./sseManager";
+import { syncActiveYearSnapshot } from "./schoolSettingsSnapshot";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -122,6 +123,7 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
   };
 
   if (epSettings.schoolName) updateData.schoolName = epSettings.schoolName;
+  if (epSettings.schoolHeadName) updateData.schoolHeadName = epSettings.schoolHeadName;
   if (logoUrl) updateData.logoUrl = logoUrl;
   if (epSettings.activeSchoolYearLabel) updateData.currentSchoolYear = epSettings.activeSchoolYearLabel;
   if (epSettings.depedEmail) updateData.email = epSettings.depedEmail;
@@ -186,11 +188,9 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
 
   // Pull active term and school year from EnrollPro's master configuration node
   // Mandate: dependent microservices must query this on every sync/session init
+  let activeSY: { id: number; yearLabel: string } | null = null;
   try {
-    const [activeTermData, activeSY] = await Promise.all([
-      getIntegrationV1ActiveTerm(),
-      getIntegrationV1ActiveSchoolYear().catch(() => null),
-    ]);
+    const activeTermData = await getIntegrationV1ActiveTerm().catch(() => null);
     if (activeTermData?.activeTerm) {
       const termUpper = activeTermData.activeTerm.toUpperCase();
       if (['T1', 'T2', 'T3'].includes(termUpper)) {
@@ -198,24 +198,37 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
         logger.info(`[BrandingSync] Synced active term from EnrollPro: ${termUpper} (schoolYearId=${activeTermData.schoolYearId})`);
       }
     }
-    // Align SchoolYear record to EnrollPro (source of truth)
-    if (activeSY?.id && activeSY?.yearLabel) {
-      await ensureSchoolYearFromEnrollPro(activeSY.id, activeSY.yearLabel);
-    }
+    activeSY = await getIntegrationV1ActiveSchoolYear().catch(() => null);
   } catch (err: any) {
     logger.warn(`[BrandingSync] Active term/school-year sync failed (non-fatal): ${err.message}`);
   }
 
+  // Upsert settings FIRST so new branding (schoolName, schoolHeadName) is written
+  // before ensureSchoolYearFromEnrollPro creates a new year (which snapshots the settings).
   const settings = await prisma.systemSettings.upsert({
     where: { id: "main" },
     update: updateData,
     create: { id: "main", ...updateData },
   });
 
+  // Now align SchoolYear record to EnrollPro (source of truth) — AFTER the upsert
+  // so the snapshot captures the CURRENT year's branding, not the previous year's.
+  // This ordering bugfix ensures W1: snapshot set once at creation, post-upsert.
+  try {
+    if (activeSY?.id && activeSY?.yearLabel) {
+      await ensureSchoolYearFromEnrollPro(activeSY.id, activeSY.yearLabel);
+    }
+  } catch (err: any) {
+    logger.warn(`[BrandingSync] School year alignment failed (non-fatal): ${err.message}`);
+  }
+
   // Invalidate school year cache if the year changed
   if (epSettings.activeSchoolYearLabel) {
     invalidateSchoolYearCache();
   }
+
+  // Keep active year's snapshot in step with new branding (W2)
+  await syncActiveYearSnapshot();
 
   // Push to all connected SSE clients so the UI updates immediately
   broadcastSettingsUpdate(settings);

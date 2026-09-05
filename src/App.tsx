@@ -32,7 +32,7 @@ const RemedialTracker = lazy(() => import('./pages/registrar/RemedialTracker'))
 const SectionRosterViewer = lazy(() => import('./pages/registrar/SectionRosterViewer'))
 const EOSYFinalization = lazy(() => import('./pages/registrar/EOSYFinalization'))
 const AlumniStudents = lazy(() => import('./pages/registrar/AlumniStudents'))
-const TeachingLoad = lazy(() => import('./pages/registrar/TeachingLoad'))
+const Transferees = lazy(() => import('./pages/registrar/Transferees'))
 
 // Admin pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'))
@@ -89,7 +89,7 @@ function App() {
         <Route path="roster" element={<SectionRosterViewer />} />
         <Route path="eosy" element={<EOSYFinalization />} />
         <Route path="alumni" element={<AlumniStudents />} />
-        <Route path="teaching-load" element={<TeachingLoad />} />
+        <Route path="transferees" element={<Transferees />} />
       </Route>
 
       {/* Admin routes */}

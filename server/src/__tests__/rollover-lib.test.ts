@@ -21,7 +21,7 @@ const YEAR_A = "2098-2099";
 const YEAR_B = "2099-2100";
 
 // Captured original SystemSettings for D1 regression guard
-let originalSettings: { schoolYearId: string | null; currentSchoolYear: string | null } | null = null;
+const originalSettings: { schoolYearId: string | null; currentSchoolYear: string | null } | null = null;
 
 // IDs generated during seed
 let schoolYearAId = "";

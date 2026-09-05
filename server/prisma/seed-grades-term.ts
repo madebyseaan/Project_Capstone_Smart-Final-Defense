@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaClient, Term, GradeStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { makeTransmuter, resolveCanonicalWeights } from "./canonicalGrade";
 
 const connectionString = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({
@@ -41,27 +42,9 @@ const TIER_LABELS: Record<Tier, string> = {
   FAILED: "Failed — Retention Candidate",
 };
 
-function transmute(initialGrade: number): number {
-  const r = Math.round(initialGrade * 100) / 100;
-  if (r >= 99.5) return 100;
-  const t: [number, number, number][] = [
-    [97.5, 99.49, 99], [96.0, 97.49, 98], [95.0, 95.99, 97], [94.0, 94.99, 96],
-    [93.0, 93.99, 95], [92.0, 92.99, 94], [91.0, 91.99, 93], [90.0, 90.99, 92],
-    [89.0, 89.99, 91], [88.0, 88.99, 90], [87.0, 87.99, 89], [86.0, 86.99, 88],
-    [85.0, 85.99, 87], [84.0, 84.99, 86], [83.0, 83.99, 85], [82.0, 82.99, 84],
-    [81.0, 81.99, 83], [80.0, 80.99, 82], [79.0, 79.99, 81], [78.0, 78.99, 80],
-    [77.0, 77.99, 79], [76.0, 76.99, 78], [75.0, 75.99, 77], [73.0, 74.99, 76],
-    [70.0, 72.99, 75], [68.0, 69.99, 74], [66.0, 67.99, 73], [64.0, 65.99, 72],
-    [62.0, 63.99, 71], [60.0, 61.99, 70], [58.0, 59.99, 69], [56.0, 57.99, 68],
-    [54.0, 55.99, 67], [52.0, 53.99, 66], [50.0, 51.99, 65], [48.0, 49.99, 64],
-    [46.0, 47.99, 63], [43.0, 45.99, 62], [40.0, 42.99, 61], [25.0, 39.99, 60],
-    [0.0, 24.99, 60],
-  ];
-  for (const [min, max, grade] of t) {
-    if (r >= min && r <= max) return grade;
-  }
-  return 60;
-}
+// Canonical transmuter — loaded from the DB TransmutationEntry table in main()
+// so seeded grades always match the admin-configured table.
+let transmute: (initialGrade: number) => number;
 
 function findInitialGradeForTarget(targetQG: number): number {
   let low = 0;
@@ -234,6 +217,16 @@ async function main() {
   const schoolYearLabel = await resolveSchoolYear();
   console.log(`Active school year: ${schoolYearLabel}\n`);
 
+  // Load canonical grading config from the DB so seeded grades match what the
+  // app computes (class record ledger recompute + SF9/SF10 display)
+  const transmutationTable = await prisma.transmutationEntry.findMany({ orderBy: { minGrade: "asc" } });
+  if (transmutationTable.length === 0) {
+    console.error("TransmutationEntry table is empty — run `npm run prisma:seed` first.");
+    process.exit(1);
+  }
+  transmute = makeTransmuter(transmutationTable);
+  const gradingConfigs = await prisma.gradingConfig.findMany();
+
   let adminUserId: string | null = null;
   if (args.finalized) {
     const adminUser = await prisma.user.findFirst({ where: { role: "ADMIN", username: "admin" } });
@@ -321,11 +314,7 @@ async function main() {
       let sectionGrades = 0;
       for (const ca of cas) {
         const isHG = ca.subject.code.startsWith("HG");
-        const weights = {
-          ww: ca.subject.writtenWorkWeight ?? 20,
-          pt: ca.subject.perfTaskWeight ?? 50,
-          qa: ca.subject.quarterlyAssessWeight ?? 30,
-        };
+        const weights = resolveCanonicalWeights(ca.subject, gradingConfigs);
 
         for (const enrollment of sorted) {
           const tier = studentTiers.get(enrollment.studentId) ?? "AVERAGE";

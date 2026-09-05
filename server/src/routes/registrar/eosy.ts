@@ -7,6 +7,7 @@ import { AuditAction, AuditSeverity } from "@prisma/client";
 import {
   computeSectionPromotions,
   finalizeSectionEosy,
+  unfinalizeSectionEosy,
   listUnfinalizedSections,
 } from "../../lib/promotion";
 import {
@@ -15,6 +16,7 @@ import {
   getEnrollProEosySectionRecords,
   getEnrollProEosySF5,
   getEnrollProEosySF6,
+  getEnrollProSchoolYears,
 } from "../../lib/enrollproClient";
 import { logger } from "../../lib/logger";
 import { withSectionLock } from "../../lib/sectionLock";
@@ -26,7 +28,6 @@ router.get("/eosy/school-years", authenticateToken, async (req: AuthRequest, res
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
   try {
-    const { getEnrollProSchoolYears } = require("../../lib/enrollproClient");
     const data = await getEnrollProSchoolYears();
     res.json(data);
   } catch (err: any) {
@@ -194,6 +195,54 @@ router.get("/eosy/unfinalized-sections", authenticateToken, async (req: AuthRequ
   } catch (err: any) {
     logger.error("[registrar/eosy/unfinalized-sections]", err.message);
     res.status(500).json({ message: "Failed to list unfinalized sections" });
+  }
+});
+
+// POST /registrar/eosy/unfinalize — undo EOSY finalization for a section
+router.post("/eosy/unfinalize", authenticateToken, validate(eosyFinalizeSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied. Registrar only." }); return; }
+  try {
+    const { sectionId, schoolYear } = req.body;
+
+    const result = await withSectionLock(`eosy:${sectionId}:${schoolYear}`, () =>
+      unfinalizeSectionEosy({
+        sectionId,
+        schoolYear,
+        actor: { id: user.id, name: user.username, role: user.role },
+      }),
+    );
+
+    if (result.ok === false) {
+      if (result.error === "SECTION_NOT_FOUND") {
+        res.status(404).json({ message: `Section not found for school year ${schoolYear}` });
+        return;
+      }
+      if (result.error === "NOT_FINALIZED") {
+        res.status(400).json({ message: "Section is not finalized" });
+        return;
+      }
+      if (result.error === "HAS_COMPLETED_REMEDIAL") {
+        res.status(409).json({
+          message: `Unfinalize blocked: ${result.completedCount} completed remedial record(s) exist. Registrar must resolve remedial records first.`,
+          completedCount: result.completedCount,
+        });
+        return;
+      }
+      res.status(400).json({ message: "Cannot unfinalize" });
+      return;
+    }
+
+    res.json({
+      message: `EOSY unfinalize complete: ${result.deletedSnapshots} snapshots, ${result.deletedRemedial} remedial records deleted`,
+      sectionId,
+      schoolYear,
+      deletedSnapshots: result.deletedSnapshots,
+      deletedRemedial: result.deletedRemedial,
+    });
+  } catch (err: any) {
+    logger.error("[registrar/eosy/unfinalize]", err.message);
+    res.status(500).json({ message: "Failed to unfinalize EOSY" });
   }
 });
 

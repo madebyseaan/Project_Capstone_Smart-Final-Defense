@@ -8,6 +8,8 @@ import { createAuditLog } from "../../lib/audit";
 import { getSyncStatus, runAtlasSync } from "../../lib/atlasSync";
 import { getEnrollProSyncStatus, runEnrollProSync } from "../../lib/enrollproSync";
 import { getActiveSchoolYearLabel, invalidateSchoolYearCache } from "../../lib/schoolYearResolver";
+import { readLiveSnapshot } from "../../lib/schoolSettingsSnapshot";
+import { Prisma } from "@prisma/client";
 import { logger } from "../../lib/logger";
 import { validate } from "../../middleware/validate";
 import {
@@ -277,8 +279,9 @@ export default function (router: Router) {
         res.status(404).json({ message: "Subject not found" });
         return;
       }
-      if (subject.code.startsWith('HG') && subject.name !== 'Homeroom Guidance') {
-        await prisma.subject.update({ where: { id: subjectId }, data: { name: 'Homeroom Guidance' } });
+      if (subject.code.toUpperCase().startsWith('HG')) {
+        res.status(400).json({ message: "Homeroom is a location, not a subject. Cannot create HG assignments." });
+        return;
       }
 
       const assignment = await prisma.classAssignment.create({
@@ -287,7 +290,7 @@ export default function (router: Router) {
           subjectId,
           sectionId,
           schoolYear,
-          teachingMinutes: subject.code.startsWith('HG') ? 60 : null,
+          teachingMinutes: null,
         },
         include: {
           teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
@@ -365,6 +368,7 @@ export default function (router: Router) {
           status: "DRAFT",
           startDate: startDate ? new Date(startDate) : null,
           endDate: endDate ? new Date(endDate) : null,
+          schoolSettingsSnapshot: await readLiveSnapshot() as Prisma.InputJsonValue,
         },
       });
       invalidateSchoolYearCache();

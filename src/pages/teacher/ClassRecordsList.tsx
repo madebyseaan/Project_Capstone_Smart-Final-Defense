@@ -7,9 +7,11 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  ClipboardList,
   Filter,
   LayoutGrid,
   List,
+  RefreshCw,
   Search,
   Trash2,
   Users,
@@ -31,6 +33,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { GradeStatusBanner } from "@/components/GradeStatusBanner";
 import { useSyncStream } from "@/hooks/useSyncStream";
 import { GradeDeadlineBanner } from "@/components/GradeDeadlineBanner";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const gradeLevelLabels: Record<string, string> = {
   GRADE_7: "Grade 7",
@@ -93,14 +96,14 @@ function AssignmentCard({
     ? "border border-rose-200 shadow-xl shadow-rose-100/50 hover:shadow-2xl hover:shadow-rose-200"
     : "border-0 shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-indigo-100";
   const cardBg = "bg-white";
-  const sectionText = archived ? "text-rose-500" : "text-slate-500";
-  const mutedText = archived ? "text-rose-400" : "text-slate-400";
+  const sectionText = archived ? "text-rose-500" : "text-muted-foreground";
+  const mutedText = archived ? "text-rose-400" : "text-muted-foreground";
   const iconClass = archived
     ? "w-8 h-8 rounded-lg bg-rose-50 text-rose-500 group-hover:bg-rose-600 group-hover:text-white"
-    : "w-10 h-10 rounded-xl bg-slate-50 text-slate-300 group-hover:bg-indigo-600 group-hover:text-white";
+    : "w-10 h-10 rounded-xl bg-slate-50 text-muted-foreground group-hover:bg-indigo-600 group-hover:text-white";
   const chevronClass = archived
     ? "w-10 h-10 rounded-xl bg-rose-100 text-rose-400"
-    : "w-12 h-12 rounded-2xl bg-slate-50 text-slate-300";
+    : "w-12 h-12 rounded-2xl bg-slate-50 text-muted-foreground";
   const displayWwWeight = assignment.effectiveWeights?.ww ?? assignment.subject.writtenWorkWeight;
   const displayPtWeight = assignment.effectiveWeights?.pt ?? assignment.subject.perfTaskWeight;
   const displayQaWeight = assignment.effectiveWeights?.qa ?? assignment.subject.quarterlyAssessWeight;
@@ -108,7 +111,7 @@ function AssignmentCard({
   return (
     <div className="relative group/card h-full">
       <Link to={`/teacher/records/${assignment.id}`} className="animate-slide-up group block h-full">
-        <Card className={`h-full ${containerClass} transition-all duration-500 ${archived ? 'rounded-[2rem]' : 'rounded-[2.5rem]'} ${cardBg} overflow-hidden flex flex-col relative group-hover:-translate-y-2`}>
+        <Card className={`h-full ${containerClass} transition-all duration-500 rounded-2xl ${cardBg} overflow-hidden flex flex-col relative group-hover:-translate-y-2`}>
           <div
             className={
               archived
@@ -118,7 +121,7 @@ function AssignmentCard({
           />
           <CardHeader className={`${archived ? 'p-6 pb-3' : 'p-8 pb-4'} relative z-10`}>
             <div className={`flex items-start justify-between ${archived ? 'mb-4' : 'mb-8'}`}>
-              <Badge className={`${badgeClass} text-[10px] font-black uppercase tracking-[0.1em] ${archived ? 'px-3 py-1' : 'px-4 py-1.5'} rounded-full`}>
+              <Badge className={`${badgeClass} text-[10px] font-bold uppercase tracking-[0.1em] ${archived ? 'px-3 py-1' : 'px-4 py-1.5'} rounded-full`}>
                 {archived ? "ARCHIVED" : gradeLevelLabels[assignment.section.gradeLevel]}
               </Badge>
               <div className={`${archived ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl'} ${archived ? "bg-rose-50 text-rose-500 group-hover:bg-rose-600 group-hover:text-white" : colors.button} flex items-center justify-center transition-all duration-500 shadow-sm`}>
@@ -127,8 +130,8 @@ function AssignmentCard({
             </div>
 
             <div className="space-y-1">
-              <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${mutedText}`}>Subject Title</p>
-              <h3 className={`${archived ? 'text-lg' : 'text-3xl'} font-semibold text-slate-900 ${titleHover} transition-colors leading-tight`}>
+              <p className={`text-[10px] font-bold uppercase tracking-[0.2em] ${mutedText}`}>Subject Title</p>
+              <h3 className={`${archived ? 'text-lg' : 'text-3xl'} font-semibold text-foreground ${titleHover} transition-colors leading-tight`}>
                 {assignment.subject.name}
               </h3>
             </div>
@@ -154,21 +157,21 @@ function AssignmentCard({
                   <Users className={`${archived ? 'w-4 h-4' : 'w-5 h-5'}`} />
                 </div>
                 <div>
-                  <p className={`text-[10px] font-black uppercase tracking-widest ${mutedText}`}>Enrolled</p>
-                  <p className={`${archived ? 'text-xs' : 'text-sm'} font-black text-slate-900`}>{assignment.section.enrollments?.length || 0} Learners</p>
+                  <p className={`text-[10px] font-bold uppercase tracking-widest ${mutedText}`}>Enrolled</p>
+                  <p className={`${archived ? 'text-xs' : 'text-sm'} font-bold text-foreground`}>{assignment.section.enrollments?.length || 0} Learners</p>
                 </div>
               </div>
 
               <div className="text-right">
-                <p className={`text-[10px] font-black uppercase tracking-widest ${mutedText}`}>Weights</p>
-                <p className={`${archived ? 'text-[10px]' : 'text-xs'} font-black text-slate-900 font-mono tracking-tighter`}>
+                <p className={`text-[10px] font-bold uppercase tracking-widest ${mutedText}`}>Weights</p>
+                <p className={`${archived ? 'text-[10px]' : 'text-xs'} font-bold text-foreground font-mono tracking-tighter`}>
                   {displayWwWeight}/{displayPtWeight}/{displayQaWeight} (TA)
                 </p>
               </div>
             </div>
 
             <div className={`${archived ? 'mt-3' : 'mt-4'} flex items-center justify-between`}>
-              <Badge className={`${archived ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-slate-100 text-slate-500 border-0"} text-[10px] font-black uppercase tracking-widest ${archived ? 'px-2' : 'px-3'}`}>
+              <Badge className={`${archived ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-slate-100 text-muted-foreground border-0"} text-[10px] font-bold uppercase tracking-widest ${archived ? 'px-2' : 'px-3'}`}>
                 {archived ? "Backup" : "Active Record"}
               </Badge>
               <div className={`${chevronClass} flex items-center justify-center transition-all group-hover:translate-x-2`}>
@@ -209,6 +212,24 @@ export default function ClassRecordsList() {
   const [assignmentToDelete, setAssignmentToDelete] = useState<{ id: string; name: string } | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      await advisoryApi.syncFromEnrollPro();
+      setSyncMessage("Sync complete — class records updated.");
+      // Re-fetch classes
+      const classesRes = await gradesApi.getMyClasses();
+      setClasses(classesRes.data);
+    } catch {
+      setSyncMessage("Sync failed. Please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Silent background sync on every page load — pulls fresh data from Atlas
   useEffect(() => {
@@ -272,7 +293,9 @@ export default function ClassRecordsList() {
       gradeLevelLabels[c.section.gradeLevel].toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const activeClasses = filteredClasses.filter((assignment) => assignment.isActive !== false && !assignment.archivedAt);
+  const activeClasses = filteredClasses.filter(
+    (assignment) => assignment.isActive !== false && !assignment.archivedAt && (assignment.section.enrollments?.length ?? 0) > 0
+  );
   const archivedClasses = filteredClasses.filter((assignment) => assignment.isActive === false || !!assignment.archivedAt);
 
   if (loading) {
@@ -288,7 +311,7 @@ export default function ClassRecordsList() {
               style={{ borderColor: colors.primary, borderTopColor: "transparent" }}
             />
           </div>
-          <p className="text-gray-500 font-medium text-lg">Loading class rosters...</p>
+          <p className="text-muted-foreground font-medium text-lg">Loading class rosters...</p>
         </div>
       </div>
     );
@@ -297,7 +320,7 @@ export default function ClassRecordsList() {
   const hasArchived = archivedClasses.length > 0;
 
   return (
-    <div className="space-y-10 animate-fade-in max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
       {/* Grade Submission Deadline Banner */}
       {gradeDeadline && (
         <GradeDeadlineBanner deadline={gradeDeadline} hideLink />
@@ -312,69 +335,70 @@ export default function ClassRecordsList() {
         termLabels={termLabels}
       />
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="p-2.5 rounded-2xl bg-indigo-600 text-white shadow-xl shadow-indigo-100">
-              <BookOpen className="w-6 h-6" />
-            </div>
-            <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[10px] font-black uppercase tracking-widest px-3">
-              {activeClasses.length} ACTIVE CLASSES
-            </Badge>
-            {hasArchived && (
-              <Badge className="bg-rose-600 text-white border-rose-200 text-[10px] font-black uppercase tracking-widest px-3 shadow-lg shadow-rose-100">
-                {archivedClasses.length} BACKUP ARCHIVED
+      {(activeClasses.length > 0 || hasArchived) && (
+        <PageHeader
+          title="Class Records"
+          description="Select a section to manage student performance and mastery"
+          badge={
+            <div className="flex items-center gap-3 flex-wrap">
+              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[10px] font-bold uppercase tracking-widest px-3">
+                {activeClasses.length} ACTIVE CLASSES
               </Badge>
-            )}
-          </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Class Records</h1>
-          <p className="text-slate-500 font-medium text-lg">Select a section to manage student performance and mastery</p>
-        </div>
-      </div>
-
-      <Card className="border-0 shadow-2xl shadow-slate-200/50 bg-white/90 backdrop-blur-md rounded-[2.5rem] overflow-hidden">
-        <CardContent className="p-8">
-          <div className="flex flex-col lg:flex-row gap-6 items-center">
-            <div className="relative flex-1 w-full group">
-              <div className="absolute left-5 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-slate-100 text-slate-400 group-focus-within:bg-indigo-600 group-focus-within:text-white transition-all">
-                <Search className="w-4 h-4" />
-              </div>
-              <Input
-                placeholder="Search by subject, section, or grade..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-16 h-14 bg-slate-50/50 border-0 hover:bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-50 rounded-2xl text-base font-bold transition-all placeholder:text-slate-400"
-              />
+              {hasArchived && (
+                <Badge className="bg-rose-600 text-white border-rose-200 text-[10px] font-bold uppercase tracking-widest px-3 shadow-lg shadow-rose-100">
+                  {archivedClasses.length} BACKUP ARCHIVED
+                </Badge>
+              )}
             </div>
+          }
+        />
+      )}
 
-            <div className="flex items-center gap-4 w-full lg:w-auto">
-              <Button variant="outline" className="h-14 px-8 rounded-2xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all flex-1 lg:flex-none">
-                <Filter className="w-4 h-4 mr-3 text-slate-400" />
-                ADVANCED FILTERS
-              </Button>
+      {(activeClasses.length > 0 || hasArchived) && (
+        <Card className="border border-slate-200/60 bg-white/90 backdrop-blur-md rounded-2xl overflow-hidden">
+          <CardContent className="p-8">
+            <div className="flex flex-col lg:flex-row gap-6 items-center">
+              <div className="relative flex-1 w-full group">
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-slate-100 text-muted-foreground group-focus-within:bg-indigo-600 group-focus-within:text-white transition-all">
+                  <Search className="w-4 h-4" />
+                </div>
+                <Input
+                  placeholder="Search by subject, section, or grade..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-16 h-11 bg-white border-slate-300 hover:border-slate-400 focus:border-red-700 focus:ring-2 focus:ring-red-100 focus:outline-none rounded-xl text-sm font-medium transition-all placeholder:text-slate-400"
+                />
+              </div>
 
-              <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-11 w-11 rounded-xl transition-all ${viewMode === "grid" ? "bg-white text-indigo-600 shadow-md" : "text-slate-400 hover:text-slate-600"}`}
-                  onClick={() => setViewMode("grid")}
-                >
-                  <LayoutGrid className="w-5 h-5" />
+              <div className="flex items-center gap-4 w-full lg:w-auto">
+                <Button variant="outline" className="h-14 px-8 rounded-2xl border-slate-200 text-muted-foreground font-bold hover:bg-slate-50 transition-all flex-1 lg:flex-none">
+                  <Filter className="w-4 h-4 mr-3 text-muted-foreground" />
+                  ADVANCED FILTERS
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-11 w-11 rounded-xl transition-all ${viewMode === "list" ? "bg-white text-indigo-600 shadow-md" : "text-slate-400 hover:text-slate-600"}`}
-                  onClick={() => setViewMode("list")}
-                >
-                  <List className="w-5 h-5" />
-                </Button>
+
+                <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-11 w-11 rounded-xl transition-all ${viewMode === "grid" ? "bg-white text-indigo-600 shadow-md" : "text-muted-foreground hover:text-muted-foreground"}`}
+                    onClick={() => setViewMode("grid")}
+                  >
+                    <LayoutGrid className="w-5 h-5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-11 w-11 rounded-xl transition-all ${viewMode === "list" ? "bg-white text-indigo-600 shadow-md" : "text-muted-foreground hover:text-muted-foreground"}`}
+                    onClick={() => setViewMode("list")}
+                  >
+                    <List className="w-5 h-5" />
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {viewMode === "grid" && (
         <div className="space-y-10">
@@ -397,8 +421,8 @@ export default function ClassRecordsList() {
                     <Archive className="w-6 h-6" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black text-slate-900">Archived Class Records</h2>
-                    <p className="text-slate-500 font-medium">Backup data from previous syncs or manual archives</p>
+                    <h2 className="text-2xl font-bold text-foreground">Archived Class Records</h2>
+                    <p className="text-muted-foreground font-medium">Backup data from previous syncs or manual archives</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -406,7 +430,7 @@ export default function ClassRecordsList() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 text-white h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
+                      className="rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
                       onClick={(e) => {
                         e.stopPropagation();
                         setConfirmDeleteAll(true);
@@ -416,10 +440,10 @@ export default function ClassRecordsList() {
                       DELETE ALL
                     </Button>
                   )}
-                  <Badge className="bg-rose-50 text-rose-600 border-rose-100 font-black px-4 py-2 rounded-xl">
+                  <Badge className="bg-rose-50 text-rose-600 border-rose-100 font-bold px-4 py-2 rounded-xl">
                     {archivedClasses.length} RECORDS
                   </Badge>
-                  <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-50 text-muted-foreground flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all">
                     {isArchivedExpanded ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
                   </div>
                 </div>
@@ -446,43 +470,43 @@ export default function ClassRecordsList() {
       {viewMode === "list" && (
         <div className="space-y-10">
           {activeClasses.length > 0 && (
-            <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
+            <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white">
               <div className="divide-y divide-slate-50">
                 {activeClasses.map((assignment) => (
                   <Link key={assignment.id} to={`/teacher/records/${assignment.id}`} className="block group">
                     <div className="p-8 hover:bg-slate-50/50 transition-all duration-300 flex flex-col sm:flex-row sm:items-center gap-8 group">
-                      <div className="w-16 h-16 rounded-[1.5rem] bg-slate-50 text-slate-300 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-xl group-hover:shadow-indigo-100 transition-all duration-500">
+                      <div className="w-16 h-16 rounded-[1.5rem] bg-slate-50 text-muted-foreground flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-xl group-hover:shadow-indigo-100 transition-all duration-500">
                         <BookOpen className="w-8 h-8" />
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-3 mb-2">
-                          <h3 className="text-2xl font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">{assignment.subject.name}</h3>
-                          <Badge className={`${getGradeColors(assignment.section.gradeLevel).badge} border-0 text-[10px] font-black uppercase tracking-widest px-3`}>
+                          <h3 className="text-2xl font-semibold text-foreground group-hover:text-indigo-600 transition-colors">{assignment.subject.name}</h3>
+                          <Badge className={`${getGradeColors(assignment.section.gradeLevel).badge} border-0 text-[10px] font-bold uppercase tracking-widest px-3`}>
                             {gradeLevelLabels[assignment.section.gradeLevel]}
                           </Badge>
                         </div>
-                        <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">
+                        <p className="text-muted-foreground font-bold text-sm uppercase tracking-widest">
                           Section {assignment.section.name} &bull; {assignment.schoolYear}
                         </p>
                       </div>
 
                       <div className="flex items-center gap-12">
                         <div className="text-center">
-                          <p className="text-2xl font-black text-slate-900 leading-none">{assignment.section.enrollments?.length || 0}</p>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Learners</p>
+                          <p className="text-2xl font-bold text-foreground leading-none">{assignment.section.enrollments?.length || 0}</p>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mt-2">Learners</p>
                         </div>
 
                         <div className="hidden lg:block">
                           <div className="px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 group-hover:bg-white transition-colors">
-                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
-                            <p className="text-sm text-slate-900 font-black font-mono tracking-tighter text-center">
+                            <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
+                            <p className="text-sm text-foreground font-bold font-mono tracking-tighter text-center">
                               {assignment.effectiveWeights?.ww ?? assignment.subject.writtenWorkWeight} / {assignment.effectiveWeights?.pt ?? assignment.subject.perfTaskWeight} / {assignment.effectiveWeights?.qa ?? assignment.subject.quarterlyAssessWeight}
                             </p>
                           </div>
                         </div>
 
-                        <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-300 flex items-center justify-center group-hover:translate-x-2 transition-all">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-50 text-muted-foreground flex items-center justify-center group-hover:translate-x-2 transition-all">
                           <ChevronRight className="w-6 h-6" />
                         </div>
                       </div>
@@ -504,8 +528,8 @@ export default function ClassRecordsList() {
                     <Archive className="w-6 h-6" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black text-slate-900">Archived Class Records</h2>
-                    <p className="text-slate-500 font-medium">Backup data from previous syncs or manual archives</p>
+                    <h2 className="text-2xl font-bold text-foreground">Archived Class Records</h2>
+                    <p className="text-muted-foreground font-medium">Backup data from previous syncs or manual archives</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -513,7 +537,7 @@ export default function ClassRecordsList() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 text-white h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
+                      className="rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white h-10 px-4 shadow-lg shadow-rose-100 animate-in fade-in slide-in-from-right-4 text-[10px] tracking-widest uppercase"
                       onClick={(e) => {
                         e.stopPropagation();
                         setConfirmDeleteAll(true);
@@ -523,17 +547,17 @@ export default function ClassRecordsList() {
                       DELETE ALL
                     </Button>
                   )}
-                  <Badge className="bg-rose-50 text-rose-600 border-rose-100 font-black px-4 py-2 rounded-xl">
+                  <Badge className="bg-rose-50 text-rose-600 border-rose-100 font-bold px-4 py-2 rounded-xl">
                     {archivedClasses.length} RECORDS
                   </Badge>
-                  <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-50 text-muted-foreground flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all">
                     {isArchivedExpanded ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
                   </div>
                 </div>
               </div>
 
               {isArchivedExpanded && (
-                <Card className="border-0 shadow-2xl shadow-rose-200/40 rounded-[2.5rem] overflow-hidden bg-white border border-rose-100 animate-in fade-in slide-in-from-top-4 duration-500">
+                <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white border border-rose-100 animate-in fade-in slide-in-from-top-4 duration-500">
                   <div className="divide-y divide-rose-50">
                     {archivedClasses.map((assignment) => (
                       <Link key={assignment.id} to={`/teacher/records/${assignment.id}`} className="block group">
@@ -544,8 +568,8 @@ export default function ClassRecordsList() {
 
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-3 mb-2">
-                              <h3 className="text-2xl font-semibold text-slate-900 group-hover:text-rose-600 transition-colors">{assignment.subject.name}</h3>
-                              <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[10px] font-black uppercase tracking-widest px-3">
+                              <h3 className="text-2xl font-semibold text-foreground group-hover:text-rose-600 transition-colors">{assignment.subject.name}</h3>
+                              <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[10px] font-bold uppercase tracking-widest px-3">
                                 ARCHIVED
                               </Badge>
                             </div>
@@ -561,14 +585,14 @@ export default function ClassRecordsList() {
 
                           <div className="flex items-center gap-12">
                             <div className="text-center">
-                              <p className="text-2xl font-black text-slate-900 leading-none">{assignment.section.enrollments?.length || 0}</p>
-                              <p className="text-[10px] font-black text-rose-400 uppercase tracking-[0.2em] mt-2">Learners</p>
+                              <p className="text-2xl font-bold text-foreground leading-none">{assignment.section.enrollments?.length || 0}</p>
+                              <p className="text-[10px] font-bold text-rose-400 uppercase tracking-[0.2em] mt-2">Learners</p>
                             </div>
 
                             <div className="hidden lg:block">
                               <div className="px-5 py-3 rounded-2xl bg-rose-50 border border-rose-100 group-hover:bg-white transition-colors">
-                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
-                                <p className="text-sm text-slate-900 font-black font-mono tracking-tighter text-center">
+                                <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
+                                <p className="text-sm text-foreground font-bold font-mono tracking-tighter text-center">
                                   {assignment.effectiveWeights?.ww ?? assignment.subject.writtenWorkWeight} / {assignment.effectiveWeights?.pt ?? assignment.subject.perfTaskWeight} / {assignment.effectiveWeights?.qa ?? assignment.subject.quarterlyAssessWeight}
                                 </p>
                               </div>
@@ -604,19 +628,40 @@ export default function ClassRecordsList() {
       )}
 
       {activeClasses.length === 0 && archivedClasses.length === 0 && (
-        <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] bg-white overflow-hidden">
-          <CardContent className="py-32 flex flex-col items-center justify-center text-center">
-            <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-sm">
-              <BookOpen className="w-10 h-10 text-slate-200" />
+        <div className="flex items-center justify-center h-[60vh] p-4">
+          <div className="text-center max-w-md p-10 bg-white rounded-2xl border border-slate-100 shadow-2xl shadow-slate-200/50">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-slate-50 flex items-center justify-center text-muted-foreground">
+              <ClipboardList className="w-10 h-10" />
             </div>
-            <h3 className="font-black text-slate-900 text-2xl mb-3">No Classes Found</h3>
-            <p className="text-slate-400 font-medium text-lg leading-relaxed max-w-sm text-center">
+            <h3 className="font-bold text-foreground text-2xl mb-3">
+              {searchTerm ? "No Classes Found" : "No Active Classes"}
+            </h3>
+            <p className="text-muted-foreground mb-8 text-sm leading-relaxed">
               {searchTerm
                 ? "We couldn't find any classes matching your current search parameters."
-                : "You don't have any assigned classes for this academic year yet."}
+                : "You don't have any active classes with enrolled learners yet. Please contact the registrar or system administrator for assignment."}
             </p>
-          </CardContent>
-        </Card>
+            {!searchTerm && (
+              <div className="flex flex-col gap-3">
+                <Button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="w-full h-12 rounded-2xl font-bold transition-all"
+                  style={{ backgroundColor: syncing ? undefined : colors.primary }}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? 'Syncing from EnrollPro...' : 'Sync from EnrollPro'}
+                </Button>
+                {syncMessage && <p className="text-xs text-muted-foreground text-center">{syncMessage}</p>}
+                <Link to="/teacher" className="w-full">
+                  <Button variant="outline" className="w-full h-12 rounded-2xl border-slate-200 text-muted-foreground font-bold hover:bg-slate-50 transition-all">
+                    Return to Dashboard
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <Dialog open={!!assignmentToDelete} onOpenChange={(open) => !open && setAssignmentToDelete(null)}>
@@ -626,9 +671,9 @@ export default function ClassRecordsList() {
               <Trash2 className="w-8 h-8 text-white" />
             </div>
             <DialogHeader className="p-0 text-left">
-              <DialogTitle className="text-2xl font-black text-white leading-tight">Are You sure to delete this Subject?</DialogTitle>
+              <DialogTitle className="text-2xl font-bold text-white leading-tight">Are You sure to delete this Subject?</DialogTitle>
               <DialogDescription className="text-rose-100 font-medium text-base mt-2">
-                Permanently removing <span className="font-black text-white underline decoration-2 underline-offset-4">{assignmentToDelete?.name}</span> will erase all student grades and synchronization history for this record.
+                Permanently removing <span className="font-bold text-white underline decoration-2 underline-offset-4">{assignmentToDelete?.name}</span> will erase all student grades and synchronization history for this record.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -636,7 +681,7 @@ export default function ClassRecordsList() {
             <Button
               variant="outline"
               onClick={() => setAssignmentToDelete(null)}
-              className="h-14 rounded-2xl border-slate-200 font-bold hover:bg-slate-50 hover:text-slate-900 transition-all flex-1"
+              className="h-14 rounded-2xl border-slate-200 font-bold hover:bg-slate-50 hover:text-foreground transition-all flex-1"
               disabled={isDeleting}
             >
               CANCEL
@@ -644,7 +689,7 @@ export default function ClassRecordsList() {
             <Button
               variant="destructive"
               onClick={handleDelete}
-              className="h-14 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black shadow-xl shadow-rose-100 transition-all flex-1"
+              className="h-14 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-xl shadow-rose-100 transition-all flex-1"
               disabled={isDeleting}
             >
               {isDeleting ? (
@@ -666,9 +711,9 @@ export default function ClassRecordsList() {
               <Trash2 className="w-8 h-8 text-white" />
             </div>
             <DialogHeader className="p-0 text-left">
-              <DialogTitle className="text-2xl font-black text-white leading-tight">Delete All Archived Records?</DialogTitle>
+              <DialogTitle className="text-2xl font-bold text-white leading-tight">Delete All Archived Records?</DialogTitle>
               <DialogDescription className="text-rose-100 font-medium text-base mt-2">
-                This will permanently remove all <span className="font-black text-white underline decoration-2 underline-offset-4">{archivedClasses.length} archived subjects</span>. This action cannot be undone and all historical grades for these records will be lost.
+                This will permanently remove all <span className="font-bold text-white underline decoration-2 underline-offset-4">{archivedClasses.length} archived subjects</span>. This action cannot be undone and all historical grades for these records will be lost.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -676,7 +721,7 @@ export default function ClassRecordsList() {
             <Button
               variant="outline"
               onClick={() => setConfirmDeleteAll(false)}
-              className="h-14 rounded-2xl border-slate-200 font-bold hover:bg-slate-50 hover:text-slate-900 transition-all flex-1"
+              className="h-14 rounded-2xl border-slate-200 font-bold hover:bg-slate-50 hover:text-foreground transition-all flex-1"
               disabled={isDeleting}
             >
               CANCEL
@@ -684,7 +729,7 @@ export default function ClassRecordsList() {
             <Button
               variant="destructive"
               onClick={handleDeleteAll}
-              className="h-14 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black shadow-xl shadow-rose-100 transition-all flex-1"
+              className="h-14 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-xl shadow-rose-100 transition-all flex-1"
               disabled={isDeleting}
             >
               {isDeleting ? (

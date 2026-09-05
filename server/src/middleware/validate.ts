@@ -23,7 +23,11 @@ export function validate(schema: ZodObject<any>) {
         params: req.params,
       }) as { body?: any; query?: any; params?: any };
       if (data.body !== undefined) req.body = data.body;
-      if (data.query !== undefined) req.query = data.query;
+      if (data.query !== undefined) {
+        // Express 5 makes req.query a getter-only property on IncomingMessage.
+        // Override it via the prototype to avoid "Cannot set property query" TypeError.
+        Object.defineProperty(req, 'query', { value: data.query, writable: true, configurable: true });
+      }
       if (data.params !== undefined) req.params = data.params;
       next();
     } catch (err) {

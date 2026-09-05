@@ -52,6 +52,17 @@ src/                              # Frontend (React)
 ├── main.tsx                      # Entry point
 ├── components/                   # Reusable UI
 │   ├── ui/                       # shadcn/ui primitives
+│   ├── layout/                   # Shared layout components
+│   │   ├── PageHeader.tsx        # Page header (title + description + actions)
+│   │   └── StatCard.tsx          # Stat card for dashboards
+│   ├── data-table/               # DataTable system
+│   │   ├── DataTable.tsx         # Generic <T> table component
+│   │   ├── TableToolbar.tsx      # Search + filter toolbar
+│   │   ├── TablePagination.tsx   # Canonical pagination footer
+│   │   ├── TableStates.tsx       # Empty, loading, error states
+│   │   ├── usePagination.ts      # 1-based pagination hook
+│   │   ├── types.ts              # TableColumn, TableFilter types
+│   │   └── index.ts              # Barrel export
 │   ├── ExcelRenderer.tsx         # Excel file viewer
 │   ├── GradeDeadlineBanner.tsx   # Grade deadline warnings
 │   └── GradeStatusBanner.tsx     # Grade status display
@@ -218,6 +229,45 @@ Each portal (admin/teacher/registrar) has its own sessionStorage keys:
 - **EnrollPro:** Student data, school years, terms
 - **ATLAS:** Additional student records
 - **AIMS:** School information system
+
+## Design System
+
+### Type Scale
+| Role | Classes |
+|---|---|
+| Page title | `text-2xl font-bold tracking-tight text-foreground` |
+| Page subtitle | `text-sm text-muted-foreground` |
+| Card/section title | `text-base font-semibold text-foreground` |
+| Card description | `text-sm text-muted-foreground` |
+| Table header | `text-xs font-medium uppercase tracking-wide text-muted-foreground` |
+| Table cell | `text-sm text-foreground` |
+| Stat label | `text-xs font-medium text-muted-foreground` |
+| Stat value | `text-2xl font-bold text-foreground` |
+
+### Banned Patterns
+- `style={{ color: ... }}` (inline color styles) — except ThemeContext dynamic colors
+- `text-gray-*`, `text-slate-*`, `text-zinc-*` — use `text-foreground`, `text-muted-foreground`
+- `bg-blue-600` and other raw palette colors for UI chrome — use `bg-primary`, `bg-destructive`, etc.
+- `font-black`, `font-light` — use `font-medium`, `font-semibold`, `font-bold`
+- `tracking-wider` on body text (table headers only)
+- `space-y-8` on page roots — use `space-y-6`
+
+### Page Scaffolding
+- Page root: `<div className="space-y-6">`
+- Use `PageHeader` component for all page headers (title + description + actions)
+- Table containers: `Card` with `p-0` + `overflow-x-auto` wrapper
+- Use `DataTable` system for standard list views (NOT for exotic layouts like ClassRecordTable ledger or SF form grids)
+
+### DataTable System
+- Components: `DataTable`, `TableToolbar`, `TablePagination`, `TableStates`
+- Hook: `usePagination` (always 1-based externally)
+- Rows per page: `[10, 25, 50, 100]`, default: **25**
+- All table views must use semantic tokens, never hardcoded grays
+
+### Shared Components
+- `PageHeader` — `src/components/layout/PageHeader.tsx`
+- `StatCard` — `src/components/layout/StatCard.tsx`
+- `DataTable` family — `src/components/data-table/`
 
 ## Non-Negotiables
 - Do not modify `.env` or `.env.*` files

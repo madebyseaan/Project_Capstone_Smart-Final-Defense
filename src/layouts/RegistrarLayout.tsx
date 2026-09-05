@@ -9,11 +9,11 @@ import {
   Users,
   ClipboardList,
   FolderOpen,
-  BookOpen,
   CalendarCheck,
   FlaskConical,
   Layers,
   GraduationCap,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getAcronym } from "@/lib/utils";
@@ -65,9 +65,9 @@ const navigationGroups: NavGroup[] = [
     title: "MANAGEMENT",
     items: [
       { name: "Student Records", href: "/registrar/students", icon: Users },
+      { name: "Transferees", href: "/registrar/transferees", icon: ArrowLeftRight },
       { name: "Former Students", href: "/registrar/alumni", icon: GraduationCap },
       { name: "School Forms", href: "/registrar/forms", icon: FolderOpen },
-      { name: "Teaching Load", href: "/registrar/teaching-load", icon: BookOpen },
     ]
   }
 ];

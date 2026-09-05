@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi, type AdminSystemHealth, type ExternalServiceHealth, type SyncHistoryItem } from "@/lib/api";
 import { Activity, AlertCircle, CheckCircle2, Clock3, Database, RefreshCw, Server, ShieldAlert } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -113,31 +114,30 @@ export default function SystemHealth() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">System Health</h1>
-          <p className="text-sm text-slate-600">Live pulse of SMART, EnrollPro, Atlas, and AIMS.</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => void fetchAll(true)}
-            disabled={refreshing || syncing}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-          <button
-            onClick={runSyncNow}
-            disabled={refreshing || syncing}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-          >
-            <Activity className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-            Run Sync Now
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="System Health"
+        description="Live pulse of SMART, EnrollPro, Atlas, and AIMS."
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void fetchAll(true)}
+              disabled={refreshing || syncing}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-white text-foreground hover:bg-accent disabled:opacity-60"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            <button
+              onClick={runSyncNow}
+              disabled={refreshing || syncing}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+            >
+              <Activity className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+              Run Sync Now
+            </button>
+          </div>
+        }
+      />
 
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
@@ -151,61 +151,61 @@ export default function SystemHealth() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Overall</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Overall</p>
                 {health.status === "HEALTHY" ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                 ) : (
                   <ShieldAlert className="w-5 h-5 text-amber-600" />
                 )}
               </div>
-              <p className="mt-2 text-xl font-bold text-slate-900">{health.status}</p>
-              <p className="text-xs text-slate-500 mt-1">Response: {formatDuration(health.responseTimeMs)}</p>
+              <p className="mt-2 text-xl font-bold text-foreground">{health.status}</p>
+              <p className="text-xs text-muted-foreground mt-1">Response: {formatDuration(health.responseTimeMs)}</p>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Node Uptime</p>
-                <Server className="w-5 h-5 text-slate-600" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Node Uptime</p>
+                <Server className="w-5 h-5 text-muted-foreground" />
               </div>
-              <p className="mt-2 text-xl font-bold text-slate-900">{formatUptime(health.local.uptimeSeconds)}</p>
-              <p className="text-xs text-slate-500 mt-1">Last check: {new Date(health.timestamp).toLocaleString()}</p>
+              <p className="mt-2 text-xl font-bold text-foreground">{formatUptime(health.local.uptimeSeconds)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Last check: {new Date(health.timestamp).toLocaleString()}</p>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Database</p>
-                <Database className="w-5 h-5 text-slate-600" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Database</p>
+                <Database className="w-5 h-5 text-muted-foreground" />
               </div>
-              <p className="mt-2 text-xl font-bold text-slate-900">{health.local.database.online ? "ONLINE" : "OFFLINE"}</p>
-              <p className="text-xs text-slate-500 mt-1">Latency: {health.local.database.latencyMs} ms</p>
+              <p className="mt-2 text-xl font-bold text-foreground">{health.local.database.online ? "ONLINE" : "OFFLINE"}</p>
+              <p className="text-xs text-muted-foreground mt-1">Latency: {health.local.database.latencyMs} ms</p>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Heap Used</p>
-                <Clock3 className="w-5 h-5 text-slate-600" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Heap Used</p>
+                <Clock3 className="w-5 h-5 text-muted-foreground" />
               </div>
-              <p className="mt-2 text-xl font-bold text-slate-900">{formatBytes(health.local.memory.heapUsed)}</p>
-              <p className="text-xs text-slate-500 mt-1">RSS: {formatBytes(health.local.memory.rss)}</p>
+              <p className="mt-2 text-xl font-bold text-foreground">{formatBytes(health.local.memory.heapUsed)}</p>
+              <p className="text-xs text-muted-foreground mt-1">RSS: {formatBytes(health.local.memory.rss)}</p>
             </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-slate-800 mb-3">External Services</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-3">External Services</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {externalServices.map((service) => (
                 <div key={service.name} className="rounded-lg border border-slate-200 p-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className={`w-2.5 h-2.5 rounded-full ${serviceDotColor(service)}`} />
-                      <span className="font-semibold text-slate-900 text-sm">{service.name}</span>
+                      <span className="font-semibold text-foreground text-sm">{service.name}</span>
                     </div>
                     <span className={`text-xs font-semibold border rounded-full px-2 py-0.5 ${serviceBadgeColor(service)}`}>
                       {service.status}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-2 break-all">{service.url}</p>
-                  <p className="text-xs text-slate-600 mt-1">
+                  <p className="text-xs text-muted-foreground mt-2 break-all">{service.url}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
                     HTTP: {service.httpStatus ?? "N/A"} • Latency: {service.latencyMs} ms
                   </p>
                   {service.error && <p className="text-xs text-rose-600 mt-1">{service.error}</p>}
@@ -215,25 +215,25 @@ export default function SystemHealth() {
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-slate-800 mb-2">Sync Circuit Breaker</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-2">Sync Circuit Breaker</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
               <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-slate-500 uppercase">State</p>
+                <p className="text-xs text-muted-foreground uppercase">State</p>
                 <p className={`mt-1 font-bold ${health.sync.circuitBreaker.open ? "text-rose-700" : "text-emerald-700"}`}>
                   {health.sync.circuitBreaker.open ? "OPEN" : "CLOSED"}
                 </p>
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-slate-500 uppercase">Consecutive Failures</p>
-                <p className="mt-1 font-bold text-slate-900">{health.sync.circuitBreaker.consecutiveCriticalFailures}</p>
+                <p className="text-xs text-muted-foreground uppercase">Consecutive Failures</p>
+                <p className="mt-1 font-bold text-foreground">{health.sync.circuitBreaker.consecutiveCriticalFailures}</p>
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-slate-500 uppercase">Threshold</p>
-                <p className="mt-1 font-bold text-slate-900">{health.sync.circuitBreaker.failureThreshold}</p>
+                <p className="text-xs text-muted-foreground uppercase">Threshold</p>
+                <p className="mt-1 font-bold text-foreground">{health.sync.circuitBreaker.failureThreshold}</p>
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-slate-500 uppercase">Cooldown</p>
-                <p className="mt-1 font-bold text-slate-900">{Math.round(health.sync.circuitBreaker.cooldownMs / 1000)} s</p>
+                <p className="text-xs text-muted-foreground uppercase">Cooldown</p>
+                <p className="mt-1 font-bold text-foreground">{Math.round(health.sync.circuitBreaker.cooldownMs / 1000)} s</p>
               </div>
             </div>
             {health.sync.circuitBreaker.reason && (
@@ -242,11 +242,11 @@ export default function SystemHealth() {
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-slate-800 mb-3">Recent Sync History</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-3">Recent Sync History</h2>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                  <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-slate-200">
                     <th className="py-2 pr-4">Started</th>
                     <th className="py-2 pr-4">Source</th>
                     <th className="py-2 pr-4">Status</th>
@@ -257,7 +257,7 @@ export default function SystemHealth() {
                 <tbody>
                   {history.length === 0 ? (
                     <tr>
-                      <td className="py-4 text-slate-500" colSpan={5}>No sync history yet.</td>
+                      <td className="py-4 text-muted-foreground" colSpan={5}>No sync history yet.</td>
                     </tr>
                   ) : (
                     history.map((item) => {
@@ -270,13 +270,13 @@ export default function SystemHealth() {
 
                       return (
                         <tr key={item.id} className="border-b border-slate-100">
-                          <td className="py-2 pr-4 text-slate-700">{new Date(item.startedAt).toLocaleString()}</td>
-                          <td className="py-2 pr-4 text-slate-700">{item.source}</td>
+                          <td className="py-2 pr-4 text-foreground">{new Date(item.startedAt).toLocaleString()}</td>
+                          <td className="py-2 pr-4 text-foreground">{item.source}</td>
                           <td className="py-2 pr-4">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusClass}`}>{item.status}</span>
                           </td>
-                          <td className="py-2 pr-4 text-slate-700">{formatDuration(item.durationMs)}</td>
-                          <td className="py-2 pr-4 text-slate-600 max-w-[380px] truncate" title={item.error || ""}>
+                          <td className="py-2 pr-4 text-foreground">{formatDuration(item.durationMs)}</td>
+                          <td className="py-2 pr-4 text-muted-foreground max-w-[380px] truncate" title={item.error || ""}>
                             {item.error || "-"}
                           </td>
                         </tr>

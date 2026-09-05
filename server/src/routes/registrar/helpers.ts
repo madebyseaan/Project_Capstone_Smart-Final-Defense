@@ -78,8 +78,8 @@ export function computeAgeAsOfJune(birthDate: Date | string | null | undefined, 
 export function mapRemarksCodes(enrollment: any, student: any): string[] {
   const codes: string[] = [];
   const status = String(enrollment?.status ?? "").toUpperCase();
-  if (status === "TRANSFERRED_OUT" || status === "TRANSFERRED_OUT_TO_ALS") codes.push("T/O");
-  if (status === "TRANSFERRED_IN") codes.push("T/I");
+  if (status === "TRANSFERRED" || enrollment?.transferOutDate) codes.push("T/O");
+  if (enrollment?.transferInDate) codes.push("T/I");
   if (status === "DROPPED") codes.push("DRP");
   if (student?.isBalikAral) codes.push("B/A");
   if (student?.is4PsBeneficiary) codes.push("CCT");

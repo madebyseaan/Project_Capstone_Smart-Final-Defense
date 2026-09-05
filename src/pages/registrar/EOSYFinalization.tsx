@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { registrarApi } from "@/lib/api";
 
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 import EOSYOverviewTab from "./components/EOSYOverviewTab";
 import EOSYGradeLockingTab from "./components/EOSYGradeLockingTab";
@@ -504,118 +505,115 @@ export default function EOSYFinalization() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
-        <CardHeader className="border-b border-slate-100 bg-white pb-6">
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-            <div className="flex flex-col gap-2">
-              <CardTitle className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                <div className="p-2 rounded-xl text-white shadow-lg" style={{ backgroundColor: colors.primary }}>
-                  <GraduationCap className="w-5 h-5" />
-                </div>
-                EOSY Finalization
-              </CardTitle>
-              <CardDescription className="font-medium text-slate-500">
-                End-of-School-Year monitoring, grade locking, and promotion finalization
-              </CardDescription>
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <PageHeader
+        title="EOSY Finalization"
+        description="End-of-School-Year monitoring, grade locking, and promotion finalization"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => void loadSections()}
+              variant="outline"
+              size="sm"
+              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+            </Button>
+            {selectedSyLabel && (
+              <Button
+                variant="default"
+                size="sm"
+                className="font-semibold text-xs shadow-sm shadow-primary/20"
+                onClick={async () => {
+                  try {
+                    const res = await registrarApi.exportYearBackup(selectedSyLabel);
+                    const blob = new Blob([res.data as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `YearBackup_${selectedSyLabel}.xlsx`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch { /* intentionally empty */ }
+                }}
+              >
+                <Download className="w-4 h-4 mr-1.5" /> Backup
+              </Button>
+            )}
+          </div>
+        }
+      />
+
+      {/* Main Card */}
+      <Card className="border border-slate-200/60 shadow-sm bg-card overflow-hidden rounded-2xl p-0">
+        <div className="px-6 py-4 border-b border-border">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Section Filters</h2>
+              <p className="text-sm text-muted-foreground">
+                {schoolYearsLoading || sectionsLoading
+                  ? "Loading EOSY data..."
+                  : sectionsError
+                    ? sectionsError
+                    : sections.length > 0
+                      ? `${sections.length} section${sections.length !== 1 ? "s" : ""} available`
+                      : "Select a school year and section to begin"}
+              </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button onClick={() => void loadSections()} variant="outline" className="rounded-xl shadow-sm">
-                <RefreshCw className="w-4 h-4 mr-2" /> Refresh
-              </Button>
-              {selectedSyLabel && (
-                <Button
-                  variant="outline"
-                  className="rounded-xl shadow-sm"
-                  onClick={async () => {
-                    try {
-                      const res = await registrarApi.exportYearBackup(selectedSyLabel);
-                      const blob = new Blob([res.data as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `YearBackup_${selectedSyLabel}.xlsx`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    } catch {}
-                  }}
-                >
-                  <Download className="w-4 h-4 mr-2" /> Backup
+            <div className="flex flex-wrap items-center gap-3">
+              <Select value={selectedSchoolYearId} onValueChange={(val) => val && setSelectedSchoolYearId(val)}>
+                <SelectTrigger className="w-[160px] h-9 rounded-lg text-xs font-medium">
+                  <SelectValue placeholder="School Year">
+                    {(() => {
+                      const sy = schoolYears.find((y) => String(y.id) === selectedSchoolYearId);
+                      return sy ? `${sy.yearLabel}${sy.status === "ACTIVE" ? " (Active)" : ""}` : "School Year";
+                    })()}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {schoolYears.map((sy) => (
+                    <SelectItem key={sy.id} value={String(sy.id)}>
+                      {sy.yearLabel} {sy.status === "ACTIVE" ? "(Active)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedSectionId} onValueChange={(val) => val && setSelectedSectionId(val)}>
+                <SelectTrigger className="w-[280px] h-9 rounded-lg text-xs font-medium">
+                  <SelectValue placeholder="Select a section">
+                    {(() => {
+                      const s = sections.find((sec) => String(sec.id) === selectedSectionId);
+                      return s
+                        ? `${s.name ?? s.sectionName}${s.gradeLevel?.name ? ` (${s.gradeLevel.name})` : ""}`
+                        : "Select a section";
+                    })()}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {sections.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name ?? s.sectionName}
+                      {s.gradeLevel?.name ? ` (${s.gradeLevel.name})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {sectionsError && (
+                <Button onClick={() => void loadSections()} variant="outline" size="sm" className="h-9 rounded-lg">
+                  Retry
                 </Button>
               )}
             </div>
           </div>
-        </CardHeader>
+        </div>
 
         <CardContent className="p-0">
-          {/* ── Filter Bar ── */}
-          <div className="p-6 border-b border-slate-100 bg-slate-50/30">
-            {sectionsLoading || schoolYearsLoading ? (
-              <div className="flex items-center gap-3 text-gray-500 py-2">
-                <Loader2 className="w-5 h-5 animate-spin" style={{ color: colors.primary }} />
-                <span className="text-sm">Loading EOSY data...</span>
-              </div>
-            ) : sectionsError ? (
-              <div className="flex items-center gap-3 text-red-500 py-2">
-                <AlertTriangle className="w-5 h-5" />
-                <span className="text-sm">{sectionsError}</span>
-                <Button onClick={() => void loadSections()} variant="outline" size="sm" className="rounded-xl ml-2">
-                  Retry
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-4">
-                <Select value={selectedSchoolYearId} onValueChange={setSelectedSchoolYearId}>
-                  <SelectTrigger className="w-[150px]">
-                    <SelectValue placeholder="Select SY">
-                      {(() => {
-                        const sy = schoolYears.find((y) => String(y.id) === selectedSchoolYearId);
-                        return sy ? `${sy.yearLabel}${sy.status === "ACTIVE" ? " (Active)" : ""}` : "Select SY";
-                      })()}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schoolYears.map((sy) => (
-                      <SelectItem key={sy.id} value={String(sy.id)}>
-                        {sy.yearLabel} {sy.status === "ACTIVE" ? "(Active)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={selectedSectionId} onValueChange={setSelectedSectionId}>
-                  <SelectTrigger className="w-[280px]">
-                    <SelectValue placeholder="Select a section">
-                      {(() => {
-                        const s = sections.find((sec) => String(sec.id) === selectedSectionId);
-                        return s
-                          ? `${s.name ?? s.sectionName}${s.gradeLevel?.name ? ` (${s.gradeLevel.name})` : ""}`
-                          : "Select a section";
-                      })()}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sections.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)}>
-                        {s.name ?? s.sectionName}
-                        {s.gradeLevel?.name ? ` (${s.gradeLevel.name})` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <span className="text-sm text-slate-500">
-                  {sections.length} section(s) available
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* ── Tabs ── */}
           {hasSectionSelected ? (
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <div className="px-6 pt-4 border-b border-slate-100">
+              <div className="px-6 pt-4 border-b border-border">
                 <TabsList variant="line" className="w-full justify-start">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="grade-locking">Grade Locking</TabsTrigger>
@@ -627,15 +625,17 @@ export default function EOSYFinalization() {
                 <TabsContent value="overview">
                   {recordsLoading ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
-                      <Loader2 className="w-8 h-8 animate-spin text-slate-300 mb-3" />
-                      <p className="text-slate-500 font-medium text-sm">Loading section data...</p>
+                      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground/40 mb-3" />
+                      <p className="text-muted-foreground font-medium text-sm">Loading section data...</p>
                     </div>
                   ) : recordsError ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-                      <AlertTriangle className="w-10 h-10 text-amber-400 mb-3" />
-                      <p className="text-gray-700 font-semibold">Unable to load records</p>
-                      <p className="text-gray-500 text-sm mt-1 max-w-sm">{recordsError}</p>
-                      <Button onClick={() => void loadRecords(selectedSectionId)} variant="outline" className="mt-4 rounded-xl">
+                    <div className="flex flex-col items-center justify-center h-64 text-center">
+                      <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+                        <AlertTriangle className="w-8 h-8 text-destructive" />
+                      </div>
+                      <h2 className="text-xl font-semibold text-foreground mb-2">Unable to Load Records</h2>
+                      <p className="text-muted-foreground mb-4 max-w-sm">{recordsError}</p>
+                      <Button onClick={() => void loadRecords(selectedSectionId)} variant="outline">
                         Try Again
                       </Button>
                     </div>
@@ -655,7 +655,7 @@ export default function EOSYFinalization() {
 
                 <TabsContent value="grade-locking">
                   {finalizeLoading && allTermStatus.length === 0 ? (
-                    <div className="flex items-center gap-2 text-gray-500 py-8 justify-center">
+                    <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span className="text-sm">Loading finalization status...</span>
                     </div>
@@ -675,15 +675,17 @@ export default function EOSYFinalization() {
                 <TabsContent value="learner-records">
                   {recordsLoading ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
-                      <Loader2 className="w-8 h-8 animate-spin text-slate-300 mb-3" />
-                      <p className="text-slate-500 font-medium text-sm">Fetching learner records...</p>
+                      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground/40 mb-3" />
+                      <p className="text-muted-foreground font-medium text-sm">Fetching learner records...</p>
                     </div>
                   ) : recordsError ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-                      <AlertTriangle className="w-10 h-10 text-amber-400 mb-3" />
-                      <p className="text-gray-700 font-semibold">Unable to load records</p>
-                      <p className="text-gray-500 text-sm mt-1 max-w-sm">{recordsError}</p>
-                      <Button onClick={() => void loadRecords(selectedSectionId)} variant="outline" className="mt-4 rounded-xl">
+                    <div className="flex flex-col items-center justify-center h-64 text-center">
+                      <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+                        <AlertTriangle className="w-8 h-8 text-destructive" />
+                      </div>
+                      <h2 className="text-xl font-semibold text-foreground mb-2">Unable to Load Records</h2>
+                      <p className="text-muted-foreground mb-4 max-w-sm">{recordsError}</p>
+                      <Button onClick={() => void loadRecords(selectedSectionId)} variant="outline">
                         Try Again
                       </Button>
                     </div>
@@ -703,10 +705,12 @@ export default function EOSYFinalization() {
             </Tabs>
           ) : (
             /* ── Empty State ── */
-            <div className="flex flex-col items-center justify-center py-40 text-center px-4">
-              <GraduationCap className="w-16 h-16 text-slate-200 mb-6" />
-              <p className="text-slate-500 font-semibold text-xl">No Section Selected</p>
-              <p className="text-slate-400 text-sm mt-2 max-w-sm">
+            <div className="flex flex-col items-center justify-center py-24 text-center px-4">
+              <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mb-4">
+                <GraduationCap className="w-8 h-8 text-muted-foreground/60" />
+              </div>
+              <h2 className="text-xl font-semibold text-foreground mb-2">No Section Selected</h2>
+              <p className="text-muted-foreground max-w-sm">
                 Select a school year and section from the filters above to view End of School Year records.
               </p>
             </div>

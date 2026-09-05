@@ -99,7 +99,7 @@ api.interceptors.response.use(
     const skipRefreshPaths = ["/auth/login", "/auth/refresh"];
     const isSkipPath = skipRefreshPaths.some((path) => originalRequest.url?.includes(path));
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isSkipPath) {
+    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry && !isSkipPath) {
       if (isRefreshing) {
         // Queue this request until refresh completes
         return new Promise((resolve, reject) => {
@@ -598,6 +598,8 @@ export interface RegistrarDashboard {
     droppedStudents: number;
     transferredStudents: number;
     pendingStudents: number;
+    transfereeStudents?: number;
+    incompleteTransferees?: number;
   };
   sections: {
     id: string;
@@ -676,6 +678,42 @@ export interface RegistrarSyncStatus {
   isStale: boolean;
   status: "fresh" | "stale" | "never";
   cycleCount?: number;
+}
+
+// Transferee types
+export interface TransfereeRow {
+  enrollmentId: string;
+  lrn: string;
+  studentName: string;
+  section: { id: string; name: string; gradeLevel: string };
+  transferInDate: string | null;
+  details: {
+    previousSchool: string | null;
+    lastGradeCompleted: string | null;
+    transferCertNo: string | null;
+  };
+  completeness: {
+    missingBirthDate: boolean;
+    missingGender: boolean;
+    missingPreviousSchool: boolean;
+    missingTransferCertNo: boolean;
+  };
+  matchedBySync: boolean;
+}
+
+export interface TransfereesResponse {
+  transferees: TransfereeRow[];
+  unmatchedFromLastSync: Array<{ lrn: string; reason: string }>;
+  schoolYear: string;
+}
+
+export interface TransfereeUpdatePayload {
+  previousSchool?: string;
+  lastGradeCompleted?: string;
+  transferCertNo?: string;
+  birthDate?: string;
+  gender?: "MALE" | "FEMALE";
+  transferInDate?: string;
 }
 
 export interface SF8Data {
@@ -760,6 +798,11 @@ export interface SF10Data {
     address?: string;
     guardianName?: string;
     guardianContact?: string;
+    previousSchool?: string | null;
+    lastGradeCompleted?: string | null;
+    transferCertNo?: string | null;
+    isTransferee?: boolean;
+    transferInDate?: string | null;
   };
   schoolRecords: {
     schoolYear: string;
@@ -771,6 +814,7 @@ export interface SF10Data {
     division?: string;
     region?: string;
     adviserName?: string;
+    transferInDate?: string | null;
     subjectGrades: {
       subjectCode: string;
       subjectName: string;
@@ -798,6 +842,7 @@ export interface SF10Data {
     schoolId?: string;
     division?: string;
     region?: string;
+    schoolHeadName?: string;
   };
 }
 
@@ -850,6 +895,7 @@ export interface SF5Data {
     division: string;
     region: string;
     district: string;
+    schoolHeadName?: string;
   };
 }
 
@@ -912,7 +958,7 @@ export const registrarApi = {
 
   runSync: () => api.post<{ message: string }>("/registrar/sync/run", {}),
 
-  getSchoolYears: () => api.get<{ schoolYears: string[] }>("/registrar/school-years"),
+  getSchoolYears: () => api.get<{ schoolYears: string[]; activeSchoolYear: string | null }>("/registrar/school-years"),
 
   getStudents: (params?: { schoolYear?: string; gradeLevel?: string; sectionId?: string; search?: string }) =>
     api.get<{
@@ -1018,11 +1064,17 @@ export const registrarApi = {
   getRemedialPending: (params?: { page?: number; limit?: number; schoolYear?: string; gradeLevel?: string }) =>
     api.get("/registrar/remedial/pending", { params }),
 
-  updateRemedialRow: (id: string, data: { remedialMark: number; conductedFrom?: string; conductedTo?: string }) =>
+  getRemedialHistory: (params?: { schoolYear?: string; page?: number; limit?: number }) =>
+    api.get("/registrar/remedial/history", { params }),
+
+  updateRemedialRow: (id: string, data: { remedialMark?: number; conductedFrom?: string; conductedTo?: string }) =>
     api.patch(`/registrar/remedial/${id}`, data),
 
-  completeRemedial: (enrollmentId: string, opts?: { retentionOverride?: boolean }) =>
+  completeRemedial: (enrollmentId: string, opts?: { retentionOverride?: boolean; conductedFrom?: string; conductedTo?: string }) =>
     api.post(`/registrar/remedial/${enrollmentId}/complete`, opts ?? {}),
+
+  syncRemedialFromEnrollPro: (schoolYear?: string) =>
+    api.post("/registrar/remedial/sync-from-enrollpro", { schoolYear }),
 
   getRemedialCertificate: (enrollmentId: string) =>
     api.get(`/registrar/remedial/${enrollmentId}/certificate`),
@@ -1085,6 +1137,16 @@ export const registrarApi = {
 
   getAtlasSubjectCoverage: () =>
     api.get("/registrar/atlas/subject-coverage"),
+
+  // Transferees
+  getTransferees: () =>
+    api.get<TransfereesResponse>("/registrar/transferees"),
+
+  updateTransferee: (enrollmentId: string, data: TransfereeUpdatePayload) =>
+    api.patch<{ message: string }>(`/registrar/transferees/${enrollmentId}`, data),
+
+  tagTransferee: (enrollmentId: string, data: { transferInDate?: string; reason?: string }) =>
+    api.post<{ message: string; enrollment: any }>(`/registrar/transferees/${enrollmentId}/tag`, data),
 };
 
 // ============================================
@@ -1176,6 +1238,7 @@ export interface SystemSettings {
   schoolId: string;
   division: string;
   region: string;
+  schoolHeadName?: string;
   address?: string;
   contactNumber?: string;
   email?: string;

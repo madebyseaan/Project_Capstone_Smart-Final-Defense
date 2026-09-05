@@ -12,7 +12,7 @@ const YEAR_CURRENT = "2026-2027"; // Must match live SystemSettings
 let sectionCompleted = "";
 let sectionArchived = "";
 let sectionActiveWrongYear = "";
-let sectionNotFound = "nonexistent-section-id";
+const sectionNotFound = "nonexistent-section-id";
 
 beforeAll(async () => {
   // Section: COMPLETED status

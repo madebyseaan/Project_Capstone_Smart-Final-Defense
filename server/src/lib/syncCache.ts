@@ -154,7 +154,7 @@ export function setCachedAtlasFaculty(faculty: any[]): void {
 // but track the version separately so set() can invalidate stale entries
 // when ATLAS bumps the version.
 
-let atlasTLVersionByScope = new Map<string, number>();
+const atlasTLVersionByScope = new Map<string, number>();
 
 function atlasTLSchoolYearKey(schoolId: number, schoolYearId: number): string {
   return `atlas-teaching-load:${schoolId}:${schoolYearId}`;

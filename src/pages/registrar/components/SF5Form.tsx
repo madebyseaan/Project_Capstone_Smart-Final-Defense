@@ -304,7 +304,7 @@ function SignatureBlock({ data }: { data: SF5Data }) {
         <div className="text-center">
           <p className="font-bold text-gray-900 text-xs mb-1">CERTIFIED CORRECT &amp; SUBMITTED:</p>
           <div className="border-b border-gray-600 mt-8 mx-4"></div>
-          <p className="mt-1 text-[10px] text-gray-900">{data.schoolSettings.schoolName}</p>
+          <p className="mt-1 text-[10px] text-gray-900">{data.schoolSettings.schoolHeadName || ""}</p>
           <p className="text-[9px] text-gray-700 italic">School Head</p>
           <p className="text-[9px] text-gray-700 italic">(Name and Signature)</p>
         </div>
@@ -367,16 +367,17 @@ const SF5Form = forwardRef<HTMLDivElement, SF5FormProps>(
               <Button
                 onClick={onExport}
                 variant="outline"
-                className="rounded-xl"
+                size="sm"
+                className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
                 disabled={isExporting}
               >
-                <Download className="w-4 h-4 mr-2" />
+                <Download className="w-4 h-4 mr-1.5" />
                 {isExporting ? "Exporting..." : "Export Excel"}
               </Button>
             )}
             {onPrint && (
-              <Button onClick={onPrint} className="rounded-xl bg-indigo-600 text-white hover:bg-indigo-700">
-                <Printer className="w-4 h-4 mr-2" />
+              <Button onClick={onPrint} size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
+                <Printer className="w-4 h-4 mr-1.5" />
                 Print Form
               </Button>
             )}
@@ -386,7 +387,7 @@ const SF5Form = forwardRef<HTMLDivElement, SF5FormProps>(
         {/* SF5 Form — print target */}
         <div
           ref={ref}
-          className="bg-white border-2 border-gray-400 shadow-xl print-form p-6 mb-8 text-[11px] leading-tight"
+          className="bg-card border-2 border-border shadow-xl print-form p-6 mb-8 text-[11px] leading-tight"
         >
           <Header data={data} />
 

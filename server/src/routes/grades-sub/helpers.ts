@@ -48,13 +48,6 @@ export const GENERIC_FALLBACK_WEIGHTS = {
   qa: 30,
 } as const;
 
-export const HG_QUALITATIVE_DESCRIPTORS = [
-  'No Improvement',
-  'Needs Improvement',
-  'Developing',
-  'Sufficiently Developed',
-] as const;
-
 export const TERM_CACHE_TTL_MS = 60_000;
 
 // ─── Module-Level State ───────────────────────────────────────────────────────
@@ -206,6 +199,7 @@ export function getBaseSubjectName(subjectName: string): string {
   return subjectName.replace(/\s+\d+$/, "").trim();
 }
 
+/** Legacy filter — kept for archived-year SF10/SF5 read paths and advisory exclusion. */
 export function isHomeroomGuidanceSubjectCode(subjectCode?: string | null): boolean {
   return (subjectCode ?? '').toUpperCase().startsWith('HG');
 }

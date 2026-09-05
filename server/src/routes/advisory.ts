@@ -120,7 +120,7 @@ router.get(
       const currentSchoolYear = await getActiveSchoolYearLabel();
 
       // Find advisory section assigned to this teacher for the current school year.
-      let advisorySection = await prisma.section.findFirst({
+      const advisorySection = await prisma.section.findFirst({
         where: { adviserId: teacher.id, schoolYear: currentSchoolYear },
         include: {
           enrollments: {

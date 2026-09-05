@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { adminApi } from "@/lib/api";
 import type { GradingConfig as GradingConfigType, TermLabels } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -341,7 +342,7 @@ export default function GradingConfig() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-          <p className="text-gray-500">Loading grading configuration...</p>
+          <p className="text-muted-foreground">Loading grading configuration...</p>
         </div>
       </div>
     );
@@ -352,7 +353,7 @@ export default function GradingConfig() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-12 h-12 text-amber-500" />
-          <p className="text-gray-700 font-medium">{error}</p>
+          <p className="text-foreground font-medium">{error}</p>
           <Button onClick={fetchConfigs} variant="outline" className="gap-2">
             <RefreshCw className="w-4 h-4" />
             Retry
@@ -363,38 +364,33 @@ export default function GradingConfig() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Page Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#111827' }}>
-            Grading Configuration
-          </h1>
-          <p style={{ color: '#6b7280' }} className="mt-1">
-            Configure grading component weights for each subject type
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            className="gap-2 rounded-xl border-gray-200"
-            onClick={handleReset}
-            disabled={resetting}
-          >
-            {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-            Reset to Default
-          </Button>
-          <Button
-            className="gap-2 text-white font-semibold rounded-xl shadow-lg"
-            style={{ backgroundColor: colors.primary }}
-            onClick={handleSave}
-            disabled={!allValid || saving}
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save Changes
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader
+        title="Grading Configuration"
+        description="Configure grading component weights for each subject type"
+        actions={
+          <>
+            <Button
+              variant="outline"
+              className="gap-2 rounded-xl"
+              onClick={handleReset}
+              disabled={resetting}
+            >
+              {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+              Reset to Default
+            </Button>
+            <Button
+              className="gap-2 text-white font-semibold rounded-xl shadow-lg"
+              style={{ backgroundColor: colors.primary }}
+              onClick={handleSave}
+              disabled={!allValid || saving}
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save Changes
+            </Button>
+          </>
+        }
+      />
 
       {/* Status Alerts */}
       {saveSuccess && (
@@ -419,18 +415,18 @@ export default function GradingConfig() {
               <Info className="w-5 h-5" style={{ color: colors.primary }} />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-sm mb-1" style={{ color: '#111827' }}>DepEd Grading Guidelines (Revised 2026)</h3>
-              <p className="text-xs text-gray-500 mb-3">
+              <h3 className="font-semibold text-sm mb-1" text-foreground>DepEd Grading Guidelines (Revised 2026)</h3>
+              <p className="text-xs text-muted-foreground mb-3">
                 Per the Revised Guidelines on Classroom Assessment (April 2026), weights are now aligned across Core, Math, and Science subjects.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="bg-white rounded-lg px-3 py-2 border border-white/80">
-                  <span className="text-xs text-gray-500 font-medium block">Core, Math &amp; Science</span>
-                  <span className="text-xs font-semibold" style={{ color: '#111827' }}>WW 20% · PT 50% · TA 30%</span>
+                  <span className="text-xs text-muted-foreground font-medium block">Core, Math &amp; Science</span>
+                  <span className="text-xs font-semibold" text-foreground>WW 20% · PT 50% · TA 30%</span>
                 </div>
                 <div className="bg-white rounded-lg px-3 py-2 border border-white/80">
-                  <span className="text-xs text-gray-500 font-medium block">MAPEH &amp; TLE</span>
-                  <span className="text-xs font-semibold" style={{ color: '#111827' }}>WW 20% · PT 60% · TA 20%</span>
+                  <span className="text-xs text-muted-foreground font-medium block">MAPEH &amp; TLE</span>
+                  <span className="text-xs font-semibold" text-foreground>WW 20% · PT 60% · TA 20%</span>
                 </div>
               </div>
             </div>
@@ -446,14 +442,14 @@ export default function GradingConfig() {
               <BookOpen className="w-5 h-5" style={{ color: colors.primary }} />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-sm mb-1" style={{ color: '#111827' }}>Term Display Labels</h3>
-              <p className="text-xs text-gray-500 mb-4">
+              <h3 className="font-semibold text-sm mb-1" text-foreground>Term Display Labels</h3>
+              <p className="text-xs text-muted-foreground mb-4">
                 Customize the labels shown for each grading term. These appear in teacher dashboards, class records, and school forms.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {(["T1", "T2", "T3"] as const).map((term) => (
                   <div key={term} className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{term}</Label>
+                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{term}</Label>
                     <Input
                       value={termLabels[term]}
                       onChange={(e) => {
@@ -481,7 +477,7 @@ export default function GradingConfig() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-xs text-gray-500"
+                    className="text-xs text-muted-foreground"
                     onClick={() => {
                       setTermLabels({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
                       setTermLabelsDirty(false);
@@ -524,7 +520,7 @@ export default function GradingConfig() {
                     <Icon className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-sm" style={{ color: '#111827' }}>{displayInfo.label}</h3>
+                    <h3 className="font-semibold text-sm" text-foreground>{displayInfo.label}</h3>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {displayInfo.subjects.map((subject) => (
                         <Badge key={subject} variant="outline" className="text-xs py-0 h-5">
@@ -533,7 +529,7 @@ export default function GradingConfig() {
                       ))}
                     </div>
                     {displayInfo.followsNote && (
-                      <p className="text-[11px] text-gray-400 mt-1.5 italic">{displayInfo.followsNote}</p>
+                      <p className="text-[11px] text-muted-foreground mt-1.5 italic">{displayInfo.followsNote}</p>
                     )}
                   </div>
                 </div>
@@ -563,7 +559,7 @@ export default function GradingConfig() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
                   {/* Written Work */}
                   <div className="space-y-2">
-                    <Label htmlFor={`${config.id}-ww`} className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    <Label htmlFor={`${config.id}-ww`} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Written Work (WW)
                     </Label>
                     <div className="relative">
@@ -576,14 +572,14 @@ export default function GradingConfig() {
                         onChange={(e) => handleWeightChange(config.subjectType, "writtenWorkWeight", e.target.value)}
                         className="pr-9 text-xl font-bold border-gray-200 rounded-xl h-12"
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">%</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-sm">%</span>
                     </div>
-                    <p className="text-xs text-gray-400">Quizzes, unit tests, essays</p>
+                    <p className="text-xs text-muted-foreground">Quizzes, unit tests, essays</p>
                   </div>
 
                   {/* Performance Task */}
                   <div className="space-y-2">
-                    <Label htmlFor={`${config.id}-pt`} className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    <Label htmlFor={`${config.id}-pt`} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Performance Task (PT)
                     </Label>
                     <div className="relative">
@@ -596,14 +592,14 @@ export default function GradingConfig() {
                         onChange={(e) => handleWeightChange(config.subjectType, "performanceTaskWeight", e.target.value)}
                         className="pr-9 text-xl font-bold border-gray-200 rounded-xl h-12"
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">%</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-sm">%</span>
                     </div>
-                    <p className="text-xs text-gray-400">Projects, performances, outputs</p>
+                    <p className="text-xs text-muted-foreground">Projects, performances, outputs</p>
                   </div>
 
                   {/* Term Assessment */}
                   <div className="space-y-2">
-                    <Label htmlFor={`${config.id}-TA`} className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    <Label htmlFor={`${config.id}-TA`} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Term Assessment (TA)
                     </Label>
                     <div className="relative">
@@ -616,16 +612,16 @@ export default function GradingConfig() {
                         onChange={(e) => handleWeightChange(config.subjectType, "quarterlyAssessWeight", e.target.value)}
                         className="pr-9 text-xl font-bold border-gray-200 rounded-xl h-12"
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">%</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-sm">%</span>
                     </div>
-                    <p className="text-xs text-gray-400">Term examination</p>
+                    <p className="text-xs text-muted-foreground">Term examination</p>
                   </div>
                 </div>
 
                 {/* Weight Distribution Bar */}
                 <div className="pt-5 border-t border-gray-100">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weight Distribution</span>
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Weight Distribution</span>
                     <span
                       className={`text-sm font-bold ${!isValid ? "text-red-600" : ""}`}
                       style={isValid ? { color: colors.primary } : undefined}
@@ -633,7 +629,7 @@ export default function GradingConfig() {
                       {total}% total
                     </span>
                   </div>
-                  <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+                  <div className="h-3 bg-muted rounded-full overflow-hidden flex">
                     <div
                       className="transition-all duration-300 rounded-l-full"
                       style={{ width: `${config.writtenWorkWeight}%`, backgroundColor: colors.primary }}
@@ -650,15 +646,15 @@ export default function GradingConfig() {
                   <div className="flex items-center gap-5 mt-2">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.primary }} />
-                      <span className="text-xs text-gray-500">WW {config.writtenWorkWeight}%</span>
+                      <span className="text-xs text-muted-foreground">WW {config.writtenWorkWeight}%</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.secondary || '#8b5cf6' }} />
-                      <span className="text-xs text-gray-500">PT {config.performanceTaskWeight}%</span>
+                      <span className="text-xs text-muted-foreground">PT {config.performanceTaskWeight}%</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.accent || '#f59e0b' }} />
-                      <span className="text-xs text-gray-500">TA {config.quarterlyAssessWeight}%</span>
+                      <span className="text-xs text-muted-foreground">TA {config.quarterlyAssessWeight}%</span>
                     </div>
                   </div>
                 </div>
@@ -673,28 +669,28 @@ export default function GradingConfig() {
         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3" style={{ backgroundColor: `${colors.primary}06` }}>
           <History className="w-4 h-4" style={{ color: colors.primary }} />
           <div>
-            <h3 className="font-semibold text-sm" style={{ color: '#111827' }}>Recent Configuration Changes</h3>
-            <p className="text-xs text-gray-500">History of grading weight updates this session</p>
+            <h3 className="font-semibold text-sm" text-foreground>Recent Configuration Changes</h3>
+            <p className="text-xs text-muted-foreground">History of grading weight updates this session</p>
           </div>
         </div>
         <CardContent className="p-6">
           {configHistory.length === 0 ? (
             <div className="text-center py-8">
-              <History className="w-8 h-8 mx-auto mb-2 text-gray-200" />
-              <p className="text-sm text-gray-400">No configuration changes recorded yet</p>
+              <History className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">No configuration changes recorded yet</p>
             </div>
           ) : (
             <div className="space-y-3">
               {configHistory.map((log, index) => (
-                <div key={index} className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
+                <div key={index} className="flex items-center gap-4 p-3 rounded-xl bg-muted">
                   <div className="p-2 rounded-lg shrink-0" style={{ backgroundColor: `${colors.primary}12` }}>
                     <Sliders className="w-3.5 h-3.5" style={{ color: colors.primary }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{log.change}</p>
-                    <p className="text-xs text-gray-400">{log.date} · by {log.user}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{log.change}</p>
+                    <p className="text-xs text-muted-foreground">{log.date} · by {log.user}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                 </div>
               ))}
             </div>
@@ -708,15 +704,15 @@ export default function GradingConfig() {
           <div className="flex items-center gap-3">
             <Users className="w-4 h-4" style={{ color: colors.primary }} />
             <div>
-              <h3 className="font-semibold text-sm" style={{ color: '#111827' }}>Per-Subject Weight Overrides</h3>
-              <p className="text-xs text-gray-500">Set custom weights for individual subjects (overrides group defaults)</p>
+              <h3 className="font-semibold text-sm" text-foreground>Per-Subject Weight Overrides</h3>
+              <p className="text-xs text-muted-foreground">Set custom weights for individual subjects (overrides group defaults)</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <select
               value={subjectFilter}
               onChange={(e) => setSubjectFilter(e.target.value)}
-              className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-medium text-gray-600 bg-white"
+              className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-medium text-muted-foreground bg-white"
             >
               <option value="ALL">All Types</option>
               <option value="CORE">Core (incl. Math & Science)</option>
@@ -736,20 +732,20 @@ export default function GradingConfig() {
         <CardContent className="p-0">
           {subjectWeightsLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">WW %</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">PT %</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">TA %</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Override</th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                  <tr className="bg-muted border-b border-gray-100">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Subject</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">WW %</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">PT %</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">TA %</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Override</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -771,13 +767,13 @@ export default function GradingConfig() {
                       const displayPt = subject.hasOverride ? subject.perfTaskWeight : (groupConfig?.performanceTaskWeight ?? 50);
                       const displayQa = subject.hasOverride ? subject.quarterlyAssessWeight : (groupConfig?.quarterlyAssessWeight ?? 30);
                       return (
-                        <tr key={subject.id} className="hover:bg-gray-50/50 transition-colors">
+                        <tr key={subject.id} className="hover:bg-muted/50 transition-colors">
                           <td className="px-6 py-3">
-                            <div className="font-medium text-sm text-gray-900">{subject.name}</div>
-                            <div className="text-xs text-gray-400 font-mono">{subject.code}</div>
+                            <div className="font-medium text-sm text-foreground">{subject.name}</div>
+                            <div className="text-xs text-muted-foreground font-mono">{subject.code}</div>
                           </td>
                           <td className="px-6 py-3">
-                            <Badge className="bg-gray-100 text-gray-600 text-[10px] font-black uppercase tracking-widest">{subject.type}</Badge>
+                            <Badge className="bg-muted text-muted-foreground text-[10px] font-bold uppercase tracking-widest">{subject.type}</Badge>
                           </td>
                           <td className="px-6 py-3 text-center">
                             {subject.hasOverride ? (
@@ -788,7 +784,7 @@ export default function GradingConfig() {
                                 className="w-16 h-8 rounded-lg border-gray-200 text-sm font-mono text-center mx-auto"
                               />
                             ) : (
-                              <span className="text-sm font-mono text-gray-500">{displayWw}</span>
+                              <span className="text-sm font-mono text-muted-foreground">{displayWw}</span>
                             )}
                           </td>
                           <td className="px-6 py-3 text-center">
@@ -800,7 +796,7 @@ export default function GradingConfig() {
                                 className="w-16 h-8 rounded-lg border-gray-200 text-sm font-mono text-center mx-auto"
                               />
                             ) : (
-                              <span className="text-sm font-mono text-gray-500">{displayPt}</span>
+                              <span className="text-sm font-mono text-muted-foreground">{displayPt}</span>
                             )}
                           </td>
                           <td className="px-6 py-3 text-center">
@@ -812,7 +808,7 @@ export default function GradingConfig() {
                                 className="w-16 h-8 rounded-lg border-gray-200 text-sm font-mono text-center mx-auto"
                               />
                             ) : (
-                              <span className="text-sm font-mono text-gray-500">{displayQa}</span>
+                              <span className="text-sm font-mono text-muted-foreground">{displayQa}</span>
                             )}
                           </td>
                           <td className="px-6 py-3 text-center">
@@ -820,7 +816,7 @@ export default function GradingConfig() {
                               {subject.hasOverride ? (
                                 <ToggleRight className="w-6 h-6 text-indigo-600" />
                               ) : (
-                                <ToggleLeft className="w-6 h-6 text-gray-300" />
+                                <ToggleLeft className="w-6 h-6 text-muted-foreground" />
                               )}
                             </button>
                           </td>
@@ -830,7 +826,7 @@ export default function GradingConfig() {
                                 <Button size="sm" variant="ghost" onClick={() => saveSubjectWeight(subject.id)} className="h-7 rounded-lg text-xs font-semibold text-indigo-600 hover:bg-indigo-50">
                                   Save
                                 </Button>
-                                <Button size="sm" variant="ghost" onClick={() => clearSubjectOverride(subject.id)} className="h-7 rounded-lg text-xs font-semibold text-gray-400 hover:bg-gray-100">
+                                <Button size="sm" variant="ghost" onClick={() => clearSubjectOverride(subject.id)} className="h-7 rounded-lg text-xs font-semibold text-muted-foreground hover:bg-muted">
                                   Clear
                                 </Button>
                               </div>

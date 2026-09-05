@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { adminApi } from "../../lib/api";
 import { useTheme } from "../../contexts/ThemeContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -245,7 +246,7 @@ export default function TransmutationTable() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-          <p className="text-gray-500">Loading transmutation table...</p>
+          <p className="text-muted-foreground">Loading transmutation table...</p>
         </div>
       </div>
     );
@@ -253,38 +254,35 @@ export default function TransmutationTable() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Page Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Transmutation Table</h1>
-          <p className="text-gray-600 mt-1">
-            DepEd grading transmutation — initial grade to term grade
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setConfirmReset(true)}
-            className="gap-2 rounded-xl"
-          >
-            <RotateCcw className="w-4 h-4" />
-            Reset Defaults
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={!hasChanges || saving}
-            className="gap-2 text-white font-semibold rounded-xl shadow-lg disabled:opacity-50"
-            style={{ backgroundColor: colors.primary }}
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            {saving ? "Saving..." : "Save Changes"}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Transmutation Table"
+        description="DepEd grading transmutation — initial grade to term grade"
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmReset(true)}
+              className="gap-2 rounded-xl"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Reset Defaults
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!hasChanges || saving}
+              className="gap-2 text-white font-semibold rounded-xl shadow-lg disabled:opacity-50"
+              style={{ backgroundColor: colors.primary }}
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </>
+        }
+      />
 
       {/* Success / Error Alert */}
       {message && (
@@ -310,8 +308,8 @@ export default function TransmutationTable() {
       )}
 
       {/* Main Card */}
-      <Card className="border border-slate-200">
-        <CardHeader className="border-b border-slate-100 pb-4">
+      <Card className="border border-border">
+        <CardHeader className="border-b border-border pb-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <div className="flex items-center gap-3 flex-1">
               <div
@@ -327,7 +325,7 @@ export default function TransmutationTable() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search grades..."
                   value={search}
@@ -388,19 +386,19 @@ export default function TransmutationTable() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/80">
-                    <TableHead className="w-12 font-bold text-gray-700">#</TableHead>
-                    <TableHead className="font-bold text-gray-700">Min Grade</TableHead>
-                    <TableHead className="font-bold text-gray-700">Max Grade</TableHead>
-                    <TableHead className="font-bold text-gray-700">Transmuted Grade</TableHead>
-                    <TableHead className="font-bold text-gray-700">Source</TableHead>
-                    <TableHead className="text-right font-bold text-gray-700">Actions</TableHead>
+                  <TableRow className="bg-muted/80">
+                    <TableHead className="w-12 font-bold text-muted-foreground">#</TableHead>
+                    <TableHead className="font-bold text-muted-foreground">Min Grade</TableHead>
+                    <TableHead className="font-bold text-muted-foreground">Max Grade</TableHead>
+                    <TableHead className="font-bold text-muted-foreground">Transmuted Grade</TableHead>
+                    <TableHead className="font-bold text-muted-foreground">Source</TableHead>
+                    <TableHead className="text-right font-bold text-muted-foreground">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-12 text-gray-500">
+                      <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                         No transmutation entries found
                       </TableCell>
                     </TableRow>
@@ -410,7 +408,7 @@ export default function TransmutationTable() {
                       return (
                         <TableRow key={realIndex}>
                           <TableCell>
-                            <span className="font-mono text-sm text-gray-400">{realIndex + 1}</span>
+                            <span className="font-mono text-sm text-muted-foreground">{realIndex + 1}</span>
                           </TableCell>
                           <TableCell>
                             <Input
@@ -470,7 +468,7 @@ export default function TransmutationTable() {
                               variant="ghost"
                               size="icon"
                               onClick={() => deleteRow(realIndex)}
-                              className="w-8 h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
+                              className="w-8 h-8 rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-50"
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -485,13 +483,13 @@ export default function TransmutationTable() {
           )}
 
           {/* Footer */}
-          <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between bg-gray-50/30">
-            <div className="flex items-center gap-4 text-sm font-semibold text-slate-800">
+          <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between bg-muted/30">
+            <div className="flex items-center gap-4 text-sm font-semibold text-foreground">
               <span>
                 Showing {filtered.length} of {rows.length} entries
               </span>
-              <div className="h-4 w-px bg-slate-300" />
-              <span className="text-slate-500">
+              <div className="h-4 w-px bg-border" />
+              <span className="text-muted-foreground">
                 {rows.filter((r) => r.isDefault).length} default, {rows.filter((r) => !r.isDefault).length} custom
               </span>
             </div>

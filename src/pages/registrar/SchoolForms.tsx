@@ -14,7 +14,7 @@ import {
   AlertCircle,
   MoreVertical,
   PrinterIcon,
-  Download
+  Download,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +45,9 @@ import api, { registrarApi, type Section, SERVER_URL, type SF9Data, type SF10Dat
 
 import { HelpTooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
 import SF5Form from "./components/SF5Form";
+import { StudentSelectionTable } from "./components/StudentSelectionTable";
 
 // Student type for the forms page
 interface FormStudent {
@@ -97,6 +99,15 @@ const schoolForms: SchoolForm[] = [
     status: "active",
   },
   {
+    id: "SF6",
+    name: "Summary Promotion",
+    fullName: "School Form 6 - Summary Promotion Report",
+    description: "School-wide promotion statistics.",
+    icon: FileText,
+    color: "purple",
+    status: "active",
+  },
+  {
     id: "SF9",
     name: "Report Card",
     fullName: "School Form 9 - Learner's Progress Report Card",
@@ -114,15 +125,6 @@ const schoolForms: SchoolForm[] = [
     color: "green",
     status: "active",
   },
-  {
-    id: "SF6",
-    name: "Summary Promotion",
-    fullName: "School Form 6 - Summary Promotion Report",
-    description: "School-wide promotion statistics.",
-    icon: FileText,
-    color: "purple",
-    status: "active",
-  },
 ];
 
 // Helper function to format grade level for display
@@ -131,6 +133,16 @@ const formatGradeLevel = (gradeLevel: string) => {
     return gradeLevel.replace("GRADE_", "");
   }
   return gradeLevel;
+};
+
+// Format an ISO date string as mm/dd/yyyy using the calendar date directly
+// (avoids toLocaleDateString shifting the day when the browser is in a negative UTC offset)
+const formatISODate = (iso?: string): string | null => {
+  const datePart = iso?.split("T")[0];
+  if (!datePart) return null;
+  const [y, m, d] = datePart.split("-");
+  if (!y || !m || !d) return null;
+  return `${m}/${d}/${y}`;
 };
 
 type ViewMode = "list" | "sf1" | "sf2" | "sf5" | "sf6" | "sf9" | "sf10" | "bulk_sf9" | "bulk_sf10";
@@ -436,10 +448,10 @@ export default function SchoolForms() {
           <p className="text-xs text-gray-700 mb-1">SF 9 - JHS</p>
           <h2 className="font-bold text-base text-gray-900">Republic of the Philippines</h2>
           <h3 className="font-bold text-sm text-gray-900">Department of Education</h3>
-          <p className="text-sm text-gray-800 mt-1">{schoolRegion || "Region _____________"}</p>
-          <p className="text-sm text-gray-800">{schoolDivision ? `Division of ${schoolDivision}` : "Division of _____________"}</p>
+          <p className="text-sm text-gray-800 mt-1">{data.schoolSettings?.region || "Region _____________"}</p>
+          <p className="text-sm text-gray-800">{data.schoolSettings?.division ? `Division of ${data.schoolSettings.division}` : "Division of _____________"}</p>
           <p className="text-sm text-gray-800 mt-1">District: _____________</p>
-          <p className="text-sm text-gray-800">{schoolName ? `School: ${schoolName}` : "School: _____________"}</p>
+          <p className="text-sm text-gray-800">{data.schoolSettings?.schoolName ? `School: ${data.schoolSettings.schoolName}` : "School: _____________"}</p>
         </div>
         <div className="w-20 flex items-center justify-center">
           {fullLogoUrl ? (
@@ -540,7 +552,7 @@ export default function SchoolForms() {
                 {data.generalAverage?.toFixed(2) ?? ''}
               </td>
               <td className="p-2 text-center">
-                {data.honors && <span className="text-amber-700 text-xs">{data.honors}</span>}
+                {data.honors && <span className="text-foreground text-xs">{data.honors}</span>}
               </td>
             </tr>
           </tbody>
@@ -691,6 +703,7 @@ export default function SchoolForms() {
   // MAPEH: MUSIC, ARTS, PE, HEALTH â†’ MAPEH (grouped, for historical seed data)
   const SF10_GROUP_MAP: Record<string, string> = {
     SCI_BIO: 'SCI', SCI_CHEM: 'SCI', SCI_ES: 'SCI', SCI: 'SCI',
+    SCIENCE: 'SCI',
     TLE_AFA: 'TLE', TLE_AFA_EXP: 'TLE',
     TLE_FCS: 'TLE', TLE_FCS_EXP: 'TLE',
     TLE_ICT: 'TLE', TLE_ICT_EXP: 'TLE',
@@ -850,6 +863,37 @@ export default function SchoolForms() {
         </div>
       </div>
 
+      {/* TRANSFEREE INFORMATION — shown only for transfer-in learners */}
+      {data.student.isTransferee && (
+        <div className="mb-3 border border-black">
+          <div className="bg-gray-200 px-2 py-0.5 border-b border-black">
+            <span className="font-bold text-[11px] text-gray-900">TRANSFEREE INFORMATION</span>
+          </div>
+          <div className="p-2">
+            <div className="grid grid-cols-2 gap-4 mb-1">
+              <div>
+                <span className="font-bold text-gray-900">Transferred From (Previous School):</span>
+                <span className="border-b border-gray-600 ml-1 inline-block min-w-[150px] text-gray-900">{data.student.previousSchool || ''}</span>
+              </div>
+              <div>
+                <span className="font-bold text-gray-900">Last Grade Completed:</span>
+                <span className="border-b border-gray-600 ml-1 inline-block min-w-[150px] text-gray-900">{data.student.lastGradeCompleted || ''}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="font-bold text-gray-900">Transfer Certificate No.:</span>
+                <span className="border-b border-gray-600 ml-1 inline-block min-w-[150px] text-gray-900">{data.student.transferCertNo || ''}</span>
+              </div>
+              <div>
+                <span className="font-bold text-gray-900">Date Transferred In:</span>
+                <span className="border-b border-gray-600 ml-1 inline-block min-w-[150px] text-gray-900">{formatISODate(data.student.transferInDate) || ''}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SCHOLASTIC RECORD â€” one per grade level */}
       {data.schoolRecords.map((record: any, recordIndex: number) => (
         <div key={recordIndex} className="mb-3 border border-black page-break-inside-avoid">
@@ -879,6 +923,12 @@ export default function SchoolForms() {
                 <span className="border-b border-gray-600 ml-1 text-gray-900 inline-block min-w-[80px]">{record.schoolYear}</span>
               </div>
             </div>
+            {record.transferInDate && (
+              <div className="mt-1 text-[10px]">
+                <span className="font-bold text-gray-900">Transferred In:</span>
+                <span className="border-b border-gray-600 ml-1 inline-block min-w-[80px] text-gray-900">{formatISODate(record.transferInDate)}</span>
+              </div>
+            )}
           </div>
 
           {/* Scholastic Record Table */}
@@ -955,21 +1005,27 @@ export default function SchoolForms() {
               <span className="font-bold text-gray-900">Remedial Classes</span>
               <span className="text-gray-900 ml-4">
                 Conducted from (mm/dd/yyyy)
-                {record.remedialClasses?.length > 0 && record.remedialClasses[0].conductedFrom ? (
-                  <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">
-                    {new Date(record.remedialClasses[0].conductedFrom).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })}
-                  </span>
-                ) : (
-                  <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
-                )}
+                {(() => {
+                  const conductedFrom = formatISODate(record.remedialClasses?.[0]?.conductedFrom);
+                  return conductedFrom ? (
+                    <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">
+                      {conductedFrom}
+                    </span>
+                  ) : (
+                    <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
+                  );
+                })()}
                 to
-                {record.remedialClasses?.length > 0 && record.remedialClasses[0].conductedTo ? (
-                  <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">
-                    {new Date(record.remedialClasses[0].conductedTo).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })}
-                  </span>
-                ) : (
-                  <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
-                )}
+                {(() => {
+                  const conductedTo = formatISODate(record.remedialClasses?.[0]?.conductedTo);
+                  return conductedTo ? (
+                    <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">
+                      {conductedTo}
+                    </span>
+                  ) : (
+                    <span className="border-b border-gray-600 mx-1 inline-block min-w-[80px]">&nbsp;</span>
+                  );
+                })()}
               </span>
             </div>
             <table className="w-full text-[10px] border-collapse mt-1">
@@ -1001,12 +1057,14 @@ export default function SchoolForms() {
           <div className="grid grid-cols-2 gap-4 p-2 border-t border-black text-[10px]">
             <div className="text-center">
               <div className="border-b border-gray-600 mt-6 mx-4"></div>
-              <p className="mt-0.5 text-gray-900">Signature of Adviser</p>
+              <p className="mt-0.5 text-gray-900">{record.adviserName || ""}</p>
+              <p className="text-gray-900">Signature of Adviser</p>
               <p className="text-gray-700 italic">(over Printed Name)</p>
             </div>
             <div className="text-center">
               <div className="border-b border-gray-600 mt-6 mx-4"></div>
-              <p className="mt-0.5 text-gray-900">Signature of Principal/School Head</p>
+              <p className="mt-0.5 text-gray-900">{data.schoolSettings?.schoolHeadName || ""}</p>
+              <p className="text-gray-900">Signature of Principal/School Head</p>
               <p className="text-gray-700 italic">(over Printed Name)</p>
             </div>
           </div>
@@ -1037,7 +1095,8 @@ export default function SchoolForms() {
           </div>
           <div className="text-center">
             <div className="border-b border-gray-600 mt-6 mx-8"></div>
-            <p className="mt-0.5 text-[10px] text-gray-900">Signature of Principal/School Head over Printed Name</p>
+            <p className="mt-0.5 text-[10px] text-gray-900">{data.schoolSettings?.schoolHeadName || ""}</p>
+            <p className="text-[10px] text-gray-900">Signature of Principal/School Head over Printed Name</p>
           </div>
         </div>
       </div>
@@ -1181,45 +1240,48 @@ export default function SchoolForms() {
   // Form List View
   if (viewMode === "list") {
     return (
-      <div className="space-y-6 animate-fade-in">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            DepEd School Forms
-          </h1>
-          <p className="text-gray-600 mt-1">
-            Generate and view official Department of Education forms
-          </p>
-        </div>
+      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+        <PageHeader
+          title="DepEd School Forms"
+          description="Generate and view official Department of Education forms"
+        />
 
         {/* Error Display */}
         {error && (
-          <Card className="border-red-200 bg-red-50">
+          <Card className="border border-rose-200 bg-rose-50 rounded-xl p-0">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-red-600" />
+                <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5 text-destructive" />
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900">Error Loading Data</p>
-                  <p className="text-sm text-gray-600">{error}</p>
+                  <p className="font-semibold text-foreground">Error Loading Data</p>
+                  <p className="text-sm text-muted-foreground">{error}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Filters */}
-        <Card className="border-0 shadow-lg rounded-2xl p-0">
+        {/* Filters Card */}
+        <Card className="border border-border shadow-sm bg-card overflow-hidden rounded-xl p-0">
+          <div className="px-6 py-4 border-b border-border">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Filters</h2>
+              <p className="text-sm text-muted-foreground">
+                Narrow down by school year, grade, and section to load the right students
+              </p>
+            </div>
+          </div>
           <CardContent className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <div className="flex items-center gap-1 mb-2">
-                  <label className="block text-sm font-medium text-gray-700">School Year</label>
+                <div className="flex items-center gap-1 mb-1.5">
+                  <label className="block text-xs font-medium text-muted-foreground">School Year</label>
                   <HelpTooltip content="Select the school year for which to generate forms" />
                 </div>
                 <Select value={schoolYear} onValueChange={(v: string | null) => v && setSchoolYear(v)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 rounded-lg text-xs font-medium">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1230,7 +1292,7 @@ export default function SchoolForms() {
                 </Select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Grade Filter</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Grade Filter</label>
                 <Select value={selectedGrade} onValueChange={(v: string | null) => {
                   if (v) {
                     setSelectedGrade(v);
@@ -1239,7 +1301,7 @@ export default function SchoolForms() {
                     setSelectedStudent("");
                   }
                 }}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 rounded-lg text-xs font-medium">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1253,14 +1315,14 @@ export default function SchoolForms() {
                 </Select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Section Filter</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Section Filter</label>
                 <Select value={selectedSection} onValueChange={(v: string | null) => {
                   if (v) {
                     setSelectedSection(v);
                     setSelectedStudent("");
                   }
                 }}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 rounded-lg text-xs font-medium">
                     <SelectValue placeholder="Select section">
                       {(() => {
                         const section = sections.find(s => s.id === selectedSection);
@@ -1285,44 +1347,58 @@ export default function SchoolForms() {
         </Card>
 
         {/* Forms Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {schoolForms.map((form, formIndex) => {
-            const isDev = form.status === "dev";
+        <Card className="border border-border shadow-sm bg-card overflow-hidden rounded-xl p-0">
+          <div className="px-6 py-4 border-b border-border">
+            <h2 className="text-base font-semibold text-foreground">Available Forms</h2>
+            <p className="text-sm text-muted-foreground">
+              {schoolForms.length} DepEd school forms ready to generate
+            </p>
+          </div>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {schoolForms.map((form) => {
+                const isDev = form.status === "dev";
 
-            return (
-              <Card 
-                key={form.id} 
-                className={`group border-0 shadow-lg shadow-gray-200/50 transition-all duration-300 bg-white overflow-hidden rounded-2xl p-0 ${isDev ? 'opacity-75 grayscale-[0.3]' : 'hover:shadow-xl'}`}
-              >
-                <CardHeader className="border-b border-gray-100 px-6 py-4" style={{ backgroundColor: isDev ? '#f8fafc' : `${themeColors.primary}08` }}>
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2.5 rounded-xl text-white shadow-sm ${!isDev ? 'group-hover:scale-110 transition-transform shadow-lg' : ''}`} style={{ backgroundColor: isDev ? '#94a3b8' : themeColors.primary }}>
-                      <form.icon className="w-5 h-5" />
-                    </div>
-                    <div className="flex flex-col flex-1">
-                      <div className="flex items-center justify-between">
-                        <Badge className="font-bold text-sm border border-transparent" style={{ backgroundColor: isDev ? '#f1f5f9' : `${themeColors.primary}15`, color: isDev ? '#64748b' : themeColors.primary }}>
-                          {form.id}
-                        </Badge>
-                        {isDev && (
-                          <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-500 border-slate-200 uppercase tracking-wider py-0 px-1.5 h-4">
-                            In Dev
-                          </Badge>
-                        )}
+                return (
+                  <div
+                    key={form.id}
+                    className={`group border border-border bg-card overflow-hidden rounded-xl transition-all ${isDev ? 'opacity-75' : 'hover:shadow-md hover:-translate-y-0.5'}`}
+                  >
+                    <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+                      <div
+                        className={`p-2.5 rounded-lg text-white shrink-0 ${!isDev ? 'group-hover:scale-105 transition-transform' : ''}`}
+                        style={{ backgroundColor: isDev ? '#94a3b8' : themeColors.primary }}
+                      >
+                        <form.icon className="w-4 h-4" />
                       </div>
-                      <CardTitle className={`text-base font-bold mt-1 ${isDev ? 'text-slate-700' : 'text-gray-900'}`}>
-                        {form.name}
-                      </CardTitle>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+                            style={{
+                              backgroundColor: isDev ? '#f1f5f9' : `${themeColors.primary}10`,
+                              color: isDev ? '#64748b' : themeColors.primary,
+                              borderColor: isDev ? '#e2e8f0' : `${themeColors.primary}25`,
+                            }}
+                          >
+                            {form.id}
+                          </Badge>
+                          {isDev && (
+                            <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border uppercase tracking-wider px-1.5 h-4">
+                              In Dev
+                            </Badge>
+                          )}
+                        </div>
+                        <p className={`text-sm font-semibold mt-1 truncate ${isDev ? 'text-muted-foreground' : 'text-foreground'}`}>
+                          {form.name}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6 flex flex-col h-full">
-                  <p className={`text-sm mb-6 flex-1 ${isDev ? 'text-slate-500' : 'text-gray-600'}`}>
-                    {form.description}
-                  </p>
-                  
-                  <div className="flex mt-auto">
-                    {(form.id === "SF1" || form.id === "SF2" || form.id === "SF5" || form.id === "SF6" || form.id === "SF9" || form.id === "SF10") && !isDev ? (
+                    <div className="p-5 flex flex-col gap-4">
+                      <p className={`text-xs flex-1 ${isDev ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
+                        {form.description}
+                      </p>
+
                       <Button
                         onClick={() => {
                           if (form.id === "SF1") handleViewSF1();
@@ -1333,202 +1409,48 @@ export default function SchoolForms() {
                           else if (form.id === "SF10") handleViewSF10();
                         }}
                         disabled={
-                          (form.id === "SF1" || form.id === "SF2" || form.id === "SF5") && !selectedSection
-                          || (form.id === "SF9" || form.id === "SF10") && !selectedStudent
-                        }
-                        className="rounded-xl w-full text-white"
-                        style={{ backgroundColor: themeColors.primary }}
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        View
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={() => {
-                          if (form.id === "SF9") handleViewSF9();
-                          else if (form.id === "SF10") handleViewSF10();
-                        }}
-                        disabled={
                           isDev ||
+                          ((form.id === "SF1" || form.id === "SF2" || form.id === "SF5") && !selectedSection) ||
                           ((form.id === "SF9" || form.id === "SF10") && !selectedStudent)
                         }
-                        className="rounded-xl w-full"
-                        variant={isDev ? "outline" : "default"}
-                        style={!isDev ? { backgroundColor: themeColors.primary, color: 'white' } : {}}
+                        className="rounded-lg w-full text-white"
+                        style={{ backgroundColor: isDev ? '#94a3b8' : themeColors.primary }}
                       >
                         {isDev ? (
                           <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin-slow opacity-50" />
+                            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin-slow opacity-50" />
                             Under Development
                           </>
                         ) : (
                           <>
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Form
+                            <Eye className="w-3.5 h-3.5 mr-1.5" />
+                            View
                           </>
                         )}
                       </Button>
-                    )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Student List for Quick Access */}
         {selectedSection && students.length > 0 && (
-          <Card className="border-0 shadow-lg rounded-2xl p-0">
-            <CardHeader className="border-b px-6 py-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                {/* Left: title + selection badge */}
-                <div className="flex items-center gap-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Users className="w-4 h-4" style={{ color: themeColors.primary }} />
-                    Students
-                    <span className="text-sm font-normal text-gray-500">({filteredStudents.length})</span>
-                  </CardTitle>
-                  {selectedStudentIds.length > 0 && (
-                    <span
-                      className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full"
-                      style={{ backgroundColor: `${themeColors.primary}15`, color: themeColors.primary }}
-                    >
-                      {selectedStudentIds.length} selected
-                    </span>
-                  )}
-                </div>
-
-                {/* Right: actions + search */}
-                <div className="flex items-center gap-2">
-                  {selectedStudentIds.length > 0 && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={
-                        <Button
-                          size="sm"
-                          className="rounded-xl h-9 text-white gap-1.5"
-                          style={{ backgroundColor: themeColors.primary }}
-                        />
-                      }>
-                          <Printer className="w-3.5 h-3.5" />
-                          Print&nbsp;Selected
-                          <ChevronRight className="w-3.5 h-3.5 rotate-90 opacity-70" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-52">
-                        <DropdownMenuItem onClick={() => handleBulkPrint('sf9')}>
-                          <FileText className="w-4 h-4 mr-2" />
-                          SF9 â€” Report Cards
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleBulkPrint('sf10')}>
-                          <FolderOpen className="w-4 h-4 mr-2" />
-                          SF10 â€” Permanent Records
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="rounded-xl h-9 gap-1.5" />}>
-                        <Printer className="w-3.5 h-3.5" />
-                        Print All
-                        <ChevronRight className="w-3.5 h-3.5 rotate-90 opacity-50" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
-                      <DropdownMenuItem onClick={() => handleBulkPrint('sf9', true)}>
-                        <FileText className="w-4 h-4 mr-2" />
-                        SF9 â€” Report Cards
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleBulkPrint('sf10', true)}>
-                        <FolderOpen className="w-4 h-4 mr-2" />
-                        SF10 â€” Permanent Records
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  <div className="relative w-48">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                    <Input
-                      placeholder="Search studentsâ€¦"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-8 rounded-xl h-9 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50/80">
-                    <TableHead className="w-10 pl-4">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 rounded border-gray-300 cursor-pointer accent-primary"
-                        checked={selectedStudentIds.length === filteredStudents.length && filteredStudents.length > 0}
-                        onChange={handleToggleAll}
-                        title="Select all"
-                      />
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide">LRN</TableHead>
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</TableHead>
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gender</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStudents.map((student) => {
-                    const isSelected = selectedStudentIds.includes(student.id);
-                    return (
-                    <TableRow
-                      key={student.id}
-                      className={`transition-colors cursor-pointer ${isSelected ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-gray-50'}`}
-                      onClick={() => handleToggleStudent(student.id)}
-                    >
-                      <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 rounded border-gray-300 cursor-pointer accent-primary"
-                          checked={isSelected}
-                          onChange={() => handleToggleStudent(student.id)}
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-sm text-gray-600">{student.lrn}</TableCell>
-                      <TableCell>
-                        <span className={`font-medium ${isSelected ? 'text-primary' : 'text-gray-900'}`}>
-                          {student.lastName}, {student.firstName} {student.middleName || ""} {student.suffix || ""}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={`text-xs ${(student.gender ?? "").toLowerCase() === "male" ? "border-blue-200 text-blue-600 bg-blue-50" : "border-pink-200 text-pink-600 bg-pink-50"}`}
-                        >
-                          {student.gender}
-                        </Badge>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-gray-100" />}>
-                              <MoreVertical className="w-4 h-4 text-gray-400" />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem onClick={() => handleViewSF9(student.id)} className="gap-2">
-                              <FileText className="w-4 h-4 text-blue-500" />
-                              <span>View SF9</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleViewSF10(student.id)} className="gap-2">
-                              <FolderOpen className="w-4 h-4 text-green-500" />
-                              <span>View SF10</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  )})}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <StudentSelectionTable
+            filteredStudents={filteredStudents}
+            selectedStudentIds={selectedStudentIds}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onToggleAll={handleToggleAll}
+            onToggleStudent={handleToggleStudent}
+            onViewSF9={(id) => handleViewSF9(id)}
+            onViewSF10={(id) => handleViewSF10(id)}
+            onBulkPrint={(formType) => handleBulkPrint(formType)}
+            onBulkPrintAll={(formType) => handleBulkPrint(formType, true)}
+            themeColors={themeColors}
+          />
         )}
       </div>
     );
@@ -1538,11 +1460,11 @@ export default function SchoolForms() {
     return (
       <div className="space-y-6 animate-fade-in max-w-[860px] mx-auto">
         <div className="flex items-center justify-between print-hide">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+          <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
-          <Button onClick={() => executePrint(bulkPrintRef, "bulk-sf9-print-style")} className="rounded-xl text-white" style={{ backgroundColor: themeColors.primary }}>
+          <Button onClick={() => executePrint(bulkPrintRef, "bulk-sf9-print-style")} variant="default" size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
             <Printer className="w-4 h-4 mr-2" />
             Print {bulkSf9Data.length} SF9 Forms
           </Button>
@@ -1561,11 +1483,11 @@ export default function SchoolForms() {
     return (
       <div className="space-y-6 animate-fade-in max-w-[900px] mx-auto">
         <div className="flex items-center justify-between print-hide">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+          <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
-          <Button onClick={() => executePrint(bulkPrintRef, "bulk-sf10-print-style")} className="rounded-xl text-white" style={{ backgroundColor: themeColors.primary }}>
+          <Button onClick={() => executePrint(bulkPrintRef, "bulk-sf10-print-style")} variant="default" size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
             <Printer className="w-4 h-4 mr-2" />
             Print {bulkSf10Data.length} SF10 Forms
           </Button>
@@ -1607,24 +1529,24 @@ export default function SchoolForms() {
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center justify-between print-hide">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+            <Button variant="ghost" onClick={handleBack}>
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back
             </Button>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">SF1 - School Register</h2>
-              <p className="text-sm text-gray-500">{sf1Data.section.name} ({sf1Data.section.gradeLevel?.replace("_", " ")}) - {sf1Data.section.schoolYear}</p>
-              <p className="text-xs text-gray-400">
+              <h2 className="text-xl font-bold text-foreground">SF1 - School Register</h2>
+              <p className="text-sm text-muted-foreground">{sf1Data.section.name} ({sf1Data.section.gradeLevel?.replace("_", " ")}) - {sf1Data.section.schoolYear}</p>
+              <p className="text-xs text-muted-foreground">
                 {sf1Data.summary.maleCount} Male, {sf1Data.summary.femaleCount} Female, {sf1Data.summary.totalCount} Total
               </p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Button onClick={handleDownloadExcel} variant="outline" className="rounded-xl">
+            <Button onClick={handleDownloadExcel} variant="outline" size="sm" className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs">
               <Download className="w-4 h-4 mr-2" />
               Download Excel
             </Button>
-            <Button onClick={handlePrint} className="rounded-xl text-white" style={{ backgroundColor: themeColors.primary }}>
+            <Button onClick={handlePrint} variant="default" size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
               <Printer className="w-4 h-4 mr-2" />
               Print SF1
             </Button>
@@ -1644,13 +1566,13 @@ export default function SchoolForms() {
     return (
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+          <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           <div>
-            <h2 className="text-xl font-bold text-gray-900">SF2 - Daily Attendance Report</h2>
-            <p className="text-sm text-gray-500">Attendance summary per student</p>
+            <h2 className="text-xl font-bold text-foreground">SF2 - Daily Attendance Report</h2>
+            <p className="text-sm text-muted-foreground">Attendance summary per student</p>
           </div>
         </div>
         <Card className="border-0 shadow-lg rounded-2xl">
@@ -1658,7 +1580,7 @@ export default function SchoolForms() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b">
+                  <tr className="bg-muted/50 border-b">
                     <th className="px-4 py-3 text-left font-semibold">Student</th>
                     <th className="px-4 py-3 text-center font-semibold">Present</th>
                     <th className="px-4 py-3 text-center font-semibold">Absent</th>
@@ -1669,7 +1591,7 @@ export default function SchoolForms() {
                 </thead>
                 <tbody>
                   {summary.map((s: any, i: number) => (
-                    <tr key={s.studentId || i} className="border-b hover:bg-gray-50">
+                    <tr key={s.studentId || i} className="border-b hover:bg-muted/50">
                       <td className="px-4 py-3 font-medium">{s.studentName || s.name || "-"}</td>
                       <td className="px-4 py-3 text-center text-green-600">{s.present ?? 0}</td>
                       <td className="px-4 py-3 text-center text-red-600">{s.absent ?? 0}</td>
@@ -1693,15 +1615,15 @@ export default function SchoolForms() {
 
     return (
       <div className="space-y-6 animate-fade-in max-w-[900px] mx-auto">
-        {/* Action Buttons â€” hidden when printing */}
+        {/* Action Buttons — hidden when printing */}
         <div className="flex items-center justify-between print-hide">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+          <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           <div>
-            <h2 className="text-xl font-bold text-gray-900">SF5 - Report on Promotion</h2>
-            <p className="text-sm text-gray-500">{sf5Data.section.name} ({sf5Data.section.gradeLevel}) - {sf5Data.section.schoolYear}</p>
+            <h2 className="text-xl font-bold text-foreground">SF5 - Report on Promotion</h2>
+            <p className="text-sm text-muted-foreground">{sf5Data.section.name} ({sf5Data.section.gradeLevel}) - {sf5Data.section.schoolYear}</p>
           </div>
         </div>
 
@@ -1723,13 +1645,13 @@ export default function SchoolForms() {
     return (
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+          <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           <div>
-            <h2 className="text-xl font-bold text-gray-900">SF6 - Summary Promotion Report</h2>
-            <p className="text-sm text-gray-500">School Year: {sf6Data.schoolYear}</p>
+            <h2 className="text-xl font-bold text-foreground">SF6 - Summary Promotion Report</h2>
+            <p className="text-sm text-muted-foreground">School Year: {sf6Data.schoolYear}</p>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-4">
@@ -1765,7 +1687,7 @@ export default function SchoolForms() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b">
+                  <tr className="bg-muted/50 border-b">
                     <th className="px-4 py-3 text-left font-semibold">Grade Level</th>
                     <th className="px-4 py-3 text-center font-semibold">Total</th>
                     <th className="px-4 py-3 text-center font-semibold">Promoted</th>
@@ -1779,7 +1701,7 @@ export default function SchoolForms() {
                     if (!data) return null;
                     const rate = data.total > 0 ? Math.round((data.promoted / data.total) * 100) : 0;
                     return (
-                      <tr key={gl} className="border-b hover:bg-gray-50">
+                      <tr key={gl} className="border-b hover:bg-muted/50">
                         <td className="px-4 py-3 font-medium">{formatGradeLevel(gl)}</td>
                         <td className="px-4 py-3 text-center">{data.total}</td>
                         <td className="px-4 py-3 text-center text-green-600 font-semibold">{data.promoted}</td>
@@ -1788,7 +1710,7 @@ export default function SchoolForms() {
                       </tr>
                     );
                   })}
-                  <tr className="bg-gray-50 font-bold">
+                  <tr className="bg-muted/50 font-bold">
                     <td className="px-4 py-3">TOTAL</td>
                     <td className="px-4 py-3 text-center">{summary.totalStudents || 0}</td>
                     <td className="px-4 py-3 text-center text-green-600">{summary.promoted || 0}</td>
@@ -1810,7 +1732,7 @@ export default function SchoolForms() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b">
+                  <tr className="bg-muted/50 border-b">
                     <th className="px-4 py-3 text-left font-semibold">Section</th>
                     <th className="px-4 py-3 text-left font-semibold">Grade</th>
                     <th className="px-4 py-3 text-left font-semibold">Program</th>
@@ -1822,11 +1744,11 @@ export default function SchoolForms() {
                 </thead>
                 <tbody>
                   {sections.map((s: any) => (
-                    <tr key={s.sectionId} className="border-b hover:bg-gray-50">
+                    <tr key={s.sectionId} className="border-b hover:bg-muted/50">
                       <td className="px-4 py-3 font-medium">{s.sectionName}</td>
                       <td className="px-4 py-3">{formatGradeLevel(s.gradeLevel)}</td>
                       <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100">{s.program}</span>
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted">{s.program}</span>
                       </td>
                       <td className="px-4 py-3 text-center">{s.totalStudents}</td>
                       <td className="px-4 py-3 text-center text-green-600 font-semibold">{s.promoted}</td>
@@ -1851,12 +1773,12 @@ export default function SchoolForms() {
       <div className="space-y-6 animate-fade-in max-w-[860px] mx-auto">
         {/* Action Buttons - Hidden when printing */}
         <div className="flex items-center justify-between print-hide">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+          <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           <div className="flex gap-2">
-            <Button onClick={handlePrint} className="rounded-xl text-white" style={{ backgroundColor: themeColors.primary }}>
+            <Button onClick={handlePrint} variant="default" size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
               <Printer className="w-4 h-4 mr-2" />
               Print Form
             </Button>
@@ -1874,10 +1796,10 @@ export default function SchoolForms() {
               <p className="text-xs text-gray-700 mb-1">SF 9 - JHS</p>
               <h2 className="font-bold text-base text-gray-900">Republic of the Philippines</h2>
               <h3 className="font-bold text-sm text-gray-900">Department of Education</h3>
-              <p className="text-sm text-gray-800 mt-1">{schoolRegion || "Region _____________"}</p>
-              <p className="text-sm text-gray-800">{schoolDivision ? `Division of ${schoolDivision}` : "Division of _____________"}</p>
+              <p className="text-sm text-gray-800 mt-1">{sf9Data.schoolSettings?.region || "Region _____________"}</p>
+              <p className="text-sm text-gray-800">{sf9Data.schoolSettings?.division ? `Division of ${sf9Data.schoolSettings.division}` : "Division of _____________"}</p>
               <p className="text-sm text-gray-800 mt-1">District: _____________</p>
-              <p className="text-sm text-gray-800">{schoolName ? `School: ${schoolName}` : "School: _____________"}</p>
+              <p className="text-sm text-gray-800">{sf9Data.schoolSettings?.schoolName ? `School: ${sf9Data.schoolSettings.schoolName}` : "School: _____________"}</p>
             </div>
             <div className="w-20 flex items-center justify-center">
               {fullLogoUrl ? (
@@ -1978,7 +1900,7 @@ export default function SchoolForms() {
                     {sf9Data.generalAverage?.toFixed(2) ?? ''}
                   </td>
                   <td className="p-2 text-center">
-                    {sf9Data.honors && <span className="text-amber-700 text-xs">{sf9Data.honors}</span>}
+                    {sf9Data.honors && <span className="text-foreground text-xs">{sf9Data.honors}</span>}
                   </td>
                 </tr>
               </tbody>
@@ -2110,12 +2032,12 @@ export default function SchoolForms() {
       <div className="space-y-6 animate-fade-in max-w-[900px] mx-auto">
         {/* Action Buttons - Hidden when printing */}
         <div className="flex items-center justify-between print-hide">
-          <Button variant="ghost" onClick={handleBack} className="rounded-xl">
+          <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           <div className="flex gap-2">
-            <Button onClick={handlePrint} className="rounded-xl text-white" style={{ backgroundColor: themeColors.primary }}>
+            <Button onClick={handlePrint} variant="default" size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
               <Printer className="w-4 h-4 mr-2" />
               Print Form
             </Button>
@@ -2133,7 +2055,7 @@ export default function SchoolForms() {
   // Loading or fallback
   return (
     <div className="flex items-center justify-center h-64">
-      <p className="text-gray-500">Loading...</p>
+      <p className="text-muted-foreground">Loading...</p>
     </div>
   );
 }

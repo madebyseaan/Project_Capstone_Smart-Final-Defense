@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { adminApi } from "@/lib/api";
 
 export default function ClassAssignments() {
@@ -120,35 +121,32 @@ export default function ClassAssignments() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Class Assignments</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Teaching load — which teacher handles which subject in which section.
-            Synced automatically from Atlas on teacher login.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={schoolYear} onValueChange={setSchoolYear}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {schoolYears.map((sy) => (
-                <SelectItem key={sy.id} value={sy.label}>{sy.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button size="sm" onClick={() => { setShowForm(!showForm); setError(null); }}>
-            <Plus className="h-4 w-4 mr-1" />
-            Add Assignment
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Class Assignments"
+        description="Teaching load — which teacher handles which subject in which section. Synced automatically from Atlas on teacher login."
+        actions={
+          <>
+            <Select value={schoolYear} onValueChange={setSchoolYear}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {schoolYears.map((sy) => (
+                  <SelectItem key={sy.id} value={sy.label}>{sy.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button size="sm" onClick={() => { setShowForm(!showForm); setError(null); }}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add Assignment
+            </Button>
+          </>
+        }
+      />
 
       {/* Info banner about Atlas */}
       <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">

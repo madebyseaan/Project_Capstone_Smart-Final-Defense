@@ -15,7 +15,7 @@
  * Call startUnifiedSyncScheduler() once on server boot. That's it.
  */
 
-import { runEnrollProSync, getEnrollProSyncStatus } from './enrollproSync';
+import { runEnrollProSync, syncTransferees, getEnrollProSyncStatus } from './enrollproSync';
 import { runAtlasSync, getSyncStatus as getAtlasSyncStatus } from './atlasSync';
 import { syncEnrollProBranding } from './enrollproBrandingSync';
 import { runStudentProfileSync } from './studentProfileSync';
@@ -73,6 +73,10 @@ export interface UnifiedSyncResult {
     deleted: number;
     teachersWithLoads: number;
     errors: string[];
+  } | null;
+  transferees?: {
+    tagged: number;
+    unmatched: Array<{ lrn: string; reason: string }>;
   } | null;
   branding: boolean;
   error?: string;
@@ -217,6 +221,7 @@ export async function runUnifiedSync(options?: {
 
   let enrollproResult: UnifiedSyncResult['enrollpro'] = null;
   let atlasResult: UnifiedSyncResult['atlas'] = null;
+  let transfereeResult: UnifiedSyncResult['transferees'] = null;
   let brandingSynced = false;
   let error: string | undefined;
 
@@ -267,6 +272,23 @@ export async function runUnifiedSync(options?: {
       } catch (err: any) {
         logger.error('[SyncCoordinator] Prune failed (non-fatal):', err.message);
       }
+    }
+
+    // ── Step 1c: Transferee enrichment pass ─────────────────────────────
+    // Runs after EnrollPro sync. Fail-soft — never breaks the cycle.
+    try {
+      const transfereeResultData = await syncTransferees();
+      transfereeResult = {
+        tagged: transfereeResultData.transfereesTagged,
+        unmatched: transfereeResultData.unmatched,
+      };
+      if (transfereeResultData.transfereesTagged > 0) {
+        logger.info(
+          `[SyncCoordinator] Transferee pass: ${transfereeResultData.transfereesTagged} tagged, ${transfereeResultData.unmatched.length} unmatched`,
+        );
+      }
+    } catch (err: any) {
+      logger.error('[SyncCoordinator] Transferee sync failed (non-fatal):', err.message);
     }
 
     // ── Step 2: Atlas Sync ──────────────────────────────────────────────
@@ -336,6 +358,7 @@ export async function runUnifiedSync(options?: {
     durationMs,
     enrollpro: enrollproResult,
     atlas: atlasResult,
+    transferees: transfereeResult,
     branding: brandingSynced,
     ...(error ? { error } : {}),
   };
@@ -615,6 +638,7 @@ function buildEmptyResult(error: string): UnifiedSyncResult {
     durationMs: 0,
     enrollpro: null,
     atlas: null,
+    transferees: null,
     branding: false,
     error,
   };

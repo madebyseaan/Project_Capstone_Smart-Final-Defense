@@ -38,7 +38,8 @@ const loginLimiter = rateLimit({
 // Login route (rate-limited to prevent brute-force)
 router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, res: Response): Promise<void> => {
   try {
-    let { email, password } = req.body;
+    const { password } = req.body;
+    let email = req.body.email;
     const ipAddress = req.ip || req.socket.remoteAddress;
 
     if (!email || !password) {

@@ -8,7 +8,7 @@ After user answers:
 
 1. Use glob/grep to find relevant files for this feature
 2. Read the relevant files (3-5 files max)
-3. Check if plans/ directory exists for similar past plans
+3. Check if docs/ directory exists for similar past plans
 4. Generate this prompt for the user to copy-paste into GPT-5.6 Sol:
 
 ```markdown
@@ -27,7 +27,7 @@ $ARGUMENTS
 [Include the files you read, with path and contents]
 
 ## Past Plans (if any)
-[Include links to similar past plans in plans/ directory]
+[Include links to similar past plans in docs/ directory]
 
 ## Constraints
 - Do not modify .env files
@@ -47,5 +47,5 @@ Tell user: "Copy the above prompt and paste it into GPT-5.6 Sol. Then paste the 
 
 After user pastes plan back:
 
-5. Save the plan to plans/[feature-name].md with timestamp
-6. Tell user: "Plan saved to plans/[feature-name].md"
+5. Save the plan to docs/[feature-name].md with timestamp
+6. Tell user: "Plan saved to docs/[feature-name].md"

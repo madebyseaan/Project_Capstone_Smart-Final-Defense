@@ -1057,3 +1057,92 @@ export async function runEnrollProSync() {
     syncRunning = false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Transferee enrichment pass
+// ---------------------------------------------------------------------------
+
+export interface TransfereeSyncResult {
+  transfereesTagged: number;
+  unmatched: Array<{ lrn: string; reason: string }>;
+}
+
+let lastSyncTaggedLrns = new Set<string>();
+
+/** LRNs tagged as transferees by the most recent sync pass (module state). */
+export function getSyncTaggedTransfereeLrns(): Set<string> {
+  return lastSyncTaggedLrns;
+}
+
+/**
+ * Enrichment pass that tags transferee enrollments with transferInDate.
+ * Runs AFTER the main EnrollPro sync. Never creates Students or Enrollments.
+ * Only sets transferInDate on existing ENROLLED enrollments where it is currently null.
+ */
+export async function syncTransferees(): Promise<TransfereeSyncResult> {
+  const result: TransfereeSyncResult = { transfereesTagged: 0, unmatched: [] };
+  lastSyncTaggedLrns = new Set();
+
+  try {
+    const { getSmartTransferees } = await import('./enrollproClient');
+    const { getActiveSchoolYearLabel } = await import('./schoolYearResolver');
+
+    const currentSY = await getActiveSchoolYearLabel();
+    const records = await getSmartTransferees();
+
+    logger.info(`[syncTransferees] Fetched ${records.length} transferee records from EnrollPro`);
+
+    for (const record of records) {
+      try {
+        const schoolYearLabel = record.schoolYear?.yearLabel;
+        if (schoolYearLabel !== currentSY) continue;
+
+        const lrn = String(record.lrn ?? '').trim();
+        if (!lrn) continue;
+        if (record.isPendingLrn) {
+          result.unmatched.push({ lrn, reason: 'Pending LRN — skipped' });
+          continue;
+        }
+
+        const student = await prisma.student.findUnique({
+          where: { lrn },
+          select: { id: true },
+        });
+        if (!student) {
+          result.unmatched.push({ lrn, reason: 'Student not found in SMART DB' });
+          continue;
+        }
+
+        const enrollment = await prisma.enrollment.findFirst({
+          where: {
+            studentId: student.id,
+            schoolYear: currentSY,
+            status: 'ENROLLED',
+          },
+          orderBy: { updatedAt: 'desc' },
+        });
+        if (!enrollment) {
+          result.unmatched.push({ lrn, reason: 'No ENROLLED enrollment for current SY' });
+          continue;
+        }
+
+        if (enrollment.transferInDate == null && record.enrolledAt) {
+          await prisma.enrollment.update({
+            where: { id: enrollment.id },
+            data: { transferInDate: new Date(record.enrolledAt) },
+          });
+          result.transfereesTagged++;
+          lastSyncTaggedLrns.add(lrn);
+        }
+      } catch (itemErr: any) {
+        logger.warn(`[syncTransferees] Error processing LRN ${record.lrn}: ${itemErr.message}`);
+      }
+    }
+
+    logger.info(`[syncTransferees] Done: ${result.transfereesTagged} tagged, ${result.unmatched.length} unmatched`);
+  } catch (err: any) {
+    logger.warn(`[syncTransferees] Failed (non-fatal): ${err.message}`);
+  }
+
+  return result;
+}

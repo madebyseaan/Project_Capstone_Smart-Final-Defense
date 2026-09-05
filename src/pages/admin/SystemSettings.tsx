@@ -32,6 +32,7 @@ import type { SystemSettings as SystemSettingsType } from "@/lib/api";
 import GradeLocksPanel from "./components/GradeLocksPanel";
 import RolloverStatusCard from "./components/RolloverStatusCard";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 
 const settingsSections = [
@@ -351,7 +352,7 @@ export default function SystemSettings() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin" style={{ color: themeColors.primary }} />
-          <p className="text-gray-500">Loading system settings...</p>
+          <p className="text-muted-foreground">Loading system settings...</p>
         </div>
       </div>
     );
@@ -362,7 +363,7 @@ export default function SystemSettings() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-12 h-12 text-amber-500" />
-          <p className="text-gray-700 font-medium">{error || "No settings found"}</p>
+          <p className="text-foreground font-medium">{error || "No settings found"}</p>
           <Button onClick={fetchSettings} variant="outline" className="gap-2">
             <RefreshCw className="w-4 h-4" />
             Retry
@@ -373,27 +374,22 @@ export default function SystemSettings() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#111827' }}>
-            System Settings
-          </h1>
-          <p style={{ color: '#6b7280' }} className="mt-1">
-            Configure system-wide settings and preferences
-          </p>
-        </div>
-        <Button
-          className="gap-2 text-white font-semibold rounded-xl shadow-lg w-fit"
-          style={{ backgroundColor: themeColors.primary }}
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Save Settings
-        </Button>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader
+        title="System Settings"
+        description="Configure system-wide settings and preferences"
+        actions={
+          <Button
+            className="gap-2 text-white font-semibold rounded-xl shadow-lg w-fit"
+            style={{ backgroundColor: themeColors.primary }}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save Settings
+          </Button>
+        }
+      />
 
       {/* Status Alert */}
       {saveSuccess && (
@@ -419,8 +415,8 @@ export default function SystemSettings() {
                 <section.icon className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="font-semibold text-sm" style={{ color: '#111827' }}>{section.title}</h4>
-                <p className="text-xs text-gray-500">{section.description}</p>
+                <h4 className="font-semibold text-sm text-foreground">{section.title}</h4>
+                <p className="text-xs text-muted-foreground">{section.description}</p>
               </div>
             </div>
           </a>
@@ -429,13 +425,13 @@ export default function SystemSettings() {
 
       {/* School Information */}
       <Card id="school" className="p-0 gap-0 border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white overflow-hidden">
-        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ background: `linear-gradient(to right, ${themeColors.primary}12, ${themeColors.primary}08)` }}>
+        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: `${themeColors.primary}10` }}>
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl" style={{ backgroundColor: `${themeColors.primary}20`, color: themeColors.primary }}>
               <School className="w-6 h-6" />
             </div>
             <div>
-              <CardTitle className="text-lg" style={{ color: '#111827' }}>School Information</CardTitle>
+              <CardTitle className="text-lg text-foreground">School Information</CardTitle>
               <CardDescription>Basic school details for DepEd records</CardDescription>
             </div>
           </div>
@@ -447,47 +443,59 @@ export default function SystemSettings() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="schoolName" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="schoolName" className="text-sm font-semibold text-foreground">
                 School Name
               </Label>
               <Input
                 id="schoolName"
                 value={settings.schoolName}
                 disabled
-                className="rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
+                className="rounded-xl border-gray-200 bg-gray-50 text-muted-foreground cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="schoolId" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="schoolId" className="text-sm font-semibold text-foreground">
                 School ID
               </Label>
               <Input
                 id="schoolId"
                 value={settings.schoolId}
                 disabled
-                className="rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
+                className="rounded-xl border-gray-200 bg-gray-50 text-muted-foreground cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="division" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="division" className="text-sm font-semibold text-foreground">
                 Division
               </Label>
               <Input
                 id="division"
                 value={settings.division}
                 disabled
-                className="rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
+                className="rounded-xl border-gray-200 bg-gray-50 text-muted-foreground cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="region" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="region" className="text-sm font-semibold text-foreground">
                 Region
               </Label>
               <Input
                 id="region"
                 value={settings.region}
                 disabled
-                className="rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
+                className="rounded-xl border-gray-200 bg-gray-50 text-muted-foreground cursor-not-allowed"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schoolHeadName" className="text-sm font-semibold text-foreground">
+                School Head / Principal Name
+              </Label>
+              <Input
+                id="schoolHeadName"
+                value={settings.schoolHeadName || ""}
+                onChange={(e) => handleChange("schoolHeadName", e.target.value)}
+                placeholder="e.g. Juan Dela Cruz"
+                className="rounded-xl border-gray-200"
               />
             </div>
           </div>
@@ -496,13 +504,13 @@ export default function SystemSettings() {
 
       {/* Branding & Theme */}
       <Card id="branding" className="p-0 gap-0 border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white overflow-hidden">
-        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ background: `linear-gradient(to right, ${themeColors.primary}12, ${themeColors.primary}08)` }}>
+        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: `${themeColors.primary}10` }}>
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl" style={{ backgroundColor: `${themeColors.primary}20`, color: themeColors.primary }}>
               <Palette className="w-6 h-6" />
             </div>
             <div>
-              <CardTitle className="text-lg" style={{ color: '#111827' }}>Branding & Theme</CardTitle>
+              <CardTitle className="text-lg text-foreground">Branding & Theme</CardTitle>
               <CardDescription>Logo and colors synchronized from EnrollPro</CardDescription>
             </div>
           </div>
@@ -560,13 +568,13 @@ export default function SystemSettings() {
 
           {/* Grade Lock Control */}
           <div className="mb-8 p-4 rounded-xl border border-gray-200 bg-gray-50">
-            <Label className="text-sm font-semibold text-gray-700 mb-2 block">Grade Editing</Label>
+            <Label className="text-sm font-semibold text-foreground mb-2 block">Grade Editing</Label>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   {settings.gradeLock ? "Grade editing is currently LOCKED. Teachers cannot edit grades." : "Grade editing is open. Teachers can edit grades."}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Lock grades during EOSY processing or after term ends.
                 </p>
               </div>
@@ -585,13 +593,13 @@ export default function SystemSettings() {
 
           {/* Transition Lock Control */}
           <div className="mb-8 p-4 rounded-xl border border-gray-200 bg-gray-50">
-            <Label className="text-sm font-semibold text-gray-700 mb-2 block">Teacher Login Lock (Transition)</Label>
+            <Label className="text-sm font-semibold text-foreground mb-2 block">Teacher Login Lock (Transition)</Label>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   {settings.transitionLock ? "Teachers are BLOCKED from logging in. Admin/Registrar unaffected." : "Teachers can log in normally."}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Enable during year transition to prevent teachers from accessing the system while data migrates.
                 </p>
               </div>
@@ -618,7 +626,7 @@ export default function SystemSettings() {
 
           {/* School Logo (read-only) */}
           <div className="mb-8">
-            <Label className="text-sm font-semibold text-gray-700 mb-4 block">School Logo</Label>
+            <Label className="text-sm font-semibold text-foreground mb-4 block">School Logo</Label>
             <div className="flex items-start gap-6">
               <div className="w-32 h-32 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50 overflow-hidden">
                 {settings.logoUrl ? (
@@ -628,14 +636,14 @@ export default function SystemSettings() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <Image className="w-12 h-12 text-gray-300" />
+                  <Image className="w-12 h-12 text-muted-foreground" />
                 )}
               </div>
               <div className="flex-1 space-y-2">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   Your school logo is pulled from EnrollPro. To change the logo, upload it in EnrollPro first, then click <strong>Sync from EnrollPro</strong> above.
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   The logo is displayed as a circle on login pages, reports, and printed forms.
                 </p>
               </div>
@@ -646,37 +654,37 @@ export default function SystemSettings() {
 
           {/* Color Scheme (read-only) */}
           <div>
-            <Label className="text-sm font-semibold text-gray-700 mb-2 block">Color Scheme</Label>
-            <p className="text-sm text-gray-600 mb-4">
+            <Label className="text-sm font-semibold text-foreground mb-2 block">Color Scheme</Label>
+            <p className="text-sm text-muted-foreground mb-4">
               Colors are automatically extracted from your school logo in EnrollPro and applied system-wide.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-600">Primary</Label>
+                <Label className="text-sm font-medium text-muted-foreground">Primary</Label>
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
                   <div className="w-10 h-10 rounded-lg border border-gray-200 shrink-0" style={{ backgroundColor: settings.primaryColor }} />
-                  <span className="text-sm font-mono text-gray-700">{settings.primaryColor}</span>
+                  <span className="text-sm font-mono text-foreground">{settings.primaryColor}</span>
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-600">Secondary</Label>
+                <Label className="text-sm font-medium text-muted-foreground">Secondary</Label>
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
                   <div className="w-10 h-10 rounded-lg border border-gray-200 shrink-0" style={{ backgroundColor: settings.secondaryColor }} />
-                  <span className="text-sm font-mono text-gray-700">{settings.secondaryColor}</span>
+                  <span className="text-sm font-mono text-foreground">{settings.secondaryColor}</span>
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-600">Accent</Label>
+                <Label className="text-sm font-medium text-muted-foreground">Accent</Label>
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
                   <div className="w-10 h-10 rounded-lg border border-gray-200 shrink-0" style={{ backgroundColor: settings.accentColor }} />
-                  <span className="text-sm font-mono text-gray-700">{settings.accentColor}</span>
+                  <span className="text-sm font-mono text-foreground">{settings.accentColor}</span>
                 </div>
               </div>
             </div>
 
             {/* Color Preview */}
             <div className="mt-6 p-4 rounded-xl bg-gray-50">
-              <Label className="text-sm font-medium text-gray-600 mb-3 block">Preview</Label>
+              <Label className="text-sm font-medium text-muted-foreground mb-3 block">Preview</Label>
               <div className="flex items-center gap-4">
                 <div className="flex-1 h-12 rounded-xl flex items-center justify-center text-white font-semibold text-sm" style={{ backgroundColor: settings.primaryColor }}>
                   Primary
@@ -695,13 +703,13 @@ export default function SystemSettings() {
 
       {/* Academic Settings */}
       <Card id="academic" className="p-0 gap-0 border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white overflow-hidden">
-        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ background: `linear-gradient(to right, ${themeColors.primary}10, ${themeColors.primary}08)` }}>
+        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: `${themeColors.primary}10` }}>
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl" style={{ backgroundColor: `${themeColors.primary}20`, color: themeColors.primary }}>
               <Calendar className="w-6 h-6" />
             </div>
             <div>
-              <CardTitle className="text-lg" style={{ color: '#111827' }}>Academic Settings</CardTitle>
+              <CardTitle className="text-lg text-foreground">Academic Settings</CardTitle>
               <CardDescription>School year, term configuration, and academic calendar</CardDescription>
             </div>
           </div>
@@ -710,7 +718,7 @@ export default function SystemSettings() {
           {/* Basic Academic Settings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="space-y-2">
-              <Label htmlFor="currentSchoolYear" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="currentSchoolYear" className="text-sm font-semibold text-foreground">
                 Academic Year
               </Label>
               <Select value={settings.currentSchoolYear} disabled>
@@ -723,10 +731,10 @@ export default function SystemSettings() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">Synced from EnrollPro — cannot be changed manually</p>
+              <p className="text-xs text-muted-foreground">Synced from EnrollPro — cannot be changed manually</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="currentTerm" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="currentTerm" className="text-sm font-semibold text-foreground">
                 Current Term
               </Label>
               <Select value={settings.currentTerm || "T1"} disabled>
@@ -739,7 +747,7 @@ export default function SystemSettings() {
                   <SelectItem value="T3">Term 3</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">Synced from EnrollPro — cannot be changed manually</p>
+              <p className="text-xs text-muted-foreground">Synced from EnrollPro — cannot be changed manually</p>
             </div>
           </div>
 
@@ -749,8 +757,8 @@ export default function SystemSettings() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <Label className="text-sm font-semibold text-gray-700">Academic Calendar</Label>
-                <p className="text-xs text-gray-500 mt-1">Term dates are synced from EnrollPro and cannot be edited manually</p>
+                <Label className="text-sm font-semibold text-foreground">Academic Calendar</Label>
+                <p className="text-xs text-muted-foreground mt-1">Term dates are synced from EnrollPro and cannot be edited manually</p>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -761,7 +769,7 @@ export default function SystemSettings() {
                   className="w-4 h-4 rounded border-gray-300"
                   style={{ accentColor: themeColors.primary }}
                 />
-                <Label htmlFor="autoAdvanceTerm" className="text-sm text-gray-600 cursor-pointer">
+                <Label htmlFor="autoAdvanceTerm" className="text-sm text-muted-foreground cursor-pointer">
                   Auto-advance term when end date is reached
                 </Label>
               </div>
@@ -772,14 +780,14 @@ export default function SystemSettings() {
               <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: themeColors.primary }}>1</div>
-                  <span className="font-semibold text-gray-700">1st Term</span>
+                  <span className="font-semibold text-foreground">1st Term</span>
                   {settings.currentTerm === "T1" && (
                     <span className="ml-auto px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: themeColors.primary }}>Current</span>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">Start Date</Label>
+                    <Label className="text-xs text-muted-foreground">Start Date</Label>
                     <Input
                       type="date"
                       value={settings.t1StartDate ? new Date(settings.t1StartDate).toISOString().split('T')[0] : ""}
@@ -788,7 +796,7 @@ export default function SystemSettings() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">End Date</Label>
+                    <Label className="text-xs text-muted-foreground">End Date</Label>
                     <Input
                       type="date"
                       value={settings.t1EndDate ? new Date(settings.t1EndDate).toISOString().split('T')[0] : ""}
@@ -803,14 +811,14 @@ export default function SystemSettings() {
               <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: themeColors.secondary }}>2</div>
-                  <span className="font-semibold text-gray-700">2nd Term</span>
+                  <span className="font-semibold text-foreground">2nd Term</span>
                   {settings.currentTerm === "T2" && (
                     <span className="ml-auto px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: themeColors.primary }}>Current</span>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">Start Date</Label>
+                    <Label className="text-xs text-muted-foreground">Start Date</Label>
                     <Input
                       type="date"
                       value={settings.t2StartDate ? new Date(settings.t2StartDate).toISOString().split('T')[0] : ""}
@@ -819,7 +827,7 @@ export default function SystemSettings() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">End Date</Label>
+                    <Label className="text-xs text-muted-foreground">End Date</Label>
                     <Input
                       type="date"
                       value={settings.t2EndDate ? new Date(settings.t2EndDate).toISOString().split('T')[0] : ""}
@@ -834,14 +842,14 @@ export default function SystemSettings() {
               <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: themeColors.accent }}>3</div>
-                  <span className="font-semibold text-gray-700">3rd Term</span>
+                  <span className="font-semibold text-foreground">3rd Term</span>
                   {settings.currentTerm === "T3" && (
                     <span className="ml-auto px-2 py-0.5 text-xs font-medium rounded-full text-white" style={{ backgroundColor: themeColors.primary }}>Current</span>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">Start Date</Label>
+                    <Label className="text-xs text-muted-foreground">Start Date</Label>
                     <Input
                       type="date"
                       value={settings.t3StartDate ? new Date(settings.t3StartDate).toISOString().split('T')[0] : ""}
@@ -850,7 +858,7 @@ export default function SystemSettings() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">End Date</Label>
+                    <Label className="text-xs text-muted-foreground">End Date</Label>
                     <Input
                       type="date"
                       value={settings.t3EndDate ? new Date(settings.t3EndDate).toISOString().split('T')[0] : ""}
@@ -878,13 +886,13 @@ export default function SystemSettings() {
 
       {/* System Configuration */}
       <Card id="system" className="p-0 gap-0 border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white overflow-hidden">
-        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ background: `linear-gradient(to right, ${themeColors.secondary}10, ${themeColors.secondary}08)` }}>
+        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: `${themeColors.secondary}10` }}>
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl" style={{ backgroundColor: `${themeColors.secondary}20`, color: themeColors.secondary }}>
               <Settings className="w-6 h-6" />
             </div>
             <div>
-              <CardTitle className="text-lg" style={{ color: '#111827' }}>Contact Information</CardTitle>
+              <CardTitle className="text-lg text-foreground">Contact Information</CardTitle>
               <CardDescription>School contact details</CardDescription>
             </div>
           </div>
@@ -892,7 +900,7 @@ export default function SystemSettings() {
         <CardContent className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2 space-y-2">
-              <Label htmlFor="address" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="address" className="text-sm font-semibold text-foreground">
                 Address
               </Label>
               <Input
@@ -904,7 +912,7 @@ export default function SystemSettings() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="contactNumber" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="contactNumber" className="text-sm font-semibold text-foreground">
                 Contact Number
               </Label>
               <Input
@@ -916,7 +924,7 @@ export default function SystemSettings() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="email" className="text-sm font-semibold text-foreground">
                 Email
               </Label>
               <Input
@@ -934,13 +942,13 @@ export default function SystemSettings() {
 
       {/* Security & Backup */}
       <Card id="security" className="p-0 gap-0 border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white overflow-hidden">
-        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ background: `linear-gradient(to right, ${themeColors.primary}12, ${themeColors.primary}08)` }}>
+        <CardHeader className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: `${themeColors.primary}10` }}>
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl" style={{ backgroundColor: `${themeColors.primary}20`, color: themeColors.primary }}>
               <Shield className="w-6 h-6" />
             </div>
             <div>
-              <CardTitle className="text-lg" style={{ color: '#111827' }}>Security & Backup</CardTitle>
+              <CardTitle className="text-lg text-foreground">Security & Backup</CardTitle>
               <CardDescription>Security policies and data protection</CardDescription>
             </div>
           </div>
@@ -948,7 +956,7 @@ export default function SystemSettings() {
         <CardContent className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="sessionTimeout" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="sessionTimeout" className="text-sm font-semibold text-foreground">
                 Session Timeout (minutes)
               </Label>
               <Select value={String(settings.sessionTimeout || 30)} onValueChange={(val) => val && handleChange("sessionTimeout", parseInt(val) as any)}>
@@ -964,7 +972,7 @@ export default function SystemSettings() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="maxLoginAttempts" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="maxLoginAttempts" className="text-sm font-semibold text-foreground">
                 Max Login Attempts
               </Label>
               <Select value={String(settings.maxLoginAttempts || 5)} onValueChange={(val) => val && handleChange("maxLoginAttempts", parseInt(val) as any)}>
@@ -979,7 +987,7 @@ export default function SystemSettings() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="passwordMinLength" className="text-sm font-semibold text-gray-700">
+              <Label htmlFor="passwordMinLength" className="text-sm font-semibold text-foreground">
                 Min Password Length
               </Label>
               <Select value={String(settings.passwordMinLength || 8)} onValueChange={(val) => val && handleChange("passwordMinLength", parseInt(val) as any)}>
@@ -999,10 +1007,10 @@ export default function SystemSettings() {
           <Separator className="my-6" />
 
           <div className="space-y-4">
-            <p className="text-sm font-semibold text-gray-700">Data Retention</p>
+            <p className="text-sm font-semibold text-foreground">Data Retention</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Audit Logs (days)</Label>
+                <Label className="text-xs text-muted-foreground">Audit Logs (days)</Label>
                 <Input
                   type="number"
                   min={0}
@@ -1012,7 +1020,7 @@ export default function SystemSettings() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Sync History (days)</Label>
+                <Label className="text-xs text-muted-foreground">Sync History (days)</Label>
                 <Input
                   type="number"
                   min={0}
@@ -1022,7 +1030,7 @@ export default function SystemSettings() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Grade Snapshots (days, 0=off)</Label>
+                <Label className="text-xs text-muted-foreground">Grade Snapshots (days, 0=off)</Label>
                 <Input
                   type="number"
                   min={0}
@@ -1042,8 +1050,8 @@ export default function SystemSettings() {
                 <Shield className="w-5 h-5" style={{ color: themeColors.primary }} />
               </div>
               <div>
-                <p className="font-semibold text-sm" style={{ color: '#111827' }}>Database Status</p>
-                <p className="text-xs text-gray-500">Connected and operational</p>
+                <p className="font-semibold text-sm text-foreground">Database Status</p>
+                <p className="text-xs text-muted-foreground">Connected and operational</p>
               </div>
             </div>
             <Button variant="outline" size="sm" className="rounded-xl gap-2">

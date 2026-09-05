@@ -7,23 +7,24 @@ import {
   ArrowUpRight,
   UserMinus,
   AlertTriangle,
-  Loader2,
   RefreshCw,
   CheckCircle2,
   TrendingUp,
-  ChevronRight,
   BarChart3,
   FileText,
   ClipboardList,
   UserCheck,
   Clock,
   Target,
-  Activity,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { registrarApi, type RegistrarDashboard } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { toast } from "@/lib/toast";
+import { SyncProgressModal } from "@/components/common/SyncProgressModal";
 import {
   BarChart,
   Bar,
@@ -47,6 +48,33 @@ const gradeLevelLabels: Record<string, string> = {
 
 const GRADE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"];
 
+function getSparklineData(finalValue: number, type: string): { v: number }[] {
+  if (type === "flat") return [{ v: 0 }, { v: 0 }, { v: 0 }, { v: 0 }];
+  if (type === "gender") {
+    const base = Math.max(finalValue, 1);
+    return Array.from({ length: 8 }, (_, i) => ({
+      v: Math.max(0, Math.round(base * (0.82 + 0.18 * Math.sin((i / 7) * Math.PI)))),
+    }));
+  }
+  if (type === "wave") {
+    return Array.from({ length: 6 }, (_, i) => {
+      const t = i / 5;
+      const wave = 0.12 * Math.sin(t * Math.PI * 2 + finalValue * 0.3);
+      const trend = t * 0.3;
+      const raw = finalValue * (0.55 + trend + wave);
+      return { v: Math.max(0, Math.round(raw)) };
+    });
+  }
+  const count = 6;
+  return Array.from({ length: count }, (_, i) => {
+    const t = i / (count - 1);
+    const seed = Math.sin(finalValue * 127.1 + i * 311.7) * 43758.5453;
+    const noise = (seed - Math.floor(seed)) * 0.15 - 0.075;
+    const base = t < 0.5 ? 0.55 + t * 0.6 : 0.55 + t * 0.6 + (t - 0.5) * 0.3;
+    return { v: Math.max(0, Math.round(finalValue * (base + noise))) };
+  });
+}
+
 const quickActions = [
   { name: "Student Records", icon: Users, href: "/registrar/students" },
   { name: "EOSY Finalization", icon: GraduationCap, href: "/registrar/eosy" },
@@ -54,12 +82,18 @@ const quickActions = [
   { name: "Alumni Records", icon: ClipboardList, href: "/registrar/alumni" },
 ];
 
-const GlowTooltip = ({ active, payload, label }: any) => {
+interface GlowTooltipProps {
+  active?: boolean;
+  payload?: Array<{ color?: string; value?: number; payload?: { fill?: string } }>;
+  label?: string;
+}
+
+const GlowTooltip = ({ active, payload, label }: GlowTooltipProps) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-slate-900/95 backdrop-blur-sm text-white rounded-xl px-3 py-2 shadow-2xl border border-white/10">
-      {label && <p className="text-[10px] font-medium text-white/60 mb-1">{label}</p>}
-      {payload.map((entry: any, i: number) => (
+    <div className="bg-popover text-popover-foreground rounded-xl px-3 py-2 shadow-lg border border-border">
+      {label && <p className="text-[10px] font-medium text-muted-foreground mb-1">{label}</p>}
+      {payload.map((entry, i) => (
         <p key={i} className="text-sm font-bold" style={{ color: entry.color || entry.payload?.fill }}>
           {entry.value?.toLocaleString()}
         </p>
@@ -71,10 +105,12 @@ const GlowTooltip = ({ active, payload, label }: any) => {
 export default function RegistrarDashboardPage() {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
+  const [syncError, setSyncError] = useState<string | undefined>();
   const [dashboard, setDashboard] = useState<RegistrarDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [promotionData, setPromotionData] = useState<any>(null);
+  const [promotionData, setPromotionData] = useState<null | { summary?: { promoted: number; retained: number; dropped: number; transferred: number } }>(null);
   const [showFailingList, setShowFailingList] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
@@ -84,9 +120,10 @@ export default function RegistrarDashboardPage() {
       const response = await registrarApi.getDashboard();
       setDashboard(response.data);
       setError(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to load registrar dashboard:", err);
-      setError(err?.response?.data?.message || "Failed to load registrar dashboard");
+      const message = err instanceof Error ? err.message : "Failed to load registrar dashboard";
+      setError(message);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -96,7 +133,7 @@ export default function RegistrarDashboardPage() {
     try {
       const res = await registrarApi.getSF6();
       setPromotionData(res.data);
-    } catch {}
+    } catch { /* intentionally empty */ }
   };
 
   useEffect(() => {
@@ -107,21 +144,35 @@ export default function RegistrarDashboardPage() {
   }, []);
 
   const triggerSync = async () => {
-    setSyncing(true);
+    setSyncModalOpen(true);
+    setSyncStatus("syncing");
+    setSyncError(undefined);
     try {
       await registrarApi.runSync();
+      setSyncStatus("success");
       await loadDashboard(true);
-    } finally {
-      setSyncing(false);
+    } catch {
+      setSyncStatus("error");
+      setSyncError("Failed to sync with EnrollPro. Please try again.");
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-          <p className="text-gray-500 font-medium">Loading dashboard...</p>
+      <div className="space-y-6">
+        <div className="relative overflow-hidden rounded-2xl p-6 bg-muted/30 h-40" />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-2xl p-4 bg-muted/30 h-32 animate-pulse" style={{ animationDelay: `${i * 50}ms` }} />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 rounded-2xl bg-muted/30 h-64 animate-pulse" />
+          <div className="rounded-2xl bg-muted/30 h-64 animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="rounded-2xl bg-muted/30 h-48 animate-pulse" />
+          <div className="rounded-2xl bg-muted/30 h-48 animate-pulse" />
         </div>
       </div>
     );
@@ -131,11 +182,11 @@ export default function RegistrarDashboardPage() {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center">
-            <AlertTriangle className="w-8 h-8 text-red-500" />
+          <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-destructive" />
           </div>
-          <p className="text-gray-700 font-medium">{error || "Failed to load data"}</p>
-          <Button onClick={() => void loadDashboard(false)} variant="outline" className="gap-2 rounded-xl">
+          <p className="text-foreground font-medium">{error || "Failed to load data"}</p>
+          <Button onClick={() => void loadDashboard(false)} variant="outline" className="gap-2">
             <RefreshCw className="w-4 h-4" /> Retry
           </Button>
         </div>
@@ -176,40 +227,39 @@ export default function RegistrarDashboardPage() {
   }));
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-6 animate-in fade-in duration-300">
       {/* ── Hero Gradient Card ── */}
       <div
-        className="relative overflow-hidden rounded-2xl p-6 text-white"
-        style={{ background: `linear-gradient(145deg, ${colors.primary}, ${colors.primary}cc)` }}
+        className="relative overflow-hidden rounded-2xl p-6 text-white animate-in fade-in slide-in-from-bottom-1 duration-300"
+        style={{ backgroundColor: colors.primary }}
       >
-        <div className="absolute top-0 right-0 w-64 h-64 opacity-10" style={{ background: "radial-gradient(circle, white 0%, transparent 60%)" }} />
-        <div className="absolute bottom-0 left-0 w-48 h-48 opacity-10" style={{ background: "radial-gradient(circle, white 0%, transparent 60%)" }} />
-        <div className="absolute top-1/2 right-1/4 w-32 h-32 opacity-5" style={{ background: "radial-gradient(circle, white 0%, transparent 60%)" }} />
-
-        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight">Registrar Dashboard</h1>
-            <p className="text-white/70 text-sm mt-1">Student enrollment overview for {dashboard.currentSchoolYear}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {dashboard.sync.running ? (
-              <Badge className="bg-white/20 text-white border-white/20 backdrop-blur-sm">Syncing...</Badge>
-            ) : dashboard.sync.status === "fresh" ? (
-              <Badge className="bg-white/20 text-white border-white/20 backdrop-blur-sm">Fresh ({dashboard.sync.minutesSinceLastSync}m)</Badge>
-            ) : (
-              <Badge className="bg-white/20 text-white border-white/20 backdrop-blur-sm">
-                {dashboard.sync.status === "never" ? "Not synced" : `Stale (${dashboard.sync.minutesSinceLastSync}m)`}
-              </Badge>
-            )}
-            <Button
-              onClick={triggerSync}
-              disabled={syncing}
-              className="bg-white/20 hover:bg-white/30 text-white border-white/20 backdrop-blur-sm rounded-xl font-semibold"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
-              Sync
-            </Button>
-          </div>
+        <div className="relative">
+          <PageHeader
+            title="Registrar Dashboard"
+            description={`Student enrollment overview for ${dashboard.currentSchoolYear}`}
+            className="text-white [&_h1]:!text-white [&_p]:!text-white/80"
+            actions={
+              <>
+                {dashboard.sync.running ? (
+                  <Badge className="bg-white/20 text-white border-white/20 backdrop-blur-sm">Syncing...</Badge>
+                ) : dashboard.sync.status === "fresh" ? (
+                  <Badge className="bg-white/20 text-white border-white/20 backdrop-blur-sm">Fresh ({dashboard.sync.minutesSinceLastSync}m)</Badge>
+                ) : (
+                  <Badge className="bg-white/20 text-white border-white/20 backdrop-blur-sm">
+                    {dashboard.sync.status === "never" ? "Not synced" : `Stale (${dashboard.sync.minutesSinceLastSync}m)`}
+                  </Badge>
+                )}
+                <Button
+                  onClick={triggerSync}
+                  disabled={syncStatus === "syncing"}
+                  className="bg-white/20 hover:bg-white/30 text-white border-white/20 backdrop-blur-sm font-semibold"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Sync
+                </Button>
+              </>
+            }
+          />
         </div>
 
         {/* Hero mini stats */}
@@ -222,62 +272,103 @@ export default function RegistrarDashboardPage() {
           ].map((item) => (
             <div key={item.label} className="bg-white/15 backdrop-blur-sm rounded-xl p-3 border border-white/10">
               <div className="flex items-center gap-2 mb-1">
-                <item.icon className="w-3.5 h-3.5 text-white/60" />
-                <span className="text-[10px] font-bold text-white/60 uppercase tracking-wider">{item.label}</span>
+                <item.icon className="w-3.5 h-3.5 text-white/80" />
+                <span className="text-[10px] font-bold text-white/80 uppercase tracking-wider">{item.label}</span>
               </div>
-              <p className="text-2xl font-black stat-number">{item.value}</p>
+              <p className="text-2xl font-bold stat-number text-white">{item.value}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── 5 KPI Cards with Sparklines ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {[
-          { label: "ACTIVE STUDENTS", value: stats.activeStudents, icon: Users, color: colors.primary, sparkData: [{ v: 42 }, { v: 45 }, { v: 43 }, { v: 48 }, { v: 47 }, { v: stats.activeStudents }] },
-          { label: "SECTIONS", value: stats.totalSections, icon: LayoutGrid, color: "#10b981", sparkData: [{ v: 14 }, { v: 15 }, { v: 15 }, { v: 16 }, { v: 16 }, { v: stats.totalSections }] },
-          { label: "MALE / FEMALE", value: `${stats.maleCount}/${stats.femaleCount}`, icon: UserCheck, color: "#3b82f6", sparkData: [{ v: stats.femaleCount }, { v: stats.maleCount }] },
-          { label: "TRANSFERRED", value: stats.transferredStudents, icon: ArrowUpRight, color: "#f59e0b", sparkData: [{ v: 2 }, { v: 3 }, { v: 3 }, { v: 4 }, { v: 4 }, { v: stats.transferredStudents }], href: "/registrar/alumni?status=TRANSFERRED" },
-          { label: "DROPPED", value: stats.droppedStudents, icon: UserMinus, color: "#ef4444", sparkData: [{ v: 1 }, { v: 2 }, { v: 2 }, { v: 2 }, { v: 3 }, { v: stats.droppedStudents }], href: "/registrar/alumni?status=DROPPED" },
-        ].map((card) => (
-          <div key={card.label} className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl p-4 shadow-lg shadow-gray-200/50 hover:shadow-xl transition-all group relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-20 h-20 opacity-5 rounded-full -mr-6 -mt-6" style={{ backgroundColor: card.color }} />
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 rounded-xl text-white shadow-md group-hover:scale-110 transition-transform" style={{ backgroundColor: card.color }}>
-                <card.icon className="w-4 h-4" />
+      {/* ── 6 KPI Cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        {(() => {
+          const incompleteCount = stats.incompleteTransferees ?? 0;
+          const genderTotal = stats.maleCount + stats.femaleCount;
+          return [
+            { label: "ACTIVE STUDENTS", value: stats.activeStudents, icon: Users, color: colors.primary, sparkType: "count" as const, sparkValue: stats.activeStudents, subtitle: "Official DepEd LIS Enrolled" },
+            { label: "SECTIONS", value: stats.totalSections, icon: LayoutGrid, color: "#10b981", sparkType: "count" as const, sparkValue: stats.totalSections, subtitle: "Across Grade 7 to Grade 10" },
+            { label: "MALE / FEMALE", value: `${stats.maleCount}/${stats.femaleCount}`, icon: UserCheck, color: "#3b82f6", sparkType: "gender" as const, sparkValue: genderTotal, subtitle: genderTotal > 0 ? `${Math.round((stats.maleCount / genderTotal) * 100)}% Male \u2022 ${Math.round((stats.femaleCount / genderTotal) * 100)}% Female parity` : "No enrollment data" },
+            { label: "TRANSFERRED OUT", value: stats.transferredStudents, icon: ArrowUpRight, color: "#f59e0b", sparkType: "flat" as const, sparkValue: 0, subtitle: stats.transferredStudents === 0 ? "No outward transfers recorded" : `${stats.transferredStudents} student(s) transferred out`, href: "/registrar/alumni?status=TRANSFERRED" },
+            { label: "DROPPED", value: stats.droppedStudents, icon: UserMinus, color: "#ef4444", sparkType: "flat" as const, sparkValue: 0, subtitle: stats.droppedStudents === 0 ? "0% Drop-out rate" : `${stats.droppedStudents} student(s) dropped`, subtitleClass: stats.droppedStudents === 0 ? "text-emerald-600 font-semibold" : "text-muted-foreground", href: "/registrar/alumni?status=DROPPED" },
+            { label: "TRANSFEREES (T/I)", value: stats.transfereeStudents ?? 0, icon: ArrowLeftRight, color: "#8b5cf6", sparkType: "wave" as const, sparkValue: stats.transfereeStudents ?? 0, subtitle: "Transferred in this school year", href: "/registrar/transferees", badge: incompleteCount > 0 ? `${incompleteCount} Missing SF10` as const : "All Docs Complete" as const, badgeVariant: incompleteCount > 0 ? "warning" as const : "success" as const },
+          ].map((card, idx) => {
+            const gradientId = `spark-grad-${card.label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+            return (
+              <div key={card.label} className="border border-slate-200/60 rounded-2xl bg-card/70 backdrop-blur-xl p-4 shadow-md shadow-slate-200/40 hover:shadow-xl transition-all group relative overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-300" style={{ animationDelay: `${(idx + 1) * 50}ms` }}>
+                <div className="absolute top-0 right-0 w-20 h-20 opacity-5 rounded-full -mr-6 -mt-6" style={{ backgroundColor: card.color }} />
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-xl text-primary-foreground shadow-md group-hover:scale-110 transition-transform" style={{ backgroundColor: card.color }}>
+                    <card.icon className="w-4 h-4" />
+                  </div>
+                  {card.href && (
+                    <Link to={card.href} className="text-[10px] font-bold uppercase tracking-wider hover:underline" style={{ color: card.color }}>
+                      View
+                    </Link>
+                  )}
+                </div>
+                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{card.label}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-2xl font-bold text-foreground stat-number leading-none">{card.value}</p>
+                  {"badge" in card && (
+                    card.badgeVariant === "warning" ? (
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
+                        {card.badge}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
+                        {card.badge}
+                      </Badge>
+                    )
+                  )}
+                </div>
+                <p className={`text-[11px] mt-1 ${"subtitleClass" in card ? card.subtitleClass : "text-muted-foreground"}`}>{card.subtitle}</p>
+                <div className="mt-2">
+                  {card.sparkType === "gender" ? (
+                    <ResponsiveContainer width="100%" height={36}>
+                      <AreaChart data={getSparklineData(card.sparkValue, "gender")} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="spark-grad-male" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.25} />
+                            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="spark-grad-female" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#ec4899" stopOpacity={0.25} />
+                            <stop offset="100%" stopColor="#ec4899" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <Area type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} fill="url(#spark-grad-male)" dot={false} activeDot={false} />
+                        <Area type="monotone" dataKey="v" stroke="#ec4899" strokeWidth={2} fill="url(#spark-grad-female)" dot={false} activeDot={false} data={getSparklineData(stats.femaleCount, "gender")} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={36}>
+                      <AreaChart data={getSparklineData(card.sparkValue, card.sparkType)} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={card.color} stopOpacity={0.25} />
+                            <stop offset="100%" stopColor={card.color} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <Area type="monotone" dataKey="v" stroke={card.color} strokeWidth={2} fill={`url(#${gradientId})`} dot={false} activeDot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
               </div>
-              {card.href && (
-                <Link to={card.href} className="text-[10px] font-bold uppercase tracking-wider hover:underline" style={{ color: card.color }}>
-                  View
-                </Link>
-              )}
-            </div>
-            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{card.label}</p>
-            <p className="text-2xl font-black text-gray-900 stat-number leading-none mt-1">{card.value}</p>
-            <div className="mt-2">
-              <ResponsiveContainer width="100%" height={32}>
-                <AreaChart data={card.sparkData}>
-                  <defs>
-                    <linearGradient id={`spark-${card.label}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={card.color} stopOpacity={0.3} />
-                      <stop offset="100%" stopColor={card.color} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <Area type="monotone" dataKey="v" stroke={card.color} strokeWidth={2} fill={`url(#spark-${card.label})`} dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        ))}
+            );
+          });
+        })()}
       </div>
 
       {/* ── Charts Row 1: Grade Distribution + Gender ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Grade Distribution */}
-        <div className="lg:col-span-2 bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl p-4 shadow-lg shadow-gray-200/50">
+        <div className="lg:col-span-2 bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 className="w-4 h-4" style={{ color: colors.primary }} />
-            <h3 className="text-sm font-bold text-gray-900">Grade Level Distribution</h3>
+            <h3 className="text-sm font-bold text-foreground">Grade Level Distribution</h3>
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={gradeBarData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
@@ -302,8 +393,8 @@ export default function RegistrarDashboardPage() {
         </div>
 
         {/* Gender Donut */}
-        <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl p-4 shadow-lg shadow-gray-200/50">
-          <h3 className="text-sm font-bold text-gray-900 mb-3">Gender Breakdown</h3>
+        <div className="bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
+          <h3 className="text-sm font-bold text-foreground mb-3">Gender Breakdown</h3>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
               <defs>
@@ -332,7 +423,7 @@ export default function RegistrarDashboardPage() {
               <Tooltip
                 content={({ active, payload }) =>
                   active && payload?.[0] ? (
-                    <div className="bg-slate-900/95 text-white rounded-xl px-3 py-2 shadow-2xl border border-white/10">
+                    <div className="bg-popover text-popover-foreground rounded-xl px-3 py-2 shadow-lg border border-border">
                       <p className="text-sm font-bold" style={{ color: payload[0].payload.fill }}>
                         {payload[0].name}: {payload[0].value?.toLocaleString()}
                       </p>
@@ -345,11 +436,11 @@ export default function RegistrarDashboardPage() {
           <div className="flex items-center justify-center gap-4 mt-1">
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-lg shadow-blue-500/30" />
-              <span className="text-[11px] font-semibold text-gray-600">Male {stats.maleCount}</span>
+              <span className="text-[11px] font-semibold text-muted-foreground">Male {stats.maleCount}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-full bg-pink-500 shadow-lg shadow-pink-500/30" />
-              <span className="text-[11px] font-semibold text-gray-600">Female {stats.femaleCount}</span>
+              <span className="text-[11px] font-semibold text-muted-foreground">Female {stats.femaleCount}</span>
             </div>
           </div>
         </div>
@@ -358,56 +449,56 @@ export default function RegistrarDashboardPage() {
       {/* ── Charts Row 2: Promotion + Grade Summary ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Promotion Outcomes */}
-        <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl p-4 shadow-lg shadow-gray-200/50">
+        <div className="bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-4 h-4" style={{ color: colors.primary }} />
-            <h3 className="text-sm font-bold text-gray-900">Promotion Outcomes</h3>
+            <h3 className="text-sm font-bold text-foreground">Promotion Outcomes</h3>
           </div>
           {promotionBarData.length > 0 ? (
             <div className="grid grid-cols-2 gap-3">
               {promotionBarData.map((item) => (
-                <div key={item.name} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50">
+                <div key={item.name} className="flex items-center gap-3 p-2.5 rounded-xl bg-muted/50">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                   <div>
-                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{item.name}</p>
-                    <p className="text-xl font-black stat-number text-gray-900">{item.count}</p>
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{item.name}</p>
+                    <p className="text-xl font-bold stat-number text-foreground">{item.count}</p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="flex items-center justify-center py-8 text-gray-400">
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
               <p className="text-xs">No promotion data yet</p>
             </div>
           )}
         </div>
 
         {/* Grade Summary */}
-        <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl p-4 shadow-lg shadow-gray-200/50">
+        <div className="bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
           <div className="flex items-center gap-2 mb-4">
             <Target className="w-4 h-4" style={{ color: colors.primary }} />
-            <h3 className="text-sm font-bold text-gray-900">Grade Summary</h3>
+            <h3 className="text-sm font-bold text-foreground">Grade Summary</h3>
           </div>
           <div className="flex items-center gap-6">
             {/* Big percentage */}
             <div className="text-center flex-shrink-0">
               <p
-                className="text-6xl font-black stat-number leading-none"
+                className="text-6xl font-bold stat-number leading-none"
                 style={{
-                  color: gradePerformance.overallPassingRate === 100 ? "#10b981"
-                    : gradePerformance.overallPassingRate >= 75 ? "#84cc16"
-                    : gradePerformance.overallPassingRate >= 50 ? "#f59e0b"
-                    : "#ef4444",
+                  color: gradePerformance.overallPassingRate === 100 ? "var(--color-emerald-500, #10b981)"
+                    : gradePerformance.overallPassingRate >= 75 ? "var(--color-lime-500, #84cc16)"
+                    : gradePerformance.overallPassingRate >= 50 ? "var(--color-amber-500, #f59e0b)"
+                    : "var(--color-red-500, #ef4444)",
                 }}
               >
                 {gradePerformance.overallPassingRate}%
               </p>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Passing</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Passing</p>
             </div>
             {/* Stats grid */}
             <div className="flex-1 grid grid-cols-2 gap-2.5">
               <div className="text-center p-3 rounded-xl bg-emerald-50 border border-emerald-100">
-                <p className="text-2xl font-black text-emerald-600 stat-number leading-none">{gradePerformance.totalPassing}</p>
+                <p className="text-2xl font-bold text-emerald-600 stat-number leading-none">{gradePerformance.totalPassing}</p>
                 <p className="text-[9px] font-bold text-emerald-400 uppercase mt-1">Passing</p>
               </div>
               <button
@@ -416,45 +507,45 @@ export default function RegistrarDashboardPage() {
                 }`}
                 onClick={() => gradePerformance.totalFailing > 0 && setShowFailingList(!showFailingList)}
               >
-                <p className="text-2xl font-black text-red-500 stat-number leading-none">{gradePerformance.totalFailing}</p>
+                <p className="text-2xl font-bold text-red-500 stat-number leading-none">{gradePerformance.totalFailing}</p>
                 <p className="text-[9px] font-bold text-red-400 uppercase mt-1">
                   Failing {gradePerformance.totalFailing > 0 ? (showFailingList ? "▲" : "▼") : ""}
                 </p>
               </button>
               <div className="text-center p-3 rounded-xl bg-blue-50 border border-blue-100">
-                <p className="text-2xl font-black text-blue-600 stat-number leading-none">{gradePerformance.overallAvgGrade}</p>
+                <p className="text-2xl font-bold text-blue-600 stat-number leading-none">{gradePerformance.overallAvgGrade}</p>
                 <p className="text-[9px] font-bold text-blue-400 uppercase mt-1">Avg</p>
               </div>
-              <div className="text-center p-3 rounded-xl bg-gray-50 border border-gray-100">
-                <p className="text-2xl font-black text-gray-700 stat-number leading-none">{gradePerformance.totalGraded}</p>
-                <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Graded</p>
+              <div className="text-center p-3 rounded-xl bg-muted/50 border border-border">
+                <p className="text-2xl font-bold text-foreground stat-number leading-none">{gradePerformance.totalGraded}</p>
+                <p className="text-[9px] font-bold text-muted-foreground uppercase mt-1">Graded</p>
               </div>
             </div>
           </div>
 
           {/* Failing Students Dropdown */}
           {showFailingList && gradePerformance.failingStudents.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="mt-3 pt-3 border-t border-border">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Students Below 75 Average</p>
-                <span className="text-[10px] text-gray-400">{gradePerformance.failingStudents.length} student(s)</span>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Students Below 75 Average</p>
+                <span className="text-[10px] text-muted-foreground">{gradePerformance.failingStudents.length} student(s)</span>
               </div>
-              <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-100">
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-gray-50 sticky top-0">
-                      <th className="text-left font-semibold text-gray-600 px-3 py-2">Student</th>
-                      <th className="text-left font-semibold text-gray-600 px-3 py-2">Section</th>
-                      <th className="text-left font-semibold text-gray-600 px-3 py-2">Grade</th>
-                      <th className="text-right font-semibold text-gray-600 px-3 py-2">Avg</th>
+                    <tr className="bg-muted/50 sticky top-0">
+                      <th className="text-left font-semibold text-muted-foreground px-3 py-2">Student</th>
+                      <th className="text-left font-semibold text-muted-foreground px-3 py-2">Section</th>
+                      <th className="text-left font-semibold text-muted-foreground px-3 py-2">Grade</th>
+                      <th className="text-right font-semibold text-muted-foreground px-3 py-2">Avg</th>
                     </tr>
                   </thead>
                   <tbody>
                     {gradePerformance.failingStudents.map((s, i) => (
-                      <tr key={i} className="border-t border-gray-50 hover:bg-red-50/30">
-                        <td className="px-3 py-1.5 font-medium text-gray-900">{s.studentName}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{s.sectionName}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{s.gradeLevel?.replace("GRADE_", "Grade ")}</td>
+                      <tr key={i} className="border-t border-border/30 hover:bg-red-50/30">
+                        <td className="px-3 py-1.5 font-medium text-foreground">{s.studentName}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{s.sectionName}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{s.gradeLevel?.replace("GRADE_", "Grade ")}</td>
                         <td className="px-3 py-1.5 text-right font-bold text-red-500">{s.average}</td>
                       </tr>
                     ))}
@@ -471,39 +562,39 @@ export default function RegistrarDashboardPage() {
         const passing = passingRateData.filter((s) => s.passingRate >= 75);
         const failing = passingRateData.filter((s) => s.passingRate < 75);
         const getRateColor = (rate: number) =>
-          rate === 100 ? "#10b981" : rate >= 75 ? "#84cc16" : rate >= 50 ? "#f59e0b" : "#ef4444";
+          rate === 100 ? "var(--color-emerald-500, #10b981)" : rate >= 75 ? "var(--color-lime-500, #84cc16)" : rate >= 50 ? "var(--color-amber-500, #f59e0b)" : "var(--color-red-500, #ef4444)";
         const getRateBg = (rate: number) =>
           rate === 100 ? "bg-emerald-50" : rate >= 75 ? "bg-lime-50" : rate >= 50 ? "bg-amber-50" : "bg-red-50";
         const getRateBorder = (rate: number) =>
           rate === 100 ? "border-emerald-100" : rate >= 75 ? "border-lime-100" : rate >= 50 ? "border-amber-100" : "border-red-100";
         const overallRate = Math.round((passing.length / passingRateData.length) * 100);
         return (
-          <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl p-4 shadow-lg shadow-gray-200/50">
+          <div className="bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Target className="w-4 h-4" style={{ color: colors.primary }} />
-                <h3 className="text-sm font-bold text-gray-900">Section Passing</h3>
+                <h3 className="text-sm font-bold text-foreground">Section Passing</h3>
               </div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Current Term</span>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Current Term</span>
             </div>
             <div
-              className="flex items-center gap-4 cursor-pointer hover:bg-gray-50/50 rounded-xl p-2 -mx-2 transition-colors"
+              className="flex items-center gap-4 cursor-pointer hover:bg-muted/50 rounded-xl p-2 -mx-2 transition-colors"
               onClick={() => setExpandedSection(expandedSection ? null : "all")}
             >
               <div className="flex items-center gap-2">
-                <span className="text-4xl font-black stat-number leading-none" style={{ color: getRateColor(overallRate) }}>{passing.length}</span>
-                <span className="text-xs text-gray-400">of {passingRateData.length} passing</span>
+                <span className="text-4xl font-bold stat-number leading-none" style={{ color: getRateColor(overallRate) }}>{passing.length}</span>
+                <span className="text-xs text-muted-foreground">of {passingRateData.length} passing</span>
               </div>
-              <div className="flex-1 h-2.5 rounded-full bg-gray-100 overflow-hidden">
+              <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
                 <div className="h-full rounded-full transition-all" style={{ width: `${overallRate}%`, backgroundColor: getRateColor(overallRate) }} />
               </div>
-              <span className="text-lg font-black stat-number" style={{ color: getRateColor(overallRate) }}>{overallRate}%</span>
-              <span className="text-xs text-gray-400">{expandedSection ? "▲" : "▼"}</span>
+              <span className="text-lg font-bold stat-number" style={{ color: getRateColor(overallRate) }}>{overallRate}%</span>
+              <span className="text-xs text-muted-foreground">{expandedSection ? "▲" : "▼"}</span>
             </div>
 
             {/* Expanded Section Breakdown */}
             {expandedSection && (
-              <div className="mt-3 pt-3 border-t border-gray-100 space-y-1.5 max-h-64 overflow-y-auto">
+              <div className="mt-3 pt-3 border-t border-border space-y-1.5 max-h-64 overflow-y-auto">
                 {passingRateData.map((s, i) => {
                   const isExpanded = expandedSection === s.fullName;
                   const rateColor = getRateColor(s.passingRate);
@@ -514,12 +605,12 @@ export default function RegistrarDashboardPage() {
                         onClick={() => setExpandedSection(isExpanded ? "all" : s.fullName)}
                       >
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: rateColor }} />
-                        <span className="text-xs font-semibold text-gray-700 flex-1">{s.fullName}</span>
-                        <span className="text-[10px] text-gray-400 font-medium w-6">{s.gradeLevel?.replace("GRADE_", "G")}</span>
-                        <span className="text-sm font-black stat-number w-14 text-right" style={{ color: rateColor }}>{s.passingRate}%</span>
-                        <span className="text-[10px] text-gray-400 w-14 text-right">{s.total} students</span>
+                        <span className="text-xs font-semibold text-foreground flex-1">{s.fullName}</span>
+                        <span className="text-[10px] text-muted-foreground font-medium w-6">{s.gradeLevel?.replace("GRADE_", "G")}</span>
+                        <span className="text-sm font-bold stat-number w-14 text-right" style={{ color: rateColor }}>{s.passingRate}%</span>
+                        <span className="text-[10px] text-muted-foreground w-14 text-right">{s.total} students</span>
                         {s.failingStudents.length > 0 && (
-                          <span className="text-[10px] text-gray-400 w-3 text-center">{isExpanded ? "▲" : "▼"}</span>
+                          <span className="text-[10px] text-muted-foreground w-3 text-center">{isExpanded ? "▲" : "▼"}</span>
                         )}
                         {s.failingStudents.length === 0 && <span className="w-3" />}
                       </div>
@@ -537,7 +628,7 @@ export default function RegistrarDashboardPage() {
                             <tbody>
                               {s.failingStudents.map((fs, j) => (
                                 <tr key={j} className="border-t border-red-100/50">
-                                  <td className="px-3 py-1 text-gray-700">{fs.studentName}</td>
+                                  <td className="px-3 py-1 text-foreground">{fs.studentName}</td>
                                   <td className="px-3 py-1 text-right font-bold text-red-500">{fs.average}</td>
                                 </tr>
                               ))}
@@ -557,25 +648,25 @@ export default function RegistrarDashboardPage() {
       {/* ── Bottom Row: Data Quality + Quick Actions ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Data Quality */}
-        <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl p-4 shadow-lg shadow-gray-200/50">
+        <div className="bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
           <div className="flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <h3 className="text-sm font-bold text-gray-900">Data Quality</h3>
+            <h3 className="text-sm font-bold text-foreground">Data Quality</h3>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50 border border-amber-100">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                <span className="text-xs font-semibold text-gray-700">Missing LRN</span>
+                <span className="text-xs font-semibold text-foreground">Missing LRN</span>
               </div>
-              <span className="text-lg font-black text-amber-600 stat-number">{dataCompleteness.missingLrn}</span>
+              <span className="text-lg font-bold text-amber-600 stat-number">{dataCompleteness.missingLrn}</span>
             </div>
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50 border border-blue-100">
               <div className="flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-xs font-semibold text-gray-700">Missing Birth Date</span>
+                <span className="text-xs font-semibold text-foreground">Missing Birth Date</span>
               </div>
-              <span className="text-lg font-black text-blue-600 stat-number">{dataCompleteness.missingBirthDate}</span>
+              <span className="text-lg font-bold text-blue-600 stat-number">{dataCompleteness.missingBirthDate}</span>
             </div>
             {dataCompleteness.totalIssues === 0 && (
               <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
@@ -587,22 +678,23 @@ export default function RegistrarDashboardPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="lg:col-span-2 bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl p-4 shadow-lg shadow-gray-200/50">
-          <h3 className="text-sm font-bold text-gray-900 mb-3">Quick Actions</h3>
+        <div className="lg:col-span-2 bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
+          <h3 className="text-sm font-bold text-foreground mb-3">Quick Actions</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {quickActions.map((action) => (
+            {quickActions.map((action, idx) => (
               <Link key={action.name} to={action.href}>
-                <div className="p-3 rounded-xl bg-gray-50 hover:bg-white border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all cursor-pointer group text-center">
-                  <div className="p-2.5 rounded-xl bg-gray-100 text-gray-600 group-hover:bg-gray-200 transition-colors mx-auto w-fit">
+                <div className="p-3 rounded-xl bg-muted/50 hover:bg-card border border-border hover:border-border hover:shadow-md transition-all cursor-pointer group text-center animate-in fade-in slide-in-from-bottom-1 duration-300" style={{ animationDelay: `${idx * 50}ms` }}>
+                  <div className="p-2.5 rounded-xl bg-muted text-muted-foreground group-hover:bg-muted/80 transition-colors mx-auto w-fit">
                     <action.icon className="w-5 h-5" />
                   </div>
-                  <p className="text-xs font-bold text-gray-700 mt-2">{action.name}</p>
+                  <p className="text-xs font-bold text-foreground mt-2">{action.name}</p>
                 </div>
               </Link>
             ))}
           </div>
         </div>
       </div>
+      <SyncProgressModal isOpen={syncModalOpen} onClose={() => { setSyncModalOpen(false); setSyncStatus("idle"); }} status={syncStatus} errorMessage={syncError} />
     </div>
   );
 }

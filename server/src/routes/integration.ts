@@ -33,6 +33,7 @@ import { triggerImmediateSync } from '../lib/syncCoordinator';
 import { addSyncSseClient, removeSyncSseClient } from '../lib/sseManager';
 import { getActiveSchoolYearLabel } from '../lib/schoolYearResolver';
 import { serviceAuth } from '../middleware/serviceAuth';
+import { buildSf10Records } from '../lib/sf10';
 
 const router = Router();
 
@@ -244,6 +245,73 @@ const handleSmartSectionSyncGrades = async (req: any, res: any) => {
 
 router.post('/smart/sections/:sectionId/sync-grades', serviceAuth, handleSmartSectionSyncGrades);
 router.post('/sections/:sectionId/sync-grades', serviceAuth, handleSmartSectionSyncGrades);
+
+// ---------------------------------------------------------------------------
+// Per-Student SF10 Grades (called by EnrollPro)
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/integration/smart/students/:studentId/sf10-grades
+ * GET /api/integration/students/:studentId/sf10-grades
+ *
+ * EnrollPro queries this with the student's LRN (not the SMART UUID).
+ * Returns all historical SF10 grades for one student, optionally filtered by schoolYear.
+ */
+const handleStudentSf10Grades = async (req: any, res: any) => {
+  try {
+    const studentRef = req.params.studentId as string;
+    const { schoolYear } = req.query;
+    logger.info(`[SmartIntegration] SF10 grades requested for student ref #${studentRef}`);
+
+    // EnrollPro passes the LRN — resolve to the SMART student ID (fallback: internal UUID)
+    const byLrn = await prisma.student.findUnique({
+      where: { lrn: studentRef },
+      select: { id: true },
+    });
+    const student = byLrn ?? await prisma.student.findUnique({
+      where: { id: studentRef },
+      select: { id: true },
+    });
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found' });
+    }
+
+    const data = await buildSf10Records(student.id);
+    if (!data) {
+      return res.status(404).json({ success: false, error: 'Student not found' });
+    }
+
+    const schoolRecords = schoolYear
+      ? data.schoolRecords.filter((r: any) => r.schoolYear === (schoolYear as string))
+      : data.schoolRecords;
+
+    res.json({
+      success: true,
+      student: {
+        id: data.student.id,
+        lrn: data.student.lrn,
+        firstName: data.student.firstName,
+        lastName: data.student.lastName,
+        middleName: data.student.middleName,
+        nameExtension: data.student.nameExtension,
+        gender: data.student.gender,
+        birthDate: data.student.birthDate,
+      },
+      schoolRecords,
+      schoolSettings: {
+        schoolName: data.schoolSettings.schoolName,
+        schoolId: data.schoolSettings.schoolId,
+      },
+    });
+  } catch (err: any) {
+    logger.error(`[SmartIntegration] Error fetching SF10 grades for student ${req.params.studentId}:`, err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch SF10 grades' });
+  }
+};
+
+router.get('/smart/students/:studentId/sf10-grades', serviceAuth, handleStudentSf10Grades);
+router.get('/students/:studentId/sf10-grades', serviceAuth, handleStudentSf10Grades);
 
 // ---------------------------------------------------------------------------
 // System Status

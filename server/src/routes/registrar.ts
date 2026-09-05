@@ -5,6 +5,7 @@ import registerExportRoutes from "./registrar/exports";
 import registerEosyRoutes from "./registrar/eosy";
 import registerAtlasRoutes from "./registrar/atlas";
 import registerRemedialRoutes from "./registrar/remedial";
+import registerTransfereeRoutes from "./registrar/transferees";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ registerExportRoutes(router);
 registerEosyRoutes(router);
 registerAtlasRoutes(router);
 registerRemedialRoutes(router);
+registerTransfereeRoutes(router);
 
 export default router;

@@ -644,6 +644,31 @@ export async function getSmartStudentsFeed(): Promise<any[]> {
 }
 
 /**
+ * Returns SMART-specific transferee feed.
+ * GET /api/integration/v1/default/smart/transferees
+ * Returns learners with learnerType: "TRANSFEREE" for the active school year.
+ * Paginated — fetches all pages automatically.
+ */
+export async function getSmartTransferees(): Promise<any[]> {
+  const all: any[] = [];
+  let page = 1;
+  const limit = 200;
+  while (true) {
+    const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const result = await fetchJSON(
+      `${await getEnrollProBase()}/integration/v1/default/smart/transferees?${query.toString()}`,
+      { headers: await getIntegrationHeaders() }
+    );
+    const data = result?.data ?? [];
+    const meta = result?.meta ?? { totalPages: 1 };
+    all.push(...data);
+    if (page >= meta.totalPages || data.length === 0) break;
+    page++;
+  }
+  return all;
+}
+
+/**
  * Returns a single page of sections from EnrollPro's integration feed.
  * GET /api/integration/v1/sections?schoolYearId=:id&page=:n&limit=:n
  */
@@ -835,6 +860,7 @@ export interface EnrollProPaletteColor {
 
 export interface EnrollProPublicSettings {
   schoolName: string;
+  schoolHeadName?: string;
   logoUrl: string | null;
   colorScheme: {
     palette: EnrollProPaletteColor[];
@@ -1118,4 +1144,44 @@ export interface IntegrationV1Faculty {
   advisorySectionGradeLevelName: string | null;
   schoolYearId: number;
   schoolYearLabel: string;
+}
+
+// ---------------------------------------------------------------------------
+// Back-subjects / Deficiency feed
+// Returns learners who are conditionally promoted with their failed subjects.
+// GET /api/v1/integration/smart/back-subjects?schoolYear=...
+// Auth: X-Integration-Key
+// ---------------------------------------------------------------------------
+
+export interface BackSubjectDeficiency {
+  subjectCode: string;
+  subjectName: string;
+  gradeLevel: string;
+  finalRating: number;
+}
+
+export interface BackSubjectLearner {
+  lrn: string;
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  deficiencies: BackSubjectDeficiency[];
+}
+
+export async function fetchBackSubjects(
+  schoolYear?: string,
+): Promise<BackSubjectLearner[]> {
+  try {
+    const headers = await getIntegrationHeaders();
+    const base = await getEnrollProBase();
+    const query = new URLSearchParams();
+    if (schoolYear) query.set('schoolYear', schoolYear);
+    const qs = query.toString();
+    const url = `${base}/integration/smart/back-subjects${qs ? '?' + qs : ''}`;
+    const result = await fetchJSON(url, { headers });
+    return (result?.data as BackSubjectLearner[]) ?? [];
+  } catch (err: any) {
+    logger.warn(`[EnrollProClient] fetchBackSubjects failed: ${err.message}`);
+    return [];
+  }
 }

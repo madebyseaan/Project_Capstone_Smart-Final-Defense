@@ -23,7 +23,6 @@ export const gradeSaveSchema = z.object({
     quarterlyAssessMax: z.number().positive().optional(),
     qaDescription: z.string().optional(),
     qaDate: z.string().optional(),
-    qualitativeDescriptor: z.string().optional(),
   }),
 });
 

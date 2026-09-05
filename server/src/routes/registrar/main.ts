@@ -190,6 +190,20 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
     const transferredStudents = statusMap.get("TRANSFERRED") ?? 0;
     const pendingStudents = statusMap.get("PENDING") ?? 0;
 
+    // Transferee counts for the current SY (transferInDate != null = transferee marker)
+    const transfereeEnrollments = await prisma.enrollment.findMany({
+      where: {
+        schoolYear: currentSchoolYear,
+        status: "ENROLLED",
+        transferInDate: { not: null },
+      },
+      include: { student: { select: { birthDate: true, gender: true, previousSchool: true, transferCertNo: true } } },
+    });
+    const transfereeStudents = transfereeEnrollments.length;
+    const incompleteTransferees = transfereeEnrollments.filter(
+      (e) => !e.student.birthDate || !e.student.gender || !e.student.previousSchool || !e.student.transferCertNo
+    ).length;
+
     // Grade performance stats: average grade and passing rate per section (current term)
     let gradePerformance: {
       overallPassingRate: number;
@@ -353,6 +367,8 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         droppedStudents,
         transferredStudents,
         pendingStudents,
+        transfereeStudents,
+        incompleteTransferees,
       },
       sections: sectionSummary,
       sync: {
@@ -445,8 +461,16 @@ router.get("/school-years", authenticateToken, async (req: AuthRequest, res: Res
       logger.warn("[RegistrarSchoolYears] Failed to resolve active EnrollPro school year:", (error as Error).message);
     }
 
+    let activeSchoolYear: string | null = null;
+    try {
+      activeSchoolYear = await getActiveSchoolYearLabel();
+    } catch {
+      // ignore — fallback to null
+    }
+
     res.json({
-      schoolYears: Array.from(allYears).sort().reverse()
+      schoolYears: Array.from(allYears).sort().reverse(),
+      activeSchoolYear,
     });
   } catch (error) {
     logger.error("Error fetching school years:", error);
@@ -546,6 +570,7 @@ router.get("/students", authenticateToken, async (req: AuthRequest, res: Respons
       program: e.section.program,
       schoolYear: e.schoolYear,
       status: e.status,
+      transferInDate: e.transferInDate,
       adviser: e.section.adviser ? `${e.section.adviser.user.firstName} ${e.section.adviser.user.lastName}` : null
     }));
 
@@ -694,7 +719,7 @@ router.post("/sync-inactive-students", authenticateToken, async (req: AuthReques
 
     // ── Source 2: SMART students lifecycle feed (catches transferred-out students
     //    that may not appear in the learners feed). Paginated — fetches all pages.
-    let lifecycleInactive: Array<{ lrn: string; smartStatus: 'TRANSFERRED' | 'DROPPED' | 'GRADUATED'; transferOutDate?: Date | null; dropOutDate?: Date | null; dropOutReason?: string | null; studentData?: any }> = [];
+    const lifecycleInactive: Array<{ lrn: string; smartStatus: 'TRANSFERRED' | 'DROPPED' | 'GRADUATED'; transferOutDate?: Date | null; dropOutDate?: Date | null; dropOutReason?: string | null; studentData?: any }> = [];
     try {
       const smartStudents = await getSmartStudentsFeed();
       for (const s of smartStudents) {
@@ -1309,7 +1334,9 @@ router.get("/finalize-status/:sectionId/:term", authenticateToken, async (req: A
       },
     });
 
-    const status = classAssignments.map((ca: any) => {
+    const status = classAssignments
+      .filter((ca: any) => !(ca.subject?.code ?? '').toUpperCase().startsWith('HG'))
+      .map((ca: any) => {
       const grades = ca.grades || [];
       const draftCount = grades.filter((g: any) => g.status === "DRAFT").length;
       const finalizedCount = grades.filter((g: any) => g.status === "FINALIZED").length;
@@ -1378,7 +1405,9 @@ router.get("/finalize-status-all/:sectionId", authenticateToken, async (req: Aut
     };
 
     // Build per-classAssignment rows first
-    const rows = classAssignments.map((ca: any) => {
+    const rows = classAssignments
+      .filter((ca: any) => !(ca.subject?.code ?? '').toUpperCase().startsWith('HG'))
+      .map((ca: any) => {
       const allGrades = ca.grades || [];
       const termStatus: Record<string, { draft: number; finalized: number; locked: number; total: number; isComplete: boolean }> = {} as any;
 
@@ -1514,7 +1543,7 @@ router.get("/student-grades/:sectionId/:term", authenticateToken, async (req: Au
 
     // Get all class assignments for this section/year with grades for the term(s)
     // (schoolYear only — year-scoped historical view, must survive rollover archiving)
-    const classAssignments = await prisma.classAssignment.findMany({
+    const classAssignments = (await prisma.classAssignment.findMany({
       where: {
         sectionId,
         schoolYear: schoolYearLabel,
@@ -1538,7 +1567,7 @@ router.get("/student-grades/:sectionId/:term", authenticateToken, async (req: Au
       orderBy: {
         subject: { name: "asc" },
       },
-    });
+    })).filter((ca: any) => !(ca.subject?.code ?? '').toUpperCase().startsWith('HG'));
 
     // Build per-student grade map
     const students = enrollments.map((enrollment) => {

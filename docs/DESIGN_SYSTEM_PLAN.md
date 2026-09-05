@@ -5,6 +5,27 @@
 
 ---
 
+## Design Direction: "Modern Professional" (research-backed)
+
+Researched against: shadcn/ui official docs + live dashboard example, Refactoring UI (Tailwind Labs). These principles define the target aesthetic — implementers should use them to resolve any ambiguity.
+
+1. **Restraint is the aesthetic.** Neutral background, white cards, ONE accent (the emerald `--primary`), no gradients, no glassmorphism, no decorative icons in headers. Quiet UI = professional UI.
+2. **Hierarchy through weight, not size.** Modest title sizes (`text-2xl`) + strong contrast + muted secondary text. Never `font-black` or oversized hero-style titles in app chrome (those are for login pages only).
+3. **Fewer borders.** Distinguish elements with background contrast (`bg-muted` vs `bg-card`), spacing, and subtle shadows — not border-heavy boxes. The existing `border-0 shadow-lg` Card pattern is correct; standardize it.
+4. **One tinted neutral scale.** Never mix `slate`/`gray`/`zinc`/hex grays. Use the shadcn tokens (`foreground`, `muted-foreground`) which are already slate-tinted.
+5. **Empty states are a feature.** Every list view ships with a proper empty state (icon + title + hint + optional action).
+6. **Canonical table pattern** (per shadcn dashboard example): stat cards with muted trend badges → section header + muted description → table with muted uppercase headers → footer with "Rows per page" Select + page indicator + outline icon buttons.
+7. **Depth via layered subtle shadows**, never harsh shadows. Keep the existing premium shadow scale in `index.css`.
+8. **Accent color is already right.** DepEd emerald via `--primary` token. The problem is bypassing it — never raw `bg-blue-600`/inline colors.
+
+**DepEd-green emerald is the identity.** The fix is consistency, not rebranding.
+
+### Alternative considered: TanStack Table
+
+shadcn's official DataTable guide now recommends TanStack Table v9 (feature-based, tree-shaken). This plan deliberately hand-rolls `usePagination` to avoid a new dependency. Tradeoff: TanStack gives sorting/filtering/column-visibility for free later; the hand-rolled version is simpler but those features must be added manually if ever needed. If sorting becomes a requirement post-migration, revisit this decision.
+
+---
+
 ## Why this plan exists (audit findings)
 
 A live audit of the codebase found:
@@ -114,6 +135,8 @@ interface StatCardProps {
   value: ReactNode;
   icon?: ReactNode;
   iconClassName?: string;
+  trend?: { value: string; direction: "up" | "down" | "neutral"; hint?: string };
+  // Trend renders as a small muted badge (green up / red down / neutral) — the shadcn dashboard stat pattern
 }
 ```
 

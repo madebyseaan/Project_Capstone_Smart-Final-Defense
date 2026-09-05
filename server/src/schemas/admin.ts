@@ -56,6 +56,7 @@ export const settingsUpdateSchema = z.object({
     schoolId: z.string().max(50).optional(),
     division: z.string().max(100).optional(),
     region: z.string().max(100).optional(),
+    schoolHeadName: z.string().max(100).optional(),
     address: z.string().max(300).optional(),
     contactNumber: z.string().max(20).optional(),
     email: z.string().email().max(255).optional(),

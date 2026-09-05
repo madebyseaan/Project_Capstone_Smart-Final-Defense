@@ -24,11 +24,9 @@ import {
   resolveSubjectName,
   sanitizeSubjectName,
   normalizeSubjectLabel,
-  ensureHomeroomGuidanceLabel,
   inferSubjectTypeFromCode,
-  HOMEROOM_GUIDANCE_LABEL,
-  HOMEROOM_GUIDANCE_MINUTES,
 } from './atlasUtils';
+import { computeDisplayName } from './subjectDisplay';
 
 import { getActiveSchoolYearLabel } from './schoolYearResolver';
 
@@ -61,7 +59,8 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
   syncRunning = true;
   const errors: string[] = [];
-  let matched = 0, created = 0, deleted = 0, teachersWithLoads = 0;
+  let matched = 0, created = 0;
+  const deleted = 0, teachersWithLoads = 0;
 
   try {
     const atlasToken = process.env.ATLAS_SYSTEM_TOKEN;
@@ -241,7 +240,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         const properName = resolveSubjectName(code);
         const inferredType = inferSubjectTypeFromCode(code);
         await prisma.subject.create({
-          data: { code, name: properName, type: inferredType, ...rotationData },
+          data: { code, name: properName, displayName: computeDisplayName(code, properName), type: inferredType, ...rotationData },
         }).catch(() => { /* already exists via race condition */ });
         existingCodes.add(code);
         subjectsCreated++;
@@ -254,21 +253,20 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     const allSubjects = await prisma.subject.findMany();
     const subjectByCode = new Map(allSubjects.map(s => [s.code, s]));
-    const homeroomLabelUpdated = new Set<string>();
 
     // 4.5 Batch-fix any bad subject names that slipped through previous syncs
-    const subjectNameFixes: Array<{ id: string; name: string }> = [];
+    const subjectNameFixes: Array<{ id: string; name: string; displayName: string }> = [];
     for (const subj of allSubjects) {
       const fixedName = sanitizeSubjectName(subj.name, subj.code);
       if (fixedName !== subj.name) {
-        subjectNameFixes.push({ id: subj.id, name: fixedName });
+        subjectNameFixes.push({ id: subj.id, name: fixedName, displayName: computeDisplayName(subj.code, fixedName) });
         subj.name = fixedName;
       }
     }
     if (subjectNameFixes.length > 0) {
       try {
         await prisma.$transaction(
-          subjectNameFixes.map(f => prisma.subject.update({ where: { id: f.id }, data: { name: f.name } }))
+          subjectNameFixes.map(f => prisma.subject.update({ where: { id: f.id }, data: { name: f.name, displayName: f.displayName } }))
         );
         logger.debug(`[AtlasSync] Batch fixed ${subjectNameFixes.length} subject names`);
       } catch (err: any) {
@@ -329,7 +327,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           const sectionId = Number(assignment.sectionId);
           if (!Number.isFinite(sectionId)) continue;
 
-          let epSection = epSectionById.get(sectionId);
+          const epSection = epSectionById.get(sectionId);
           if (!epSection?.name) {
             errors.push(`ATLAS sectionId=${sectionId} not found in EnrollPro sections`);
             continue;
@@ -485,28 +483,28 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const allSections = allSectionsPre;
     const sectionByKey = sectionByKeyPre;
 
+    let hgLoadsSkipped = 0;
     for (const load of loads) {
       const section = sectionByKey.get(`${load.sectionName.trim()}:${load.gradeLevel}`);
       if (!section) continue;
 
       const smartSubjectCode = resolveSubjectCode(load.subjectCode, section.gradeLevel);
+      if (smartSubjectCode.toUpperCase().startsWith('HG')) { hgLoadsSkipped++; continue; }
+
       let subject = subjectByCode.get(smartSubjectCode);
 
       if (!subject) {
-        const autoName = smartSubjectCode.startsWith('HG')
-          ? HOMEROOM_GUIDANCE_LABEL
-          : resolveSubjectName(smartSubjectCode, section.gradeLevel);
+        const autoName = resolveSubjectName(smartSubjectCode, section.gradeLevel);
         subject = await prisma.subject.upsert({
           where: { code: smartSubjectCode },
           update: {},
-          create: { code: smartSubjectCode, name: autoName, type: inferSubjectTypeFromCode(smartSubjectCode) },
+          create: { code: smartSubjectCode, name: autoName, displayName: computeDisplayName(smartSubjectCode, autoName), type: inferSubjectTypeFromCode(smartSubjectCode) },
         });
         subjectByCode.set(smartSubjectCode, subject);
         logger.debug(`[AtlasSync] Auto-created subject "${smartSubjectCode}" ("${autoName}")`);
       }
 
-      await ensureHomeroomGuidanceLabel(subject, homeroomLabelUpdated);
-      const teachingMinutes = subject.code.startsWith('HG') ? HOMEROOM_GUIDANCE_MINUTES : null;
+      const teachingMinutes = null;
       const desiredKey = `${load.smartTeacherId}:${subject.id}:${section.id}`;
       desiredAssignmentPairs.add(desiredKey);
 
@@ -588,10 +586,13 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         }
       }
 
-      if (allScheduleEntries.length > 0) {
+      const hgScheduleSkipped = allScheduleEntries.filter(e => e.subjectCode.toUpperCase().startsWith('HG')).length;
+      const filteredScheduleEntries = allScheduleEntries.filter(e => !e.subjectCode.toUpperCase().startsWith('HG'));
+      if (hgScheduleSkipped > 0) logger.info(`[AtlasSync] Skipped ${hgScheduleSkipped} HG schedule entries`);
+      if (filteredScheduleEntries.length > 0) {
         let scheduleCreated = 0;
         let scheduleCleaned = 0;
-        const teacherIdsWithSchedule = new Set(allScheduleEntries.map(e => e.teacherId));
+        const teacherIdsWithSchedule = new Set(filteredScheduleEntries.map(e => e.teacherId));
 
         const existingEntries = await prisma.scheduleEntry.findMany({
           where: { teacherId: { in: Array.from(teacherIdsWithSchedule) }, schoolYear: schoolYearLabel },
@@ -601,7 +602,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           existingEntries.map(e => [`${e.teacherId}:${e.subjectId}:${e.sectionId}:${e.day}:${e.startTime}`, e.id]),
         );
 
-        for (const entry of allScheduleEntries) {
+        for (const entry of filteredScheduleEntries) {
           const smartSubjectCode = resolveSubjectCode(entry.subjectCode, entry.gradeLevel);
           let subject = subjectByCode.get(smartSubjectCode);
           if (!subject) {
@@ -609,7 +610,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
               subject = await prisma.subject.upsert({
                 where: { code: smartSubjectCode },
                 update: {},
-                create: { code: smartSubjectCode, name: resolveSubjectName(smartSubjectCode, entry.gradeLevel), type: inferSubjectTypeFromCode(smartSubjectCode) },
+                create: { code: smartSubjectCode, name: resolveSubjectName(smartSubjectCode, entry.gradeLevel), displayName: computeDisplayName(smartSubjectCode, resolveSubjectName(smartSubjectCode, entry.gradeLevel)), type: inferSubjectTypeFromCode(smartSubjectCode) },
               });
               subjectByCode.set(smartSubjectCode, subject);
             } catch { continue; }
@@ -694,6 +695,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       logger.warn('[AtlasSync] Adviser sync failed:', advErr.message);
     }
 
+    if (hgLoadsSkipped > 0) logger.info(`[AtlasSync] Skipped ${hgLoadsSkipped} Homeroom Guidance loads (HG is a location, not a subject)`);
     lastSyncResult = { matched, created, deleted, teachersWithLoads, errors };
     lastSyncAt = new Date();
     logger.debug(`[AtlasSync] ✔ Done: matched=${matched}, created=${created}, deleted=${deleted}, teachers=${teachersWithLoads}, errors=${errors.length}`);

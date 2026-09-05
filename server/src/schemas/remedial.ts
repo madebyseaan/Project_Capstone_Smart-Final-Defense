@@ -4,15 +4,29 @@
 
 import { z } from 'zod';
 
+// Date-only string (YYYY-MM-DD) — avoids timezone drift from partial ISO parsing
+const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format');
+
 export const remedialUpdateSchema = z.object({
   params: z.object({
     id: z.string().min(1, 'RemedialClass id is required'),
   }),
   body: z.object({
-    remedialMark: z.number().min(60, 'RCM must be at least 60').max(100, 'RCM must be at most 100'),
-    conductedFrom: z.string().optional(),
-    conductedTo: z.string().optional(),
-  }),
+    remedialMark: z.number().min(60, 'RCM must be at least 60').max(100, 'RCM must be at most 100').optional(),
+    conductedFrom: dateString.optional(),
+    conductedTo: dateString.optional(),
+  }).refine(
+    (d) => d.remedialMark !== undefined || d.conductedFrom !== undefined || d.conductedTo !== undefined,
+    { message: 'At least one of remedialMark, conductedFrom, or conductedTo is required' }
+  ).refine(
+    (d) => {
+      if (d.conductedFrom && d.conductedTo) {
+        return d.conductedTo >= d.conductedFrom;
+      }
+      return true;
+    },
+    { message: 'conductedTo must be on or after conductedFrom' }
+  ),
 });
 
 export const remedialCompleteSchema = z.object({
@@ -21,7 +35,17 @@ export const remedialCompleteSchema = z.object({
   }),
   body: z.object({
     retentionOverride: z.boolean().optional(),
-  }),
+    conductedFrom: dateString.optional(),
+    conductedTo: dateString.optional(),
+  }).refine(
+    (d) => {
+      if (d.conductedFrom && d.conductedTo) {
+        return d.conductedTo >= d.conductedFrom;
+      }
+      return true;
+    },
+    { message: 'conductedTo must be on or after conductedFrom' }
+  ),
 });
 
 export const remedialManualCreateSchema = z.object({
@@ -39,6 +63,20 @@ export const remedialPendingQuerySchema = z.object({
   query: z.object({
     schoolYear: z.string().optional(),
     gradeLevel: z.string().optional(),
+    page: z.string().optional(),
+    limit: z.string().optional(),
+  }),
+});
+
+export const remedialSyncSchema = z.object({
+  body: z.object({
+    schoolYear: z.string().optional(),
+  }),
+});
+
+export const remedialHistoryQuerySchema = z.object({
+  query: z.object({
+    schoolYear: z.string().optional(),
     page: z.string().optional(),
     limit: z.string().optional(),
   }),

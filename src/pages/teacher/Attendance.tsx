@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL, getPortalToken } from "@/lib/api";
+import { PageHeader } from "@/components/layout/PageHeader";
 import axios from "axios";
 
 // ── Local date helpers (fixes UTC timezone bug) ─────────────────────────────
@@ -387,28 +388,20 @@ export default function Attendance() {
   const stats = getStatusStats();
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-7xl mx-auto pb-12">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl text-white shadow-xl" style={{ backgroundColor: colors.primary }}>
-              <ClipboardCheck className="w-6 h-6" />
-            </div>
-          </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Daily Attendance</h1>
-          <p className="text-slate-500 font-medium text-lg">Manage and track student attendance records</p>
-        </div>
-      </div>
+    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+      <PageHeader
+        title="Daily Attendance"
+        description="Manage and track student attendance records"
+      />
 
       {/* Control Panel - Refined Glass Style */}
       <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden bg-white/90 backdrop-blur-md">
         <CardContent className="p-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
             <div className="space-y-2">
-              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Advisory Section</Label>
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Advisory Section</Label>
               <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center px-4">
-                <span className="text-sm font-bold text-slate-900">
+                <span className="text-sm font-bold text-foreground">
                   {sections.length > 0
                     ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
                     : "Loading..."}
@@ -417,7 +410,7 @@ export default function Attendance() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="date" className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Attendance Date</Label>
+              <Label htmlFor="date" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Attendance Date</Label>
               <div className="relative">
                 <Input
                   id="date"
@@ -427,7 +420,7 @@ export default function Attendance() {
                   max={getLocalDateStr()}
                   className="h-12 bg-slate-50 border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all pl-10"
                 />
-                <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               </div>
             </div>
 
@@ -435,7 +428,7 @@ export default function Attendance() {
               <Button
                 onClick={markAllPresent}
                 variant="outline"
-                className="flex-1 h-12 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold transition-all"
+                className="flex-1 h-12 rounded-xl border-slate-200 text-muted-foreground hover:bg-slate-50 font-bold transition-all"
                 disabled={!attendanceData || loading}
               >
                 <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500" />
@@ -444,7 +437,7 @@ export default function Attendance() {
               <Button
                 onClick={clearAttendance}
                 variant="outline"
-                className="h-12 rounded-xl border-slate-200 text-slate-500 hover:bg-slate-50 font-bold transition-all px-4"
+                className="h-12 rounded-xl border-slate-200 text-muted-foreground hover:bg-slate-50 font-bold transition-all px-4"
                 disabled={!attendanceData || loading}
               >
                 CLEAR
@@ -529,9 +522,9 @@ export default function Attendance() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
-                    <p className={`text-2xl font-black text-slate-800`}>{stat.value}</p>
-                    <p className="text-[9px] text-slate-400 font-medium mt-1">{stat.desc}</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">{stat.label}</p>
+                    <p className={`text-2xl font-bold text-foreground`}>{stat.value}</p>
+                    <p className="text-[9px] text-muted-foreground font-medium mt-1">{stat.desc}</p>
                   </div>
                   <div className={`p-3 rounded-2xl bg-${stat.color}-50 text-${stat.color}-500 shrink-0`}>
                     <stat.icon className={`w-6 h-6 ${loadingMonthly && stat.icon === RefreshCw ? "animate-spin" : ""}`} />
@@ -553,8 +546,8 @@ export default function Attendance() {
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-black text-slate-900">SF2 Export</p>
-                  <p className="text-[10px] text-slate-400 font-medium">Download Daily Attendance Record (Excel)</p>
+                  <p className="text-sm font-bold text-foreground">SF2 Export</p>
+                  <p className="text-[10px] text-muted-foreground font-medium">Download Daily Attendance Record (Excel)</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -600,13 +593,13 @@ export default function Attendance() {
         <CardHeader className="p-8 border-b border-slate-50 bg-slate-50/30">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-xl font-black text-slate-900 tracking-tight">
+              <CardTitle className="text-xl font-bold text-foreground tracking-tight">
                 {attendanceData?.section 
                   ? `${gradeLevelLabels[attendanceData.section.gradeLevel]} - ${attendanceData.section.name}`
                   : "Attendance Roster"
                 }
               </CardTitle>
-              <CardDescription className="text-slate-500 font-sans normal-case font-medium tracking-normal mt-1">
+              <CardDescription className="text-muted-foreground font-sans normal-case font-medium tracking-normal mt-1">
                 {attendanceData ? `${attendanceData.attendance.length} Learners Enrolled` : "Select filters to view list"}
               </CardDescription>
             </div>
@@ -619,7 +612,7 @@ export default function Attendance() {
                 <div className="w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm" style={{ backgroundColor: `${colors.primary}15` }}>
                   <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
                 </div>
-                <p className="text-slate-500 font-black text-xs uppercase tracking-widest">Loading attendance...</p>
+                <p className="text-muted-foreground font-bold text-xs uppercase tracking-widest">Loading attendance...</p>
               </div>
             </div>
           ) : attendanceData ? (
@@ -627,29 +620,29 @@ export default function Attendance() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-slate-50/50 hover:bg-transparent border-0">
-                    <TableHead className="px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">LRN</TableHead>
-                    <TableHead className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Learner Name</TableHead>
-                    <TableHead className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Attendance Status</TableHead>
-                    <TableHead className="px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Notes / Remarks</TableHead>
+                    <TableHead className="px-8 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">LRN</TableHead>
+                    <TableHead className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Learner Name</TableHead>
+                    <TableHead className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-center">Attendance Status</TableHead>
+                    <TableHead className="px-8 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Notes / Remarks</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {attendanceData.attendance.map((student) => (
                     <TableRow key={student.studentId} className="hover:bg-slate-50/50 transition-all border-slate-50 group">
-                      <TableCell className="px-8 font-mono text-xs text-slate-400 font-bold group-hover:text-slate-900 transition-colors">
+                      <TableCell className="px-8 font-mono text-xs text-muted-foreground font-bold group-hover:text-foreground transition-colors">
                         {student.lrn}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-black text-xs shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-muted-foreground font-bold text-xs shrink-0">
                             {student.lastName.charAt(0)}
                           </div>
                           <div className="flex flex-col min-w-0">
-                            <span className="font-bold text-slate-900 tracking-tight truncate">
+                            <span className="font-bold text-foreground tracking-tight truncate">
                               {student.lastName}, {student.firstName}
                             </span>
                               {monthlyStats?.consecutiveAbsenceFlags[student.studentId] && (
-                              <span className="text-[8px] font-black uppercase text-rose-600 bg-rose-50 border border-rose-100 rounded px-1.5 py-0.5 mt-0.5 w-fit tracking-wide animate-pulse">
+                              <span className="text-[8px] font-bold uppercase text-rose-600 bg-rose-50 border border-rose-100 rounded px-1.5 py-0.5 mt-0.5 w-fit tracking-wide animate-pulse">
                                 5+ Consecutive Absences
                               </span>
                             )}
@@ -668,10 +661,10 @@ export default function Attendance() {
                               <button
                                 key={option.id}
                                 onClick={() => handleStatusChange(student.studentId, option.id as any)}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center font-black transition-all text-xs ${
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition-all text-xs ${
                                   student.status === option.id 
                                     ? `bg-${option.color}-600 text-white shadow-md scale-105 z-10` 
-                                    : `text-slate-400 hover:text-slate-700 hover:bg-slate-200/50`
+                                    : `text-muted-foreground hover:text-muted-foreground hover:bg-slate-200/50`
                                 }`}
                                 title={option.label}
                               >
@@ -697,10 +690,10 @@ export default function Attendance() {
           ) : (
             <div className="py-32 flex flex-col items-center justify-center text-center px-4">
               <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-sm">
-                <Users className="w-10 h-10 text-slate-200" />
+                <Users className="w-10 h-10 text-muted-foreground" />
               </div>
-              <h3 className="font-black text-slate-900 text-2xl mb-3">No Records Selected</h3>
-              <p className="text-slate-400 font-medium text-lg leading-relaxed">Configure section and date to begin tracking attendance</p>
+              <h3 className="font-bold text-foreground text-2xl mb-3">No Records Selected</h3>
+              <p className="text-muted-foreground font-medium text-lg leading-relaxed">Configure section and date to begin tracking attendance</p>
             </div>
           )}
         </CardContent>
@@ -714,7 +707,7 @@ export default function Attendance() {
               <AlertCircle className="w-8 h-8 text-white" />
             </div>
             <DialogHeader className="p-0 text-left">
-              <DialogTitle className="text-2xl font-black text-white leading-tight">Reset Attendance?</DialogTitle>
+              <DialogTitle className="text-2xl font-bold text-white leading-tight">Reset Attendance?</DialogTitle>
               <DialogDescription className="text-amber-100 font-medium text-base mt-2">
                 This will delete all saved attendance records for this date from the database. All students will reset to Present.
               </DialogDescription>
@@ -730,7 +723,7 @@ export default function Attendance() {
             </Button>
             <Button
               onClick={confirmClear}
-              className="h-14 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black shadow-xl shadow-amber-100 transition-all flex-1"
+              className="h-14 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xl shadow-amber-100 transition-all flex-1"
             >
               Reset All
             </Button>

@@ -17,6 +17,7 @@
 import { GradeLevel, PromotionStatus, Term, AuditAction, AuditSeverity } from "@prisma/client";
 import { prisma } from "./prisma";
 import { createAuditLog } from "./audit";
+import { DEPED_AREA_NAMES } from "./subjectDisplay";
 
 export const PASSING_GRADE = 75;
 
@@ -31,6 +32,7 @@ export interface SubjectTermInput {
   rotationTermGroupId?: string | null;
   rotationTermRank?: number | null;
   rotationOutputLabel?: string | null;
+  displayName?: string | null;
 }
 
 export interface SubjectFinalRow {
@@ -43,6 +45,7 @@ export interface SubjectFinalRow {
   finalRating: number | null;
   remarks: string | null;
   status: "GRADED" | "PARTIAL" | "NG";
+  displayName?: string | null;
 }
 
 export interface PromotionDecision {
@@ -103,6 +106,9 @@ export function mergeRotationSubjects(inputs: SubjectTermInput[]): SubjectTermIn
       T2: terms.T2,
       T3: terms.T3,
       rotationTermGroupId: groupId,
+      displayName: representative.rotationOutputLabel
+        ? DEPED_AREA_NAMES[representative.rotationOutputLabel.toUpperCase()] ?? null
+        : representative.displayName ?? null,
     });
   }
 
@@ -119,7 +125,7 @@ export function finalizeSubjectRows(inputs: SubjectTermInput[]): SubjectFinalRow
     const finalRating = terms.length > 0 ? Math.round(terms.reduce((a, b) => a + b, 0) / terms.length) : null;
     return {
       subjectCode: row.subjectCode,
-      subjectName: row.subjectName,
+      subjectName: row.displayName ?? row.subjectName,
       teacher: row.teacher ?? "",
       T1: row.T1,
       T2: row.T2,
@@ -127,6 +133,7 @@ export function finalizeSubjectRows(inputs: SubjectTermInput[]): SubjectFinalRow
       finalRating,
       remarks: finalRating !== null ? (finalRating >= PASSING_GRADE ? "Passed" : "Failed") : null,
       status,
+      displayName: row.displayName,
     };
   });
 
@@ -231,6 +238,7 @@ export async function computeSectionPromotions(sectionId: string, schoolYear: st
   const draftBlockers: DraftBlocker[] = [];
   for (const grade of grades) {
     if (grade.status !== "DRAFT") continue;
+    if ((grade.classAssignment.subject.code ?? '').toUpperCase().startsWith('HG')) continue;
     const enrollment = enrollments.find((e) => e.studentId === grade.studentId);
     if (!enrollment) continue;
     draftBlockers.push({
@@ -248,6 +256,7 @@ export async function computeSectionPromotions(sectionId: string, schoolYear: st
     const subjectMap = new Map<string, SubjectTermInput>();
     for (const ca of classAssignments) {
       if (ca.subject.isNonPromotional) continue;
+      if ((ca.subject.code ?? '').toUpperCase().startsWith('HG')) continue;
       const key = canonicalSubjectKey(ca.subject.code, ca.subject.name);
       if (!subjectMap.has(key)) {
         subjectMap.set(key, {
@@ -268,6 +277,7 @@ export async function computeSectionPromotions(sectionId: string, schoolYear: st
     for (const grade of studentGrades) {
       const ca = grade.classAssignment;
       if (ca.subject.isNonPromotional) continue;
+      if ((ca.subject.code ?? '').toUpperCase().startsWith('HG')) continue;
       const key = canonicalSubjectKey(ca.subject.code, ca.subject.name);
       if (!subjectMap.has(key)) {
         subjectMap.set(key, {
@@ -491,7 +501,6 @@ export async function finalizeSectionEosy(opts: {
               initialGrade: grade.initialGrade,
               quarterlyGrade: grade.quarterlyGrade,
               remarks: grade.remarks,
-              qualitativeDescriptor: grade.qualitativeDescriptor,
             },
           },
         });
@@ -517,7 +526,7 @@ export async function finalizeSectionEosy(opts: {
               schoolYear: opts.schoolYear,
               gradeLevel: promotions.section.gradeLevel,
               subjectCode: row.subjectCode,
-              subjectName: row.subjectName,
+              subjectName: row.displayName ?? row.subjectName,
               originalGrade: row.finalRating!,
               status: "PENDING",
             })),
@@ -535,7 +544,7 @@ export async function unfinalizeSectionEosy(opts: {
   schoolYear: string;
   actor: { id: string; name: string; role: string };
 }): Promise<
-  | { ok: false; error: "SECTION_NOT_FOUND" | "NOT_FINALIZED" }
+  | { ok: false; error: "SECTION_NOT_FOUND" | "NOT_FINALIZED" | "HAS_COMPLETED_REMEDIAL"; completedCount?: number }
   | { ok: true; deletedSnapshots: number; deletedRemedial: number }
 > {
   const section = await prisma.section.findFirst({
@@ -551,6 +560,13 @@ export async function unfinalizeSectionEosy(opts: {
   if (!hasStoredStatus) return { ok: false, error: "NOT_FINALIZED" };
 
   const enrollmentIds = enrollments.map((e) => e.id);
+
+  const completedRemedialCount = await prisma.remedialClass.count({
+    where: { enrollmentId: { in: enrollmentIds }, status: "COMPLETED" },
+  });
+  if (completedRemedialCount > 0) {
+    return { ok: false, error: "HAS_COMPLETED_REMEDIAL", completedCount: completedRemedialCount };
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const deletedSnapshots = await tx.gradeSnapshot.deleteMany({

@@ -87,6 +87,9 @@ model Student {
   is4PsBeneficiary Boolean?     @default(false)
   disability      String?
   isBalikAral     Boolean?      @default(false)
+  previousSchool  String?       // Name of school transferred from
+  lastGradeCompleted String?    // Free text — e.g. "Grade 6"
+  transferCertNo  String?       // Transfer Certificate / SF10 reference no.
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   attendance      Attendance[]
@@ -121,7 +124,8 @@ model Section {
 model Subject {
   id                    String            @id @default(cuid())
   code                  String            @unique
-  name                  String
+  name                  String            // Internal: "Filipino 7", "Science - Biology 7"
+  displayName           String?           // SF forms: "Filipino", "Science" (canonical DepEd name)
   description           String?
   type                  SubjectType       @default(CORE)
   writtenWorkWeight     Int?
@@ -199,6 +203,7 @@ model Enrollment {
   dropOutDate    DateTime?
   transferOutDate DateTime?
   dropOutReason  String?
+  transferInDate DateTime?       // Set by transferee sync or registrar. Null = not a transferee.
   profileSnapshot Json?            // Student profile snapshot at enrollment time (immutable)
   promotionStatus      PromotionStatus?
   promotedToGradeLevel GradeLevel?
@@ -362,6 +367,7 @@ model SchoolYear {
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  schoolSettingsSnapshot Json? // Frozen school identity for this year
 
   // Reverse relation: which SystemSettings points to this year
   systemSettings SystemSettings[]
@@ -404,6 +410,7 @@ model SystemSettings {
   schoolId           String    @default("123456")
   division           String    @default("Division of Sample City")
   region             String    @default("Region IV-A CALABARZON")
+  schoolHeadName     String?
   address            String?
   contactNumber      String?
   email              String?

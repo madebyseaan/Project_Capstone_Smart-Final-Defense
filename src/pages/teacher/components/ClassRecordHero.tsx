@@ -25,21 +25,18 @@ function getGradeColors(gradeLevel: string) {
 
 interface ClassRecordHeroProps {
   classAssignment: ClassAssignment;
-  isHGClass: boolean;
   effectiveWeightsSource: "subject-override" | "subject-type" | "generic-fallback" | null;
   onStartTour?: () => void;
 }
 
 export function ClassRecordHero({
   classAssignment,
-  isHGClass,
   effectiveWeightsSource,
   onStartTour,
 }: ClassRecordHeroProps) {
   return (
     <>
       <div className="relative overflow-hidden bg-white border border-slate-100 p-8 shadow-xl shadow-slate-200/50 rounded-[2rem]">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
           <div id="tutorial-hero-info" className="flex items-center gap-6">
             <Link to="/teacher/classes">
@@ -58,17 +55,17 @@ export function ClassRecordHero({
                 </span>
               </div>
               <h1 className="text-3xl font-semibold text-slate-900 tracking-tight uppercase">{classAssignment.subject.name}</h1>
-              {effectiveWeightsSource === "subject-override" && !isHGClass && (
+              {effectiveWeightsSource === "subject-override" && (
                 <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mt-2">
                   Using custom subject weights (overrides group default)
                 </p>
               )}
-              {effectiveWeightsSource === "subject-type" && !isHGClass && (
+              {effectiveWeightsSource === "subject-type" && (
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">
                   Using group default weights
                 </p>
               )}
-              {effectiveWeightsSource === "generic-fallback" && !isHGClass && (
+              {effectiveWeightsSource === "generic-fallback" && (
                 <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 mt-2">
                   Generic fallback weights (20/50/30) — no group config set
                 </p>
@@ -89,37 +86,12 @@ export function ClassRecordHero({
               </Button>
             )}
 
-            {!isHGClass ? (
-              <Badge className="h-9 px-4 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold">
-                Grade Entry Mode
-              </Badge>
-            ) : (
-              <Badge className="h-9 px-4 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold">
-                Qualitative Grading Mode
-              </Badge>
-            )}
+            <Badge className="h-9 px-4 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold">
+              Grade Entry Mode
+            </Badge>
           </div>
         </div>
       </div>
-
-      {(classAssignment.isActive === false || !!classAssignment.archivedAt) && (
-        <Card className="border-0 shadow-lg shadow-rose-100/50 rounded-[2rem] overflow-hidden bg-rose-50/60 border border-rose-100">
-          <CardContent className="p-6 flex flex-col gap-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-rose-600">Archived from Atlas</p>
-            <p className="text-sm font-bold text-slate-700">
-              This subject was removed from the current Atlas load. SMART keeps the grade history for recovery, but this class is no longer active on the dashboard.
-            </p>
-            {classAssignment.archivedReason && (
-              <p className="text-[10px] font-semibold text-rose-500 uppercase tracking-widest">
-                Reason: {classAssignment.archivedReason}
-              </p>
-            )}
-            <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">
-              If this was not intended, contact the EnrollPro/Atlas admin to restore the subject assignment.
-            </p>
-          </CardContent>
-        </Card>
-      )}
     </>
   );
 }

@@ -79,7 +79,7 @@ interface LedgerRowProps {
   onHpsUpdate: (cat: "WW" | "PT" | "QA", idx: number, val: number) => void;
   onScoreCommit: (inputEl: HTMLInputElement, sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
   onCellFocus: (cat: "WW" | "PT" | "QA", idx: number) => void;
-  isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
+  isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => string | undefined;
   transmutationTable?: TransmutationRow[];
   isViewOnly?: boolean;
 }
@@ -519,7 +519,7 @@ interface ClassRecordTableProps {
   onHpsUpdate: (cat: "WW" | "PT" | "QA", idx: number, val: number) => void;
   onScoreCommit: (inputEl: HTMLInputElement, sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
   onCellFocus: (cat: "WW" | "PT" | "QA", idx: number) => void;
-  isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
+  isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => string | undefined;
   assessmentHeaderNode?: React.ReactNode;
   ledgerHeaderRef?: React.RefObject<HTMLDivElement | null>;
   onClearScores?: () => void;

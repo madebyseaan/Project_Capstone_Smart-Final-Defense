@@ -1,26 +1,20 @@
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, useEffect, useCallback, Fragment, useMemo } from "react";
 import {
-  FlaskConical,
-  Loader2,
   AlertTriangle,
   RefreshCw,
-  BookOpen,
+  Search,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Search,
-  Command,
-  ChevronDown,
-  ChevronUp,
-  Save,
-  CheckCircle2,
-  Printer,
-  AlertCircle,
   Calendar,
+  CloudDownload,
+  FlaskConical,
+  Users,
+  Clock,
+  CheckCircle,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,48 +27,32 @@ import {
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
 import { registrarApi } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { StatCard } from "@/components/layout/StatCard";
+import { LoadingSkeleton, EmptyState } from "@/components/data-table";
+import { toast } from "@/lib/toast";
+import { RemedialHistoryTable } from "./components/RemedialHistoryTable";
+import { CompleteRemedialDialog, type PendingSubject } from "./components/CompleteRemedialDialog";
+import {
+  RemedialStudentRow,
+  RemedialExpandedPanel,
+  type RemedialStudent,
+} from "./components/RemedialStudentRow";
+import { SyncProgressModal } from "@/components/common/SyncProgressModal";
 
-interface RemedialRecord {
-  id: string;
-  subjectCode: string;
-  subjectName: string;
-  originalGrade: number;
-  remedialMark: number | null;
-  recomputedGrade: number | null;
-  outcome: string | null;
-  status: string;
-  conductedFrom: string | null;
-  conductedTo: string | null;
-}
-
-interface RemedialStudent {
-  enrollmentId: string;
-  studentId: string;
-  lrn: string;
-  firstName: string;
-  lastName: string;
-  middleName: string | null;
-  sex: string | null;
-  gradeLevel: string;
-  section: { name: string };
-  schoolYear: string;
-  promotionStatus: string;
-  remedialClasses: RemedialRecord[];
-}
+const EMPTY_SUBJECTS: PendingSubject[] = [];
 
 export default function RemedialTracker() {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<RemedialStudent[]>([]);
-  const [meta, setMeta] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
@@ -82,64 +60,173 @@ export default function RemedialTracker() {
 
   // Edit state for expanded row
   const [editMarks, setEditMarks] = useState<Record<string, number | "">>({});
-  const [editDates, setEditDates] = useState<Record<string, { from: string; to: string }>>({});
-  const [saving, setSaving] = useState<string | null>(null);
-  const [completing, setCompleting] = useState(false);
+  const [conductedFrom, setConductedFrom] = useState(() => localStorage.getItem("remedial_conductedFrom") ?? "");
+  const [conductedTo, setConductedTo] = useState(() => localStorage.getItem("remedial_conductedTo") ?? "");
+  const [savingAndCompleting, setSavingAndCompleting] = useState(false);
+  const [confirmDialogStudent, setConfirmDialogStudent] = useState<RemedialStudent | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
+  const [syncError, setSyncError] = useState<string | undefined>();
+  const [schoolYears, setSchoolYears] = useState<string[]>([]);
+  const [selectedSY, setSelectedSY] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"pending" | "history">("pending");
+  const [historyItems, setHistoryItems] = useState<RemedialStudent[]>([]);
+  const [historyMeta, setHistoryMeta] = useState<{ total: number; totalPages: number }>({ total: 0, totalPages: 1 });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyYearFilter, setHistoryYearFilter] = useState<string>("all");
 
   const load = useCallback(async (p = 1, silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const res = await registrarApi.getRemedialPending({ page: p, limit: 500 });
-      const payload = res.data as any;
-      setItems(payload.items ?? []);
-      setMeta(payload.meta ?? { total: 0, totalPages: 1 });
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? "Failed to load remedial data.");
+      const res = await registrarApi.getRemedialPending({ page: p, limit: 500, schoolYear: selectedSY || undefined });
+      const payload = res.data as { items?: RemedialStudent[]; meta?: { total: number; totalPages: number } };
+      const items = payload.items ?? [];
+      setItems(items);
+
+      // Auto-sync from EnrollPro if list is empty on first load and selected SY is the active (latest) SY
+      const activeSY = schoolYears.length > 0 ? schoolYears[schoolYears.length - 1] : null;
+      if (items.length === 0 && p === 1 && !silent && selectedSY && selectedSY === activeSY) {
+        setSyncStatus("syncing");
+        try {
+          await registrarApi.syncRemedialFromEnrollPro(selectedSY);
+          const retry = await registrarApi.getRemedialPending({ page: 1, limit: 500, schoolYear: selectedSY });
+          const retryPayload = retry.data as { items?: RemedialStudent[]; meta?: { total: number; totalPages: number } };
+          setItems(retryPayload.items ?? []);
+          if ((retryPayload.items ?? []).length > 0) {
+            toast.success(`Synced ${(retryPayload.items ?? []).length} learner(s) from EnrollPro`);
+          }
+        } catch {
+          // Silently ignore — manual Sync button still available
+        } finally {
+          setSyncStatus("idle");
+        }
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to load remedial data.";
+      setError(message);
       setItems([]);
     } finally {
       if (!silent) setLoading(false);
     }
+  }, [selectedSY, schoolYears]);
+
+  const loadHistory = useCallback(async (p = 1) => {
+    setHistoryLoading(true);
+    try {
+      const params: { schoolYear?: string; page?: number; limit?: number } = { page: p, limit: 500 };
+      if (historyYearFilter !== "all") params.schoolYear = historyYearFilter;
+      const res = await registrarApi.getRemedialHistory(params);
+      const payload = res.data as { items?: RemedialStudent[]; meta?: { total: number; totalPages: number } };
+      setHistoryItems(payload.items ?? []);
+      setHistoryMeta(payload.meta ?? { total: 0, totalPages: 1 });
+    } catch {
+      setHistoryItems([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyYearFilter]);
+
+  useEffect(() => {
+    if (viewMode === "pending") {
+      void load(page);
+    } else {
+      void loadHistory(page);
+    }
+  }, [page, load, loadHistory, viewMode]);
+
+  useEffect(() => {
+    registrarApi.getSchoolYears().then((res) => {
+      const data = res.data as { schoolYears?: string[]; activeSchoolYear?: string | null };
+      const years = data.schoolYears ?? [];
+      setSchoolYears(years);
+      if (years.length > 0 && !selectedSY) {
+        const active = data.activeSchoolYear;
+        setSelectedSY(active && years.includes(active) ? active : years[0]);
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    void load(page);
-  }, [page, load]);
+    if (conductedFrom) localStorage.setItem("remedial_conductedFrom", conductedFrom);
+  }, [conductedFrom]);
 
-  const filtered = search
-    ? items.filter((item) => {
-        const name = `${item.lastName ?? ""} ${item.firstName ?? ""}`.toLowerCase();
-        const lrn = String(item.lrn ?? "");
-        return name.includes(search.toLowerCase()) || lrn.includes(search);
-      })
-    : items;
+  useEffect(() => {
+    if (conductedTo) localStorage.setItem("remedial_conductedTo", conductedTo);
+  }, [conductedTo]);
+
+  const handleSync = async () => {
+    const confirmed = window.confirm(
+      "Pull conditionally promoted students and their back-subjects from EnrollPro?\n\n" +
+      "This will:\n" +
+      "- Create CONDITIONALLY_PROMOTED enrollment tags\n" +
+      "- Create remedial class records for each failed subject\n" +
+      "- Existing records are not overwritten"
+    );
+    if (!confirmed) return;
+    setSyncModalOpen(true);
+    setSyncStatus("syncing");
+    setSyncError(undefined);
+    try {
+      const res = await registrarApi.syncRemedialFromEnrollPro();
+      const result = res.data as { fetched: number; matched: number; enrollmentsUpdated: number; remedialCreated: number; studentsNotFound?: string[] };
+      toast.success(
+        `Sync complete: ${result.fetched} fetched, ${result.remedialCreated} remedial records created`
+      );
+      setSyncStatus("success");
+      await load(page, true);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to sync from EnrollPro";
+      setSyncStatus("error");
+      setSyncError(message);
+    }
+  };
+
+  const filtered = useMemo(() => {
+    if (!search) return items;
+    const q = search.toLowerCase();
+    return items.filter((item) => {
+      const name = `${item.lastName ?? ""} ${item.firstName ?? ""}`.toLowerCase();
+      const lrn = String(item.lrn ?? "");
+      return name.includes(q) || lrn.includes(q);
+    });
+  }, [items, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / limit));
-  const paginated = filtered.slice((page - 1) * limit, page * limit);
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * limit, page * limit),
+    [filtered, page, limit]
+  );
 
-  const stats = {
-    total: filtered.length,
-    pending: filtered.filter((i) =>
-      i.remedialClasses.some((rc) => rc.status === "PENDING")
-    ).length,
-    completed: filtered.filter((i) =>
-      i.remedialClasses.every((rc) => rc.status === "COMPLETED")
-    ).length,
-  };
+  const stats = useMemo(() => {
+    const pendingRows = filtered.reduce(
+      (n, i) => n + i.remedialClasses.filter((rc) => rc.status === "PENDING").length,
+      0
+    );
+    const completedRows = filtered.reduce(
+      (n, i) => n + i.remedialClasses.filter((rc) => rc.status === "COMPLETED").length,
+      0
+    );
+    return {
+      total: filtered.length,
+      pending: filtered.filter((i) =>
+        i.remedialClasses.some((rc) => rc.status === "PENDING")
+      ).length,
+      completed: filtered.filter((i) =>
+        i.remedialClasses.every((rc) => rc.status === "COMPLETED")
+      ).length,
+      pendingRows,
+      completedRows,
+    };
+  }, [filtered]);
 
-  const toggleExpand = (enrollmentId: string) => {
-    if (expandedId === enrollmentId) {
-      setExpandedId(null);
-      setEditMarks({});
-      setEditDates({});
-      return;
-    }
-    setExpandedId(enrollmentId);
+  const toggleExpand = useCallback((enrollmentId: string) => {
+    setExpandedId((prev) => (prev === enrollmentId ? null : enrollmentId));
     setEditMarks({});
-    setEditDates({});
-  };
+  }, []);
 
-  const handleMarkChange = (rcId: string, value: string) => {
+  const handleMarkChange = useCallback((rcId: string, value: string) => {
     if (value === "") {
       setEditMarks((prev) => ({ ...prev, [rcId]: "" }));
       return;
@@ -148,169 +235,257 @@ export default function RemedialTracker() {
     if (!isNaN(num)) {
       setEditMarks((prev) => ({ ...prev, [rcId]: num }));
     }
-  };
+  }, []);
 
-  const handleDateChange = (rcId: string, field: "from" | "to", value: string) => {
-    setEditDates((prev) => ({
-      ...prev,
-      [rcId]: { ...(prev[rcId] ?? { from: "", to: "" }), [field]: value },
-    }));
-  };
-
-  const saveRow = async (rcId: string) => {
-    const mark = editMarks[rcId];
-    if (mark === undefined || mark === "" || typeof mark !== "number") return;
-    setSaving(rcId);
-    try {
-      const dates = editDates[rcId];
-      await registrarApi.updateRemedialRow(rcId, {
-        remedialMark: mark,
-        ...(dates?.from ? { conductedFrom: dates.from } : {}),
-        ...(dates?.to ? { conductedTo: dates.to } : {}),
-      });
-      await load(page, true);
-      setEditMarks((prev) => {
-        const next = { ...prev };
-        delete next[rcId];
-        return next;
-      });
-      setEditDates((prev) => {
-        const next = { ...prev };
-        delete next[rcId];
-        return next;
-      });
-    } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to save");
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const handleComplete = async (enrollmentId: string) => {
-    const student = items.find((i) => i.enrollmentId === enrollmentId);
-    if (!student) return;
-
+  // Check if a student's pending rows all have valid RCM and dates
+  const canComplete = useCallback((student: RemedialStudent): { ok: boolean; reason?: string } => {
     const pendingRows = student.remedialClasses.filter((rc) => rc.status === "PENDING");
-    const missingRcm = pendingRows.filter((rc) => rc.remedialMark === null);
-
+    const missingRcm = pendingRows.filter((rc) => {
+      const mark = editMarks[rc.id] ?? rc.remedialMark;
+      return mark === null || mark === undefined || mark === "";
+    });
     if (missingRcm.length > 0) {
-      alert(`Missing RCM for: ${missingRcm.map((r) => r.subjectName).join(", ")}`);
+      return { ok: false, reason: `Missing RCM: ${missingRcm.map((r) => r.subjectName).join(", ")}` };
+    }
+    const invalidRcm = pendingRows.filter((rc) => {
+      const mark = editMarks[rc.id] ?? rc.remedialMark;
+      return typeof mark === "number" && (mark < 60 || mark > 100);
+    });
+    if (invalidRcm.length > 0) {
+      return { ok: false, reason: `RCM must be 60–100: ${invalidRcm.map((r) => r.subjectName).join(", ")}` };
+    }
+    if (!conductedFrom || !conductedTo) {
+      return { ok: false, reason: "Conducted date range is required" };
+    }
+    return { ok: true };
+  }, [editMarks, conductedFrom, conductedTo]);
+
+  const handleSaveAndComplete = useCallback(async (student: RemedialStudent) => {
+    // Guard: all pending rows must have RCM
+    const pendingRows = student.remedialClasses.filter((rc) => rc.status === "PENDING");
+    const missingRcm = pendingRows.filter((rc) => {
+      const mark = editMarks[rc.id] ?? rc.remedialMark;
+      return mark === null || mark === undefined || mark === "";
+    });
+    if (missingRcm.length > 0) {
+      toast.error(`Missing RCM for: ${missingRcm.map((r) => r.subjectName).join(", ")}`);
       return;
     }
 
-    const confirmed = window.confirm(
-      `Complete remedial for ${student.lastName}, ${student.firstName}?\n\n` +
-      `This will:\n` +
-      `- Compute Recomputed Final Grades (RFG)\n` +
-      `- Transition promotion status\n` +
-      `- This action cannot be undone`
-    );
-    if (!confirmed) return;
-
-    setCompleting(true);
-    try {
-      const res = await registrarApi.completeRemedial(enrollmentId);
-      const result = res.data as any;
-      alert(
-        `Remedial completed!\n` +
-        `Status: ${result.previousStatus} → ${result.newStatus}\n` +
-        result.subjectOutcomes
-          ?.map((o: any) => `${o.subjectName}: RFG=${o.recomputedGrade} (${o.outcome})`)
-          .join("\n")
-      );
-      await load(page, true);
-    } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to complete remedial");
-    } finally {
-      setCompleting(false);
+    // Guard: RCM must be 60-100
+    const invalidRcm = pendingRows.filter((rc) => {
+      const mark = editMarks[rc.id] ?? rc.remedialMark;
+      return typeof mark === "number" && (mark < 60 || mark > 100);
+    });
+    if (invalidRcm.length > 0) {
+      toast.error(`RCM must be 60–100 for: ${invalidRcm.map((r) => r.subjectName).join(", ")}`);
+      return;
     }
-  };
 
-  const computeRfg = (original: number, rcm: number) =>
-    Math.round(((original + rcm) / 2) * 10) / 10;
+    // Guard: conducted dates required
+    if (!conductedFrom || !conductedTo) {
+      toast.error("Set the conducted date range before completing.");
+      return;
+    }
 
-  const formatDate = (d: string | null) => {
-    if (!d) return "";
-    return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  };
+    setSavingAndCompleting(true);
+    try {
+      // 1. One combined PATCH per row (mark + dates), all in parallel
+      await Promise.all(
+        student.remedialClasses.map((rc) => {
+          const patch: { remedialMark?: number; conductedFrom: string; conductedTo: string } = {
+            conductedFrom,
+            conductedTo,
+          };
+          const mark = editMarks[rc.id];
+          if (rc.status === "PENDING" && typeof mark === "number") {
+            patch.remedialMark = mark;
+          }
+          return registrarApi.updateRemedialRow(rc.id, patch);
+        })
+      );
+
+      // 2. Complete remedial
+      const res = await registrarApi.completeRemedial(student.enrollmentId, {
+        conductedFrom,
+        conductedTo,
+      });
+      const result = res.data as { previousStatus: string; newStatus: string };
+      toast.success(`Remedial completed: ${result.previousStatus} → ${result.newStatus}`);
+      setConfirmDialogStudent(null);
+      setEditMarks({});
+      await load(page, true);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save & complete remedial";
+      toast.error(message);
+    } finally {
+      setSavingAndCompleting(false);
+    }
+  }, [editMarks, conductedFrom, conductedTo, load, page]);
+
+  const computeRfg = useCallback((original: number, rcm: number) =>
+    Math.round(((original + rcm) / 2) * 10) / 10, []);
+
+  // Stable dialog callbacks so the memoized dialog doesn't re-render on every keystroke
+  const openConfirmDialog = useCallback((student: RemedialStudent) => {
+    setConfirmDialogStudent(student);
+  }, []);
+
+  const closeConfirmDialog = useCallback(() => {
+    setConfirmDialogStudent(null);
+  }, []);
+
+  const handleDialogConfirm = useCallback((student: RemedialStudent) => {
+    void handleSaveAndComplete(student);
+  }, [handleSaveAndComplete]);
+
+  // Dialog props (memoized)
+  const dialogPendingSubjects = useMemo(() => {
+    if (!confirmDialogStudent) return EMPTY_SUBJECTS;
+    return confirmDialogStudent.remedialClasses
+      .filter((rc) => rc.status === "PENDING")
+      .map((rc) => {
+        const raw = editMarks[rc.id] ?? rc.remedialMark;
+        return {
+          id: rc.id,
+          subjectName: rc.subjectName,
+          originalGrade: rc.originalGrade,
+          effectiveMark: typeof raw === "number" ? raw : null,
+        };
+      });
+  }, [confirmDialogStudent, editMarks]);
+
+  const dialogValidation = useMemo(
+    () => (confirmDialogStudent ? canComplete(confirmDialogStudent) : { ok: false }),
+    [confirmDialogStudent, canComplete]
+  );
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Remedial Tracker</h1>
-          <p className="text-gray-600 mt-1">
-            Manage remedial classes for conditionally promoted students.
-          </p>
-        </div>
-        <Button
-          onClick={() => void load(page)}
-          variant="outline"
-          className="rounded-xl"
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <PageHeader
+        title="Remedial Tracker"
+        description="Manage remedial classes for conditionally promoted students."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => void handleSync()}
+              variant="default"
+              size="sm"
+              className="font-semibold text-xs shadow-sm shadow-primary/20"
+              disabled={syncStatus === "syncing"}
+            >
+              <CloudDownload className="w-4 h-4 mr-1.5" />
+              Sync from EnrollPro
+            </Button>
+            <Button
+              onClick={() => void load(page)}
+              variant="outline"
+              size="sm"
+              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+            </Button>
+          </div>
+        }
+      />
+
+      {/* View Mode Tabs */}
+      <div className="flex items-center gap-1 bg-muted p-1 rounded-lg w-fit">
+        <button
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            viewMode === "pending" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+          onClick={() => { setViewMode("pending"); setPage(1); }}
         >
-          <RefreshCw className="w-4 h-4 mr-2" /> Refresh
-        </Button>
+          Pending
+        </button>
+        <button
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            viewMode === "history" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+          onClick={() => { setViewMode("history"); setPage(1); }}
+        >
+          History
+        </button>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
-          <p className="text-sm font-medium text-gray-600">Total Students</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
-        </div>
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-100">
-          <p className="text-sm font-medium text-gray-600">Pending</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{stats.pending}</p>
-        </div>
-        <div className="p-4 rounded-xl bg-green-50 border border-green-100">
-          <p className="text-sm font-medium text-gray-600">Completed</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{stats.completed}</p>
-        </div>
+      {/* Stats Row + Pending Table */}
+      {viewMode === "pending" && (<>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Students"
+          value={stats.total}
+          numericValue={stats.total}
+          icon={<Users className="w-5 h-5 text-primary" />}
+          iconClassName="bg-primary/10"
+        />
+        <StatCard
+          label="Pending"
+          value={stats.pending}
+          numericValue={stats.pending}
+          icon={<Clock className="w-5 h-5 text-primary" />}
+          iconClassName="bg-primary/10"
+        />
+        <StatCard
+          label="Completed"
+          value={stats.completed}
+          numericValue={stats.completed}
+          icon={<CheckCircle className="w-5 h-5 text-primary" />}
+          iconClassName="bg-primary/10"
+        />
+        <StatCard
+          label="Remedial Rows"
+          value={stats.pendingRows + stats.completedRows}
+          numericValue={stats.pendingRows + stats.completedRows}
+          icon={<FlaskConical className="w-5 h-5 text-primary" />}
+          iconClassName="bg-primary/10"
+        />
       </div>
 
       {/* Main Table Card */}
-      <Card className="border-0 shadow-xl shadow-gray-200/50 bg-white overflow-hidden rounded-2xl p-0">
-        <CardHeader
-          className="border-b border-gray-100 px-6 py-5"
-          style={{ backgroundColor: `${colors.primary}08` }}
-        >
+      <Card className="border border-slate-200/60 shadow-sm bg-card overflow-hidden rounded-2xl p-0">
+        <div className="px-6 py-4 border-b border-slate-100">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div
-                className="p-2.5 rounded-xl text-white shadow-lg"
-                style={{ backgroundColor: colors.primary }}
-              >
-                <FlaskConical className="w-5 h-5" />
-              </div>
-              <div>
-                <CardTitle className="text-lg font-bold text-gray-900">
-                  Remedial Students
-                </CardTitle>
-                <CardDescription className="text-gray-500 text-sm">
-                  {filtered.length} student(s) found
-                </CardDescription>
-              </div>
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Remedial Students</h2>
+              <p className="text-sm text-muted-foreground">
+                {filtered.length} student{filtered.length !== 1 ? "s" : ""} found
+              </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {schoolYears.length > 0 && (
+                <Select
+                  value={selectedSY}
+                  onValueChange={(v) => {
+                    setSelectedSY(v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-36 h-9 rounded-lg text-xs">
+                    <SelectValue placeholder="School Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schoolYears.map((sy) => (
+                      <SelectItem key={sy} value={sy}>{sy}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Search students..."
+                  placeholder="Search name or LRN..."
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
                     setPage(1);
                   }}
-                  className="pl-9 pr-16 w-64 rounded-xl border-gray-200"
+                  className="pl-8 h-9 w-56 rounded-lg text-xs"
                 />
-                <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-gray-400 bg-gray-100 rounded border border-gray-200">
-                  <Command className="w-3 h-3" />K
-                </kbd>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-gray-500 font-medium">Rows:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">Rows:</span>
                 <Select
                   value={String(limit)}
                   onValueChange={(v) => {
@@ -318,7 +493,7 @@ export default function RemedialTracker() {
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger className="w-20" size="sm">
+                  <SelectTrigger className="w-16 h-9 rounded-lg text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -326,373 +501,211 @@ export default function RemedialTracker() {
                     <SelectItem value="15">15</SelectItem>
                     <SelectItem value="25">25</SelectItem>
                     <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
+
+          {/* Conducted Date Range — applies to all students */}
+          {stats.pending > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-border">
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <Calendar className="w-4 h-4" />
+                Conducted
+              </span>
+              <input
+                type="date"
+                value={conductedFrom}
+                onChange={(e) => setConductedFrom(e.target.value)}
+                className="border border-border rounded-lg px-2 py-1 text-sm bg-background text-foreground"
+              />
+              <span className="text-muted-foreground">–</span>
+              <input
+                type="date"
+                value={conductedTo}
+                onChange={(e) => setConductedTo(e.target.value)}
+                className="border border-border rounded-lg px-2 py-1 text-sm bg-background text-foreground"
+              />
+              {(conductedFrom || conductedTo) && (
+                <span className="text-xs text-muted-foreground">Applies to all students</span>
+              )}
             </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-              <AlertTriangle className="w-10 h-10 text-amber-500 mb-3" />
-              <p className="text-gray-700 font-medium">Unable to load remedial data</p>
-              <p className="text-gray-500 text-sm mt-1">{error}</p>
-              <Button onClick={() => void load(page)} variant="outline" className="mt-4 rounded-xl">
+          )}
+        </div>
+        <CardContent className="p-0">
+          {error ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+              <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="w-8 h-8 text-destructive" />
+              </div>
+              <h2 className="text-xl font-semibold text-foreground mb-2">Unable to Load Remedial Data</h2>
+              <p className="text-muted-foreground mb-4">{error}</p>
+              <Button onClick={() => void load(page)} variant="outline">
                 Try Again
               </Button>
             </div>
           ) : (
             <>
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="w-full table-fixed">
                   <TableHeader>
-                    <TableRow className="bg-white border-b border-slate-100 hover:bg-white">
-                      <TableHead className="w-8" />
-                      <TableHead className="font-bold text-slate-800 py-4">LRN</TableHead>
-                      <TableHead className="font-bold text-slate-800 py-4">Learner Name</TableHead>
-                      <TableHead className="font-bold text-slate-800 py-4">Grade / Section</TableHead>
-                      <TableHead className="font-bold text-slate-800 py-4">Failed Subjects</TableHead>
-                      <TableHead className="font-bold text-slate-800 py-4">Status</TableHead>
+                    <TableRow className="hover:bg-muted/50 border-b border-border bg-muted">
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-8" />
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">LRN</TableHead>
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[30%] text-left">Learner Name</TableHead>
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[18%] text-left">Grade / Section</TableHead>
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[24%] text-left">Failed Subjects</TableHead>
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginated.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-20">
-                          <BookOpen className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                          <p className="text-gray-500 font-medium">No remedial learners found</p>
-                          <p className="text-gray-400 text-sm mt-1">Try adjusting your search</p>
-                        </TableCell>
-                      </TableRow>
+                    {loading ? (
+                      <LoadingSkeleton columnCount={6} rowCount={8} />
+                    ) : paginated.length === 0 ? (
+                      <EmptyState
+                        columnCount={6}
+                        title="No remedial learners found"
+                        hint="Try adjusting your search"
+                        searchTerm={search || undefined}
+                      />
                     ) : (
-                      paginated.map((student) => {
-                        const isExpanded = expandedId === student.enrollmentId;
-                        const pendingCount = student.remedialClasses.filter((r) => r.status === "PENDING").length;
-                        const completedCount = student.remedialClasses.filter((r) => r.status === "COMPLETED").length;
-
-                        return (
-                          <Fragment key={student.enrollmentId}>
-                            <TableRow
-                              key={student.enrollmentId}
-                              className={`transition-colors border-b border-slate-50 hover:bg-slate-50/50 cursor-pointer ${isExpanded ? "bg-slate-50" : ""}`}
-                              onClick={() => toggleExpand(student.enrollmentId)}
-                            >
-                              <TableCell className="w-8">
-                                {isExpanded ? (
-                                  <ChevronUp className="w-4 h-4 text-gray-500" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                                )}
-                              </TableCell>
-                              <TableCell className="font-mono text-sm text-slate-500 py-4">
-                                {student.lrn ?? "--"}
-                              </TableCell>
-                              <TableCell className="py-4">
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-semibold text-sm shadow-sm"
-                                    style={{ backgroundColor: colors.primary }}
-                                  >
-                                    {(student.lastName ?? "?").charAt(0)}
-                                  </div>
-                                  <div>
-                                    <p className="font-bold text-slate-900">
-                                      {student.lastName}, {student.firstName}{" "}
-                                      {student.middleName ?? ""}
-                                    </p>
-                                    <p className="text-xs text-slate-500">
-                                      {student.section?.name} &middot; SY {student.schoolYear}
-                                    </p>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-medium text-slate-600 py-4">
-                                {student.gradeLevel?.replace("GRADE_", "Grade ")} / {student.section?.name}
-                              </TableCell>
-                              <TableCell className="py-4">
-                                <div className="flex flex-wrap gap-1">
-                                  {student.remedialClasses.map((rc) => (
-                                    <Badge
-                                      key={rc.id}
-                                      variant="outline"
-                                      className={
-                                        rc.status === "COMPLETED"
-                                          ? rc.outcome === "PASSED"
-                                            ? "bg-green-50 text-green-700 border-green-200"
-                                            : "bg-red-50 text-red-700 border-red-200"
-                                          : "bg-amber-50 text-amber-700 border-amber-200"
-                                      }
-                                    >
-                                      {rc.subjectName}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-4">
-                                <Badge
-                                  className={
-                                    pendingCount > 0
-                                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                                      : "bg-green-50 text-green-700 border-green-200"
-                                  }
-                                  variant="outline"
-                                >
-                                  {pendingCount > 0 ? `${pendingCount} pending` : "All completed"}
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
-
-                            {/* Expanded Panel */}
-                            {isExpanded && (
-                              <TableRow key={`${student.enrollmentId}-detail`}>
-                                <TableCell colSpan={6} className="p-0 bg-slate-50/50">
-                                  <div className="p-6 space-y-4">
-                                    {/* Conducted Dates */}
-                                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                                      <Calendar className="w-4 h-4" />
-                                      <span className="font-medium">Conducted from:</span>
-                                      <input
-                                        type="date"
-                                        className="border border-gray-300 rounded-lg px-2 py-1 text-sm"
-                                        defaultValue={student.remedialClasses[0]?.conductedFrom?.split("T")[0] ?? ""}
-                                        onChange={(e) => {
-                                          student.remedialClasses.forEach((rc) => {
-                                            handleDateChange(rc.id, "from", e.target.value);
-                                          });
-                                        }}
-                                      />
-                                      <span className="font-medium">to:</span>
-                                      <input
-                                        type="date"
-                                        className="border border-gray-300 rounded-lg px-2 py-1 text-sm"
-                                        defaultValue={student.remedialClasses[0]?.conductedTo?.split("T")[0] ?? ""}
-                                        onChange={(e) => {
-                                          student.remedialClasses.forEach((rc) => {
-                                            handleDateChange(rc.id, "to", e.target.value);
-                                          });
-                                        }}
-                                      />
-                                    </div>
-
-                                    {/* Subjects Table */}
-                                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                                      <table className="w-full text-sm">
-                                        <thead>
-                                          <tr className="bg-gray-50 border-b border-gray-200">
-                                            <th className="text-left px-4 py-3 font-bold text-gray-700">Learning Area</th>
-                                            <th className="text-center px-4 py-3 font-bold text-gray-700">Final Rating</th>
-                                            <th className="text-center px-4 py-3 font-bold text-gray-700">RCM</th>
-                                            <th className="text-center px-4 py-3 font-bold text-gray-700">RFG</th>
-                                            <th className="text-center px-4 py-3 font-bold text-gray-700">Outcome</th>
-                                            <th className="text-center px-4 py-3 font-bold text-gray-700">Action</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {student.remedialClasses.map((rc) => {
-                                            const currentMark = editMarks[rc.id] ?? rc.remedialMark ?? "";
-                                            const rfg =
-                                              typeof currentMark === "number"
-                                                ? computeRfg(rc.originalGrade, currentMark)
-                                                : null;
-                                            const isEditing = rc.id in editMarks || rc.id in editDates;
-                                            const isSavingThis = saving === rc.id;
-
-                                            return (
-                                              <tr key={rc.id} className="border-b border-gray-100 last:border-0">
-                                                <td className="px-4 py-3 font-medium text-gray-900">{rc.subjectName}</td>
-                                                <td className="px-4 py-3 text-center text-gray-700 font-semibold">
-                                                  {rc.originalGrade}
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                  {rc.status === "COMPLETED" ? (
-                                                    <span className="font-semibold text-gray-900">
-                                                      {rc.remedialMark}
-                                                    </span>
-                                                  ) : (
-                                                    <Input
-                                                      type="number"
-                                                      min={60}
-                                                      max={100}
-                                                      step={0.1}
-                                                      className="w-20 text-center mx-auto"
-                                                      placeholder="--"
-                                                      value={editMarks[rc.id] ?? ""}
-                                                      onChange={(e) => handleMarkChange(rc.id, e.target.value)}
-                                                    />
-                                                  )}
-                                                </td>
-                                                <td className="px-4 py-3 text-center font-bold text-gray-900">
-                                                  {rfg !== null ? rfg.toFixed(1) : rc.recomputedGrade?.toFixed(1) ?? "--"}
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                  {rc.status === "COMPLETED" ? (
-                                                    <Badge
-                                                      className={
-                                                        rc.outcome === "PASSED"
-                                                          ? "bg-green-50 text-green-700 border-green-200"
-                                                          : "bg-red-50 text-red-700 border-red-200"
-                                                      }
-                                                      variant="outline"
-                                                    >
-                                                      {rc.outcome === "PASSED" ? "Passed" : "Failed"}
-                                                    </Badge>
-                                                  ) : rfg !== null ? (
-                                                    <Badge
-                                                      className={
-                                                        rfg >= 75
-                                                          ? "bg-green-50 text-green-700 border-green-200"
-                                                          : "bg-red-50 text-red-700 border-red-200"
-                                                      }
-                                                      variant="outline"
-                                                    >
-                                                      {rfg >= 75 ? "Passed" : "Failed"}
-                                                    </Badge>
-                                                  ) : (
-                                                    <span className="text-gray-400">--</span>
-                                                  )}
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                  {rc.status === "PENDING" && (isEditing || editMarks[rc.id] !== undefined) && (
-                                                    <Button
-                                                      size="sm"
-                                                      variant="outline"
-                                                      className="rounded-lg"
-                                                      disabled={isSavingThis || editMarks[rc.id] === undefined || editMarks[rc.id] === ""}
-                                                      onClick={() => saveRow(rc.id)}
-                                                    >
-                                                      {isSavingThis ? (
-                                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                                      ) : (
-                                                        <Save className="w-3 h-3 mr-1" />
-                                                      )}
-                                                      Save
-                                                    </Button>
-                                                  )}
-                                                  {rc.status === "COMPLETED" && (
-                                                    <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
-                                                  )}
-                                                </td>
-                                              </tr>
-                                            );
-                                          })}
-                                        </tbody>
-                                      </table>
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex items-center gap-3 pt-2">
-                                      {pendingCount > 0 && (
-                                        <Button
-                                          className="rounded-xl"
-                                          style={{ backgroundColor: colors.primary }}
-                                          disabled={completing}
-                                          onClick={() => handleComplete(student.enrollmentId)}
-                                        >
-                                          {completing ? (
-                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                          ) : (
-                                            <CheckCircle2 className="w-4 h-4 mr-2" />
-                                          )}
-                                          Complete Remedial
-                                        </Button>
-                                      )}
-                                      {completedCount > 0 && pendingCount === 0 && (
-                                        <Button
-                                          variant="outline"
-                                          className="rounded-xl"
-                                          onClick={() => {
-                                            window.print();
-                                          }}
-                                        >
-                                          <Printer className="w-4 h-4 mr-2" />
-                                          Print Certificate
-                                        </Button>
-                                      )}
-                                      {completedCount === 0 && pendingCount === 0 && (
-                                        <p className="text-sm text-gray-500 italic">
-                                          No remedial records for this student.
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </Fragment>
-                        );
-                      })
+                      paginated.map((student) => (
+                        <Fragment key={student.enrollmentId}>
+                          <RemedialStudentRow
+                            student={student}
+                            isExpanded={expandedId === student.enrollmentId}
+                            primaryColor={colors.primary}
+                            onExpand={toggleExpand}
+                          />
+                          {expandedId === student.enrollmentId && (
+                            <RemedialExpandedPanel
+                              student={student}
+                              editMarks={editMarks}
+                              saving={savingAndCompleting}
+                              primaryColor={colors.primary}
+                              onMarkChange={handleMarkChange}
+                              computeRfg={computeRfg}
+                              validate={canComplete}
+                              onOpenConfirm={openConfirmDialog}
+                            />
+                          )}
+                        </Fragment>
+                      ))
                     )}
                   </TableBody>
                 </Table>
               </div>
 
               {/* Pagination */}
-              <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between bg-gray-50/30">
-                <div className="flex items-center gap-4 text-sm font-semibold text-slate-800">
-                  <span>
-                    Showing{" "}
-                    {filtered.length === 0 ? 0 : (page - 1) * limit + 1}{" "}
-                    to {Math.min(page * limit, filtered.length)} of {filtered.length} Students
-                  </span>
+              {!loading && filtered.length > 0 && (
+                <div className="border-t border-border px-6 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>
+                      Showing {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} of{" "}
+                      <span className="font-medium text-foreground">{filtered.length}</span> students
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={page <= 1}
+                      onClick={() => setPage(1)}
+                      aria-label="First page"
+                    >
+                      <ChevronsLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-8 w-8 text-xs font-bold"
+                    >
+                      {page}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage(totalPages)}
+                      aria-label="Last page"
+                    >
+                      <ChevronsRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
-
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
-                    disabled={page <= 1}
-                    onClick={() => setPage(1)}
-                  >
-                    <ChevronsLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => p - 1)}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-9 w-9 rounded-lg bg-[#800000] hover:bg-[#600000] text-white font-bold shadow-sm"
-                  >
-                    {page}
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage(totalPages)}
-                  >
-                    <ChevronsRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+              )}
             </>
           )}
         </CardContent>
       </Card>
+      </>)}
+
+      {/* History View */}
+      {viewMode === "history" && (<>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">Filter:</span>
+          <Select value={historyYearFilter} onValueChange={(v) => { setHistoryYearFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-36 h-8 rounded-lg text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Years</SelectItem>
+              {schoolYears.map((sy) => (
+                <SelectItem key={sy} value={sy}>{sy}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <RemedialHistoryTable
+          items={historyItems}
+          loading={historyLoading}
+          page={page}
+          limit={limit}
+          meta={historyMeta}
+          historyYearFilter={historyYearFilter}
+          setPage={setPage}
+        />
+      </>)}
+
+      {/* Save & Complete Confirmation Dialog */}
+      <CompleteRemedialDialog
+        student={confirmDialogStudent}
+        conductedFrom={conductedFrom}
+        conductedTo={conductedTo}
+        pendingSubjects={dialogPendingSubjects}
+        saving={savingAndCompleting}
+        validation={dialogValidation}
+        onOpenChange={(open) => { if (!open) closeConfirmDialog(); }}
+        onConfirm={handleDialogConfirm}
+      />
+      <SyncProgressModal isOpen={syncModalOpen} onClose={() => { setSyncModalOpen(false); setSyncStatus("idle"); }} status={syncStatus} errorMessage={syncError} />
     </div>
   );
 }

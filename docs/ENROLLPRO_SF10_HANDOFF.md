@@ -189,11 +189,11 @@ GET /api/registrar/forms/sf10/:studentId
 
 ---
 
-## New Endpoint (PROPOSED)
+## New Endpoint (IMPLEMENTED)
 
-To give EnrollPro service-level access to per-student SF10 data, add this endpoint to `server/src/routes/integration.ts`:
+To give EnrollPro service-level access to per-student SF10 data, this endpoint was added to `server/src/routes/integration.ts`:
 
-### 3. Student SF10 Grades — Service Auth
+### 3. Student SF10 Grades — Service Auth (EXISTING — implemented)
 
 ```
 GET /api/integration/smart/students/:studentId/sf10-grades
@@ -202,7 +202,7 @@ GET /api/integration/students/:studentId/sf10-grades
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `studentId` | string | Yes | SMART student ID |
+| `studentId` | string | Yes | Student **LRN** (preferred) or SMART student ID |
 | `schoolYear` | query | No | Filter to a specific year. Omit for all years. |
 
 **Auth:** `serviceAuth` (X-EnrollPro-API-Key header)

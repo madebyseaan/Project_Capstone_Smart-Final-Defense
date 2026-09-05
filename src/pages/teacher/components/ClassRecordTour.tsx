@@ -53,7 +53,7 @@ const TOUR_STEPS: TourStep[] = [
     icon: BookOpen,
     badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
     content:
-      "Welcome! This banner displays your current subject, grade level, and assigned section. SMART automatically determines whether standard DepEd weighted scoring (e.g., 20% Written Work, 50% Performance Tasks, 30% Term Assessment) or Homeroom Guidance qualitative grading mode is active.",
+      "Welcome! This banner displays your current subject, grade level, and assigned section. SMART automatically determines the active DepEd weighted scoring (e.g., 20% Written Work, 50% Performance Tasks, 30% Term Assessment).",
     devTip:
       "Click the back arrow on the left anytime to return to your Class Records list and select other subjects.",
     action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
@@ -628,7 +628,7 @@ export function ClassRecordTour({
       >
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden ring-1 ring-slate-900/10 flex flex-col" style={{ maxHeight: cardMaxHeight ? `min(${cardMaxHeight}px, calc(100vh - 32px))` : "min(82vh, calc(100vh - 32px))" }}>
           {/* Header Bar */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-5 py-3 text-white flex items-center justify-between shrink-0">
+          <div className="bg-slate-900 px-5 py-3 text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
                 <Sparkles className="w-3.5 h-3.5" />

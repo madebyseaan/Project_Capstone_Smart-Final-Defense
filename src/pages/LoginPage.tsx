@@ -87,38 +87,13 @@ export default function LoginPage() {
 
   return (
     <div
-      className="h-screen w-full flex overflow-hidden bg-gradient-to-br from-[#f8fafc] via-primary/8 to-accent/6"
+      className="h-screen w-full flex overflow-hidden bg-slate-50"
       style={{
         '--primary': 'var(--theme-primary)',
         '--accent': 'var(--theme-accent)'
       } as React.CSSProperties}
     >
       <style>{`
-        @keyframes login-gradient-shift {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-
-        @keyframes login-float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-16px); }
-        }
-
-        @keyframes login-scale-in {
-          0% { opacity: 0; transform: scale(0.98); }
-          100% { opacity: 1; transform: scale(1); }
-        }
-
-        .login-gradient {
-          animation: login-gradient-shift 14s ease infinite;
-          background-size: 200% 200%;
-        }
-
-        .login-float {
-          animation: login-float 9s ease-in-out infinite;
-        }
-
         .login-scale-in {
           animation: login-scale-in 220ms ease-out forwards;
         }
@@ -126,47 +101,13 @@ export default function LoginPage() {
 
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-[55%] xl:w-3/5 relative overflow-hidden bg-primary shrink-0">
-        {/* Animated gradient background */}
+        {/* Solid brand background */}
         <div
-          className="absolute inset-0 login-gradient"
+          className="absolute inset-0"
           style={{
-            background: `linear-gradient(to bottom right, var(--theme-primary), rgba(var(--theme-primary-rgb), 0.88), rgba(var(--theme-accent-rgb), 0.88))`,
+            background: 'var(--theme-primary)',
           }}
         />
-
-        {/* Decorative patterns */}
-        <div className="absolute inset-0">
-          {/* Floating orbs */}
-          <div className="absolute top-20 left-20 w-96 h-96 rounded-full bg-white/10 blur-3xl login-float" />
-          <div
-            className="absolute bottom-32 right-16 w-80 h-80 rounded-full blur-3xl login-float"
-            style={{
-              backgroundColor: 'var(--theme-accent)',
-              opacity: 0.18,
-              animationDelay: '2s'
-            }}
-          />
-          <div
-            className="absolute top-1/2 left-1/4 w-64 h-64 rounded-full blur-2xl login-float"
-            style={{
-              backgroundColor: 'var(--theme-primary)',
-              opacity: 0.2,
-              animationDelay: '4s'
-            }}
-          />
-
-          {/* Grid pattern overlay */}
-          <div
-            className="absolute inset-0 opacity-[0.03]"
-            style={{
-              backgroundImage:
-                'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
-              backgroundSize: '50px 50px',
-            }}
-          />
-
-          <div className="absolute -top-1/2 -right-1/4 w-full h-full bg-[radial-gradient(circle,_rgba(255,255,255,0.08)_0%,_transparent_70%)] rounded-full" />
-        </div>
 
         <div className="relative z-10 flex flex-col justify-center py-12 xl:py-16 px-12 xl:px-20 text-white w-full h-full">
           {/* Brand header (top left) - No logo, text only */}
@@ -236,7 +177,7 @@ export default function LoginPage() {
           />
 
           <svg
-            className="absolute inset-0 h-full w-full opacity-[0.08]"
+            className="absolute inset-0 h-full w-full opacity-[0.03]"
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
@@ -296,8 +237,7 @@ export default function LoginPage() {
           <div
             className="absolute inset-0"
             style={{
-              background:
-                'radial-gradient(circle at center, rgba(var(--theme-primary-rgb), 0.05) 0%, transparent 70%)',
+              background: 'rgba(var(--theme-primary-rgb), 0.03)',
             }}
           />
         </div>
@@ -315,20 +255,20 @@ export default function LoginPage() {
               )}
             </div>
             <div>
-              <span className="text-xl font-bold text-gray-900">{acronym}</span>
-              <p className="text-xs text-gray-500">{schoolName}</p>
+              <span className="text-xl font-bold text-slate-900">{acronym}</span>
+              <p className="text-xs text-slate-500">{schoolName}</p>
             </div>
           </div>
 
           {/* Login card with premium styling */}
-          <Card className="border-0 shadow-2xl shadow-gray-200 bg-white/90 backdrop-blur-xl rounded-lg overflow-hidden">
-            <CardHeader className="space-y-1 text-center pt-5 pb-0 px-6">
+          <Card className="border border-black/[0.06] shadow-[0_20px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)] bg-white/95 backdrop-blur-xl rounded-2xl overflow-hidden">
+            <CardHeader className="space-y-1 text-center pt-8 pb-3 px-8 bg-transparent border-b-0">
               <div
                 className="w-14 h-14 mx-auto rounded-full flex items-center justify-center shadow-lg overflow-hidden"
                 style={{
                   background: fullLogoUrl
                     ? 'white'
-                    : 'linear-gradient(to bottom right, var(--theme-primary), var(--theme-accent))',
+                    : 'var(--theme-primary)',
                   boxShadow: '0 10px 15px -3px rgba(var(--theme-primary-rgb), 0.3)',
                   border: fullLogoUrl ? '2px solid rgba(var(--theme-primary-rgb), 0.2)' : 'none',
                 }}
@@ -339,18 +279,18 @@ export default function LoginPage() {
                   <Sparkles className="w-5 h-5 text-white" />
                 )}
               </div>
-              <CardTitle className="text-xl font-bold text-gray-900 pt-2">
+              <CardTitle className="text-2xl font-bold text-slate-900 tracking-tight pt-2">
                 Welcome Back
               </CardTitle>
-              <CardDescription className="text-gray-600 text-sm font-sans">
+              <CardDescription className="text-slate-500 text-sm font-normal mt-1 leading-relaxed">
                 Sign in to your Teacher account to manage classes at <span className="font-semibold text-primary">{acronym}</span>
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="px-6 pb-5 pt-4">
+            <CardContent className="px-8 pb-8 pt-4">
               {/* Error Message */}
               {error && (
-                <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-red-50 to-rose-50 border border-red-100 flex items-center gap-2.5 login-scale-in">
+                <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 flex items-center gap-2.5 login-scale-in">
                   <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
                     <AlertCircle className="w-4 h-4 text-red-600" />
                   </div>
@@ -360,13 +300,13 @@ export default function LoginPage() {
 
               {/* Success Message */}
               {success && (
-                <div className="mb-4 p-3 rounded-xl border flex items-center gap-2.5 login-scale-in bg-gradient-to-r from-primary/10 to-accent/10 border-primary/25">
+                <div className="mb-4 p-3 rounded-xl border flex items-center gap-2.5 login-scale-in bg-primary/10 border-primary/25">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary/15">
                     <CheckCircle className="w-4 h-4 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-primary">Welcome back!</p>
-                    <p className="text-xs text-gray-500">Loading your classes...</p>
+                    <p className="text-xs text-slate-500">Loading your classes...</p>
                   </div>
                 </div>
               )}
@@ -374,13 +314,13 @@ export default function LoginPage() {
               <form onSubmit={handleSubmit} className="space-y-3">
                 {/* Employee ID Field */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-gray-800 font-semibold text-sm pl-1">
+                  <Label htmlFor="email" className="text-sm font-medium text-slate-700 pl-1">
                     Employee ID or Email
                   </Label>
                   <div className="relative group">
                     <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center pointer-events-none z-10">
-                      <div className="w-8 h-8 rounded-lg bg-gray-100 group-focus-within:bg-gray-200 flex items-center justify-center transition-colors duration-200">
-                        <User className="w-4 h-4 text-gray-500 transition-colors duration-200" />
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 group-focus-within:bg-slate-200 flex items-center justify-center transition-colors duration-200">
+                        <User className="w-4 h-4 text-slate-400 transition-colors duration-200" />
                       </div>
                     </div>
                     <Input
@@ -392,7 +332,7 @@ export default function LoginPage() {
                         setEmail(e.target.value);
                         if (error) setError(null);
                       }}
-                      className="pl-12 h-11 bg-gray-50 border-gray-200 hover:border-gray-300 focus:ring-4 focus:ring-primary/15 rounded-xl transition-all duration-200 placeholder:text-gray-400 text-gray-900 font-bold"
+                      className="pl-12 h-11 bg-white border-slate-300 hover:border-slate-400 focus:border-red-700 focus:ring-2 focus:ring-red-100 focus:outline-none rounded-xl transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
                       autoComplete="username"
                       required
                     />
@@ -401,13 +341,13 @@ export default function LoginPage() {
 
                 {/* Password Field */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="password" className="text-gray-800 font-semibold text-sm pl-1">
+                  <Label htmlFor="password" className="text-sm font-medium text-slate-700 pl-1">
                     Password
                   </Label>
                   <div className="relative group">
                     <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center pointer-events-none z-10">
-                      <div className="w-8 h-8 rounded-lg bg-gray-100 group-focus-within:bg-gray-200 flex items-center justify-center transition-colors duration-200">
-                        <Lock className="w-4 h-4 text-gray-500 transition-colors duration-200" />
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 group-focus-within:bg-slate-200 flex items-center justify-center transition-colors duration-200">
+                        <Lock className="w-4 h-4 text-slate-400 transition-colors duration-200" />
                       </div>
                     </div>
                     <Input
@@ -419,14 +359,14 @@ export default function LoginPage() {
                         setPassword(e.target.value);
                         if (error) setError(null);
                       }}
-                      className="pl-12 pr-11 h-11 bg-gray-50 border-gray-200 hover:border-gray-300 focus:ring-4 focus:ring-primary/15 rounded-xl transition-all duration-200 placeholder:text-gray-400 text-gray-900 font-bold"
+                      className="pl-12 pr-11 h-11 bg-white border-slate-300 hover:border-slate-400 focus:border-red-700 focus:ring-2 focus:ring-red-100 focus:outline-none rounded-xl transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
                       autoComplete="current-password"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 transition-all duration-200"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200"
                       tabIndex={-1}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -442,15 +382,15 @@ export default function LoginPage() {
                         type="checkbox"
                         className="peer sr-only"
                       />
-                      <div className="w-4 h-4 rounded border border-gray-300 bg-white peer-checked:bg-primary peer-checked:border-primary flex items-center justify-center transition-all duration-150">
+                      <div className="w-4 h-4 rounded border border-slate-300 bg-white peer-checked:bg-primary peer-checked:border-primary flex items-center justify-center transition-all duration-150">
                         <svg className="w-2.5 h-2.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity duration-150" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                         </svg>
                       </div>
                     </div>
-                    <span className="text-gray-600 group-hover:text-gray-900 transition-colors font-bold text-sm select-none">Remember me</span>
+                    <span className="text-slate-600 group-hover:text-slate-900 transition-colors font-medium text-sm select-none">Remember me</span>
                   </label>
-                  <a href="#" className="font-semibold text-primary transition-colors hover:underline underline-offset-4 decoration-2 text-sm">
+                  <a href="#" className="text-xs font-semibold text-red-800 hover:text-red-900 hover:underline transition-colors">
                     Forgot password?
                   </a>
                 </div>
@@ -459,7 +399,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full h-11 font-semibold text-sm rounded-xl shadow-lg hover:shadow-xl transition-all duration-0 disabled:opacity-70 disabled:cursor-not-allowed bg-primary text-primary-foreground hover:bg-primary/90"
+                  className="w-full py-3 font-semibold text-sm rounded-xl bg-primary text-primary-foreground hover:opacity-95 hover:shadow-lg hover:shadow-red-900/20 active:scale-[0.99] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
                     <span className="flex items-center gap-3">
@@ -476,7 +416,7 @@ export default function LoginPage() {
               </form>
 
               {/* Footer */}
-              <p className="text-[10px] text-gray-400 text-center mt-4 leading-relaxed">
+              <p className="text-[11px] text-slate-400 text-center mt-4 leading-relaxed">
                 By signing in, you agree to our{' '}
                 <a href="#" className="hover:underline text-primary">Terms</a>
                 {' '}and{' '}
