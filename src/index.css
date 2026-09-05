@@ -31,6 +31,16 @@
   --shadow-emerald: 0 10px 30px -5px rgba(16, 185, 129, 0.25);
   --shadow-emerald-sm: 0 4px 14px -3px rgba(16, 185, 129, 0.2);
 
+  /* Ledger category tokens (sanctioned exception for class record ledger) */
+  --ledger-ww: #4f46e5;
+  --ledger-ww-bg: #eef2ff;
+  --ledger-pt: #9333ea;
+  --ledger-pt-bg: #faf5ff;
+  --ledger-ta: #d97706;
+  --ledger-ta-bg: #fffbeb;
+  --ledger-grade: #059669;
+  --ledger-grade-bg: #ecfdf5;
+
   --sans: 'DM Sans', system-ui, -apple-system, sans-serif;
   --mono: 'SF Mono', ui-monospace, Consolas, monospace;
 
@@ -493,6 +503,16 @@ code {
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.35);
   --shadow-emerald: 0 10px 30px -5px rgba(16, 185, 129, 0.35);
+
+  /* Ledger category tokens — dark mode */
+  --ledger-ww: #818cf8;
+  --ledger-ww-bg: rgba(99, 102, 241, 0.15);
+  --ledger-pt: #c084fc;
+  --ledger-pt-bg: rgba(168, 85, 247, 0.15);
+  --ledger-ta: #fbbf24;
+  --ledger-ta-bg: rgba(245, 158, 11, 0.15);
+  --ledger-grade: #34d399;
+  --ledger-grade-bg: rgba(16, 185, 129, 0.15);
 }
 
 @layer base {

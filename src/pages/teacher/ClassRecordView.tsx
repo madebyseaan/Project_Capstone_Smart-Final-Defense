@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle, Loader2, X, Monitor } from "lucide-react";
+import { Loader2, Monitor } from "lucide-react";
 import { gradesApi, adminApi, type ClassRecord, type ScoreItem, type TermLabels } from "@/lib/api";
 import { ClassRecordTable } from "./components/ClassRecordTable";
 import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
@@ -15,6 +15,7 @@ import { AssessmentHeader } from "./components/AssessmentHeader";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
+import { toast } from "@/lib/toast";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
 import { getDisplayFinalGrade as computeDisplayFinalGrade, getMobileDraftKey, getScoreFromGrade as computeScoreFromGrade } from "./components/classRecordMobileUtils";
 import { getGradeColor } from "@/lib/gradeMath";
@@ -38,14 +39,16 @@ export default function ClassRecordView() {
 
   const [selectedTerm, setSelectedTerm] = useState("T1");
   const [termInitialized, setTermInitialized] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [showAssessmentDetails, setShowAssessmentDetails] = useState(false);
   const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
   const [invalidCells, setInvalidCells] = useState<Record<string, string>>({});
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [showMobileWarning, setShowMobileWarning] = useState(false);
   const [separateByGender, setSeparateByGender] = useState(false);
+
+  // Toast wrappers for hooks that expect setError/setSuccess
+  const setError = useCallback((msg: string | null) => { if (msg) toast.error(msg); }, []) as React.Dispatch<React.SetStateAction<string | null>>;
+  const setSuccess = useCallback((msg: string | null) => { if (msg) toast.success(msg); }, []) as React.Dispatch<React.SetStateAction<string | null>>;
 
   // React Query hooks
   const classRecordQuery = useClassRecordQuery(classAssignmentId, selectedTerm);
@@ -201,31 +204,24 @@ export default function ClassRecordView() {
     try { await gradesApi.clearScores(classAssignmentId, selectedTerm); setSuccess("Successfully cleared all scores for the current term."); await fetchClassRecord(); } catch (err: any) { setError(err?.response?.data?.message || "Failed to clear scores"); }
   }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, fetchClassRecord]);
 
-  // Auto-dismiss toasts
-  useEffect(() => {
-    if (error || success) { const t = setTimeout(() => { setError(null); setSuccess(null); }, 4000); return () => clearTimeout(t); }
-  }, [error, success]);
-
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="text-center"><div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm"><Loader2 className="w-10 h-10 text-indigo-600 animate-spin" /></div><p className="text-slate-500 font-black text-xs uppercase tracking-widest">Fetching Class Records...</p></div></div>;
   if (!classAssignment) return null;
 
   return (
     <div className="space-y-6 animate-fade-in w-full px-6 pb-12">
-      {(error || success) && (
-        <div className={`fixed top-20 right-6 z-[100] flex items-center gap-4 px-6 py-4 rounded-[1.5rem] shadow-2xl border-0 animate-slide-in-right ${error ? "bg-rose-500 text-white" : "bg-emerald-500 text-white"}`}>
-          {error ? <AlertCircle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
-          <span className="text-sm font-black uppercase tracking-widest">{error || success}</span>
-          <button onClick={() => { setError(null); setSuccess(null); }} className="ml-4 p-1 hover:bg-white/20 rounded-lg transition-colors"><X className="w-4 h-4" /></button>
-        </div>
-      )}
-
       <ClassRecordHero classAssignment={classAssignment} effectiveWeightsSource={effectiveWeights?.source ?? null} onStartTour={() => { window.innerWidth < 1024 ? setShowMobileWarning(true) : (setIsTourOpen(true), window.dispatchEvent(new Event("tour:start"))); }} />
 
       <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={isPastTerm && !gradeLock && editAccess.editRequestStatus === "idle" ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} />
 
-      {stats && <ClassRecordStats avg={stats.avg} passed={stats.passed} total={classRecord.length} highest={stats.highest} />}
+      {stats && <ClassRecordStats avg={stats.avg} passed={stats.passed} total={classRecord.length} highest={stats.highest} lowest={stats.lowest} />}
 
-      <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} />
+      {classRecord.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+          <p className="text-slate-500 font-medium">No learners enrolled in this class for this school year.</p>
+        </div>
+      ) : (
+        <>
+          <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} />
 
       <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} lockedTerm={lockedTerm} currentTerm={currentTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={metaHook.openMetaEditor} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} dataUpdatedAt={classRecordQuery.dataUpdatedAt} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
 
@@ -245,6 +241,8 @@ export default function ClassRecordView() {
       </Dialog>
 
       <EditRequestModal open={editAccess.editRequestModalOpen} onOpenChange={editAccess.setEditRequestModalOpen} onSuccess={editAccess.onEditRequestSuccess} selectedTerm={selectedTerm} classAssignment={classAssignment} userName={userName} />
+        </>
+      )}
     </div>
   );
 }

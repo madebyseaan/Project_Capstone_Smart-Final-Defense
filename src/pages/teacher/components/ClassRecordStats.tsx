@@ -6,10 +6,10 @@ interface ClassRecordStatsProps {
   passed: number;
   total: number;
   highest: number;
+  lowest: number;
 }
 
-export function ClassRecordStats({ avg, passed, total, highest }: ClassRecordStatsProps) {
-  const needsSupport = total - passed;
+export function ClassRecordStats({ avg, passed, total, highest, lowest }: ClassRecordStatsProps) {
   const passingRate = total > 0 ? `${Math.round((passed / total) * 100)}%` : "0%";
 
   return (
@@ -18,7 +18,7 @@ export function ClassRecordStats({ avg, passed, total, highest }: ClassRecordSta
         { label: "Class Average", value: avg.toFixed(1), icon: Target, bg: "bg-indigo-50", fg: "text-indigo-600" },
         { label: "Passing Rate", value: passingRate, icon: TrendingUp, bg: "bg-emerald-50", fg: "text-emerald-600" },
         { label: "Highest Grade", value: highest, icon: Award, bg: "bg-amber-50", fg: "text-amber-600" },
-        { label: "Needs Support", value: needsSupport, icon: TrendingDown, bg: "bg-rose-50", fg: "text-rose-600" },
+        { label: "Lowest Grade", value: lowest, icon: TrendingDown, bg: "bg-rose-50", fg: "text-rose-600" },
       ].map((stat) => (
         <Card key={stat.label} className="border-0 shadow-sm shadow-slate-100 rounded-xl bg-white overflow-hidden hover:shadow-md transition-all duration-350">
           <CardContent className="p-3 flex items-center gap-3.5">
