@@ -61,8 +61,8 @@ export function GradeEditModal({
         {selectedRecord && (
           <div className="max-h-[85vh] overflow-y-auto">
             <div className="px-5 pt-5 pb-4 border-b border-slate-100">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Edit Grade</p>
-              <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight mt-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Edit Grade</p>
+              <h3 className="text-lg font-bold text-slate-900 uppercase tracking-tight mt-1">
                 {selectedRecord.student.lastName}, {selectedRecord.student.firstName}
               </h3>
               <p className="text-[10px] font-semibold text-slate-500 mt-1">{selectedRecord.student.lrn}</p>
@@ -78,7 +78,7 @@ export function GradeEditModal({
                         key={tab}
                         type="button"
                         onClick={() => onTabChange(tab)}
-                        className="h-10 rounded-lg text-xs font-black uppercase tracking-widest transition"
+                        className="h-10 rounded-lg text-xs font-bold uppercase tracking-widest transition"
                         style={active ? { backgroundColor: "var(--theme-primary)", color: "var(--theme-primary-text)" } : { color: "#475569" }}
                       >
                         {tab === "WW" ? "Quiz" : tab === "QA" ? "TA" : tab}
@@ -115,7 +115,7 @@ export function GradeEditModal({
                             className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                           />
                         </div>
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                           Quiz {i + 1} Score (MAX {maxAllowed})
                         </label>
                         <input
@@ -159,7 +159,7 @@ export function GradeEditModal({
                             className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                           />
                         </div>
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                           PT {i + 1} Score (MAX {maxAllowed})
                         </label>
                         <input
@@ -194,7 +194,7 @@ export function GradeEditModal({
                       onBlur={(e) => onApplyColumnMeta("QA", 0, qaMeta.description || "", e.currentTarget.value)}
                       className="w-full h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                     />
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                       TA Score (MAX {getMaxForCell("QA", 0)})
                     </label>
                     <input
@@ -219,7 +219,7 @@ export function GradeEditModal({
                 <Button
                   type="button"
                   disabled={isViewOnly}
-                  className="w-full h-11 rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full h-11 rounded-xl text-xs font-bold uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ backgroundColor: "var(--theme-primary)", color: "var(--theme-primary-text)" }}
                   onClick={() => onOpenChange(false)}
                 >

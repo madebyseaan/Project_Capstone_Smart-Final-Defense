@@ -64,7 +64,7 @@ export function AssessmentHeader({
                 {/* Inputs */}
                 <div className="flex-1 grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
                       {categoryLabel} Description (optional)
                     </label>
                     <input
@@ -79,7 +79,7 @@ export function AssessmentHeader({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
                       Column Date (applies to all students)
                     </label>
                     <input
@@ -122,7 +122,7 @@ export function AssessmentHeader({
           <div className="px-4 py-1.5">
             <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
               <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   Optional Assessment Details
                 </span>
                 <div className="flex-1 h-px bg-slate-100" />
@@ -131,8 +131,8 @@ export function AssessmentHeader({
               <div className="grid grid-cols-3 gap-0 divide-x divide-slate-100">
                 {/* Written Work */}
                 <div className="px-4 py-2.5 space-y-2 flex flex-col">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 flex items-center gap-1.5 mb-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--ledger-ww)] flex items-center gap-1.5 mb-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--ledger-ww)] inline-block" />
                     Written Work
                   </p>
                   <div className="mb-1">
@@ -180,8 +180,8 @@ export function AssessmentHeader({
 
                 {/* Performance Tasks */}
                 <div className="px-4 py-2.5 space-y-2 flex flex-col">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-purple-600 flex items-center gap-1.5 mb-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 inline-block" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--ledger-pt)] flex items-center gap-1.5 mb-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--ledger-pt)] inline-block" />
                     Performance Tasks
                   </p>
                   <div className="mb-1">
@@ -229,8 +229,8 @@ export function AssessmentHeader({
 
                 {/* Term Assessment */}
                 <div className="px-4 py-2.5 space-y-2 flex flex-col">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 flex items-center gap-1.5 mb-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--ledger-ta)] flex items-center gap-1.5 mb-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--ledger-ta)] inline-block" />
                     Term Assessment
                   </p>
                   <div>
@@ -261,7 +261,7 @@ export function AssessmentHeader({
                   <Button
                     onClick={saveAssessmentDetails}
                     disabled={isViewOnly}
-                    className="w-full h-8 rounded-lg text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-slate-700 transition-all shadow-sm mt-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full h-8 rounded-lg text-[10px] font-bold uppercase tracking-widest bg-slate-900 text-white hover:bg-slate-700 transition-all shadow-sm mt-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     Save All Details
                   </Button>

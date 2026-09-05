@@ -34,7 +34,7 @@ export function ClassRecordMobileList({
   return (
     <Card className="lg:hidden border-0 shadow-lg shadow-slate-200/40 rounded-[2rem] overflow-hidden bg-white">
       <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
-        <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">
+        <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight">
           Class Ledger
         </h2>
         <Select value={selectedTerm} onValueChange={(val) => val && onTermChange(val)} disabled={isViewOnly}>
@@ -81,8 +81,8 @@ export function ClassRecordMobileList({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">#{index + 1}</p>
-                  <p className="text-sm font-black text-slate-900 uppercase tracking-tight truncate">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">#{index + 1}</p>
+                  <p className="text-sm font-bold text-slate-900 uppercase tracking-tight truncate">
                     {record.student.lastName}, {record.student.firstName}
                   </p>
                   <p className="text-[10px] text-slate-500 font-semibold mt-0.5 font-mono">{record.student.lrn}</p>
@@ -90,22 +90,22 @@ export function ClassRecordMobileList({
                   {hasScores && (
                     <div className="flex items-center gap-3 mt-2">
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">WW</span>
-                        <span className="text-[10px] font-bold text-indigo-600">
+                        <span className="text-[9px] font-bold text-[var(--ledger-ww)] uppercase tracking-widest">WW</span>
+                        <span className="text-[10px] font-bold text-[var(--ledger-ww)]">
                           {wwMax > 0 ? `${wwTotal}/${wwMax}` : "—"}
                         </span>
                       </div>
                       <div className="w-px h-3 bg-slate-200" />
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] font-black text-purple-400 uppercase tracking-widest">PT</span>
-                        <span className="text-[10px] font-bold text-purple-600">
+                        <span className="text-[9px] font-bold text-[var(--ledger-pt)] uppercase tracking-widest">PT</span>
+                        <span className="text-[10px] font-bold text-[var(--ledger-pt)]">
                           {ptMax > 0 ? `${ptTotal}/${ptMax}` : "—"}
                         </span>
                       </div>
                       <div className="w-px h-3 bg-slate-200" />
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">TA</span>
-                        <span className="text-[10px] font-bold text-amber-600">
+                        <span className="text-[9px] font-bold text-[var(--ledger-ta)] uppercase tracking-widest">TA</span>
+                        <span className="text-[10px] font-bold text-[var(--ledger-ta)]">
                           {qaScore !== null ? (qaMax ? `${qaScore}/${qaMax}` : String(qaScore)) : "—"}
                         </span>
                       </div>
@@ -114,8 +114,8 @@ export function ClassRecordMobileList({
                 </div>
 
                 <div className="text-right flex-shrink-0">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Grade</p>
-                  <p className={`text-xl font-black ${getGradeColor(finalGrade)}`}>{finalGrade ?? "—"}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Grade</p>
+                  <p className={`text-xl font-bold ${getGradeColor(finalGrade)}`}>{finalGrade ?? "—"}</p>
                 </div>
               </div>
 

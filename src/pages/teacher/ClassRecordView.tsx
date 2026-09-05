@@ -95,19 +95,9 @@ export default function ClassRecordView() {
   // Edit access hook
   const editAccess = useEditAccess({ isPastTerm: !!isPastTerm, gradeLock, selectedTerm });
 
-  // Apply meta to scores
-  const applyMetaToScores = useCallback((scores: ScoreItem[], category: "WW" | "PT", minLength = 0, metaOverride?: Array<{ description: string; date: string }>): ScoreItem[] => {
-    const meta = metaOverride || (category === "WW" ? metaHook.wwMeta : metaHook.ptMeta);
-    const targetLength = Math.max(scores.length, minLength);
-    return Array.from({ length: targetLength }, (_, i) => {
-      const existing = scores[i] || ({ score: 0, maxScore: 10 } as ScoreItem);
-      return { ...existing, name: meta[i]?.description?.trim() || `${category} ${i + 1}`, description: meta[i]?.description?.trim() || `${category} ${i + 1}`, date: meta[i]?.date || undefined, maxScore: Number(existing.maxScore ?? 10), score: Number(existing.score ?? 0) };
-    });
-  }, []);
-
   // Assessment meta hook
   const metaHook = useAssessmentMeta({
-    classRecord, selectedTerm, classAssignmentId, applyMetaToScores,
+    classRecord, selectedTerm, classAssignmentId,
     setSuccess, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly,
   });
 
@@ -136,13 +126,13 @@ export default function ClassRecordView() {
 
   const handleScoreUpdate = useCallback(async (studentId: string, category: "WW" | "PT" | "QA", index: number, newValue: number) => {
     if (editAccess.isViewOnly) return;
-    await executeScoreUpdate({ classAssignmentId, classRecord, selectedTerm, studentId, category, index, newValue, qaMeta: metaHook.qaMeta, getCellKey, getMaxForCell, applyMetaToScores, setClassRecord, setInvalidCells, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook.qaMeta, getCellKey, getMaxForCell, applyMetaToScores, fetchClassRecord]);
+    await executeScoreUpdate({ classAssignmentId, classRecord, selectedTerm, studentId, category, index, newValue, qaMeta: metaHook.qaMeta, getCellKey, getMaxForCell, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setInvalidCells, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
+  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook.qaMeta, getCellKey, getMaxForCell, metaHook.applyMetaToScores, fetchClassRecord]);
 
   const handleHpsUpdate = useCallback(async (category: "WW" | "PT" | "QA", index: number, newMax: number) => {
     if (editAccess.isViewOnly) return;
-    await executeHpsUpdate({ classAssignmentId, classRecord, selectedTerm, category, index, newMax, qaMeta: metaHook.qaMeta, applyMetaToScores, setClassRecord, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook.qaMeta, applyMetaToScores, fetchClassRecord]);
+    await executeHpsUpdate({ classAssignmentId, classRecord, selectedTerm, category, index, newMax, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setError, setSuccess, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
+  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook.qaMeta, metaHook.applyMetaToScores, fetchClassRecord]);
 
   const addTask = useCallback((category: "WW" | "PT") => {
     if (editAccess.isViewOnly) return;
@@ -152,8 +142,8 @@ export default function ClassRecordView() {
 
   const removeTask = useCallback(async (category: "WW" | "PT") => {
     if (editAccess.isViewOnly) return;
-    await executeRemoveTask({ classAssignmentId, classRecord, selectedTerm, category, wwCount: metaHook.wwCount, ptCount: metaHook.ptCount, qaMeta: metaHook.qaMeta, applyMetaToScores, setClassRecord, setWwMeta: metaHook.setWwMeta, setPtMeta: metaHook.setPtMeta, setSuccess, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook, applyMetaToScores, fetchClassRecord]);
+    await executeRemoveTask({ classAssignmentId, classRecord, selectedTerm, category, wwCount: metaHook.wwCount, ptCount: metaHook.ptCount, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setWwMeta: metaHook.setWwMeta, setPtMeta: metaHook.setPtMeta, setSuccess, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
+  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook, metaHook.applyMetaToScores, fetchClassRecord]);
 
   const sortedRecords = useMemo(() => [...classRecord].sort((a, b) => `${a.student.lastName}, ${a.student.firstName}`.localeCompare(`${b.student.lastName}, ${b.student.firstName}`)), [classRecord]);
   const maleRecords = useMemo(() => sortedRecords.filter((r) => r.student.gender?.toLowerCase() === "male"), [sortedRecords]);
@@ -204,12 +194,12 @@ export default function ClassRecordView() {
     try { await gradesApi.clearScores(classAssignmentId, selectedTerm); setSuccess("Successfully cleared all scores for the current term."); await fetchClassRecord(); } catch (err: any) { setError(err?.response?.data?.message || "Failed to clear scores"); }
   }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, fetchClassRecord]);
 
-  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="text-center"><div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm"><Loader2 className="w-10 h-10 text-indigo-600 animate-spin" /></div><p className="text-slate-500 font-black text-xs uppercase tracking-widest">Fetching Class Records...</p></div></div>;
+  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="text-center"><div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm"><Loader2 className="w-10 h-10 text-indigo-600 animate-spin" /></div><p className="text-slate-500 font-bold text-xs uppercase tracking-widest">Fetching Class Records...</p></div></div>;
   if (!classAssignment) return null;
 
   return (
     <div className="space-y-6 animate-fade-in w-full px-6 pb-12">
-      <ClassRecordHero classAssignment={classAssignment} effectiveWeightsSource={effectiveWeights?.source ?? null} onStartTour={() => { window.innerWidth < 1024 ? setShowMobileWarning(true) : (setIsTourOpen(true), window.dispatchEvent(new Event("tour:start"))); }} />
+      <ClassRecordHero classAssignment={classAssignment} effectiveWeightsSource={effectiveWeights?.source ?? null} onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }} />
 
       <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={isPastTerm && !gradeLock && editAccess.editRequestStatus === "idle" ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} />
 

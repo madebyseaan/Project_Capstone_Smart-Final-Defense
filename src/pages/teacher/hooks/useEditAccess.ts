@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { gradesApi } from "@/lib/api";
 
+interface EditRequest {
+  id: string;
+  term: string;
+  status: string;
+  expiresAt: string | null;
+}
+
 export function useEditAccess(opts: {
   isPastTerm: boolean;
   gradeLock: boolean;
@@ -37,8 +44,8 @@ export function useEditAccess(opts: {
     if (!opts.isPastTerm || opts.gradeLock) return;
     gradesApi.getMyEditRequests().then((res) => {
       const requests = res.data.requests ?? [];
-      const pending = requests.find((r: any) => r.term === opts.selectedTerm && r.status === "PENDING");
-      const approved = requests.find((r: any) => r.term === opts.selectedTerm && r.status === "APPROVED" && new Date(r.expiresAt) > new Date());
+      const pending = requests.find((r: EditRequest) => r.term === opts.selectedTerm && r.status === "PENDING");
+      const approved = requests.find((r: EditRequest) => r.term === opts.selectedTerm && r.status === "APPROVED" && new Date(r.expiresAt ?? "") > new Date());
       if (approved) {
         setEditRequestStatus("approved");
         setEditRequestExpiresAt(new Date(approved.expiresAt));

@@ -44,27 +44,27 @@ export function ClassRecordHero({
             </Link>
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <Badge className={`${getGradeColors(classAssignment.section.gradeLevel)} text-[10px] font-black uppercase tracking-widest px-3`}>
+                <Badge className={`${getGradeColors(classAssignment.section.gradeLevel)} text-[10px] font-bold uppercase tracking-widest px-3`}>
                   {gradeLevelLabels[classAssignment.section.gradeLevel]}
                 </Badge>
                 <div className="h-4 w-px bg-slate-200" />
-                <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                   Section {classAssignment.section.name}
                 </span>
               </div>
               <h1 className="text-3xl font-semibold text-slate-900 tracking-tight uppercase">{classAssignment.subject.name}</h1>
               {effectiveWeightsSource === "subject-override" && (
-                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mt-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mt-2">
                   Using custom subject weights (overrides group default)
                 </p>
               )}
               {effectiveWeightsSource === "subject-type" && (
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-2">
                   Using group default weights
                 </p>
               )}
               {effectiveWeightsSource === "generic-fallback" && (
-                <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 mt-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mt-2">
                   Generic fallback weights (20/50/30) — no group config set
                 </p>
               )}
@@ -76,7 +76,7 @@ export function ClassRecordHero({
               <Button
                 variant="outline"
                 onClick={onStartTour}
-                className="h-12 px-5 rounded-2xl border-amber-200 bg-amber-50/80 text-amber-900 hover:bg-amber-100 font-black text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-2 hover:scale-[1.02] active:scale-95"
+                className="h-12 px-5 rounded-2xl border-amber-200 bg-amber-50/80 text-amber-900 hover:bg-amber-100 font-bold text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-2 hover:scale-[1.02] active:scale-95"
                 title="Start Step-by-Step Interactive Tutorial"
               >
                 <Sparkles className="w-4 h-4 text-amber-600 animate-pulse" />

@@ -633,7 +633,7 @@ export function ClassRecordTour({
                 <Sparkles className="w-3.5 h-3.5" />
               </div>
               <div>
-                <p className="text-xs font-black tracking-widest uppercase text-amber-400">
+                <p className="text-xs font-bold tracking-widest uppercase text-amber-400">
                   SMART Class Record Guide
                 </p>
                 <p className="text-[10px] font-bold text-slate-300">
@@ -674,7 +674,7 @@ export function ClassRecordTour({
                 <Icon className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-slate-900 leading-snug">
+                <h3 className="text-sm font-bold text-slate-900 leading-snug">
                   {step.title}
                 </h3>
                 <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed whitespace-pre-line">
@@ -686,7 +686,7 @@ export function ClassRecordTour({
             {/* Example Box (if step has one) */}
             {step.exampleBox && (
               <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 space-y-1.5">
-                <p className="text-[10px] font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                <p className="text-[10px] font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                   {step.exampleBox.title}
                 </p>
@@ -699,7 +699,7 @@ export function ClassRecordTour({
                       <span className="text-[9px] font-bold text-slate-400 uppercase">
                         {item.label}
                       </span>
-                      <span className={cn("text-[10px] font-black font-mono", item.color)}>
+                      <span className={cn("text-[10px] font-bold font-mono", item.color)}>
                         {item.value}
                       </span>
                     </div>

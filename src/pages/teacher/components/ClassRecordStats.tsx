@@ -26,8 +26,8 @@ export function ClassRecordStats({ avg, passed, total, highest, lowest }: ClassR
               <stat.icon className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none">{stat.label}</p>
-              <p className="text-lg font-black text-slate-900 mt-1 leading-none">{stat.value}</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">{stat.label}</p>
+              <p className="text-lg font-bold text-slate-900 mt-1 leading-none">{stat.value}</p>
             </div>
           </CardContent>
         </Card>

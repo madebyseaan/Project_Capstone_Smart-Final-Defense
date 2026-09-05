@@ -111,6 +111,7 @@ interface HpsUpdateArgs {
   applyMetaToScores: ApplyMetaToScores;
   setClassRecord: React.Dispatch<React.SetStateAction<ClassRecord[]>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
+  setSuccess: React.Dispatch<React.SetStateAction<string | null>>;
   fetchClassRecord: (silent?: boolean) => Promise<void>;
   isViewOnly?: boolean;
 }
@@ -266,8 +267,6 @@ export async function executeScoreUpdate({
       qaDescription: qaMeta.description || undefined,
       qaDate: qaMeta.date || undefined,
     });
-
-    await fetchClassRecord(true);
   } catch (err: any) {
     console.error("Failed to update score:", err);
     setError(err?.response?.data?.message || "Failed to save grade. Please retry.");
@@ -286,6 +285,7 @@ export async function executeHpsUpdate({
   applyMetaToScores,
   setClassRecord,
   setError,
+  setSuccess,
   fetchClassRecord,
   isViewOnly,
 }: HpsUpdateArgs) {
@@ -333,7 +333,8 @@ export async function executeHpsUpdate({
   );
 
   try {
-    const updatePromises = classRecord.map((record) => {
+    // Build updates for batch
+    const updates = classRecord.map((record) => {
       const grade = record.grades.find((g) => g.term === selectedTerm);
       const wwScores = [...((grade?.writtenWorkScores || []) as ScoreItem[])];
       const ptScores = [...((grade?.perfTaskScores || []) as ScoreItem[])];
@@ -349,20 +350,34 @@ export async function executeHpsUpdate({
       const wwScoresWithMeta = applyMetaToScores(wwScores, "WW", index + 1);
       const ptScoresWithMeta = applyMetaToScores(ptScores, "PT", index + 1);
 
-      return gradesApi.saveGrade({
+      return {
         studentId: record.student.id,
-        classAssignmentId,
-        term: selectedTerm,
         writtenWorkScores: category === "WW" ? wwScoresWithMeta : undefined,
         perfTaskScores: category === "PT" ? ptScoresWithMeta : undefined,
         quarterlyAssessMax: category === "QA" ? newMax : undefined,
         qaDescription: qaMeta.description || undefined,
         qaDate: qaMeta.date || undefined,
-      });
+      };
     });
 
-    await Promise.all(updatePromises);
-    await fetchClassRecord(true);
+    // Try batch; fall back to per-student on404
+    try {
+      const res = await gradesApi.saveGradeBatch({ classAssignmentId, term: selectedTerm, updates });
+      const skipped = res.data.skipped;
+      const msg = skipped && skipped.length > 0
+        ? `Saved ${res.data.savedCount} — ${skipped.length} skipped`
+        : "HPS updated";
+      setSuccess(msg);
+      await fetchClassRecord(true);
+    } catch (batchErr: any) {
+      if (batchErr?.response?.status === 404) {
+        await Promise.all(updates.map((u) => gradesApi.saveGrade({ classAssignmentId, term: selectedTerm, ...u })));
+        setSuccess("HPS updated");
+        await fetchClassRecord(true);
+      } else {
+        throw batchErr;
+      }
+    }
   } catch (err: any) {
     console.error("Failed to update HPS:", err);
     setError(err?.response?.data?.message || "Failed to save HPS changes.");
@@ -420,7 +435,8 @@ export async function executeRemoveTask({
   );
 
   try {
-    const updatePromises = classRecord.map((record) => {
+    // Build updates for batch
+    const updates = classRecord.map((record) => {
       const grade = record.grades.find((g) => g.term === selectedTerm);
       const wwScores = [...((grade?.writtenWorkScores || []) as ScoreItem[])];
       const ptScores = [...((grade?.perfTaskScores || []) as ScoreItem[])];
@@ -434,20 +450,33 @@ export async function executeRemoveTask({
       const wwScoresWithMeta = applyMetaToScores(wwScores, "WW");
       const ptScoresWithMeta = applyMetaToScores(ptScores, "PT");
 
-      return gradesApi.saveGrade({
+      return {
         studentId: record.student.id,
-        classAssignmentId,
-        term: selectedTerm,
         writtenWorkScores: category === "WW" ? wwScoresWithMeta : undefined,
         perfTaskScores: category === "PT" ? ptScoresWithMeta : undefined,
         qaDescription: qaMeta.description || undefined,
         qaDate: qaMeta.date || undefined,
-      });
+      };
     });
 
-    await Promise.all(updatePromises);
-    await fetchClassRecord(true);
-    setSuccess(`${category} activity removed`);
+    // Try batch; fall back to per-student on 404
+    try {
+      const res = await gradesApi.saveGradeBatch({ classAssignmentId, term: selectedTerm, updates });
+      const skipped = res.data.skipped;
+      const msg = skipped && skipped.length > 0
+        ? `${category} activity removed — ${skipped.length} skipped`
+        : `${category} activity removed`;
+      setSuccess(msg);
+      await fetchClassRecord(true);
+    } catch (batchErr: any) {
+      if (batchErr?.response?.status === 404) {
+        await Promise.all(updates.map((u) => gradesApi.saveGrade({ classAssignmentId, term: selectedTerm, ...u })));
+        setSuccess(`${category} activity removed`);
+        await fetchClassRecord(true);
+      } else {
+        throw batchErr;
+      }
+    }
   } catch (err: any) {
     console.error(`Failed to remove ${category} task:`, err);
     await fetchClassRecord(true);

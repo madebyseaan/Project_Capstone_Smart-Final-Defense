@@ -252,6 +252,19 @@ Each portal (admin/teacher/registrar) has its own sessionStorage keys:
 - `tracking-wider` on body text (table headers only)
 - `space-y-8` on page roots — use `space-y-6`
 
+### Ledger Category Tokens (Sanctioned Exception)
+The class record ledger uses CSS custom-property tokens for WW/PT/TA/Grade column colors.
+These are the sanctioned way to color ledger category columns; raw palette classes remain banned elsewhere.
+
+| Category | Foreground | Background |
+|---|---|---|
+| Written Work (WW) | `text-[var(--ledger-ww)]` | `bg-[var(--ledger-ww-bg)]` |
+| Performance Task (PT) | `text-[var(--ledger-pt)]` | `bg-[var(--ledger-pt-bg)]` |
+| Term Assessment (TA) | `text-[var(--ledger-ta)]` | `bg-[var(--ledger-ta-bg)]` |
+| Grade | `text-[var(--ledger-grade)]` | `bg-[var(--ledger-grade-bg)]` |
+
+Defined in `src/index.css` with light/dark variants.
+
 ### Page Scaffolding
 - Page root: `<div className="space-y-6">`
 - Use `PageHeader` component for all page headers (title + description + actions)
