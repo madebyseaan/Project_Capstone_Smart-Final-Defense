@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Loader2, Monitor } from "lucide-react";
 import { gradesApi, adminApi, type ClassRecord, type ScoreItem, type TermLabels } from "@/lib/api";
 import { ClassRecordTable } from "./components/ClassRecordTable";
@@ -55,6 +55,8 @@ export default function ClassRecordView() {
   const transmutationQuery = useTransmutationTable();
 
   const classRecord = classRecordQuery.data?.classRecord ?? [];
+  const classRecordRef = useRef(classRecord);
+  useEffect(() => { classRecordRef.current = classRecord; }, [classRecord]);
   const classAssignment = classRecordQuery.data?.classAssignment ?? null;
   const effectiveWeights = classRecordQuery.data?.effectiveWeights ?? null;
   const currentTerm = classRecordQuery.data?.currentTerm ?? "T1";
@@ -75,7 +77,7 @@ export default function ClassRecordView() {
     });
   }, [queryClient, classAssignmentId, selectedTerm]);
 
-  const fetchClassRecord = useCallback(async () => { await classRecordQuery.refetch(); }, [classRecordQuery]);
+  const fetchClassRecord = useCallback(async () => { await classRecordQuery.refetch(); }, [classRecordQuery.refetch]);
 
   // Term initialization (F9 fix)
   useEffect(() => {
@@ -87,10 +89,18 @@ export default function ClassRecordView() {
     }
   }, [termInitialized, classRecordQuery.data?.currentTerm, classAssignment?.subject?.rotationTermRank, selectedTerm]);
 
-  // Term labels
+  // Term labels via React Query (shared cache, staleTime prevents refetches)
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await adminApi.getSettings();
+      return res.data;
+    },
+    staleTime: 5 * 60_000,
+  });
   useEffect(() => {
-    adminApi.getSettings().then((res) => { if (res.data.termLabels) setTermLabels(res.data.termLabels); }).catch(() => {});
-  }, []);
+    if (settingsQuery.data?.termLabels) setTermLabels(settingsQuery.data.termLabels);
+  }, [settingsQuery.data]);
 
   // Edit access hook
   const editAccess = useEditAccess({ isPastTerm: !!isPastTerm, gradeLock, selectedTerm });
@@ -126,13 +136,13 @@ export default function ClassRecordView() {
 
   const handleScoreUpdate = useCallback(async (studentId: string, category: "WW" | "PT" | "QA", index: number, newValue: number) => {
     if (editAccess.isViewOnly) return;
-    await executeScoreUpdate({ classAssignmentId, classRecord, selectedTerm, studentId, category, index, newValue, qaMeta: metaHook.qaMeta, getCellKey, getMaxForCell, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setInvalidCells, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook.qaMeta, getCellKey, getMaxForCell, metaHook.applyMetaToScores, fetchClassRecord]);
+    await executeScoreUpdate({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, studentId, category, index, newValue, qaMeta: metaHook.qaMeta, getCellKey, getMaxForCell, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setInvalidCells, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
+  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook.qaMeta, getCellKey, getMaxForCell, metaHook.applyMetaToScores, fetchClassRecord]);
 
   const handleHpsUpdate = useCallback(async (category: "WW" | "PT" | "QA", index: number, newMax: number) => {
     if (editAccess.isViewOnly) return;
-    await executeHpsUpdate({ classAssignmentId, classRecord, selectedTerm, category, index, newMax, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setError, setSuccess, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook.qaMeta, metaHook.applyMetaToScores, fetchClassRecord]);
+    await executeHpsUpdate({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, category, index, newMax, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setError, setSuccess, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
+  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook.qaMeta, metaHook.applyMetaToScores, fetchClassRecord]);
 
   const addTask = useCallback((category: "WW" | "PT") => {
     if (editAccess.isViewOnly) return;
@@ -142,8 +152,8 @@ export default function ClassRecordView() {
 
   const removeTask = useCallback(async (category: "WW" | "PT") => {
     if (editAccess.isViewOnly) return;
-    await executeRemoveTask({ classAssignmentId, classRecord, selectedTerm, category, wwCount: metaHook.wwCount, ptCount: metaHook.ptCount, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setWwMeta: metaHook.setWwMeta, setPtMeta: metaHook.setPtMeta, setSuccess, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, classRecord, selectedTerm, metaHook, metaHook.applyMetaToScores, fetchClassRecord]);
+    await executeRemoveTask({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, category, wwCount: metaHook.wwCount, ptCount: metaHook.ptCount, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setWwMeta: metaHook.setWwMeta, setPtMeta: metaHook.setPtMeta, setSuccess, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
+  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook, metaHook.applyMetaToScores, fetchClassRecord]);
 
   const sortedRecords = useMemo(() => [...classRecord].sort((a, b) => `${a.student.lastName}, ${a.student.firstName}`.localeCompare(`${b.student.lastName}, ${b.student.firstName}`)), [classRecord]);
   const maleRecords = useMemo(() => sortedRecords.filter((r) => r.student.gender?.toLowerCase() === "male"), [sortedRecords]);
@@ -164,7 +174,7 @@ export default function ClassRecordView() {
   // Sticky layout hook
   const layout = useStickyLayout({ classAssignmentId, showAssessmentDetails, selectedColumn: metaHook.selectedColumn });
 
-  const commitScoreInput = (inputEl: HTMLInputElement, studentId: string, category: "WW" | "PT" | "QA", index: number): boolean => {
+  const commitScoreInput = useCallback((inputEl: HTMLInputElement, studentId: string, category: "WW" | "PT" | "QA", index: number): boolean => {
     const rawValue = inputEl.value.trim().toUpperCase();
     const isSpecial = rawValue === "A" || rawValue === "E";
     const key = getCellKey(studentId, category, index);
@@ -187,7 +197,7 @@ export default function ClassRecordView() {
     inputEl.dataset.prev = String(parsed);
     handleScoreUpdate(studentId, category, index, parsed);
     return true;
-  };
+  }, [getCellKey, getMaxForCell, handleScoreUpdate, setError]);
 
   const handleClearScores = useCallback(async () => {
     if (editAccess.isViewOnly || !classAssignmentId) return;
@@ -213,7 +223,7 @@ export default function ClassRecordView() {
         <>
           <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} />
 
-      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} lockedTerm={lockedTerm} currentTerm={currentTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={metaHook.openMetaEditor} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} dataUpdatedAt={classRecordQuery.dataUpdatedAt} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
+      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} lockedTerm={lockedTerm} currentTerm={currentTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={metaHook.openMetaEditor} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
 
       <GradeEditModal open={mobileEditor.mobileEditorOpen} onOpenChange={(open) => { mobileEditor.setMobileEditorOpen(open); if (!open) { mobileEditor.setMobileEditorStudentId(null); mobileEditor.setMobileScoreDraft({}); } }} selectedRecord={mobileEditor.selectedMobileRecord} selectedTerm={selectedTerm} mobileEditorTab={mobileEditor.mobileEditorTab} onTabChange={mobileEditor.setMobileEditorTab} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} mobileScoreDraft={mobileEditor.mobileScoreDraft} invalidCells={invalidCells} getCellKey={getCellKey} getMobileDraftKey={getMobileDraftKey} getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)} getMaxForCell={getMaxForCell} onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange} onMobileScoreCommit={mobileEditor.commitMobileScore} onApplyColumnMeta={metaHook.applyColumnMetaFromMobile} isViewOnly={editAccess.isViewOnly} />
 

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import type { ClassRecord, ScoreItem } from "@/lib/api";
 import { saveMetaToAllStudents } from "../components/classRecordActions";
 
@@ -24,6 +24,7 @@ export function useAssessmentMeta(opts: {
   const [selectedColumn, setSelectedColumn] = useState<{ type: "WW" | "PT" | "QA"; number: number } | null>(null);
   const [metaEditorDraft, setMetaEditorDraft] = useState<{ description: string; date: string }>({ description: "", date: "" });
   const [savingMeta, setSavingMeta] = useState(false);
+  const metaStructureRef = useRef<string>("");
 
   const applyMetaToScores = useCallback((scores: ScoreItem[], category: "WW" | "PT", minLength = 0, metaOverride?: AssessmentTaskMeta[]): ScoreItem[] => {
     const meta = metaOverride || (category === "WW" ? wwMeta : ptMeta);
@@ -52,7 +53,7 @@ export function useAssessmentMeta(opts: {
     return max;
   }, [classRecord, selectedTerm]);
 
-  // Derive meta from query data
+  // Derive meta from query data — skip when only scores change (structure unchanged)
   useEffect(() => {
     const gradeSamples = classRecord
       .map((r) => r.grades.find((g) => g.term === selectedTerm))
@@ -60,6 +61,11 @@ export function useAssessmentMeta(opts: {
 
     const wwSample = gradeSamples.find((g) => Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0);
     const ptSample = gradeSamples.find((g) => Array.isArray(g.perfTaskScores) && g.perfTaskScores.length > 0);
+
+    const structureKey = `${selectedTerm}|${wwCount}|${ptCount}|${wwSample?.writtenWorkScores?.length ?? 0}|${ptSample?.perfTaskScores?.length ?? 0}`;
+    if (structureKey === metaStructureRef.current) return;
+    metaStructureRef.current = structureKey;
+
     const wwSource = (wwSample?.writtenWorkScores || []) as ScoreItem[];
     const ptSource = (ptSample?.perfTaskScores || []) as ScoreItem[];
 
@@ -125,6 +131,7 @@ export function useAssessmentMeta(opts: {
     });
     if (!result.ok) {
       setError(result.error || "Failed to save assessment metadata");
+      metaStructureRef.current = "";
       fetchClassRecord();
       setSavingMeta(false);
       return;
@@ -143,7 +150,7 @@ export function useAssessmentMeta(opts: {
       classAssignmentId: classAssignmentId, classRecord: classRecord, selectedTerm: selectedTerm,
       wwMeta, ptMeta, qaMeta, wwCount, ptCount, applyMetaToScores,
     });
-    if (!result.ok) { setError(result.error || "Failed to save assessment details"); return; }
+    if (!result.ok) { setError(result.error || "Failed to save assessment details"); metaStructureRef.current = ""; fetchClassRecord(); return; }
     setSuccess("Assessment details saved");
     fetchClassRecord();
   }, [isViewOnly, classAssignmentId, classRecord, selectedTerm, wwMeta, ptMeta, qaMeta, wwCount, ptCount, applyMetaToScores, setSuccess, setError, fetchClassRecord]);
@@ -174,7 +181,7 @@ export function useAssessmentMeta(opts: {
       wwMeta: nextWwMeta, ptMeta: nextPtMeta, qaMeta: nextQaMeta,
       wwCount, ptCount, applyMetaToScores,
     });
-    if (!result.ok) { setError(result.error || "Failed to sync assessment metadata"); fetchClassRecord(); return; }
+    if (!result.ok) { setError(result.error || "Failed to sync assessment metadata"); metaStructureRef.current = ""; fetchClassRecord(); return; }
     setSuccess("Assessment metadata synced for the class");
     fetchClassRecord();
   }, [classAssignmentId, wwMeta, ptMeta, qaMeta, classRecord, selectedTerm, wwCount, ptCount, applyMetaToScores, setSuccess, setError, fetchClassRecord]);

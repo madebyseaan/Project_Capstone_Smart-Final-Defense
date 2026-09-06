@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import { Plus, Minus, Trash2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +56,7 @@ const LedgerScoreCell = React.memo(function LedgerScoreCell({
 }: LedgerScoreCellProps) {
   return (
     <input
+      key={`${String(value ?? "")}-${status ?? ""}`}
       type={isHps ? "number" : "text"}
       inputMode="decimal"
       defaultValue={value}
@@ -93,10 +94,14 @@ const LedgerScoreCell = React.memo(function LedgerScoreCell({
         } else {
           onCommit(e.currentTarget);
         }
-        const nextInput = document.querySelector<HTMLInputElement>(
-          `[data-row-index="${rowIndex + 1}"][data-cat="${cat}"][data-col="${index}"]`
-        );
-        nextInput?.focus();
+        // Defer focus to after React's batched state updates and re-render,
+        // so the next row's input exists in the DOM when we query for it.
+        requestAnimationFrame(() => {
+          const nextInput = document.querySelector<HTMLInputElement>(
+            `[data-row-index="${rowIndex + 1}"][data-cat="${cat}"][data-col="${index}"]`
+          );
+          nextInput?.focus();
+        });
       }}
       data-row-index={isHps ? -1 : rowIndex}
       data-cat={cat}
@@ -456,7 +461,6 @@ interface ClassRecordTableProps {
   ledgerHeaderRef?: React.RefObject<HTMLDivElement | null>;
   onClearScores?: () => void;
   transmutationTable?: TransmutationRow[];
-  dataUpdatedAt?: number;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -492,7 +496,6 @@ export function ClassRecordTable({
   ledgerHeaderRef,
   onClearScores,
   transmutationTable,
-  dataUpdatedAt,
 }: ClassRecordTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
@@ -553,6 +556,56 @@ export function ClassRecordTable({
     pt: effectiveWeights?.pt ?? classAssignment.subject.perfTaskWeight,
     qa: effectiveWeights?.qa ?? classAssignment.subject.quarterlyAssessWeight,
   };
+
+  const tableRows = useMemo(() => {
+    const rows: React.ReactNode[] = [];
+    let rowCounter = 0;
+
+    if (separateByGender) {
+      if (maleRecords.length > 0) {
+        rows.push(
+          <TableRow key="male-sep" className="bg-blue-50/60 hover:bg-blue-50/60 border-y border-blue-100/60 h-7">
+            <TableCell colSpan={wwCount + ptCount + 14} className="py-0.5 px-4">
+              <span className="sticky left-4 text-[11px] font-bold text-blue-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                Male Learners ({maleRecords.length})
+              </span>
+            </TableCell>
+          </TableRow>
+        );
+        maleRecords.forEach((r, i) =>
+          rows.push(
+            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+          )
+        );
+      }
+      if (femaleRecords.length > 0) {
+        rows.push(
+          <TableRow key="female-sep" className="bg-pink-50/60 hover:bg-pink-50/60 border-y border-pink-100/60 h-7">
+            <TableCell colSpan={wwCount + ptCount + 14} className="py-0.5 px-4">
+              <span className="sticky left-4 text-[11px] font-bold text-pink-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
+                <div className="w-1.5 h-1.5 rounded-full bg-pink-500" />
+                Female Learners ({femaleRecords.length})
+              </span>
+            </TableCell>
+          </TableRow>
+        );
+        femaleRecords.forEach((r, i) =>
+          rows.push(
+            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+          )
+        );
+      }
+    } else {
+      sortedRecords.forEach((r, i) =>
+        rows.push(
+          <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+        )
+      );
+    }
+
+    return rows;
+  }, [sortedRecords, maleRecords, femaleRecords, separateByGender, selectedTerm, wwCount, ptCount, weights, isViewOnly, onHpsUpdate, onScoreCommit, onCellFocus, isCellInvalid, transmutationTable]);
 
   const renderColGroup = () => (
     <colgroup>
@@ -853,55 +906,7 @@ export function ClassRecordTable({
           <Table className="border-separate border-spacing-0 table-fixed min-w-full">
             {renderColGroup()}
             <TableBody>
-              {(() => {
-                const rows: React.ReactNode[] = [];
-                let rowCounter = 0;
-
-                if (separateByGender) {
-                  if (maleRecords.length > 0) {
-                    rows.push(
-                      <TableRow key="male-sep" className="bg-blue-50/60 hover:bg-blue-50/60 border-y border-blue-100/60 h-7">
-                        <TableCell colSpan={wwCount + ptCount + 14} className="py-0.5 px-4">
-                          <span className="sticky left-4 text-[11px] font-bold text-blue-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
-                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                            Male Learners ({maleRecords.length})
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    );
-                    maleRecords.forEach((r, i) =>
-                      rows.push(
-                        <LedgerRow key={`${r.student.id}-${dataUpdatedAt}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
-                      )
-                    );
-                  }
-                  if (femaleRecords.length > 0) {
-                    rows.push(
-                      <TableRow key="female-sep" className="bg-pink-50/60 hover:bg-pink-50/60 border-y border-pink-100/60 h-7">
-                        <TableCell colSpan={wwCount + ptCount + 14} className="py-0.5 px-4">
-                          <span className="sticky left-4 text-[11px] font-bold text-pink-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
-                            <div className="w-1.5 h-1.5 rounded-full bg-pink-500" />
-                            Female Learners ({femaleRecords.length})
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    );
-                    femaleRecords.forEach((r, i) =>
-                      rows.push(
-                        <LedgerRow key={`${r.student.id}-${dataUpdatedAt}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
-                      )
-                    );
-                  }
-                } else {
-                  sortedRecords.forEach((r, i) =>
-                    rows.push(
-                      <LedgerRow key={`${r.student.id}-${dataUpdatedAt}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
-                    )
-                  );
-                }
-
-                return rows;
-              })()}
+              {tableRows}
             </TableBody>
           </Table>
         </div>

@@ -224,6 +224,13 @@ export async function executeScoreUpdate({
         targetGrade.qaDate = qaMeta.date || null;
       }
 
+      // Null out server-derived fields so the table falls through to client-side calc
+      targetGrade.writtenWorkPS = null;
+      targetGrade.perfTaskPS = null;
+      targetGrade.quarterlyAssessPS = null;
+      targetGrade.initialGrade = null;
+      targetGrade.quarterlyGrade = null;
+
       if (gradeIdx > -1) newRecord.grades[gradeIdx] = targetGrade;
       else newRecord.grades.push(targetGrade);
 
@@ -267,6 +274,7 @@ export async function executeScoreUpdate({
       qaDescription: qaMeta.description || undefined,
       qaDate: qaMeta.date || undefined,
     });
+    await fetchClassRecord(true);
   } catch (err: any) {
     console.error("Failed to update score:", err);
     setError(err?.response?.data?.message || "Failed to save grade. Please retry.");
@@ -325,6 +333,13 @@ export async function executeHpsUpdate({
         targetGrade.qaDescription = qaMeta.description || null;
         targetGrade.qaDate = qaMeta.date || null;
       }
+
+      // Null out server-derived fields so the table falls through to client-side calc
+      targetGrade.writtenWorkPS = null;
+      targetGrade.perfTaskPS = null;
+      targetGrade.quarterlyAssessPS = null;
+      targetGrade.initialGrade = null;
+      targetGrade.quarterlyGrade = null;
 
       if (gradeIdx > -1) newRecord.grades[gradeIdx] = targetGrade;
       else newRecord.grades.push(targetGrade);
@@ -428,6 +443,13 @@ export async function executeRemoveTask({
         const scores = [...((targetGrade.perfTaskScores || []) as ScoreItem[])];
         targetGrade.perfTaskScores = scores.slice(0, Math.max(0, scores.length - 1));
       }
+
+      // Null out server-derived fields so the table falls through to client-side calc
+      targetGrade.writtenWorkPS = null;
+      targetGrade.perfTaskPS = null;
+      targetGrade.quarterlyAssessPS = null;
+      targetGrade.initialGrade = null;
+      targetGrade.quarterlyGrade = null;
 
       newRecord.grades[gradeIdx] = targetGrade;
       return newRecord;
