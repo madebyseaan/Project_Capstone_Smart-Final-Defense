@@ -11,13 +11,14 @@
  * What it does NOT sync (separate concern):
  *  - Students/Enrollments from EnrollPro (enrollment opens June 1)
  */
-import type { GradeLevel } from '@prisma/client';
+import { type GradeLevel, AuditAction, AuditSeverity } from '@prisma/client';
 import { prisma } from './prisma';
 import { logger } from './logger';
+import { createAuditLog } from './audit';
 import { getEnrollProTeachers, getAllIntegrationV1Sections, resolveEnrollProSchoolYear } from './enrollproClient';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import { setCachedAtlasFaculty, setCachedEffectiveTeachingLoad } from './syncCache';
-import { atlasGet, ATLAS_BASE, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID, fetchEffectiveTeachingLoad } from './sync/httpClient';
+import { atlasGet, ATLAS_BASE, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, fetchEffectiveTeachingLoad } from './sync/httpClient';
 import {
   mapGradeLevel,
   resolveSubjectCode,
@@ -428,32 +429,80 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         }
       }
 
-      // Batch DELETE stale assignments (remove entirely instead of soft-archive)
+      // Split stale assignments: those without grades can be hard-deleted;
+      // those WITH grades must be soft-archived to prevent cascade data loss.
+      let deletedCount = 0;
+      let softArchivedCount = 0;
       if (archiveIds.length > 0) {
         try {
-          await prisma.classAssignment.deleteMany({
+          const withGradeCounts = await prisma.classAssignment.findMany({
             where: { id: { in: archiveIds } },
+            select: { id: true, _count: { select: { grades: true } } },
           });
+
+          const safeDeleteIds = withGradeCounts.filter(c => c._count.grades === 0).map(c => c.id);
+          const preserveArchiveIds = withGradeCounts.filter(c => c._count.grades > 0).map(c => c.id);
+
+          // Hard-delete assignments with no grades (safe — no cascade risk)
+          if (safeDeleteIds.length > 0) {
+            await prisma.classAssignment.deleteMany({
+              where: { id: { in: safeDeleteIds } },
+            });
+            deletedCount = safeDeleteIds.length;
+          }
+
+          // Soft-archive assignments that have grades (preserve grade data)
+          if (preserveArchiveIds.length > 0) {
+            await prisma.classAssignment.updateMany({
+              where: { id: { in: preserveArchiveIds } },
+              data: {
+                isActive: false,
+                archivedAt: new Date(),
+                archivedReason: 'ATLAS_STALE_WITH_GRADES',
+              },
+            });
+            softArchivedCount = preserveArchiveIds.length;
+
+            // Alert admins via audit log (non-fatal — wrap in try/catch)
+            try {
+              await createAuditLog(
+                AuditAction.UPDATE,
+                { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+                'ClassAssignment',
+                'SYNC',
+                `Atlas sync soft-archived ${preserveArchiveIds.length} stale assignment(s) with existing grades; grades preserved for registrar review`,
+                undefined,
+                AuditSeverity.WARNING,
+                undefined,
+                { assignmentIds: preserveArchiveIds, schoolYear: schoolYearLabel, effectiveLoadState },
+              );
+            } catch (auditErr: any) {
+              logger.warn(`[AtlasSync] Audit log for soft-archive failed (non-fatal): ${auditErr.message}`);
+            }
+          }
+
           console.log(
-            `[AtlasSync] Deleted ${archiveIds.length} stale ClassAssignment(s) ` +
+            `[AtlasSync] Deleted ${deletedCount} stale ClassAssignment(s); soft-archived ${softArchivedCount} with grades preserved ` +
             `(effectiveLoadState=${effectiveLoadState}, schoolYear=${schoolYearLabel})`,
           );
         } catch (err: any) {
-          logger.warn(`[AtlasSync] Batch delete failed: ${err.message}`);
+          logger.warn(`[AtlasSync] Batch delete/archive failed: ${err.message}`);
         }
       }
 
-      // Also purge any previously-archived records for this school year (cleanup legacy soft-archives)
+      // Purge previously-archived records with NO grades (cleanup legacy soft-archives).
+      // Exclude rows that have grades — those are preserved for registrar review.
       try {
         const purged = await prisma.classAssignment.deleteMany({
           where: {
             teacherId: { in: allAtlasMatchedTeacherIds },
             schoolYear: schoolYearLabel,
             isActive: false,
+            grades: { none: {} },
           },
         });
         if (purged.count > 0) {
-          console.log(`[AtlasSync] Purged ${purged.count} previously-archived ClassAssignment(s)`);
+          console.log(`[AtlasSync] Purged ${purged.count} previously-archived ClassAssignment(s) (no grades)`);
         }
       } catch (err: any) {
         logger.warn(`[AtlasSync] Archive purge failed: ${err.message}`);
@@ -473,7 +522,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
       if (archiveIds.length > 0 || reactivateIds.length > 0 || preservedMissingCount > 0) {
         console.log(
-          `[AtlasSync] Stale-check: archived=${archiveIds.length}, reactivated=${reactivateIds.length}, preserved=${preservedMissingCount}.`,
+          `[AtlasSync] Stale-check: deleted=${deletedCount}, softArchived=${softArchivedCount}, reactivated=${reactivateIds.length}, preserved=${preservedMissingCount}.`,
         );
       }
     }
@@ -716,31 +765,6 @@ export function getSyncStatus() {
     lastSyncAt: lastSyncAt?.toISOString() ?? null,
     result: lastSyncResult,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Read-only ATLAS data helpers (for registrar proxy endpoints)
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch effective annual teaching load from ATLAS.
- * GET /faculty-assignments/effective?schoolId=<id>&schoolYearId=<id>
- * This is the contract-compliant endpoint for integration consumers.
- */
-export async function getAtlasEffectiveTeachingLoad(
-  atlasSchoolYearId?: number,
-): Promise<any> {
-  const syId = atlasSchoolYearId ?? DEFAULT_ATLAS_SCHOOL_YEAR_ID;
-  return fetchEffectiveTeachingLoad(syId);
-}
-
-/**
- * Fetch subject coverage (assigned vs unassigned) from ATLAS.
- * GET /subjects/stats/:schoolId
- * Requires ATLAS_SYSTEM_TOKEN.
- */
-export async function getAtlasSubjectStats(): Promise<any> {
-  return atlasGet(`/subjects/stats/${ATLAS_SCHOOL_ID}`);
 }
 
 // NOTE: Scheduling is now handled by syncCoordinator.ts.
