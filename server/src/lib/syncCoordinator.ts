@@ -161,10 +161,15 @@ export async function runUnifiedSync(options?: {
   const dependencySnapshot = await checkCriticalDependencies();
   lastDependencyHealth = dependencySnapshot;
 
-  if (!dependencySnapshot.enrollpro.online || !dependencySnapshot.atlas.online) {
+  const epOffline = !dependencySnapshot.enrollpro.online;
+  const atlasOffline = !dependencySnapshot.atlas.online;
+  const bothOffline = epOffline && atlasOffline;
+
+  // Both offline → skip entire cycle (critical failure)
+  if (bothOffline) {
     consecutiveCriticalFailures += 1;
     const skippedAt = new Date();
-    const reason = `skipped — dependency offline (EnrollPro: ${dependencySnapshot.enrollpro.online ? 'online' : 'offline'}, Atlas: ${dependencySnapshot.atlas.online ? 'online' : 'offline'})`;
+    const reason = `skipped — both dependencies offline (EnrollPro: offline, Atlas: offline)`;
     const skippedResult = buildEmptyResult(reason);
     lastSyncResult = skippedResult;
 
@@ -191,7 +196,7 @@ export async function runUnifiedSync(options?: {
       completedAt: skippedAt,
       result: skippedResult,
       metadata: {
-        reason: 'dependency-offline',
+        reason: 'both-offline',
         dependencySnapshot,
         consecutiveCriticalFailures,
         circuitOpenedAt: circuitOpenedAt?.toISOString() ?? null,
@@ -199,6 +204,13 @@ export async function runUnifiedSync(options?: {
     });
 
     return skippedResult;
+  }
+
+  // Exactly one offline → partial sync (not a critical failure)
+  if (epOffline || atlasOffline) {
+    const offlineSource = epOffline ? 'EnrollPro' : 'Atlas';
+    logger.warn(`[SyncCoordinator] Partial sync — ${offlineSource} offline. Running healthy dependency only.`);
+    // Do NOT increment consecutiveCriticalFailures — partial service is not a critical failure
   }
 
   consecutiveCriticalFailures = 0;
@@ -228,36 +240,41 @@ export async function runUnifiedSync(options?: {
   try {
     // ── Step 1: EnrollPro Sync ──────────────────────────────────────────
     // Must run first — Atlas depends on sections and teachers from EnrollPro.
-    try {
-      logger.debug('[SyncCoordinator] Step 1/4: EnrollPro sync...');
-      const epResult = await runEnrollProSync();
-      if (epResult) {
+    // Skipped when EnrollPro is offline (partial sync mode).
+    if (!epOffline) {
+      try {
+        logger.debug('[SyncCoordinator] Step 1/4: EnrollPro sync...');
+        const epResult = await runEnrollProSync();
+        if (epResult) {
+          enrollproResult = {
+            advisoriesSynced: epResult.advisoriesSynced,
+            studentsFetched: epResult.studentsFetched,
+            studentsSynced: epResult.studentsSynced,
+            studentsSkipped: epResult.studentsSkipped,
+            studentsDropped: epResult.studentsDropped,
+            teachersMatched: epResult.teachersMatched,
+            errors: epResult.errors,
+          };
+        }
+      } catch (err: any) {
+        logger.error('[SyncCoordinator] EnrollPro sync failed:', err.message);
         enrollproResult = {
-          advisoriesSynced: epResult.advisoriesSynced,
-          studentsFetched: epResult.studentsFetched,
-          studentsSynced: epResult.studentsSynced,
-          studentsSkipped: epResult.studentsSkipped,
-          studentsDropped: epResult.studentsDropped,
-          teachersMatched: epResult.teachersMatched,
-          errors: epResult.errors,
+          advisoriesSynced: 0,
+          studentsFetched: 0,
+          studentsSynced: 0,
+          studentsSkipped: 0,
+          studentsDropped: 0,
+          teachersMatched: 0,
+          errors: [err.message],
         };
       }
-    } catch (err: any) {
-      logger.error('[SyncCoordinator] EnrollPro sync failed:', err.message);
-      enrollproResult = {
-        advisoriesSynced: 0,
-        studentsFetched: 0,
-        studentsSynced: 0,
-        studentsSkipped: 0,
-        studentsDropped: 0,
-        teachersMatched: 0,
-        errors: [err.message],
-      };
+    } else {
+      logger.debug('[SyncCoordinator] Step 1/4: EnrollPro sync skipped (offline)');
     }
 
     // ── Step 1b: Auto-prune (SSOT enforcement) ──────────────────────────
     // Runs after successful EnrollPro sync. Fire-and-forget with error logging.
-    if (enrollproResult && enrollproResult.errors.length === 0) {
+    if (!epOffline && enrollproResult && enrollproResult.errors.length === 0) {
       try {
         const pruneResult = await runPruneFromLiveSources();
         if (!pruneResult.aborted) {
@@ -276,70 +293,87 @@ export async function runUnifiedSync(options?: {
 
     // ── Step 1c: Transferee enrichment pass ─────────────────────────────
     // Runs after EnrollPro sync. Fail-soft — never breaks the cycle.
-    try {
-      const transfereeResultData = await syncTransferees();
-      transfereeResult = {
-        tagged: transfereeResultData.transfereesTagged,
-        unmatched: transfereeResultData.unmatched,
-      };
-      if (transfereeResultData.transfereesTagged > 0) {
-        logger.info(
-          `[SyncCoordinator] Transferee pass: ${transfereeResultData.transfereesTagged} tagged, ${transfereeResultData.unmatched.length} unmatched`,
-        );
+    if (!epOffline) {
+      try {
+        const transfereeResultData = await syncTransferees();
+        transfereeResult = {
+          tagged: transfereeResultData.transfereesTagged,
+          unmatched: transfereeResultData.unmatched,
+        };
+        if (transfereeResultData.transfereesTagged > 0) {
+          logger.info(
+            `[SyncCoordinator] Transferee pass: ${transfereeResultData.transfereesTagged} tagged, ${transfereeResultData.unmatched.length} unmatched`,
+          );
+        }
+      } catch (err: any) {
+        logger.error('[SyncCoordinator] Transferee sync failed (non-fatal):', err.message);
       }
-    } catch (err: any) {
-      logger.error('[SyncCoordinator] Transferee sync failed (non-fatal):', err.message);
+    } else {
+      logger.debug('[SyncCoordinator] Step 1c: Transferee sync skipped (EnrollPro offline)');
     }
 
     // ── Step 2: Atlas Sync ──────────────────────────────────────────────
     // Teaching load — depends on sections existing in SMART DB.
-    try {
-      logger.debug('[SyncCoordinator] Step 2/4: Atlas sync...');
-      const atResult = await runAtlasSync();
-      if (atResult) {
-        atlasResult = {
-          matched: atResult.matched,
-          created: atResult.created,
-          deleted: atResult.deleted,
-          teachersWithLoads: atResult.teachersWithLoads,
-          errors: atResult.errors,
-        };
+    // Skipped when Atlas is offline (partial sync mode).
+    if (!atlasOffline) {
+      try {
+        logger.debug('[SyncCoordinator] Step 2/4: Atlas sync...');
+        const atResult = await runAtlasSync();
+        if (atResult) {
+          atlasResult = {
+            matched: atResult.matched,
+            created: atResult.created,
+            deleted: atResult.deleted,
+            teachersWithLoads: atResult.teachersWithLoads,
+            errors: atResult.errors,
+          };
+        }
+      } catch (err: any) {
+        logger.error('[SyncCoordinator] Atlas sync failed:', err.message);
+        atlasResult = { matched: 0, created: 0, deleted: 0, teachersWithLoads: 0, errors: [err.message] };
       }
-    } catch (err: any) {
-      logger.error('[SyncCoordinator] Atlas sync failed:', err.message);
-      atlasResult = { matched: 0, created: 0, deleted: 0, teachersWithLoads: 0, errors: [err.message] };
+    } else {
+      logger.debug('[SyncCoordinator] Step 2/4: Atlas sync skipped (offline)');
     }
 
     // ── Step 3: Branding Sync (low frequency) ───────────────────────────
-    // Only runs every Nth cycle unless forced.
-    const shouldSyncBranding = options?.forceBranding || (syncCycleCount % BRANDING_SYNC_EVERY_N_CYCLES === 0);
-    if (shouldSyncBranding) {
-      try {
-        logger.debug('[SyncCoordinator] Step 3/4: Branding sync...');
-        await syncEnrollProBranding();
-        brandingSynced = true;
-      } catch (err: any) {
-        logger.error('[SyncCoordinator] Branding sync failed:', err.message);
+    // Only runs every Nth cycle unless forced. Depends on EnrollPro.
+    if (!epOffline) {
+      const shouldSyncBranding = options?.forceBranding || (syncCycleCount % BRANDING_SYNC_EVERY_N_CYCLES === 0);
+      if (shouldSyncBranding) {
+        try {
+          logger.debug('[SyncCoordinator] Step 3/4: Branding sync...');
+          await syncEnrollProBranding();
+          brandingSynced = true;
+        } catch (err: any) {
+          logger.error('[SyncCoordinator] Branding sync failed:', err.message);
+        }
+      } else {
+        logger.debug(`[SyncCoordinator] Step 3/4: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
       }
     } else {
-      logger.debug(`[SyncCoordinator] Step 3/4: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
+      logger.debug('[SyncCoordinator] Step 3/4: Branding sync skipped (EnrollPro offline)');
     }
 
     // ── Step 4: Student Profile Sync (hourly) ──────────────────────────
     // Enriches student profile fields from EnrollPro. Runs every Nth cycle.
-    const shouldSyncStudentProfiles = syncCycleCount % STUDENT_PROFILE_SYNC_EVERY_N_CYCLES === 0;
-    if (shouldSyncStudentProfiles) {
-      try {
-        logger.debug('[SyncCoordinator] Step 4/4: Student profile sync...');
-        const profileResult = await runStudentProfileSync();
-        if (profileResult.errors.length > 0) {
-          logger.warn(`[SyncCoordinator] Student profile sync had ${profileResult.errors.length} errors`);
+    if (!epOffline) {
+      const shouldSyncStudentProfiles = syncCycleCount % STUDENT_PROFILE_SYNC_EVERY_N_CYCLES === 0;
+      if (shouldSyncStudentProfiles) {
+        try {
+          logger.debug('[SyncCoordinator] Step 4/4: Student profile sync...');
+          const profileResult = await runStudentProfileSync();
+          if (profileResult.errors.length > 0) {
+            logger.warn(`[SyncCoordinator] Student profile sync had ${profileResult.errors.length} errors`);
+          }
+        } catch (err: any) {
+          logger.error('[SyncCoordinator] Student profile sync failed:', err.message);
         }
-      } catch (err: any) {
-        logger.error('[SyncCoordinator] Student profile sync failed:', err.message);
+      } else {
+        logger.debug(`[SyncCoordinator] Step 4/4: Student profile sync skipped (next at cycle #${Math.ceil(syncCycleCount / STUDENT_PROFILE_SYNC_EVERY_N_CYCLES) * STUDENT_PROFILE_SYNC_EVERY_N_CYCLES})`);
       }
     } else {
-      logger.debug(`[SyncCoordinator] Step 4/4: Student profile sync skipped (next at cycle #${Math.ceil(syncCycleCount / STUDENT_PROFILE_SYNC_EVERY_N_CYCLES) * STUDENT_PROFILE_SYNC_EVERY_N_CYCLES})`);
+      logger.debug('[SyncCoordinator] Step 4/4: Student profile sync skipped (EnrollPro offline)');
     }
 
   } catch (err: any) {
@@ -376,6 +410,7 @@ export async function runUnifiedSync(options?: {
     source,
     timestamp: lastFullSyncAt.toISOString(),
     durationMs,
+    dependencies: dependencySnapshot,
     result: {
       enrollpro: enrollproResult ? {
         studentsFetched: enrollproResult.studentsFetched,
