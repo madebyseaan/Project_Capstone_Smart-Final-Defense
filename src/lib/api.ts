@@ -1157,15 +1157,6 @@ export const registrarApi = {
   syncInactiveStudents: () =>
     api.post<{ message: string; fetched: number; inactive: number; upserted: number }>("/registrar/sync-inactive-students"),
 
-  // ATLAS (Phase 3)
-  getAtlasTeachingLoads: (atlasSchoolYearId?: number) =>
-    api.get("/registrar/atlas/teaching-loads", {
-      params: atlasSchoolYearId ? { atlasSchoolYearId } : {},
-    }),
-
-  getAtlasSubjectCoverage: () =>
-    api.get("/registrar/atlas/subject-coverage"),
-
   // Transferees
   getTransferees: () =>
     api.get<TransfereesResponse>("/registrar/transferees"),
