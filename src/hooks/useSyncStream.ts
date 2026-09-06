@@ -33,6 +33,10 @@ export interface SyncCompletePayload {
   source: string;
   timestamp: string;
   durationMs?: number;
+  dependencies?: {
+    enrollpro?: { online: boolean };
+    atlas?: { online: boolean };
+  };
   result: {
     enrollpro: { students: number; advisories: number; errors: number } | null;
     atlas: { created: number; matched: number; errors: number } | null;
@@ -44,6 +48,17 @@ export interface UseSyncStreamOptions {
   onSyncComplete?: (payload: SyncCompletePayload) => void;
 }
 
+export interface SyncSkippedPayload {
+  type: string;
+  source: string;
+  timestamp: string;
+  reason?: string;
+  dependencies?: {
+    enrollpro?: { online: boolean };
+    atlas?: { online: boolean };
+  };
+}
+
 export interface UseSyncStreamReturn {
   /** Increments by 1 on every SYNC_COMPLETE event. Safe to use as a useEffect dep. */
   syncVersion: number;
@@ -51,6 +66,10 @@ export interface UseSyncStreamReturn {
   isConnected: boolean;
   /** Timestamp of the last successful sync cycle. */
   lastSyncAt: Date | null;
+  /** True when ATLAS dependency is reported offline. */
+  atlasOffline: boolean;
+  /** True when EnrollPro dependency is reported offline. */
+  enrollproOffline: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +79,8 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
   const [syncVersion, setSyncVersion] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [atlasOffline, setAtlasOffline] = useState(false);
+  const [enrollproOffline, setEnrollproOffline] = useState(false);
 
   // Keep a stable ref to the latest options so the effect closure doesn't go stale.
   const optionsRef = useRef(options);
@@ -73,13 +94,11 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
     let cancelled = false;
 
     const connect = async () => {
-      const userData = sessionStorage.getItem('user');
-      if (!userData) {
+      const token = getPortalToken();
+      if (!token) {
         // Not authenticated — don't attempt connection.
         return;
       }
-
-      const token = getPortalToken();
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -139,13 +158,25 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue; // skip comments / heartbeats
             try {
-              const payload = JSON.parse(line.slice(6)) as SyncCompletePayload;
+              const payload = JSON.parse(line.slice(6));
               if (payload.type === 'SYNC_COMPLETE') {
-                const syncAt = payload.timestamp ? new Date(payload.timestamp) : new Date();
+                const typed = payload as SyncCompletePayload;
+                const syncAt = typed.timestamp ? new Date(typed.timestamp) : new Date();
                 if (!cancelled) {
                   setLastSyncAt(syncAt);
                   setSyncVersion((v) => v + 1);
-                  optionsRef.current?.onSyncComplete?.(payload);
+                  const deps = typed.dependencies;
+                  if (deps?.atlas) setAtlasOffline(!deps.atlas.online);
+                  else setAtlasOffline(false);
+                  if (deps?.enrollpro) setEnrollproOffline(!deps.enrollpro.online);
+                  else setEnrollproOffline(false);
+                  optionsRef.current?.onSyncComplete?.(typed);
+                }
+              } else if (payload.type === 'SYNC_SKIPPED') {
+                if (!cancelled) {
+                  const deps = (payload as SyncSkippedPayload).dependencies;
+                  if (deps?.atlas) setAtlasOffline(!deps.atlas.online);
+                  if (deps?.enrollpro) setEnrollproOffline(!deps.enrollpro.online);
                 }
               }
             } catch {
@@ -181,5 +212,5 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
     };
   }, []); // Connect once on mount; cleanup on unmount.
 
-  return { syncVersion, isConnected, lastSyncAt };
+  return { syncVersion, isConnected, lastSyncAt, atlasOffline, enrollproOffline };
 }
