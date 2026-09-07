@@ -152,7 +152,7 @@ export default function MyAdvisory() {
               style={{ backgroundColor: syncing ? undefined : colors.primary }}
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing from EnrollPro...' : 'Sync from EnrollPro'}
+              {syncing ? 'Syncing...' : 'Sync Now'}
             </Button>
             {syncMessage && <p className="text-xs text-muted-foreground text-center">{syncMessage}</p>}
             <Link to="/teacher" className="w-full">

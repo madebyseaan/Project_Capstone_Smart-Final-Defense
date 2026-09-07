@@ -177,7 +177,7 @@ export default function LoginPage() {
           />
 
           <svg
-            className="absolute inset-0 h-full w-full opacity-[0.03]"
+            className="absolute inset-0 h-full w-full"
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
@@ -185,49 +185,19 @@ export default function LoginPage() {
                 id="login-pixel-grid"
                 x="0"
                 y="0"
-                width="80"
-                height="80"
+                width="42"
+                height="42"
                 patternUnits="userSpaceOnUse"
               >
                 <rect
-                  x="2"
-                  y="2"
+                  x="3"
+                  y="3"
                   width="36"
                   height="36"
-                  rx="2"
-                  fill="none"
-                  stroke="var(--theme-primary)"
-                  strokeWidth="1.5"
-                />
-                <rect
-                  x="42"
-                  y="2"
-                  width="36"
-                  height="36"
-                  rx="2"
-                  fill="none"
-                  stroke="var(--theme-primary)"
-                  strokeWidth="1.5"
-                />
-                <rect
-                  x="2"
-                  y="42"
-                  width="36"
-                  height="36"
-                  rx="2"
-                  fill="none"
-                  stroke="var(--theme-primary)"
-                  strokeWidth="1.5"
-                />
-                <rect
-                  x="42"
-                  y="42"
-                  width="36"
-                  height="36"
-                  rx="2"
-                  fill="none"
-                  stroke="var(--theme-primary)"
-                  strokeWidth="1.5"
+                  rx="6"
+                  fill="rgba(250, 245, 245, 0.6)"
+                  stroke="rgba(180, 50, 70, 0.12)"
+                  strokeWidth="1"
                 />
               </pattern>
             </defs>
@@ -237,7 +207,7 @@ export default function LoginPage() {
           <div
             className="absolute inset-0"
             style={{
-              background: 'rgba(var(--theme-primary-rgb), 0.03)',
+              background: 'rgba(var(--theme-primary-rgb), 0.02)',
             }}
           />
         </div>
@@ -261,7 +231,7 @@ export default function LoginPage() {
           </div>
 
           {/* Login card with premium styling */}
-          <Card className="border border-black/[0.06] shadow-[0_20px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)] bg-white/95 backdrop-blur-xl rounded-2xl overflow-hidden">
+          <Card className="border border-black/[0.06] shadow-[0_20px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">
             <CardHeader className="space-y-1 text-center pt-8 pb-3 px-8 bg-transparent border-b-0">
               <div
                 className="w-14 h-14 mx-auto rounded-full flex items-center justify-center shadow-lg overflow-hidden"
