@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, Plus, Trash2, RefreshCw, AlertTriangle, Loader2 } from "lucide-react";
+import { BookOpen, Plus, Trash2, RefreshCw, AlertTriangle, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,8 @@ export default function ClassAssignments() {
   const [form, setForm] = useState({ teacherId: "", subjectId: "", sectionId: "" });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("active");
+  const [restoring, setRestoring] = useState<string | null>(null);
 
   useEffect(() => {
     adminApi.getSchoolYears().then((res) => {
@@ -116,6 +118,27 @@ export default function ClassAssignments() {
     }
   };
 
+  const handleRestore = async (id: string) => {
+    setRestoring(id);
+    setError(null);
+    try {
+      await adminApi.restoreClassAssignment(id);
+      setSuccess("Assignment restored and protected from Atlas sync");
+      await loadData();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e: any) {
+      setError(e.response?.data?.message ?? "Failed to restore");
+    } finally {
+      setRestoring(null);
+    }
+  };
+
+  const filteredAssignments = statusFilter === "all"
+    ? assignments
+    : statusFilter === "active"
+      ? assignments.filter((a: any) => a.isActive !== false)
+      : assignments.filter((a: any) => a.isActive === false);
+
   const gradeLevelLabel = (gl: string) =>
     gl?.replace("GRADE_", "Grade ") ?? gl;
 
@@ -134,6 +157,16 @@ export default function ClassAssignments() {
                 {schoolYears.map((sy) => (
                   <SelectItem key={sy.id} value={sy.label}>{sy.label}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
@@ -248,7 +281,7 @@ export default function ClassAssignments() {
           <CardTitle className="text-base flex items-center gap-2">
             <BookOpen className="h-4 w-4" />
             Assignments — {schoolYear}
-            <Badge variant="secondary" className="ml-1">{assignments.length}</Badge>
+            <Badge variant="secondary" className="ml-1">{filteredAssignments.length}</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -273,11 +306,12 @@ export default function ClassAssignments() {
                   <TableHead>Subject</TableHead>
                   <TableHead>Section</TableHead>
                   <TableHead>Grade Level</TableHead>
-                  <TableHead className="w-16"></TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-24"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignments.map((a) => (
+                {filteredAssignments.map((a: any) => (
                   <TableRow key={a.id}>
                     <TableCell className="font-medium">
                       {a.teacher?.user?.lastName ?? ""}, {a.teacher?.user?.firstName ?? ""}
@@ -294,14 +328,51 @@ export default function ClassAssignments() {
                     <TableCell>{a.section?.name ?? "—"}{a.section?.program && a.section.program !== 'REGULAR' ? ` (${a.section.program})` : ''}</TableCell>
                     <TableCell>{gradeLevelLabel(a.section?.gradeLevel ?? "")}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(a.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {a.isActive === false ? (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {a.archivedReason === 'ATLAS_REASSIGNED' ? (
+                            <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] font-bold">TRANSFERRED</Badge>
+                          ) : (
+                            <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[10px] font-bold">ARCHIVED</Badge>
+                          )}
+                          {a.source === 'MANUAL' && (
+                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] font-bold">MANUAL</Badge>
+                          )}
+                          {a.successorTeacherName && (
+                            <span className="text-xs text-muted-foreground">→ {a.successorTeacherName}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] font-bold">ACTIVE</Badge>
+                          {a.source === 'MANUAL' && (
+                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] font-bold flex items-center gap-1"><ShieldCheck className="w-3 h-3" />MANUAL</Badge>
+                          )}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {a.isActive === false ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-emerald-600 hover:text-emerald-700"
+                          onClick={() => handleRestore(a.id)}
+                          disabled={restoring === a.id}
+                          title="Restore assignment (protected from Atlas sync)"
+                        >
+                          {restoring === a.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleDelete(a.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

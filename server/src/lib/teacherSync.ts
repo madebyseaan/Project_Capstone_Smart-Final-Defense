@@ -524,7 +524,7 @@ export async function syncTeacherOnLogin(
           try {
             await (prisma.classAssignment as any).upsert({
               where: { teacherId_subjectId_sectionId_schoolYear: { teacherId: smartTeacherId, subjectId: subject.id, sectionId: section.id, schoolYear: schoolYearLabel } },
-              update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null },
+              update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null, successorTeacherId: null },
               create: { teacherId: smartTeacherId, subjectId: subject.id, sectionId: section.id, schoolYear: schoolYearLabel, teachingMinutes, isActive: true },
             });
             result.classAssignmentsCreated++;
@@ -628,11 +628,11 @@ export async function syncTeacherOnLogin(
             try {
               await (prisma.classAssignment as any).upsert({
                 where: { teacherId_subjectId_sectionId_schoolYear: { teacherId: smartTeacherId, subjectId: subject.id, sectionId: section.id, schoolYear: schoolYearLabel } },
-                update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null },
-                create: { teacherId: smartTeacherId, subjectId: subject.id, sectionId: section.id, schoolYear: schoolYearLabel, teachingMinutes, isActive: true },
-              });
-              result.classAssignmentsCreated++;
-              logger.debug(`[TeacherSync] Upserted: ${subject.code} -> ${section.name}`);
+              update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null, successorTeacherId: null },
+              create: { teacherId: smartTeacherId, subjectId: subject.id, sectionId: section.id, schoolYear: schoolYearLabel, teachingMinutes, isActive: true },
+            });
+            result.classAssignmentsCreated++;
+            logger.debug(`[TeacherSync] Upserted: ${subject.code} -> ${section.name}`);
             } catch { /* concurrent duplicate */ }
           }
         }
@@ -730,7 +730,7 @@ export async function syncTeacherOnLogin(
           try {
             await (prisma.classAssignment as any).upsert({
               where: { teacherId_subjectId_sectionId_schoolYear: { teacherId: smartTeacherId, subjectId: subject.id, sectionId: section.id, schoolYear: schoolYearLabel } },
-              update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null },
+              update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null, successorTeacherId: null },
               create: { teacherId: smartTeacherId, subjectId: subject.id, sectionId: section.id, schoolYear: schoolYearLabel, teachingMinutes, isActive: true },
             });
             result.classAssignmentsCreated++;

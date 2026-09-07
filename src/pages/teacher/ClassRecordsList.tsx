@@ -86,23 +86,28 @@ function AssignmentCard({
   archived: boolean;
   onDelete?: (id: string, name: string) => void;
 }) {
-  const titleHover = archived ? "group-hover:text-rose-600" : "group-hover:text-indigo-600";
+  const isTransferred = archived && assignment.archivedReason === 'ATLAS_REASSIGNED';
+  const titleHover = archived ? (isTransferred ? "group-hover:text-amber-700" : "group-hover:text-rose-600") : "group-hover:text-indigo-600";
   const colors = getGradeColors(assignment.section.gradeLevel);
   const badgeClass = archived
-    ? "bg-rose-100 text-rose-700 border-rose-200"
+    ? (isTransferred ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-rose-100 text-rose-700 border-rose-200")
     : colors.badge;
-  const circleClass = archived ? "bg-rose-400" : colors.circle;
+  const circleClass = archived ? (isTransferred ? "bg-amber-400" : "bg-rose-400") : colors.circle;
   const containerClass = archived
-    ? "border border-rose-200 shadow-xl shadow-rose-100/50 hover:shadow-2xl hover:shadow-rose-200"
+    ? (isTransferred
+      ? "border border-amber-200 shadow-xl shadow-amber-100/50 hover:shadow-2xl hover:shadow-amber-200"
+      : "border border-rose-200 shadow-xl shadow-rose-100/50 hover:shadow-2xl hover:shadow-rose-200")
     : "border-0 shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-indigo-100";
   const cardBg = "bg-white";
-  const sectionText = archived ? "text-rose-500" : "text-muted-foreground";
-  const mutedText = archived ? "text-rose-400" : "text-muted-foreground";
+  const sectionText = archived ? (isTransferred ? "text-amber-600" : "text-rose-500") : "text-muted-foreground";
+  const mutedText = archived ? (isTransferred ? "text-amber-500" : "text-rose-400") : "text-muted-foreground";
   const iconClass = archived
-    ? "w-8 h-8 rounded-lg bg-rose-50 text-rose-500 group-hover:bg-rose-600 group-hover:text-white"
+    ? (isTransferred
+      ? "w-8 h-8 rounded-lg bg-amber-50 text-amber-500 group-hover:bg-amber-600 group-hover:text-white"
+      : "w-8 h-8 rounded-lg bg-rose-50 text-rose-500 group-hover:bg-rose-600 group-hover:text-white")
     : "w-10 h-10 rounded-xl bg-slate-50 text-muted-foreground group-hover:bg-indigo-600 group-hover:text-white";
   const chevronClass = archived
-    ? "w-10 h-10 rounded-xl bg-rose-100 text-rose-400"
+    ? (isTransferred ? "w-10 h-10 rounded-xl bg-amber-100 text-amber-400" : "w-10 h-10 rounded-xl bg-rose-100 text-rose-400")
     : "w-12 h-12 rounded-2xl bg-slate-50 text-muted-foreground";
   const displayWwWeight = assignment.effectiveWeights?.ww ?? assignment.subject.writtenWorkWeight;
   const displayPtWeight = assignment.effectiveWeights?.pt ?? assignment.subject.perfTaskWeight;
@@ -115,16 +120,18 @@ function AssignmentCard({
           <div
             className={
               archived
-                ? "absolute top-0 right-0 w-24 h-24 bg-rose-50 rounded-bl-[3rem] -mr-8 -mt-8 group-hover:bg-rose-100 transition-colors"
+                ? (isTransferred
+                  ? "absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-bl-[3rem] -mr-8 -mt-8 group-hover:bg-amber-100 transition-colors"
+                  : "absolute top-0 right-0 w-24 h-24 bg-rose-50 rounded-bl-[3rem] -mr-8 -mt-8 group-hover:bg-rose-100 transition-colors")
                 : `absolute top-0 right-0 w-32 h-32 ${colors.decor} rounded-bl-[4rem] -mr-10 -mt-10 transition-colors`
             }
           />
           <CardHeader className={`${archived ? 'p-6 pb-3' : 'p-8 pb-4'} relative z-10`}>
             <div className={`flex items-start justify-between ${archived ? 'mb-4' : 'mb-8'}`}>
               <Badge className={`${badgeClass} text-[10px] font-bold uppercase tracking-[0.1em] ${archived ? 'px-3 py-1' : 'px-4 py-1.5'} rounded-full`}>
-                {archived ? "ARCHIVED" : gradeLevelLabels[assignment.section.gradeLevel]}
+                {archived ? (isTransferred ? "TRANSFERRED" : "ARCHIVED") : gradeLevelLabels[assignment.section.gradeLevel]}
               </Badge>
-              <div className={`${archived ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl'} ${archived ? "bg-rose-50 text-rose-500 group-hover:bg-rose-600 group-hover:text-white" : colors.button} flex items-center justify-center transition-all duration-500 shadow-sm`}>
+              <div className={`${archived ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl'} ${archived ? (isTransferred ? "bg-amber-50 text-amber-500 group-hover:bg-amber-600 group-hover:text-white" : "bg-rose-50 text-rose-500 group-hover:bg-rose-600 group-hover:text-white") : colors.button} flex items-center justify-center transition-all duration-500 shadow-sm`}>
                 <ArrowUpRight className={`${archived ? 'w-4 h-4' : 'w-5 h-5'}`} />
               </div>
             </div>
@@ -143,7 +150,13 @@ function AssignmentCard({
               </p>
             </div>
 
-            {archived && assignment.archivedReason && (
+            {isTransferred && (assignment as any).successorTeacherName && (
+              <p className="mt-3 text-[10px] font-bold text-amber-700 bg-amber-50 rounded-xl px-3 py-2 border border-amber-100 leading-relaxed">
+                Transferred to {(assignment as any).successorTeacherName}
+              </p>
+            )}
+
+            {archived && !isTransferred && assignment.archivedReason && (
               <p className="mt-3 text-[10px] font-bold text-rose-600 bg-rose-50 rounded-xl px-3 py-2 border border-rose-100 leading-relaxed line-clamp-2">
                 {assignment.archivedReason}
               </p>
@@ -151,7 +164,7 @@ function AssignmentCard({
           </CardHeader>
 
           <CardContent className={`${archived ? 'p-6 pt-4' : 'p-8 pt-6'} mt-auto relative z-10`}>
-            <div className={`flex items-center justify-between ${archived ? 'pt-4' : 'pt-6'} border-t ${archived ? "border-rose-100" : "border-slate-50"}`}>
+            <div className={`flex items-center justify-between ${archived ? 'pt-4' : 'pt-6'} border-t ${archived ? (isTransferred ? "border-amber-100" : "border-rose-100") : "border-slate-50"}`}>
               <div className={`flex items-center ${archived ? 'gap-2' : 'gap-3'}`}>
                 <div className={`${iconClass} flex items-center justify-center transition-colors shadow-sm`}>
                   <Users className={`${archived ? 'w-4 h-4' : 'w-5 h-5'}`} />
@@ -171,8 +184,8 @@ function AssignmentCard({
             </div>
 
             <div className={`${archived ? 'mt-3' : 'mt-4'} flex items-center justify-between`}>
-              <Badge className={`${archived ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-slate-100 text-muted-foreground border-0"} text-[10px] font-bold uppercase tracking-widest ${archived ? 'px-2' : 'px-3'}`}>
-                {archived ? "Backup" : "Active Record"}
+              <Badge className={`${archived ? (isTransferred ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-rose-100 text-rose-700 border-rose-200") : "bg-slate-100 text-muted-foreground border-0"} text-[10px] font-bold uppercase tracking-widest ${archived ? 'px-2' : 'px-3'}`}>
+                {archived ? (isTransferred ? "Transferred" : "Backup") : "Active Record"}
               </Badge>
               <div className={`${chevronClass} flex items-center justify-center transition-all group-hover:translate-x-2`}>
                 <ChevronRight className={`${archived ? 'w-5 h-5' : 'w-6 h-6'}`} />
@@ -181,7 +194,7 @@ function AssignmentCard({
           </CardContent>
         </Card>
       </Link>
-      {archived && onDelete && (
+      {archived && !isTransferred && onDelete && (
         <Button
           variant="destructive"
           size="icon"
@@ -231,7 +244,7 @@ export default function ClassRecordsList() {
     }
   };
 
-  // Silent background sync on every page load — pulls fresh data from Atlas
+  // Silent background sync on every page load — pulls teaching loads (ATLAS) + rosters (EnrollPro)
   useEffect(() => {
     advisoryApi.syncFromEnrollPro().catch(() => {/* silent fallback */});
   }, []);
@@ -559,24 +572,31 @@ export default function ClassRecordsList() {
               {isArchivedExpanded && (
                 <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white border border-rose-100 animate-in fade-in slide-in-from-top-4 duration-500">
                   <div className="divide-y divide-rose-50">
-                    {archivedClasses.map((assignment) => (
+                    {archivedClasses.map((assignment) => {
+                      const isTransferred = assignment.archivedReason === 'ATLAS_REASSIGNED';
+                      return (
                       <Link key={assignment.id} to={`/teacher/records/${assignment.id}`} className="block group">
-                        <div className="p-8 hover:bg-rose-50 transition-all duration-300 flex flex-col sm:flex-row sm:items-center gap-8 group">
-                          <div className="w-16 h-16 rounded-[1.5rem] bg-rose-100 text-rose-400 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white group-hover:shadow-xl group-hover:shadow-rose-100 transition-all duration-500">
+                        <div className={`p-8 ${isTransferred ? 'hover:bg-amber-50' : 'hover:bg-rose-50'} transition-all duration-300 flex flex-col sm:flex-row sm:items-center gap-8 group`}>
+                          <div className={`w-16 h-16 rounded-[1.5rem] ${isTransferred ? 'bg-amber-100 text-amber-400 group-hover:bg-amber-600' : 'bg-rose-100 text-rose-400 group-hover:bg-rose-600'} flex items-center justify-center group-hover:text-white group-hover:shadow-xl transition-all duration-500`}>
                             <BookOpen className="w-8 h-8" />
                           </div>
 
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-3 mb-2">
-                              <h3 className="text-2xl font-semibold text-foreground group-hover:text-rose-600 transition-colors">{assignment.subject.name}</h3>
-                              <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[10px] font-bold uppercase tracking-widest px-3">
-                                ARCHIVED
+                              <h3 className={`text-2xl font-semibold text-foreground ${isTransferred ? 'group-hover:text-amber-700' : 'group-hover:text-rose-600'} transition-colors`}>{assignment.subject.name}</h3>
+                              <Badge className={`${isTransferred ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-rose-100 text-rose-700 border-rose-200'} text-[10px] font-bold uppercase tracking-widest px-3`}>
+                                {isTransferred ? "TRANSFERRED" : "ARCHIVED"}
                               </Badge>
                             </div>
-                            <p className="text-rose-500 font-bold text-sm uppercase tracking-widest">
+                            <p className={`${isTransferred ? 'text-amber-600' : 'text-rose-500'} font-bold text-sm uppercase tracking-widest`}>
                               Section {assignment.section.name} &bull; {assignment.schoolYear}
                             </p>
-                            {assignment.archivedReason && (
+                            {isTransferred && (assignment as any).successorTeacherName && (
+                              <p className="mt-3 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+                                Transferred to {(assignment as any).successorTeacherName}
+                              </p>
+                            )}
+                            {!isTransferred && assignment.archivedReason && (
                               <p className="mt-3 text-sm font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-2xl px-4 py-3">
                                 {assignment.archivedReason}
                               </p>
@@ -586,11 +606,11 @@ export default function ClassRecordsList() {
                           <div className="flex items-center gap-12">
                             <div className="text-center">
                               <p className="text-2xl font-bold text-foreground leading-none">{assignment.section.enrollments?.length || 0}</p>
-                              <p className="text-[10px] font-bold text-rose-400 uppercase tracking-[0.2em] mt-2">Learners</p>
+                              <p className={`text-[10px] font-bold ${isTransferred ? 'text-amber-400' : 'text-rose-400'} uppercase tracking-[0.2em] mt-2`}>Learners</p>
                             </div>
 
                             <div className="hidden lg:block">
-                              <div className="px-5 py-3 rounded-2xl bg-rose-50 border border-rose-100 group-hover:bg-white transition-colors">
+                              <div className={`px-5 py-3 rounded-2xl ${isTransferred ? 'bg-amber-50 border-amber-100' : 'bg-rose-50 border-rose-100'} border group-hover:bg-white transition-colors`}>
                                 <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest mb-1 text-center">WW / PT / TA</p>
                                 <p className="text-sm text-foreground font-bold font-mono tracking-tighter text-center">
                                   {assignment.effectiveWeights?.ww ?? assignment.subject.writtenWorkWeight} / {assignment.effectiveWeights?.pt ?? assignment.subject.perfTaskWeight} / {assignment.effectiveWeights?.qa ?? assignment.subject.quarterlyAssessWeight}
@@ -599,26 +619,29 @@ export default function ClassRecordsList() {
                             </div>
 
                             <div className="flex items-center gap-4">
-                              <Button
-                                variant="destructive"
-                                size="icon"
-                                className="w-12 h-12 rounded-2xl bg-rose-600 text-white opacity-0 group-hover:opacity-100 transition-all shadow-lg shadow-rose-100 hover:scale-110 active:scale-95"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setAssignmentToDelete({ id: assignment.id, name: assignment.subject.name });
-                                }}
-                              >
-                                <Trash2 className="w-5 h-5" />
-                              </Button>
-                              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-400 flex items-center justify-center group-hover:translate-x-2 transition-all">
+                              {!isTransferred && (
+                                <Button
+                                  variant="destructive"
+                                  size="icon"
+                                  className="w-12 h-12 rounded-2xl bg-rose-600 text-white opacity-0 group-hover:opacity-100 transition-all shadow-lg shadow-rose-100 hover:scale-110 active:scale-95"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAssignmentToDelete({ id: assignment.id, name: assignment.subject.name });
+                                  }}
+                                >
+                                  <Trash2 className="w-5 h-5" />
+                                </Button>
+                              )}
+                              <div className={`w-12 h-12 rounded-2xl ${isTransferred ? 'bg-amber-100 text-amber-400' : 'bg-rose-100 text-rose-400'} flex items-center justify-center group-hover:translate-x-2 transition-all`}>
                                 <ChevronRight className="w-6 h-6" />
                               </div>
                             </div>
                           </div>
                         </div>
                       </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 </Card>
               )}
@@ -650,7 +673,7 @@ export default function ClassRecordsList() {
                   style={{ backgroundColor: syncing ? undefined : colors.primary }}
                 >
                   <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
-                  {syncing ? 'Syncing from EnrollPro...' : 'Sync from EnrollPro'}
+                  {syncing ? 'Syncing...' : 'Sync Now'}
                 </Button>
                 {syncMessage && <p className="text-xs text-muted-foreground text-center">{syncMessage}</p>}
                 <Link to="/teacher" className="w-full">

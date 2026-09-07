@@ -221,6 +221,7 @@ export default function (router: Router) {
       };
 
       for (const assignment of assignments) {
+        if (!assignment.isActive) continue; // workload reflects active load only
         const teacherName = `${assignment.teacher.user.lastName}, ${assignment.teacher.user.firstName}`;
         const bucket = ensureBucket(
           assignment.teacherId,
@@ -260,7 +261,23 @@ export default function (router: Router) {
           return a.teacherName.localeCompare(b.teacherName);
         });
 
-      res.json({ assignments, workloadSummary });
+      // Resolve successor teacher names for archived assignments
+      const successorIds = [...new Set(assignments.map(a => (a as any).successorTeacherId).filter(Boolean))] as string[];
+      let successorNameMap = new Map<string, string>();
+      if (successorIds.length > 0) {
+        const sTeachers = await prisma.teacher.findMany({
+          where: { id: { in: successorIds } },
+          include: { user: { select: { firstName: true, lastName: true } } },
+        });
+        successorNameMap = new Map(sTeachers.map(t => [t.id, `${t.user.firstName} ${t.user.lastName}`]));
+      }
+
+      const assignmentsWithSuccessor = assignments.map(a => ({
+        ...a,
+        successorTeacherName: (a as any).successorTeacherId ? successorNameMap.get((a as any).successorTeacherId) ?? null : null,
+      }));
+
+      res.json({ assignments: assignmentsWithSuccessor, workloadSummary });
     } catch (err: any) {
       logger.error("Error fetching class assignments:", err);
       res.status(500).json({ message: "Failed to fetch class assignments" });
@@ -291,6 +308,7 @@ export default function (router: Router) {
           sectionId,
           schoolYear,
           teachingMinutes: null,
+          source: 'MANUAL',
         },
         include: {
           teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
@@ -333,6 +351,88 @@ export default function (router: Router) {
         logger.error("Error archiving class assignment:", err);
         res.status(500).json({ message: "Failed to archive class assignment" });
       }
+    }
+  });
+
+  router.post("/class-assignments/:id/restore", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const assignmentId = String(req.params.id ?? '');
+      if (!assignmentId) {
+        res.status(400).json({ message: "Missing class assignment id" });
+        return;
+      }
+
+      const assignment = await prisma.classAssignment.findUnique({
+        where: { id: assignmentId },
+        include: {
+          teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
+          subject: { select: { id: true, name: true, code: true } },
+          section: { select: { id: true, name: true } },
+        },
+      });
+
+      if (!assignment) {
+        res.status(404).json({ message: "Assignment not found" });
+        return;
+      }
+
+      if (assignment.isActive) {
+        res.status(400).json({ message: "Assignment is already active" });
+        return;
+      }
+
+      // Reassignment guard: check if another active assignment exists for the same subject+section+SY
+      const conflicting = await prisma.classAssignment.findFirst({
+        where: {
+          subjectId: assignment.subjectId,
+          sectionId: assignment.sectionId,
+          schoolYear: assignment.schoolYear,
+          isActive: true,
+          id: { not: assignmentId },
+        },
+        include: { teacher: { include: { user: { select: { firstName: true, lastName: true } } } } },
+      });
+
+      if (conflicting) {
+        const conflictTeacherName = `${conflicting.teacher.user.firstName} ${conflicting.teacher.user.lastName}`;
+        res.status(409).json({
+          message: `Cannot restore: this class is currently assigned to ${conflictTeacherName}. Reassignment must be corrected in Atlas first.`,
+        });
+        return;
+      }
+
+      const restored = await prisma.classAssignment.update({
+        where: { id: assignmentId },
+        data: {
+          isActive: true,
+          archivedAt: null,
+          archivedReason: null,
+          successorTeacherId: null,
+          source: 'MANUAL',
+        },
+        include: {
+          teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
+          subject: true,
+          section: true,
+        },
+      });
+
+      const teacherName = `${assignment.teacher.user.firstName} ${assignment.teacher.user.lastName}`;
+      await createAuditLog(
+        AuditAction.UPDATE,
+        req.user!,
+        'Restore Class Assignment',
+        'ClassAssignment',
+        `Restored ${assignment.subject.name} for ${teacherName} in ${assignment.section.name} (${assignment.schoolYear}) — protected from Atlas sync (MANUAL)`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.WARNING,
+        assignmentId,
+      );
+
+      res.json(restored);
+    } catch (err: any) {
+      logger.error("Error restoring class assignment:", err);
+      res.status(500).json({ message: "Failed to restore class assignment" });
     }
   });
 

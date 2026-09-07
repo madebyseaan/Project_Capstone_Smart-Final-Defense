@@ -47,7 +47,6 @@ export default function registerClasses(router: Router): void {
           where: {
             teacherId: teacher.id,
             schoolYear: currentSchoolYear,
-            isActive: true,
           },
           include: {
             subject: true,
@@ -71,6 +70,7 @@ export default function registerClasses(router: Router): void {
             },
           },
           orderBy: [
+            { isActive: 'desc' },
             { section: { gradeLevel: "asc" } },
             { subject: { name: "asc" } },
           ],
@@ -89,6 +89,22 @@ export default function registerClasses(router: Router): void {
             };
           })
         );
+
+        // Resolve successor teacher names for archived classes
+        const archivedWithSuccessor = classesWithEffectiveWeights.filter((c: any) => !c.isActive && c.successorTeacherId);
+        if (archivedWithSuccessor.length > 0) {
+          const sIds = [...new Set(archivedWithSuccessor.map((c: any) => c.successorTeacherId))] as string[];
+          const sTeachers = await prisma.teacher.findMany({
+            where: { id: { in: sIds } },
+            include: { user: { select: { firstName: true, lastName: true } } },
+          });
+          const sMap = new Map(sTeachers.map(t => [t.id, `${t.user.firstName} ${t.user.lastName}`]));
+          for (const c of classesWithEffectiveWeights) {
+            if (c.successorTeacherId) {
+              (c as any).successorTeacherName = sMap.get(c.successorTeacherId) ?? null;
+            }
+          }
+        }
 
         res.json(classesWithEffectiveWeights);
       } catch (error) {
@@ -133,6 +149,16 @@ export default function registerClasses(router: Router): void {
           return;
         }
 
+        // Resolve successor teacher name if this is a transferred assignment
+        let successorTeacherName: string | null = null;
+        if ((classAssignment as any).successorTeacherId) {
+          const successor = await prisma.teacher.findUnique({
+            where: { id: (classAssignment as any).successorTeacherId },
+            include: { user: { select: { firstName: true, lastName: true } } },
+          });
+          if (successor) successorTeacherName = `${successor.user.firstName} ${successor.user.lastName}`;
+        }
+
         const enrollments = await prisma.enrollment.findMany({
           where: {
             sectionId: classAssignment.sectionId,
@@ -172,6 +198,74 @@ export default function registerClasses(router: Router): void {
         const lockState = await getGradeLockState(classAssignment.schoolYear);
         const queriedTermLocked = term ? lockState.termLocks[term as keyof typeof lockState.termLocks] : false;
 
+        // Inherited grades: find predecessor assignments (same subject+section+SY, archived, with grades)
+        const predecessorAssignments = await prisma.classAssignment.findMany({
+          where: {
+            subjectId: classAssignment.subjectId,
+            sectionId: classAssignment.sectionId,
+            schoolYear: classAssignment.schoolYear,
+            isActive: false,
+            id: { not: classAssignmentId },
+            grades: { some: {} },
+          },
+          include: {
+            teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
+          },
+        });
+
+        const predecessorIds = predecessorAssignments.map(p => p.id);
+        const predecessorGrades = predecessorIds.length > 0
+          ? await prisma.grade.findMany({
+              where: { classAssignmentId: { in: predecessorIds } },
+              select: { studentId: true, term: true, quarterlyGrade: true, classAssignmentId: true },
+            })
+          : [];
+
+        // Build per-predecessor name map
+        const predecessorNameMap = new Map(predecessorAssignments.map(p => [p.id, `${p.teacher.user.firstName} ${p.teacher.user.lastName}`]));
+
+        // Build inheritedGrades: per student per term — only for (student, term) where current assignment has NO grade
+        const currentGradeKeys = new Set(grades.map((g: any) => `${g.studentId}:${g.term}`));
+        const inheritedGrades: Array<{
+          studentId: string;
+          term: string;
+          quarterlyGrade: number | null;
+          inheritedFrom: string;
+          classAssignmentId: string;
+        }> = [];
+
+        // For multiple predecessors, prefer the most recent archivedAt per (student, term)
+        const predecessorArchivedAtMap = new Map(predecessorAssignments.map(p => [p.id, p.archivedAt?.getTime() ?? 0]));
+        const candidateMap = new Map<string, typeof predecessorGrades[0]>();
+        for (const pg of predecessorGrades) {
+          const key = `${pg.studentId}:${pg.term}`;
+          if (currentGradeKeys.has(key)) continue; // current assignment has a grade for this student+term
+          const existing = candidateMap.get(key);
+          if (!existing) {
+            candidateMap.set(key, pg);
+          } else {
+            // Prefer the one from the most recently archived predecessor
+            const existingTime = predecessorArchivedAtMap.get(existing.classAssignmentId) ?? 0;
+            const newTime = predecessorArchivedAtMap.get(pg.classAssignmentId) ?? 0;
+            if (newTime > existingTime) candidateMap.set(key, pg);
+          }
+        }
+
+        for (const [, pg] of candidateMap) {
+          inheritedGrades.push({
+            studentId: pg.studentId,
+            term: pg.term,
+            quarterlyGrade: pg.quarterlyGrade,
+            inheritedFrom: predecessorNameMap.get(pg.classAssignmentId) ?? 'Unknown',
+            classAssignmentId: pg.classAssignmentId,
+          });
+        }
+
+        const inheritedFromTeachers = predecessorAssignments.map(p => ({
+          name: predecessorNameMap.get(p.id) ?? 'Unknown',
+          termsCovered: [...new Set(predecessorGrades.filter(g => g.classAssignmentId === p.id).map(g => g.term))],
+        }));
+
         res.json({
           classAssignment,
           classRecord,
@@ -187,6 +281,9 @@ export default function registerClasses(router: Router): void {
           },
           gradeLock: lockState.systemLocked || lockState.yearLocked || queriedTermLocked,
           locks: lockState,
+          inheritedGrades,
+          inheritedFromTeachers,
+          successorTeacherName,
         });
       } catch (error) {
         logger.error("Error fetching class record:", error);
@@ -237,6 +334,16 @@ export default function registerClasses(router: Router): void {
 
         if (!classAssignment) {
           res.status(403).json({ message: "Not authorized for this class" });
+          return;
+        }
+
+        if (classAssignment.isActive === false) {
+          res.status(403).json({
+            code: 'ASSIGNMENT_ARCHIVED',
+            message: classAssignment.archivedReason === 'ATLAS_REASSIGNED'
+              ? 'This class was transferred to another teacher. You can view grades but no longer edit them.'
+              : 'This class assignment is no longer active and cannot be edited.',
+          });
           return;
         }
 
@@ -458,6 +565,16 @@ export default function registerClasses(router: Router): void {
           return;
         }
 
+        if (classAssignment.isActive === false) {
+          res.status(403).json({
+            code: 'ASSIGNMENT_ARCHIVED',
+            message: classAssignment.archivedReason === 'ATLAS_REASSIGNED'
+              ? 'This class was transferred to another teacher. You can view grades but no longer edit them.'
+              : 'This class assignment is no longer active and cannot be edited.',
+          });
+          return;
+        }
+
         const isHG = isHomeroomGuidanceSubjectCode(classAssignment.subject.code);
         if (isHG) {
           res.status(400).json({ message: "Homeroom Guidance is a location, not a subject. Cannot save grades for HG." });
@@ -657,6 +774,16 @@ export default function registerClasses(router: Router): void {
           return;
         }
 
+        if (grade.classAssignment.isActive === false) {
+          res.status(403).json({
+            code: 'ASSIGNMENT_ARCHIVED',
+            message: grade.classAssignment.archivedReason === 'ATLAS_REASSIGNED'
+              ? 'This class was transferred to another teacher. You can view grades but no longer edit them.'
+              : 'This class assignment is no longer active and cannot be edited.',
+          });
+          return;
+        }
+
         if (grade.isArchived) {
           res.status(403).json({ message: "Cannot delete archived grades. This school year has been finalized." });
           return;
@@ -757,6 +884,16 @@ export default function registerClasses(router: Router): void {
 
         if (!classAssignment) {
           res.status(403).json({ message: "Not authorized for this class" });
+          return;
+        }
+
+        if (classAssignment.isActive === false) {
+          res.status(403).json({
+            code: 'ASSIGNMENT_ARCHIVED',
+            message: classAssignment.archivedReason === 'ATLAS_REASSIGNED'
+              ? 'This class was transferred to another teacher. You can view grades but no longer edit them.'
+              : 'This class assignment is no longer active and cannot be edited.',
+          });
           return;
         }
 

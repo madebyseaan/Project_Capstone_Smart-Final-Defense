@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { Loader2, Monitor } from "lucide-react";
+import { Loader2, Monitor, AlertTriangle } from "lucide-react";
 import { gradesApi, adminApi, type ClassRecord, type ScoreItem, type TermLabels } from "@/lib/api";
 import { ClassRecordTable } from "./components/ClassRecordTable";
 import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
@@ -64,10 +64,15 @@ export default function ClassRecordView() {
   const gradeLock = classRecordQuery.data?.gradeLock ?? false;
   const loading = classRecordQuery.isLoading;
   const transmutationTable = transmutationQuery.data ?? [];
+  const inheritedGrades = classRecordQuery.data?.inheritedGrades ?? [];
+  const inheritedFromTeachers = classRecordQuery.data?.inheritedFromTeachers ?? [];
+  const successorTeacherName = classRecordQuery.data?.successorTeacherName ?? null;
 
   const lockedTerm = classAssignment?.subject?.rotationTermRank ? `T${classAssignment.subject.rotationTermRank}` : null;
   const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
   const isPastTerm = currentTerm && termOrder[selectedTerm] < termOrder[currentTerm];
+  const isArchivedAssignment = classAssignment?.isActive === false;
+  const isTransferredAssignment = isArchivedAssignment && classAssignment?.archivedReason === 'ATLAS_REASSIGNED';
 
   // setClassRecord wrapper for action functions
   const setClassRecord = useCallback((updater: React.SetStateAction<ClassRecord[]>) => {
@@ -102,8 +107,11 @@ export default function ClassRecordView() {
     if (settingsQuery.data?.termLabels) setTermLabels(settingsQuery.data.termLabels);
   }, [settingsQuery.data]);
 
-  // Edit access hook
-  const editAccess = useEditAccess({ isPastTerm: !!isPastTerm, gradeLock, selectedTerm });
+  // Edit access hook — archived assignments are always read-only
+  const editAccessRaw = useEditAccess({ isPastTerm: !!isPastTerm, gradeLock, selectedTerm });
+  const editAccess = isArchivedAssignment
+    ? { ...editAccessRaw, isViewOnly: true }
+    : editAccessRaw;
 
   // Assessment meta hook
   const metaHook = useAssessmentMeta({
@@ -209,11 +217,61 @@ export default function ClassRecordView() {
 
   return (
     <div className="space-y-6 animate-fade-in w-full px-6 pb-12">
+      {isArchivedAssignment && (
+        <div className={`rounded-2xl border p-4 flex items-center gap-3 ${isTransferredAssignment ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-destructive/5 border-destructive/20 text-destructive'}`}>
+          <AlertTriangle className="w-5 h-5 shrink-0" />
+          <p className="text-sm font-semibold">
+            {isTransferredAssignment
+              ? `This class was transferred to ${successorTeacherName ?? 'another teacher'}. Viewing grade history — editing is disabled.`
+              : `This class assignment is ${classAssignment?.archivedReason?.toLowerCase() ?? 'archived'}. Viewing grade history — editing is disabled.`}
+          </p>
+        </div>
+      )}
+
       <ClassRecordHero classAssignment={classAssignment} effectiveWeightsSource={effectiveWeights?.source ?? null} onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }} />
 
       <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={isPastTerm && !gradeLock && editAccess.editRequestStatus === "idle" ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} />
 
       {stats && <ClassRecordStats avg={stats.avg} passed={stats.passed} total={classRecord.length} highest={stats.highest} lowest={stats.lowest} />}
+
+      {/* Inherited Grades Notice */}
+      {inheritedFromTeachers.length > 0 && (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 flex items-start gap-3">
+          <div className="p-2 rounded-xl bg-blue-100 text-blue-600 shrink-0 mt-0.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-blue-900">
+              Grade history inherited from {inheritedFromTeachers.map(t => `${t.name} (${t.termsCovered.join(', ')})`).join('; ')}
+            </p>
+            <p className="text-xs text-blue-700 mt-1">
+              These cells are read-only. Continue encoding from the current term. Inherited grades are not included in save operations.
+            </p>
+            {/* Show inherited grades for the selected term */}
+            {(() => {
+              const termInherited = inheritedGrades.filter(g => g.term === selectedTerm);
+              if (termInherited.length === 0) return null;
+              return (
+                <div className="mt-3 space-y-1">
+                  {termInherited.map((ig) => {
+                    const student = classRecord.find(r => r.student.id === ig.studentId);
+                    const studentName = student ? `${student.student.lastName}, ${student.student.firstName}` : ig.studentId;
+                    return (
+                      <div key={ig.studentId} className="flex items-center justify-between text-xs bg-blue-100/50 rounded-lg px-3 py-1.5">
+                        <span className="font-medium text-blue-800">{studentName}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-blue-900">{ig.quarterlyGrade?.toFixed(1) ?? '—'}</span>
+                          <span className="text-[10px] text-blue-600">from {ig.inheritedFrom}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {classRecord.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">

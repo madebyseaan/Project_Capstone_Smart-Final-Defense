@@ -143,17 +143,19 @@ model Subject {
 }
 
 model ClassAssignment {
-  id              String          @id @default(cuid())
-  teacherId       String
-  subjectId       String
-  sectionId       String
-  schoolYear      String
-  teachingMinutes Int?
-  isActive        Boolean         @default(true)
-  archivedAt      DateTime?
-  archivedReason  String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                 String          @id @default(cuid())
+  teacherId          String
+  subjectId          String
+  sectionId          String
+  schoolYear         String
+  teachingMinutes    Int?
+  isActive           Boolean         @default(true)
+  archivedAt         DateTime?
+  archivedReason     String?
+  successorTeacherId String?         // set when Atlas reassigns this class to another teacher (transfer)
+  source             String          @default("SYNC") // SYNC | MANUAL — MANUAL survives Atlas stale-check
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
   section         Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   subject         Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   teacher         Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
@@ -448,6 +450,9 @@ model SystemSettings {
   enrollproAccountName     String?
   enrollproPassword        String?   // stored as-is, not encrypted (same as .env)
   enrollproIntegrationKey  String?
+
+  // Atlas EMPTY-load safety: tracks when an EMPTY load was first observed
+  atlasEmptyLoadSeenAt     DateTime?
 }
 
 model GradingConfig {

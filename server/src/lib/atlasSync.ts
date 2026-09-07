@@ -388,147 +388,9 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       fetchResults.push(...batchResults);
     }
 
-    // 6. Stale-check: archive assignments not in the effective load
-    // Scope: ALL Atlas-matched teachers (not just those with resolved loads this cycle).
-    // When effective load is EMPTY, archive ALL current-year assignments for Atlas-matched teachers.
-    // When POPULATED, archive assignments not in the desired set.
-    if (allAtlasMatchedTeacherIds.length > 0) {
-      const currentAssignments = await prisma.classAssignment.findMany({
-        where: {
-          teacherId: { in: allAtlasMatchedTeacherIds },
-          schoolYear: schoolYearLabel,
-        },
-        select: { id: true, teacherId: true, subjectId: true, sectionId: true, isActive: true },
-      });
-
-      const archiveIds: string[] = [];
-      const reactivateIds: string[] = [];
-      let preservedMissingCount = 0;
-
-      for (const assignment of currentAssignments) {
-        const key = `${assignment.teacherId}:${assignment.subjectId}:${assignment.sectionId}`;
-        const shouldBeActive = desiredAssignmentPairs.has(key);
-
-        if (shouldBeActive) {
-          // Assignment is in the effective load — reactivate if it was archived
-          if (!assignment.isActive) {
-            reactivateIds.push(assignment.id);
-          }
-        } else {
-          // Assignment is NOT in the effective load — stale
-          if (effectiveLoadState === 'EMPTY') {
-            // EMPTY: all current-year assignments for Atlas-matched teachers are stale
-            archiveIds.push(assignment.id);
-          } else if (effectiveLoadState === 'POPULATED' && assignment.isActive) {
-            // POPULATED: only archive ACTIVE assignments not in desired set
-            // Preserve assignments already archived by a previous cycle
-            archiveIds.push(assignment.id);
-          } else {
-            preservedMissingCount++;
-          }
-        }
-      }
-
-      // Split stale assignments: those without grades can be hard-deleted;
-      // those WITH grades must be soft-archived to prevent cascade data loss.
-      let deletedCount = 0;
-      let softArchivedCount = 0;
-      if (archiveIds.length > 0) {
-        try {
-          const withGradeCounts = await prisma.classAssignment.findMany({
-            where: { id: { in: archiveIds } },
-            select: { id: true, _count: { select: { grades: true } } },
-          });
-
-          const safeDeleteIds = withGradeCounts.filter(c => c._count.grades === 0).map(c => c.id);
-          const preserveArchiveIds = withGradeCounts.filter(c => c._count.grades > 0).map(c => c.id);
-
-          // Hard-delete assignments with no grades (safe — no cascade risk)
-          if (safeDeleteIds.length > 0) {
-            await prisma.classAssignment.deleteMany({
-              where: { id: { in: safeDeleteIds } },
-            });
-            deletedCount = safeDeleteIds.length;
-          }
-
-          // Soft-archive assignments that have grades (preserve grade data)
-          if (preserveArchiveIds.length > 0) {
-            await prisma.classAssignment.updateMany({
-              where: { id: { in: preserveArchiveIds } },
-              data: {
-                isActive: false,
-                archivedAt: new Date(),
-                archivedReason: 'ATLAS_STALE_WITH_GRADES',
-              },
-            });
-            softArchivedCount = preserveArchiveIds.length;
-
-            // Alert admins via audit log (non-fatal — wrap in try/catch)
-            try {
-              await createAuditLog(
-                AuditAction.UPDATE,
-                { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
-                'ClassAssignment',
-                'SYNC',
-                `Atlas sync soft-archived ${preserveArchiveIds.length} stale assignment(s) with existing grades; grades preserved for registrar review`,
-                undefined,
-                AuditSeverity.WARNING,
-                undefined,
-                { assignmentIds: preserveArchiveIds, schoolYear: schoolYearLabel, effectiveLoadState },
-              );
-            } catch (auditErr: any) {
-              logger.warn(`[AtlasSync] Audit log for soft-archive failed (non-fatal): ${auditErr.message}`);
-            }
-          }
-
-          console.log(
-            `[AtlasSync] Deleted ${deletedCount} stale ClassAssignment(s); soft-archived ${softArchivedCount} with grades preserved ` +
-            `(effectiveLoadState=${effectiveLoadState}, schoolYear=${schoolYearLabel})`,
-          );
-        } catch (err: any) {
-          logger.warn(`[AtlasSync] Batch delete/archive failed: ${err.message}`);
-        }
-      }
-
-      // Purge previously-archived records with NO grades (cleanup legacy soft-archives).
-      // Exclude rows that have grades — those are preserved for registrar review.
-      try {
-        const purged = await prisma.classAssignment.deleteMany({
-          where: {
-            teacherId: { in: allAtlasMatchedTeacherIds },
-            schoolYear: schoolYearLabel,
-            isActive: false,
-            grades: { none: {} },
-          },
-        });
-        if (purged.count > 0) {
-          console.log(`[AtlasSync] Purged ${purged.count} previously-archived ClassAssignment(s) (no grades)`);
-        }
-      } catch (err: any) {
-        logger.warn(`[AtlasSync] Archive purge failed: ${err.message}`);
-      }
-
-      // Batch reactivation
-      if (reactivateIds.length > 0) {
-        try {
-          await prisma.classAssignment.updateMany({
-            where: { id: { in: reactivateIds } },
-            data: { isActive: true, archivedAt: null, archivedReason: null },
-          });
-        } catch (err: any) {
-          logger.warn(`[AtlasSync] Batch reactivation failed: ${err.message}`);
-        }
-      }
-
-      if (archiveIds.length > 0 || reactivateIds.length > 0 || preservedMissingCount > 0) {
-        console.log(
-          `[AtlasSync] Stale-check: deleted=${deletedCount}, softArchived=${softArchivedCount}, reactivated=${reactivateIds.length}, preserved=${preservedMissingCount}.`,
-        );
-      }
-    }
-
-    // 6.5 Upsert loads from effective endpoint into ClassAssignment
-    // Reuse pre-resolved section data from step 5.2
+    // 6. Upsert loads from effective endpoint into ClassAssignment
+    // Run BEFORE stale-check so desiredAssignmentPairs is fully populated
+    // (includes pairs from newly-created subjects that weren't in subjectByCode at pre-resolve time).
     const allSections = allSectionsPre;
     const sectionByKey = sectionByKeyPre;
 
@@ -567,7 +429,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
               schoolYear: schoolYearLabel,
             },
           },
-          update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null },
+          update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null, successorTeacherId: null },
           create: {
             teacherId: load.smartTeacherId,
             subjectId: subject.id,
@@ -580,6 +442,214 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         created++;
       } catch (err: any) {
         logger.warn({ err: err.message, teacherId: load.smartTeacherId, subjectCode: load.subjectCode, sectionName: load.sectionName }, 'Class assignment upsert failed');
+      }
+    }
+
+    // 6.5 Stale-check: archive assignments not in the effective load
+    // Runs AFTER upserts so desiredAssignmentPairs includes all resolved loads.
+    // Scope: ALL Atlas-matched teachers (not just those with resolved loads this cycle).
+    // When effective load is EMPTY, archive ALL current-year assignments for Atlas-matched teachers.
+    // When POPULATED, archive assignments not in the desired set.
+    if (allAtlasMatchedTeacherIds.length > 0) {
+
+      // EMPTY-load safety guard: require two consecutive EMPTY cycles
+      let proceedWithArchive = true;
+      if (effectiveLoadState === 'EMPTY') {
+        const settingsRow = await prisma.systemSettings.findUnique({
+          where: { id: 'main' },
+          select: { atlasEmptyLoadSeenAt: true },
+        });
+        const seenAt = settingsRow?.atlasEmptyLoadSeenAt;
+        const now = new Date();
+        if (!seenAt) {
+          // First EMPTY observation — defer archiving
+          await prisma.systemSettings.update({
+            where: { id: 'main' },
+            data: { atlasEmptyLoadSeenAt: now },
+          });
+          logger.warn('[AtlasSync] EMPTY teaching load — first observation; archiving deferred until confirmed on next cycle.');
+          await createAuditLog(
+            AuditAction.UPDATE,
+            { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+            'SystemSettings',
+            'SYNC',
+            'Atlas reports EMPTY teaching load — first observation; archiving deferred until confirmed on next cycle.',
+            undefined,
+            AuditSeverity.WARNING,
+          ).catch(() => {});
+          proceedWithArchive = false;
+        } else if (now.getTime() - seenAt.getTime() < 20 * 60 * 1000) {
+          // Same cycle (within 20 min) — defer
+          logger.warn('[AtlasSync] EMPTY load seen again but within 20 min of first observation — deferring.');
+          proceedWithArchive = false;
+        } else {
+          // Second consecutive EMPTY — proceed, then clear flag
+          logger.info('[AtlasSync] EMPTY load confirmed on second cycle — proceeding with mass-archive.');
+          await prisma.systemSettings.update({
+            where: { id: 'main' },
+            data: { atlasEmptyLoadSeenAt: null },
+          });
+        }
+      } else if (effectiveLoadState === 'POPULATED') {
+        // POPULATED clears the EMPTY flag
+        await prisma.systemSettings.update({
+          where: { id: 'main' },
+          data: { atlasEmptyLoadSeenAt: null },
+        }).catch(() => {});
+      }
+
+      // Build subjectId:sectionId → teacherId map from desired pairs for reassignment detection
+      const desiredSubjectSectionToTeacher = new Map<string, string>();
+      for (const pair of desiredAssignmentPairs) {
+        const [tid, sid, secId] = pair.split(':');
+        const ssKey = `${sid}:${secId}`;
+        if (!desiredSubjectSectionToTeacher.has(ssKey)) {
+          desiredSubjectSectionToTeacher.set(ssKey, tid);
+        }
+      }
+
+      const currentAssignments = await prisma.classAssignment.findMany({
+        where: {
+          teacherId: { in: allAtlasMatchedTeacherIds },
+          schoolYear: schoolYearLabel,
+        },
+        select: { id: true, teacherId: true, subjectId: true, sectionId: true, isActive: true, source: true },
+      });
+
+      const archiveIds: string[] = [];
+      const reactivateIds: string[] = [];
+      let preservedMissingCount = 0;
+      // Map: assignmentId → { isReassignment, successorTeacherId }
+      const archiveMeta = new Map<string, { isReassignment: boolean; successorTeacherId: string | null }>();
+
+      for (const assignment of currentAssignments) {
+        // MANUAL assignments are protected from Atlas stale-check
+        if (assignment.source === 'MANUAL') {
+          preservedMissingCount++;
+          continue;
+        }
+
+        const key = `${assignment.teacherId}:${assignment.subjectId}:${assignment.sectionId}`;
+        const shouldBeActive = desiredAssignmentPairs.has(key);
+
+        if (shouldBeActive) {
+          // Assignment is in the effective load — reactivate if it was archived
+          if (!assignment.isActive) {
+            reactivateIds.push(assignment.id);
+          }
+        } else {
+          // Assignment is NOT in the effective load — stale
+          if (!proceedWithArchive) continue;
+
+          // Check for reassignment: same subject+section under a different teacher
+          const ssKey = `${assignment.subjectId}:${assignment.sectionId}`;
+          const successorTeacherId = desiredSubjectSectionToTeacher.get(ssKey) ?? null;
+          const isReassignment = successorTeacherId !== null && successorTeacherId !== assignment.teacherId;
+
+          if (effectiveLoadState === 'EMPTY') {
+            archiveIds.push(assignment.id);
+            archiveMeta.set(assignment.id, { isReassignment, successorTeacherId });
+          } else if (effectiveLoadState === 'POPULATED' && assignment.isActive) {
+            archiveIds.push(assignment.id);
+            archiveMeta.set(assignment.id, { isReassignment, successorTeacherId });
+          } else {
+            preservedMissingCount++;
+          }
+        }
+      }
+
+      // Soft-archive ALL stale assignments (no more hard deletes)
+      let softArchivedCount = 0;
+      if (archiveIds.length > 0) {
+        try {
+          const withGradeCounts = await prisma.classAssignment.findMany({
+            where: { id: { in: archiveIds } },
+            select: { id: true, _count: { select: { grades: true } } },
+          });
+          const gradesMap = new Map(withGradeCounts.map(c => [c.id, c._count.grades]));
+
+          for (const aid of archiveIds) {
+            const meta = archiveMeta.get(aid);
+            const hasGrades = (gradesMap.get(aid) ?? 0) > 0;
+            let reason: string;
+            let successorTid: string | null = null;
+
+            if (meta?.isReassignment) {
+              reason = 'ATLAS_REASSIGNED';
+              successorTid = meta.successorTeacherId;
+            } else if (hasGrades) {
+              reason = 'ATLAS_STALE_WITH_GRADES';
+            } else {
+              reason = 'ATLAS_STALE_NO_GRADES';
+            }
+
+            await prisma.classAssignment.update({
+              where: { id: aid },
+              data: {
+                isActive: false,
+                archivedAt: new Date(),
+                archivedReason: reason,
+                successorTeacherId: successorTid,
+              },
+            });
+          }
+          softArchivedCount = archiveIds.length;
+
+          // Alert admins via audit log with human-readable details
+          try {
+            const archivedAssignments = await prisma.classAssignment.findMany({
+              where: { id: { in: archiveIds } },
+              select: {
+                id: true,
+                archivedReason: true,
+                subject: { select: { name: true, code: true } },
+                section: { select: { name: true, gradeLevel: true } },
+                teacher: { select: { user: { select: { firstName: true, lastName: true } } } },
+              },
+            });
+            const details = archivedAssignments.map(a =>
+              `${a.subject.name} (${a.section.name}) — ${a.teacher.user.firstName} ${a.teacher.user.lastName} [${a.archivedReason}]`
+            ).join('; ');
+            await createAuditLog(
+              AuditAction.UPDATE,
+              { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+              'ClassAssignment',
+              'SYNC',
+              `Atlas sync archived ${archiveIds.length} stale assignment(s): ${details}`,
+              undefined,
+              AuditSeverity.WARNING,
+              undefined,
+              { assignmentIds: archiveIds, schoolYear: schoolYearLabel, effectiveLoadState },
+            );
+          } catch (auditErr: any) {
+            logger.warn(`[AtlasSync] Audit log for soft-archive failed (non-fatal): ${auditErr.message}`);
+          }
+
+          console.log(
+            `[AtlasSync] Soft-archived ${softArchivedCount} stale ClassAssignment(s) ` +
+            `(effectiveLoadState=${effectiveLoadState}, schoolYear=${schoolYearLabel})`,
+          );
+        } catch (err: any) {
+          logger.warn(`[AtlasSync] Batch archive failed: ${err.message}`);
+        }
+      }
+
+      // Batch reactivation — also clear successorTeacherId on reactivation
+      if (reactivateIds.length > 0) {
+        try {
+          await prisma.classAssignment.updateMany({
+            where: { id: { in: reactivateIds } },
+            data: { isActive: true, archivedAt: null, archivedReason: null, successorTeacherId: null },
+          });
+        } catch (err: any) {
+          logger.warn(`[AtlasSync] Batch reactivation failed: ${err.message}`);
+        }
+      }
+
+      if (archiveIds.length > 0 || reactivateIds.length > 0 || preservedMissingCount > 0) {
+        console.log(
+          `[AtlasSync] Stale-check: softArchived=${softArchivedCount}, reactivated=${reactivateIds.length}, preserved=${preservedMissingCount}.`,
+        );
       }
     }
 

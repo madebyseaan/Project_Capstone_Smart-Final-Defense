@@ -64,13 +64,56 @@ export default function registerDashboard(router: Router): void {
           },
         });
 
-        const archivedClassAssignmentsCount = await prisma.classAssignment.count({
+        const archivedAssignments = await prisma.classAssignment.findMany({
           where: {
             teacherId: teacher.id,
             schoolYear: currentSchoolYear,
             isActive: false,
           },
+          select: {
+            id: true, archivedAt: true, archivedReason: true, successorTeacherId: true,
+            subject: { select: { code: true, name: true } },
+            section: { select: { name: true, gradeLevel: true } },
+            _count: { select: { grades: true } },
+          },
         });
+
+        // Resolve successor teacher names
+        const successorIds = [...new Set(archivedAssignments.map(a => a.successorTeacherId).filter(Boolean))] as string[];
+        const successorTeachers = successorIds.length > 0
+          ? await prisma.teacher.findMany({
+              where: { id: { in: successorIds } },
+              include: { user: { select: { firstName: true, lastName: true } } },
+            })
+          : [];
+        const successorNameMap = new Map(successorTeachers.map(t => [t.id, `${t.user.firstName} ${t.user.lastName}`]));
+
+        // Classify archived rows
+        function classifyArchived(reason: string | null): string {
+          if (reason === 'ATLAS_REASSIGNED') return 'TRANSFERRED';
+          if (reason === 'ATLAS_STALE_WITH_GRADES' || reason === 'ATLAS_STALE_NO_GRADES') return 'REMOVED';
+          if (reason === 'Teacher removed from EnrollPro') return 'ENROLLPRO_REMOVED';
+          if (reason === 'Teacher suspended') return 'SUSPENDED';
+          if (reason === 'Manually removed in SMART') return 'ADMIN_REMOVED';
+          if (reason?.startsWith('Year ')) return 'YEAR_ARCHIVE';
+          return 'REMOVED';
+        }
+
+        const archivedClasses = archivedAssignments.map(a => ({
+          id: a.id,
+          kind: classifyArchived(a.archivedReason),
+          subjectName: a.subject.name,
+          subjectCode: a.subject.code,
+          sectionName: a.section.name,
+          gradeLevel: a.section.gradeLevel,
+          archivedAt: a.archivedAt?.toISOString() ?? null,
+          archivedReason: a.archivedReason,
+          hasGrades: a._count.grades > 0,
+          successorTeacherName: a.successorTeacherId ? successorNameMap.get(a.successorTeacherId) ?? null : null,
+        }));
+
+        const removedCount = archivedClasses.filter(a => a.kind !== 'TRANSFERRED' && a.kind !== 'YEAR_ARCHIVE').length;
+        const transferredCount = archivedClasses.filter(a => a.kind === 'TRANSFERRED').length;
 
         const activeTeachingAssignments = classAssignments.filter(
           (ca: ClassAssignmentWithRelations) => !isHomeroomGuidanceSubjectCode(ca.subject.code) && ca.section._count.enrollments > 0
@@ -119,10 +162,13 @@ export default function registerDashboard(router: Router): void {
             totalClasses: totalTeachingClasses,
             totalStudents,
             subjects: [...new Set(classAssignments.map((ca: ClassAssignmentWithRelations) => ca.subject.name))],
-            archivedClassesCount: archivedClassAssignmentsCount,
+            archivedClassesCount: archivedAssignments.length,
           },
           classAssignments,
-          archivedClassesCount: archivedClassAssignmentsCount,
+          archivedClassesCount: archivedAssignments.length,
+          removedCount,
+          transferredCount,
+          archivedClasses,
           currentTerm,
           gradeDeadline,
         });
@@ -358,6 +404,47 @@ export default function registerDashboard(router: Router): void {
 
         const gradeDeadline = await resolveTermDeadline(teacher.id, currentSY);
 
+        // Compute classified archived data for dashboard-stats
+        const archivedAssignmentsStats = await prisma.classAssignment.findMany({
+          where: { teacherId: teacher.id, schoolYear: currentSY, isActive: false },
+          select: {
+            id: true, archivedAt: true, archivedReason: true, successorTeacherId: true,
+            subject: { select: { code: true, name: true } },
+            section: { select: { name: true, gradeLevel: true } },
+            _count: { select: { grades: true } },
+          },
+        });
+        const successorIdsStats = [...new Set(archivedAssignmentsStats.map(a => a.successorTeacherId).filter(Boolean))] as string[];
+        const successorTeachersStats = successorIdsStats.length > 0
+          ? await prisma.teacher.findMany({ where: { id: { in: successorIdsStats } }, include: { user: { select: { firstName: true, lastName: true } } } })
+          : [];
+        const successorNameMapStats = new Map(successorTeachersStats.map(t => [t.id, `${t.user.firstName} ${t.user.lastName}`]));
+
+        function classifyArchivedStats(reason: string | null): string {
+          if (reason === 'ATLAS_REASSIGNED') return 'TRANSFERRED';
+          if (reason === 'ATLAS_STALE_WITH_GRADES' || reason === 'ATLAS_STALE_NO_GRADES') return 'REMOVED';
+          if (reason === 'Teacher removed from EnrollPro') return 'ENROLLPRO_REMOVED';
+          if (reason === 'Teacher suspended') return 'SUSPENDED';
+          if (reason === 'Manually removed in SMART') return 'ADMIN_REMOVED';
+          if (reason?.startsWith('Year ')) return 'YEAR_ARCHIVE';
+          return 'REMOVED';
+        }
+
+        const archivedClassesStats = archivedAssignmentsStats.map(a => ({
+          id: a.id,
+          kind: classifyArchivedStats(a.archivedReason),
+          subjectName: a.subject.name,
+          subjectCode: a.subject.code,
+          sectionName: a.section.name,
+          gradeLevel: a.section.gradeLevel,
+          archivedAt: a.archivedAt?.toISOString() ?? null,
+          archivedReason: a.archivedReason,
+          hasGrades: a._count.grades > 0,
+          successorTeacherName: a.successorTeacherId ? successorNameMapStats.get(a.successorTeacherId) ?? null : null,
+        }));
+        const removedCountStats = archivedClassesStats.filter(a => a.kind !== 'TRANSFERRED' && a.kind !== 'YEAR_ARCHIVE').length;
+        const transferredCountStats = archivedClassesStats.filter(a => a.kind === 'TRANSFERRED').length;
+
         // Filter out classes with 0 students (not yet enrolled)
         const activeClassStats = classStats.filter((cs: any) => cs.totalStudents > 0);
 
@@ -372,13 +459,10 @@ export default function registerDashboard(router: Router): void {
             studentsAtRisk: allStudentsAtRisk,
             studentsAtRiskCount: allStudentsAtRisk.length,
           },
-          archivedClassesCount: await prisma.classAssignment.count({
-            where: {
-              teacherId: teacher.id,
-              schoolYear: currentSY,
-              isActive: false,
-            },
-          }),
+          archivedClassesCount: archivedAssignmentsStats.length,
+          removedCount: removedCountStats,
+          transferredCount: transferredCountStats,
+          archivedClasses: archivedClassesStats,
           gradeDeadline,
         });
       } catch (error) {

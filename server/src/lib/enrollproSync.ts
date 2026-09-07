@@ -354,7 +354,7 @@ export async function runEnrollProSync() {
               isActive: false,
               archivedReason: 'Teacher removed from EnrollPro',
             },
-            data: { isActive: true, archivedAt: null, archivedReason: null },
+            data: { isActive: true, archivedAt: null, archivedReason: null, successorTeacherId: null },
           });
           logger.info(`[EnrollProSync] Restored ClassAssignments for ${reactivatedTeacherIds.length} reactivated teachers`);
         }

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { gradesApi, type ClassRecord, type ClassAssignment, type ScoreItem } from "@/lib/api";
+import { gradesApi, type ClassRecord, type ClassAssignment, type ScoreItem, type InheritedGrade, type InheritedFromTeacher } from "@/lib/api";
 import type { TransmutationRow } from "@/lib/gradeMath";
 
 interface ClassRecordResponse {
@@ -26,6 +26,9 @@ interface ClassRecordResponse {
     yearLocked: boolean;
     termLocks: { T1: boolean; T2: boolean; T3: boolean };
   };
+  inheritedGrades?: InheritedGrade[];
+  inheritedFromTeachers?: InheritedFromTeacher[];
+  successorTeacherName?: string | null;
 }
 
 export function useClassRecordQuery(classAssignmentId: string | undefined, selectedTerm: string) {

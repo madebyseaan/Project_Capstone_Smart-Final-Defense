@@ -217,6 +217,9 @@ export interface ClassAssignment {
   isActive?: boolean;
   archivedAt?: string | null;
   archivedReason?: string | null;
+  successorTeacherId?: string | null;
+  source?: string;
+  successorTeacherName?: string | null;
   subject: Subject;
   section: Section;
   effectiveWeights?: {
@@ -270,6 +273,32 @@ export interface GradeDeadlineInfo {
   incompleteClasses: { subjectName: string; sectionName: string; gradedCount: number; totalStudents: number }[];
 }
 
+export interface ArchivedClassInfo {
+  id: string;
+  kind: 'TRANSFERRED' | 'REMOVED' | 'ENROLLPRO_REMOVED' | 'SUSPENDED' | 'ADMIN_REMOVED' | 'YEAR_ARCHIVE';
+  subjectName: string;
+  subjectCode: string;
+  sectionName: string;
+  gradeLevel: string;
+  archivedAt: string | null;
+  archivedReason: string | null;
+  hasGrades: boolean;
+  successorTeacherName: string | null;
+}
+
+export interface InheritedGrade {
+  studentId: string;
+  term: string;
+  quarterlyGrade: number | null;
+  inheritedFrom: string;
+  classAssignmentId: string;
+}
+
+export interface InheritedFromTeacher {
+  name: string;
+  termsCovered: string[];
+}
+
 // Auth API
 export const authApi = {
   login: (email: string, password: string) =>
@@ -295,6 +324,9 @@ export const gradesApi = {
       };
       classAssignments: ClassAssignment[];
       archivedClassesCount?: number;
+      removedCount?: number;
+      transferredCount?: number;
+      archivedClasses?: ArchivedClassInfo[];
       currentTerm: string;
       gradeDeadline?: GradeDeadlineInfo | null;
     }>("/grades/dashboard"),
@@ -324,6 +356,9 @@ export const gradesApi = {
         studentsAtRiskCount: number;
       };
       archivedClassesCount?: number;
+      removedCount?: number;
+      transferredCount?: number;
+      archivedClasses?: ArchivedClassInfo[];
       gradeDeadline?: GradeDeadlineInfo | null;
     }>("/grades/dashboard-stats"),
 
@@ -354,6 +389,9 @@ export const gradesApi = {
         yearLocked: boolean;
         termLocks: { T1: boolean; T2: boolean; T3: boolean };
       };
+      inheritedGrades?: InheritedGrade[];
+      inheritedFromTeachers?: InheritedFromTeacher[];
+      successorTeacherName?: string | null;
     }>(`/grades/class-record/${classAssignmentId}`, {
       params: term ? { term } : {},
     }),
@@ -1519,6 +1557,9 @@ export const adminApi = {
 
   deleteClassAssignment: (id: string) =>
     api.delete<{ message: string }>(`/admin/class-assignments/${id}`),
+
+  restoreClassAssignment: (id: string) =>
+    api.post<any>(`/admin/class-assignments/${id}/restore`),
 
   // ─── Transmutation Table ─────────────────────────────────────────────────
   getTransmutationTable: () =>
