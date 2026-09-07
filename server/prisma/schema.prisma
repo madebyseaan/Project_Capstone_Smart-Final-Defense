@@ -453,6 +453,11 @@ model SystemSettings {
 
   // Atlas EMPTY-load safety: tracks when an EMPTY load was first observed
   atlasEmptyLoadSeenAt     DateTime?
+
+  // Atlas applied-version tracking (idempotency per contract acceptance #3)
+  atlasAppliedVersion      Int?        // Last POPULATED version successfully applied
+  atlasAppliedScope        String?     // "{schoolId}:{schoolYearId}" — scope of last applied version
+  atlasAppliedAt           DateTime?   // When the version was last applied
 }
 
 model GradingConfig {

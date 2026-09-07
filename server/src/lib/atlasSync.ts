@@ -134,47 +134,19 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     }
 
     // 3.1 Build EnrollPro sectionId → section details map for ATLAS assignments
+    // Contract: scoped sections only — unscoped fallback removed from ownership path.
+    // If no scoped sections exist, the effective load rows will be quarantined (no guess).
     let epSectionById = new Map<number, any>();
-    const epSectionByName = new Map<string, any>();
     try {
-      let epSections = await getAllIntegrationV1Sections(enrollProSchoolYearId);
-      let unscopedSections: any[] = [];
+      const epSections = await getAllIntegrationV1Sections(enrollProSchoolYearId);
+      epSectionById = new Map(epSections.map((s: any) => [Number(s.id), s]));
 
       if (epSections.length === 0) {
-        epSections = await getAllIntegrationV1Sections();
         console.warn(
-          `[AtlasSync] No EnrollPro sections for schoolYearId=${enrollProSchoolYearId}; using unscoped sections fallback (${epSections.length})`,
+          `[AtlasSync] No EnrollPro sections for schoolYearId=${enrollProSchoolYearId} — effective load rows without scoped section match will be quarantined`,
         );
       } else {
-        // Merge unscoped sections to reduce false misses when ATLAS section IDs
-        // reference records not included in the scoped EnrollPro response.
-        unscopedSections = await getAllIntegrationV1Sections();
-      }
-
-      const mergedSections = new Map<number, any>();
-      for (const s of epSections) {
-        mergedSections.set(Number(s.id), s);
-      }
-      for (const s of unscopedSections) {
-        if (!mergedSections.has(Number(s.id))) {
-          mergedSections.set(Number(s.id), s);
-        }
-      }
-
-      epSectionById = mergedSections;
-
-      // Build name-based lookup for fallback (ATLAS and EP use different integer IDs)
-      for (const [, s] of epSectionById) {
-        if (s?.name) epSectionByName.set(s.name.trim().toLowerCase(), s);
-      }
-
-      if (unscopedSections.length > 0) {
-        const mergedExtra = Math.max(0, epSectionById.size - epSections.length);
-        if (mergedExtra > 0) {
-          console.log(
-            `[AtlasSync] EnrollPro section merge: scoped=${epSections.length}, unscoped=${unscopedSections.length}, mergedExtra=${mergedExtra}`,
-          );
-        }
+        logger.debug(`[AtlasSync] Loaded ${epSections.length} scoped EnrollPro sections for ownership mapping`);
       }
     } catch (err: any) {
       errors.push(`EnrollPro sections lookup failed: ${err.message}`);
@@ -281,7 +253,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const desiredAssignmentPairs = new Set<string>();
     // ALL Atlas-matched teacher IDs (for stale-check scope — not just those with resolved loads)
     const allAtlasMatchedTeacherIds = Array.from(atlasIdToSmartTeacherId.values());
-    let effectiveLoadState: 'EMPTY' | 'POPULATED' | 'UNAVAILABLE' = 'UNAVAILABLE';
+    let effectiveLoadState: 'EMPTY' | 'POPULATED' | 'UNAVAILABLE' | 'REJECTED' = 'UNAVAILABLE';
 
     // Build ATLAS subjectId → code lookup from already-fetched atlasSubjects
     const atlasSubjectIdToCode = new Map<number, string>();
@@ -302,9 +274,10 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     const fetchResults: FacultyAssignmentResult[] = [];
 
-    // 5.1 Fetch effective annual teaching load (single call, no cross-year fallback)
-    const effectiveLoad = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
-    if (effectiveLoad) {
+    // 5.1 Fetch effective annual teaching load (single call, validated per contract)
+    const effectiveResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+    if (effectiveResult.status === 'ok') {
+      const effectiveLoad = effectiveResult.data;
       // Cache the response for consumption by teacherSync and teacherDashboardComposer
       setCachedEffectiveTeachingLoad(ATLAS_SCHOOL_ID, atlasSchoolYearId, effectiveLoad);
       effectiveLoadState = effectiveLoad.source.state;
@@ -339,9 +312,36 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           }
         }
       }
+    } else if (effectiveResult.status === 'rejected') {
+      // Contract: fail closed — keep prior scoped version, do not apply current ownership.
+      errors.push(`ATLAS payload rejected: ${effectiveResult.reason}`);
+      logger.warn(`[AtlasSync] Effective teaching load rejected: ${effectiveResult.reason}`);
+      await createAuditLog(
+        AuditAction.UPDATE,
+        { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+        'ClassAssignment',
+        'SYNC',
+        `ATLAS payload rejected — keeping prior version: ${effectiveResult.reason}`,
+        undefined,
+        AuditSeverity.WARNING,
+      ).catch(() => {});
+    } else if (effectiveResult.status === 'auth') {
+      // Contract: fail closed on 401/403; surface integration alert
+      errors.push('ATLAS authentication failed (401/403) — token rejected or expired');
+      logger.error('[AtlasSync] ATLAS auth failure — integration alert');
+      await createAuditLog(
+        AuditAction.UPDATE,
+        { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+        'ClassAssignment',
+        'SYNC',
+        'ATLAS authentication failed (401/403) — token rejected or expired. No assignment changes applied.',
+        undefined,
+        AuditSeverity.CRITICAL,
+      ).catch(() => {});
     } else {
+      // unreachable
       errors.push('Failed to fetch effective teaching load from ATLAS');
-      logger.warn('[AtlasSync] Effective teaching load fetch failed');
+      logger.warn('[AtlasSync] Effective teaching load fetch failed (unreachable)');
     }
 
     // 5.2 Fetch published schedules per faculty (for ScheduleEntry records)
@@ -395,6 +395,28 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const sectionByKey = sectionByKeyPre;
 
     let hgLoadsSkipped = 0;
+
+    // Idempotency guard: check if this POPULATED version was already applied
+    const currentScope = `${ATLAS_SCHOOL_ID}:${atlasSchoolYearId}`;
+    let skipUpserts = false;
+    if (effectiveLoadState === 'POPULATED' && effectiveResult.status === 'ok') {
+      try {
+        const settingsRow = await prisma.systemSettings.findUnique({
+          where: { id: 'main' },
+          select: { atlasAppliedVersion: true, atlasAppliedScope: true },
+        });
+        if (
+          settingsRow?.atlasAppliedVersion === effectiveResult.data.source.version &&
+          settingsRow?.atlasAppliedScope === currentScope
+        ) {
+          skipUpserts = true;
+          logger.info(
+            `[AtlasSync] Version ${settingsRow.atlasAppliedVersion} already applied for scope ${currentScope} — skipping upserts (stale-check still runs)`,
+          );
+        }
+      } catch { /* non-critical — proceed with upserts */ }
+    }
+
     for (const load of loads) {
       const section = sectionByKey.get(`${load.sectionName.trim()}:${load.gradeLevel}`);
       if (!section) continue;
@@ -419,29 +441,47 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       const desiredKey = `${load.smartTeacherId}:${subject.id}:${section.id}`;
       desiredAssignmentPairs.add(desiredKey);
 
-      try {
-        await prisma.classAssignment.upsert({
-          where: {
-            teacherId_subjectId_sectionId_schoolYear: {
+      if (!skipUpserts) {
+        try {
+          await prisma.classAssignment.upsert({
+            where: {
+              teacherId_subjectId_sectionId_schoolYear: {
+                teacherId: load.smartTeacherId,
+                subjectId: subject.id,
+                sectionId: section.id,
+                schoolYear: schoolYearLabel,
+              },
+            },
+            update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null, successorTeacherId: null },
+            create: {
               teacherId: load.smartTeacherId,
               subjectId: subject.id,
               sectionId: section.id,
               schoolYear: schoolYearLabel,
+              teachingMinutes,
+              isActive: true,
             },
-          },
-          update: { teachingMinutes, isActive: true, archivedAt: null, archivedReason: null, successorTeacherId: null },
-          create: {
-            teacherId: load.smartTeacherId,
-            subjectId: subject.id,
-            sectionId: section.id,
-            schoolYear: schoolYearLabel,
-            teachingMinutes,
-            isActive: true,
+          });
+          created++;
+        } catch (err: any) {
+          logger.warn({ err: err.message, teacherId: load.smartTeacherId, subjectCode: load.subjectCode, sectionName: load.sectionName }, 'Class assignment upsert failed');
+        }
+      }
+    }
+
+    // Persist applied version for idempotency (contract acceptance #3)
+    if (effectiveLoadState === 'POPULATED' && effectiveResult.status === 'ok' && !skipUpserts) {
+      try {
+        await prisma.systemSettings.update({
+          where: { id: 'main' },
+          data: {
+            atlasAppliedVersion: effectiveResult.data.source.version,
+            atlasAppliedScope: currentScope,
+            atlasAppliedAt: new Date(),
           },
         });
-        created++;
       } catch (err: any) {
-        logger.warn({ err: err.message, teacherId: load.smartTeacherId, subjectCode: load.subjectCode, sectionName: load.sectionName }, 'Class assignment upsert failed');
+        logger.warn(`[AtlasSync] Failed to persist applied version: ${err.message}`);
       }
     }
 
@@ -654,7 +694,15 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     }
 
     // 6.6 Persist published schedule entries as ScheduleEntry records
+    // Published schedule is timetable truth (dates/times/rooms) — NOT ownership.
+    // Name-based section fallback is acceptable here (not an ownership path).
     {
+      // Build name-based section lookup for schedule resolution (local to this block)
+      const epSectionByName = new Map<string, any>();
+      for (const [, s] of epSectionById) {
+        if (s?.name) epSectionByName.set(s.name.trim().toLowerCase(), s);
+      }
+
       const allScheduleEntries: Array<{
         teacherId: string; subjectCode: string; sectionName: string;
         gradeLevel: GradeLevel; day: string; startTime: string; endTime: string; roomId: number | null;

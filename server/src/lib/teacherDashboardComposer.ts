@@ -136,7 +136,11 @@ async function fetchAtlasAssignments(atlasFacultyId: number, atlasToken: string)
     // Read from cached effective teaching load (ATLAS contract-compliant)
     let effectiveLoad = getCachedEffectiveTeachingLoad(ATLAS_SCHOOL_ID, atlasSchoolYearId) ?? undefined;
     if (!effectiveLoad) {
-      effectiveLoad = (await fetchEffectiveTeachingLoad(atlasSchoolYearId)) ?? undefined;
+      // Cache miss — fetch live with validation
+      const result = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+      if (result.status === 'ok') {
+        effectiveLoad = result.data;
+      }
     }
 
     if (!effectiveLoad || effectiveLoad.source.state === 'EMPTY') {

@@ -14,10 +14,33 @@
 import http from 'http';
 import https from 'https';
 import { getAtlasSchoolId, getAtlasSchoolYearId } from '../../config/schoolEnv';
+import {
+  atlasEffectiveTeachingLoadSchema,
+  validateAtlasScope,
+  type AtlasEffectivePayload,
+  type AtlasScopeConstraints,
+} from '../../schemas/atlas';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
+
+// ---------------------------------------------------------------------------
+// Custom error class for typed HTTP failures
+// ---------------------------------------------------------------------------
+
+export class HttpError extends Error {
+  statusCode: number;
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.name = 'HttpError';
+    this.statusCode = statusCode;
+  }
+
+  get isAuth(): boolean {
+    return this.statusCode === 401 || this.statusCode === 403;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Core HTTP helpers
@@ -73,7 +96,7 @@ function request(
             return;
           }
           if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(`HTTP ${res.statusCode} ${url}: ${body.slice(0, 300)}`));
+            reject(new HttpError(res.statusCode, `HTTP ${res.statusCode} ${url}: ${body.slice(0, 300)}`));
             return;
           }
           try {
@@ -277,19 +300,46 @@ export interface AtlasEffectiveTeachingLoadResponse {
  * This is the ONLY correct endpoint for integration consumers per the ATLAS
  * Annual Teaching Load Contract. Returns EMPTY state when no assignments exist
  * for the requested year — this is valid and must not be treated as an error.
+ *
+ * Validates the response payload against the contract schema and scope constraints.
+ * Returns a discriminated result to let callers handle each failure mode explicitly.
  */
+export type EffectiveLoadResult =
+  | { status: 'ok'; data: AtlasEffectiveTeachingLoadResponse }
+  | { status: 'rejected'; reason: string }
+  | { status: 'unreachable' }
+  | { status: 'auth' };
+
 export async function fetchEffectiveTeachingLoad(
   schoolYearId: number,
-): Promise<AtlasEffectiveTeachingLoadResponse | null> {
+): Promise<EffectiveLoadResult> {
+  let raw: unknown;
   try {
-    const data = await atlasGet(
+    raw = await atlasGet(
       `/faculty-assignments/effective?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${schoolYearId}`,
     );
-    if (data && data.source) return data as AtlasEffectiveTeachingLoadResponse;
-    return null;
-  } catch {
-    return null;
+  } catch (err: unknown) {
+    if (err instanceof HttpError && err.isAuth) return { status: 'auth' };
+    return { status: 'unreachable' };
   }
+
+  if (raw == null) return { status: 'unreachable' };
+
+  // Zod structural validation
+  const parsed = atlasEffectiveTeachingLoadSchema.safeParse(raw);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ');
+    return { status: 'rejected', reason: `Schema validation failed: ${issues}` };
+  }
+
+  // Scope validation (school, year, active flag)
+  const constraints: AtlasScopeConstraints = { schoolId: ATLAS_SCHOOL_ID, schoolYearId };
+  const scopeError = validateAtlasScope(parsed.data, constraints);
+  if (scopeError) {
+    return { status: 'rejected', reason: scopeError };
+  }
+
+  return { status: 'ok', data: parsed.data as AtlasEffectiveTeachingLoadResponse };
 }
 
 export { ATLAS_BASE, ATLAS_SCHOOL_ID, DEFAULT_ATLAS_SCHOOL_YEAR_ID };
