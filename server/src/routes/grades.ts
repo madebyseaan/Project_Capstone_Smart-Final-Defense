@@ -2,12 +2,14 @@ import { Router } from "express";
 import registerClasses from "./grades-sub/classes";
 import registerDashboard from "./grades-sub/dashboard";
 import registerEditRequests from "./grades-sub/editRequests";
+import registerAims from "./grades-sub/aims";
 
 const router = Router();
 
 registerClasses(router);
 registerDashboard(router);
 registerEditRequests(router);
+registerAims(router);
 
 // Re-export named symbols so any existing imports from "grades" still work
 export {

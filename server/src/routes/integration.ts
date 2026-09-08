@@ -11,8 +11,6 @@ import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { authenticateToken, AuthRequest, authorizeRoles } from '../middleware/auth';
-import { validate } from '../middleware/validate';
-import { aimsAuthSchema } from '../schemas/integration';
 import {
   getEnrollProTeachers,
   getEnrollProSections,
@@ -20,15 +18,7 @@ import {
   checkEnrollProHealth,
   resolveEnrollProSchoolYear,
 } from '../lib/enrollproClient';
-import {
-  aimsLogin,
-  aimsRefreshToken,
-  getAimsCourses,
-  getAimsCourseStudents,
-  getAimsGradebook,
-  getAimsTeacherDashboard,
-  checkAimsHealth,
-} from '../lib/aimsClient';
+import { checkAimsHealth } from '../lib/aimsClient';
 import { triggerImmediateSync } from '../lib/syncCoordinator';
 import { addSyncSseClient, removeSyncSseClient } from '../lib/sseManager';
 import { getActiveSchoolYearLabel } from '../lib/schoolYearResolver';
@@ -459,46 +449,6 @@ router.get(
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: 'Atlas Load Error' });
-    }
-  }
-);
-
-// ---------------------------------------------------------------------------
-// AIMS — Auth & Gradebook
-// ---------------------------------------------------------------------------
-
-router.post(
-  '/aims/auth',
-  authenticateToken,
-  authorizeRoles('TEACHER'),
-  validate(aimsAuthSchema),
-  async (req: AuthRequest, res: Response): Promise<void> => {
-    const { aimsPassword } = req.body as { aimsPassword?: string };
-    const user = await prisma.user.findUnique({ where: { id: req.user?.id } });
-    if (!user?.email || !aimsPassword) return;
-
-    try {
-      const result = await aimsLogin(user.email, aimsPassword);
-      res.json({ success: true, data: result });
-    } catch (err: any) {
-      res.status(502).json({ success: false, error: 'AIMS Error' });
-    }
-  }
-);
-
-router.get(
-  '/aims/gradebook/:courseId',
-  authenticateToken,
-  authorizeRoles('TEACHER'),
-  async (req: AuthRequest, res: Response): Promise<void> => {
-    const aimsToken = req.headers['x-aims-token'] as string;
-    if (!aimsToken) return;
-
-    try {
-      const gradebook = await getAimsGradebook(req.params.courseId as string, aimsToken);
-      res.json({ success: true, data: gradebook });
-    } catch (err: any) {
-      res.status(502).json({ success: false, error: 'AIMS Gradebook Error' });
     }
   }
 );

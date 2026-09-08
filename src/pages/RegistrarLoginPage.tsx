@@ -171,12 +171,12 @@ export default function RegistrarLoginPage() {
           <div
             className="absolute inset-0"
             style={{
-              background: 'hsl(var(--sidebar-background)/0.5)',
+              background: 'rgba(var(--theme-primary-rgb), 0.04)',
             }}
           />
 
           <svg
-            className="absolute inset-0 h-full w-full opacity-[0.03]"
+            className="absolute inset-0 h-full w-full opacity-[0.06]"
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
@@ -188,46 +188,10 @@ export default function RegistrarLoginPage() {
                 height="80"
                 patternUnits="userSpaceOnUse"
               >
-                <rect
-                  x="2"
-                  y="2"
-                  width="36"
-                  height="36"
-                  rx="2"
-                  fill="none"
-                  stroke="var(--theme-primary)"
-                  strokeWidth="1.5"
-                />
-                <rect
-                  x="42"
-                  y="2"
-                  width="36"
-                  height="36"
-                  rx="2"
-                  fill="none"
-                  stroke="var(--theme-primary)"
-                  strokeWidth="1.5"
-                />
-                <rect
-                  x="2"
-                  y="42"
-                  width="36"
-                  height="36"
-                  rx="2"
-                  fill="none"
-                  stroke="var(--theme-primary)"
-                  strokeWidth="1.5"
-                />
-                <rect
-                  x="42"
-                  y="42"
-                  width="36"
-                  height="36"
-                  rx="2"
-                  fill="none"
-                  stroke="var(--theme-primary)"
-                  strokeWidth="1.5"
-                />
+                <rect x="2" y="2" width="36" height="36" rx="2" fill="none" stroke="var(--theme-primary)" strokeWidth="1.5" />
+                <rect x="42" y="2" width="36" height="36" rx="2" fill="none" stroke="var(--theme-primary)" strokeWidth="1.5" />
+                <rect x="2" y="42" width="36" height="36" rx="2" fill="none" stroke="var(--theme-primary)" strokeWidth="1.5" />
+                <rect x="42" y="42" width="36" height="36" rx="2" fill="none" stroke="var(--theme-primary)" strokeWidth="1.5" />
               </pattern>
             </defs>
             <rect width="100%" height="100%" fill="url(#login-pixel-grid)" />
@@ -236,7 +200,7 @@ export default function RegistrarLoginPage() {
           <div
             className="absolute inset-0"
             style={{
-              background: 'rgba(var(--theme-primary-rgb), 0.03)',
+              background: 'radial-gradient(circle at center, rgba(var(--theme-primary-rgb), 0.05) 0%, transparent 70%)',
             }}
           />
         </div>

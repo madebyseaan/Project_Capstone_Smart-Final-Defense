@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   Sparkles,
@@ -18,6 +18,7 @@ import {
   MousePointerClick,
   Edit3,
   HelpCircle,
+  CloudDownload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -197,6 +198,22 @@ const TOUR_STEPS: TourStep[] = [
     },
   },
   {
+    id: "aims-columns",
+    targetId: "tutorial-aims-group",
+    title: "AIMS Reference Columns (Read-Only)",
+    category: "External Data",
+    icon: CloudDownload,
+    badgeColor: "bg-cyan-50 text-cyan-700 border-cyan-200",
+    content:
+      "Cyan columns show learner scores synced from the AIMS LMS. Read-only. Use Import to copy them into your ledger.",
+    devTip:
+      "AIMS columns come from the background AIMS sync and are never editable here.",
+    action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
+      setShowAssessmentDetails(false);
+      setSelectedColumn(null);
+    },
+  },
+  {
     id: "cell-example",
     targetId: "tutorial-cell-example",
     title: "How Grading Works",
@@ -244,6 +261,7 @@ interface ClassRecordTourProps {
   onClose: () => void;
   setShowAssessmentDetails: (show: boolean) => void;
   setSelectedColumn: (col: { type: "WW" | "PT" | "QA"; number: number } | null) => void;
+  hasAimsColumns?: boolean;
 }
 
 export function ClassRecordTour({
@@ -251,10 +269,17 @@ export function ClassRecordTour({
   onClose,
   setShowAssessmentDetails,
   setSelectedColumn,
+  hasAimsColumns = false,
 }: ClassRecordTourProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
+
+  // Filter out AIMS step when no AIMS columns exist
+  const filteredSteps = useMemo(
+    () => hasAimsColumns ? TOUR_STEPS : TOUR_STEPS.filter(s => s.id !== "aims-columns"),
+    [hasAimsColumns],
+  );
 
   // Reset to step 1 when tour closes & manage scroll lock
   useEffect(() => {
@@ -275,7 +300,7 @@ export function ClassRecordTour({
     };
   }, [isOpen]);
 
-  const step = TOUR_STEPS[currentStepIndex];
+  const step = filteredSteps[currentStepIndex];
 
   // Execute step-specific action (e.g. open panel or quick editor)
   useEffect(() => {
@@ -355,7 +380,7 @@ export function ClassRecordTour({
       if (e.key === "Escape") {
         onClose();
       } else if (e.key === "ArrowRight" || e.key === "Enter") {
-        if (currentStepIndex < TOUR_STEPS.length - 1) {
+        if (currentStepIndex < filteredSteps.length - 1) {
           setCurrentStepIndex((prev) => prev + 1);
         } else {
           onClose();
@@ -375,7 +400,7 @@ export function ClassRecordTour({
 
   const Icon = step.icon;
   const isFirst = currentStepIndex === 0;
-  const isLast = currentStepIndex === TOUR_STEPS.length - 1;
+  const isLast = currentStepIndex === filteredSteps.length - 1;
 
   // Calculate smart tooltip modal position with zero overlap
   let modalTop: number | undefined = undefined;
@@ -637,7 +662,7 @@ export function ClassRecordTour({
                   SMART Class Record Guide
                 </p>
                 <p className="text-[10px] font-bold text-slate-300">
-                  Step {currentStepIndex + 1} of {TOUR_STEPS.length} • {step.category}
+                  Step {currentStepIndex + 1} of {filteredSteps.length} • {step.category}
                 </p>
               </div>
             </div>
@@ -656,7 +681,7 @@ export function ClassRecordTour({
             <div
               className="bg-amber-400 h-1 transition-all duration-300"
               style={{
-                width: `${((currentStepIndex + 1) / TOUR_STEPS.length) * 100}%`,
+                width: `${((currentStepIndex + 1) / filteredSteps.length) * 100}%`,
               }}
             />
           </div>
@@ -728,7 +753,7 @@ export function ClassRecordTour({
 
             {/* Step Navigation Dots */}
             <div className="flex items-center justify-center gap-1 pt-0.5">
-              {TOUR_STEPS.map((s, idx) => (
+              {filteredSteps.map((s, idx) => (
                 <button
                   key={s.id}
                   onClick={() => setCurrentStepIndex(idx)}

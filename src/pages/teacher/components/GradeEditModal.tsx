@@ -1,7 +1,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import type { ClassRecord } from "@/lib/api";
+import type { ClassRecord, AimsRowScore } from "@/lib/api";
 
 interface AssessmentTaskMeta {
   description: string;
@@ -30,6 +30,10 @@ interface GradeEditModalProps {
   onMobileScoreCommit: (record: ClassRecord, category: "WW" | "PT" | "QA", index: number) => void;
   onApplyColumnMeta: (category: "WW" | "PT" | "QA", index: number, description: string, date: string) => void;
   isViewOnly?: boolean;
+  /** R3-4: Optional AIMS scores for this student — renders read-only block above tabs */
+  aimsScores?: Record<string, AimsRowScore>;
+  /** R4-2c: Assessment titles for friendly display */
+  aimsAssessmentTitles?: Record<string, string>;
 }
 
 export function GradeEditModal({
@@ -54,6 +58,8 @@ export function GradeEditModal({
   onMobileScoreCommit,
   onApplyColumnMeta,
   isViewOnly = false,
+  aimsScores,
+  aimsAssessmentTitles,
 }: GradeEditModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,6 +75,23 @@ export function GradeEditModal({
             </div>
 
             <>
+              {/* R3-4: Read-only AIMS block (when scores exist for this student) */}
+              {aimsScores && Object.keys(aimsScores).length > 0 && (
+                <div className="px-5 pt-4">
+                  <div className="rounded-xl bg-[var(--ledger-aims-bg)] border border-[var(--ledger-aims)]/20 p-3 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--ledger-aims)]">AIMS (Read-Only)</p>
+                    <div className="space-y-1">
+                      {Object.entries(aimsScores).map(([assessmentId, score]) => (
+                        <div key={assessmentId} className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-foreground truncate max-w-[60%]">{aimsAssessmentTitles?.[assessmentId] ?? assessmentId}</span>
+                          <span className="font-bold text-[var(--ledger-aims)]">{score.pointsEarned}/{score.maxPoints}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="px-5 pt-4">
                 <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-100 p-1">
                   {(["WW", "PT", "QA"] as const).map((tab) => {

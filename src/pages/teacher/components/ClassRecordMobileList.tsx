@@ -18,6 +18,7 @@ interface ClassRecordMobileListProps {
   getDisplayFinalGrade: (record: ClassRecord) => number | null;
   getGradeColor: (grade: number | null) => string;
   isViewOnly?: boolean;
+  aimsByStudent?: Record<string, Record<string, { pointsEarned: number; maxPoints: number; score: number }>>;
 }
 
 const terms = ["T1", "T2", "T3"] as const;
@@ -30,6 +31,7 @@ export function ClassRecordMobileList({
   getDisplayFinalGrade,
   getGradeColor,
   isViewOnly = false,
+  aimsByStudent = {},
 }: ClassRecordMobileListProps) {
   return (
     <Card className="lg:hidden border-0 shadow-lg shadow-slate-200/40 rounded-[2rem] overflow-hidden bg-white">
@@ -109,6 +111,22 @@ export function ClassRecordMobileList({
                           {qaScore !== null ? (qaMax ? `${qaScore}/${qaMax}` : String(qaScore)) : "—"}
                         </span>
                       </div>
+                      {/* R3-3: AIMS read-only chip */}
+                      {(() => {
+                        const aimsScores = aimsByStudent[record.student.id];
+                        if (!aimsScores || Object.keys(aimsScores).length === 0) return null;
+                        return (
+                          <>
+                            <div className="w-px h-3 bg-slate-200" />
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-[var(--ledger-aims)] uppercase tracking-widest">AIMS</span>
+                              <span className="text-[10px] font-bold text-[var(--ledger-aims)]">
+                                {Object.keys(aimsScores).length} item(s)
+                              </span>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

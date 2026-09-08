@@ -459,7 +459,7 @@ export async function runEnrollProSync() {
           guardianContact: true, religion: true, motherTongue: true, barangay: true,
           city: true, province: true, fatherName: true, fatherContact: true,
           motherName: true, motherContact: true, ipCommunity: true, is4PsBeneficiary: true,
-          disability: true, isBalikAral: true,
+          disability: true, isBalikAral: true, enrollproId: true,
         },
       });
       for (const s of allExistingStudents) {
@@ -479,6 +479,7 @@ export async function runEnrollProSync() {
       city: string | null; province: string | null; fatherName: string | null;
       fatherContact: string | null; motherName: string | null; motherContact: string | null;
       ipCommunity: boolean; is4PsBeneficiary: boolean; disability: string | null; isBalikAral: boolean;
+      enrollproId: number | null;
     }> = [];
     const studentsToUpdate: Array<{ id: string; data: Record<string, any> }> = [];
     const enrollmentUpserts: Array<{
@@ -572,6 +573,7 @@ export async function runEnrollProSync() {
             select: {
               id: true, firstName: true, lastName: true, middleName: true,
               gender: true, birthDate: true, address: true, guardianName: true, suffix: true,
+              enrollproId: true,
             },
           });
         }
@@ -591,6 +593,7 @@ export async function runEnrollProSync() {
             motherName: incomingMotherName, motherContact: incomingMotherContact,
             ipCommunity: incomingIpCommunity, is4PsBeneficiary: incomingIs4Ps,
             disability: incomingDisability, isBalikAral: incomingIsBalikAral,
+            enrollproId: Number(learner.id) || null,
           });
           // Placeholder ID — will be resolved after batch create
           studentId = `__pending__${learner.lrn}`;
@@ -637,6 +640,8 @@ export async function runEnrollProSync() {
                 is4PsBeneficiary: incomingIs4Ps || (existing as any).is4PsBeneficiary,
                 disability: incomingDisability || (existing as any).disability,
                 isBalikAral: incomingIsBalikAral || (existing as any).isBalikAral,
+                // Backfill enrollproId only when currently null (don't churn on every sync)
+                ...((existing as any).enrollproId == null ? { enrollproId: Number(learner.id) || null } : {}),
               },
             });
             studentsSynced++;
@@ -734,6 +739,29 @@ export async function runEnrollProSync() {
         logger.debug(`[EnrollProSync] Batch updated ${studentsToUpdate.length} students`);
       } catch (err: any) {
         errors.push(`Batch student update failed: ${err.message}`);
+      }
+    }
+
+    // --- Dedicated enrollproId backfill pass (P1-1) ---
+    // Wires in the lrnToEpStudentId map for students whose profile hash didn't change
+    // but whose enrollproId is still null. Runs once per sync cycle.
+    {
+      let backfilled = 0;
+      const lrnKeys = Array.from(lrnToEpStudentId.keys());
+      if (lrnKeys.length > 0) {
+        const nullEpStudents = await prisma.student.findMany({
+          where: { enrollproId: null, lrn: { in: lrnKeys } },
+          select: { id: true, lrn: true },
+        });
+        for (const s of nullEpStudents) {
+          const epId = lrnToEpStudentId.get(s.lrn);
+          if (epId == null) continue;
+          await prisma.student.update({ where: { id: s.id }, data: { enrollproId: epId } }).catch(() => {});
+          backfilled++;
+        }
+        if (backfilled > 0) {
+          logger.info(`[EnrollProSync] Backfilled enrollproId for ${backfilled} students`);
+        }
       }
     }
 

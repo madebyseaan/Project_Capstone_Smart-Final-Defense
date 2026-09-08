@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, Link2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { ClassAssignment } from "@/lib/api";
@@ -25,12 +25,18 @@ interface ClassRecordHeroProps {
   classAssignment: ClassAssignment;
   effectiveWeightsSource: "subject-override" | "subject-type" | "generic-fallback" | null;
   onStartTour?: () => void;
+  aimsCourseCode?: string | null;
+  aimsLastSyncedAt?: string | null;
+  onOpenAimsLink?: () => void;
 }
 
 export function ClassRecordHero({
   classAssignment,
   effectiveWeightsSource,
   onStartTour,
+  aimsCourseCode,
+  aimsLastSyncedAt,
+  onOpenAimsLink,
 }: ClassRecordHeroProps) {
   return (
     <>
@@ -51,6 +57,27 @@ export function ClassRecordHero({
                 <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                   Section {classAssignment.section.name}
                 </span>
+                {aimsCourseCode && (
+                  <>
+                    <div className="h-4 w-px bg-slate-200" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border border-[var(--ledger-aims)]/20" title={`AIMS course: ${aimsCourseCode}${aimsLastSyncedAt ? ` · last synced ${new Date(aimsLastSyncedAt).toLocaleString()}` : ''}`}>
+                      AIMS · {aimsCourseCode}
+                    </span>
+                  </>
+                )}
+                {!aimsCourseCode && onOpenAimsLink && (
+                  <>
+                    <div className="h-4 w-px bg-slate-200" />
+                    <button
+                      type="button"
+                      onClick={onOpenAimsLink}
+                      className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border border-[var(--ledger-aims)]/30 hover:bg-[var(--ledger-aims)]/10 transition-colors"
+                    >
+                      <Link2 className="w-3 h-3" />
+                      Connect AIMS
+                    </button>
+                  </>
+                )}
               </div>
               <h1 className="text-3xl font-semibold text-slate-900 tracking-tight uppercase">{classAssignment.subject.name}</h1>
               {effectiveWeightsSource === "subject-override" && (

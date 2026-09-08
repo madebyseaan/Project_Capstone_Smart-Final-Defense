@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Loader2, Monitor, AlertTriangle } from "lucide-react";
-import { gradesApi, adminApi, type ClassRecord, type ScoreItem, type TermLabels } from "@/lib/api";
+import { gradesApi, adminApi, type ClassRecord, type ScoreItem, type TermLabels, type AimsRowScore } from "@/lib/api";
 import { ClassRecordTable } from "./components/ClassRecordTable";
 import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
 import { GradeEditModal } from "./components/GradeEditModal";
@@ -19,11 +19,13 @@ import { toast } from "@/lib/toast";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
 import { getDisplayFinalGrade as computeDisplayFinalGrade, getMobileDraftKey, getScoreFromGrade as computeScoreFromGrade } from "./components/classRecordMobileUtils";
 import { getGradeColor } from "@/lib/gradeMath";
-import { useClassRecordQuery, useTransmutationTable } from "./hooks/useClassRecord";
+import { useClassRecordQuery, useTransmutationTable, useAimsScoresQuery } from "./hooks/useClassRecord";
 import { useEditAccess } from "./hooks/useEditAccess";
 import { useAssessmentMeta } from "./hooks/useAssessmentMeta";
 import { useMobileEditor } from "./hooks/useMobileEditor";
 import { useStickyLayout } from "./hooks/useStickyLayout";
+import { useSyncStream } from "@/hooks/useSyncStream";
+import { AimsPanel } from "./components/AimsPanel";
 
 export default function ClassRecordView() {
   const { classAssignmentId } = useParams();
@@ -45,6 +47,8 @@ export default function ClassRecordView() {
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [showMobileWarning, setShowMobileWarning] = useState(false);
   const [separateByGender, setSeparateByGender] = useState(false);
+  const [linkDialogSignal, setLinkDialogSignal] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Toast wrappers for hooks that expect setError/setSuccess
   const setError = useCallback((msg: string | null) => { if (msg) toast.error(msg); }, []) as React.Dispatch<React.SetStateAction<string | null>>;
@@ -182,6 +186,38 @@ export default function ClassRecordView() {
   // Sticky layout hook
   const layout = useStickyLayout({ classAssignmentId, showAssessmentDetails, selectedColumn: metaHook.selectedColumn });
 
+  // AIMS integration
+  const { syncVersion } = useSyncStream();
+  const aimsQuery = useAimsScoresQuery(classAssignmentId, selectedTerm, syncVersion);
+  const aimsData = aimsQuery.data;
+
+  // Auto-open AIMS link dialog from ?connect=aims query param
+  useEffect(() => {
+    if (searchParams.get("connect") === "aims") {
+      if (!aimsData?.linked) {
+        setLinkDialogSignal(s => s + 1);
+      }
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, aimsData?.linked, setSearchParams]);
+
+  const aimsAssessments = useMemo(() => {
+    if (!aimsData?.linked || !aimsData.assessments) return [];
+    return aimsData.assessments;
+  }, [aimsData]);
+
+  const aimsByStudent = useMemo(() => {
+    if (!aimsData?.linked || !aimsData.rows) return {} as Record<string, Record<string, AimsRowScore>>;
+    const map: Record<string, Record<string, AimsRowScore>> = {};
+    for (const row of aimsData.rows) {
+      map[row.studentId] = {};
+      for (const score of row.scores) {
+        map[row.studentId][score.assessmentId] = score;
+      }
+    }
+    return map;
+  }, [aimsData]);
+
   const commitScoreInput = useCallback((inputEl: HTMLInputElement, studentId: string, category: "WW" | "PT" | "QA", index: number): boolean => {
     const rawValue = inputEl.value.trim().toUpperCase();
     const isSpecial = rawValue === "A" || rawValue === "E";
@@ -228,11 +264,25 @@ export default function ClassRecordView() {
         </div>
       )}
 
-      <ClassRecordHero classAssignment={classAssignment} effectiveWeightsSource={effectiveWeights?.source ?? null} onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }} />
+      <ClassRecordHero classAssignment={classAssignment} effectiveWeightsSource={effectiveWeights?.source ?? null} onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }} aimsCourseCode={aimsData?.linked ? aimsData?.course?.code : null} aimsLastSyncedAt={aimsData?.lastSyncedAt ?? null} onOpenAimsLink={!aimsData?.linked ? () => setLinkDialogSignal(s => s + 1) : undefined} />
 
       <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={isPastTerm && !gradeLock && editAccess.editRequestStatus === "idle" ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} />
 
       {stats && <ClassRecordStats avg={stats.avg} passed={stats.passed} total={classRecord.length} highest={stats.highest} lowest={stats.lowest} />}
+
+      {classAssignmentId && (
+        <AimsPanel
+          classAssignmentId={classAssignmentId}
+          selectedTerm={selectedTerm}
+          aimsData={aimsData ?? null}
+          isViewOnly={editAccess.isViewOnly}
+          openLinkDialogSignal={linkDialogSignal}
+          onImportComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ["class-record", classAssignmentId] });
+            aimsQuery.refetch();
+          }}
+        />
+      )}
 
       {/* Inherited Grades Notice */}
       {inheritedFromTeachers.length > 0 && (
@@ -279,13 +329,13 @@ export default function ClassRecordView() {
         </div>
       ) : (
         <>
-          <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} />
+          <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} aimsByStudent={aimsByStudent} />
 
-      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} lockedTerm={lockedTerm} currentTerm={currentTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={metaHook.openMetaEditor} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
+      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} lockedTerm={lockedTerm} currentTerm={currentTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={metaHook.openMetaEditor} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
 
-      <GradeEditModal open={mobileEditor.mobileEditorOpen} onOpenChange={(open) => { mobileEditor.setMobileEditorOpen(open); if (!open) { mobileEditor.setMobileEditorStudentId(null); mobileEditor.setMobileScoreDraft({}); } }} selectedRecord={mobileEditor.selectedMobileRecord} selectedTerm={selectedTerm} mobileEditorTab={mobileEditor.mobileEditorTab} onTabChange={mobileEditor.setMobileEditorTab} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} mobileScoreDraft={mobileEditor.mobileScoreDraft} invalidCells={invalidCells} getCellKey={getCellKey} getMobileDraftKey={getMobileDraftKey} getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)} getMaxForCell={getMaxForCell} onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange} onMobileScoreCommit={mobileEditor.commitMobileScore} onApplyColumnMeta={metaHook.applyColumnMetaFromMobile} isViewOnly={editAccess.isViewOnly} />
+      <GradeEditModal open={mobileEditor.mobileEditorOpen} onOpenChange={(open) => { mobileEditor.setMobileEditorOpen(open); if (!open) { mobileEditor.setMobileEditorStudentId(null); mobileEditor.setMobileScoreDraft({}); } }} selectedRecord={mobileEditor.selectedMobileRecord} selectedTerm={selectedTerm} mobileEditorTab={mobileEditor.mobileEditorTab} onTabChange={mobileEditor.setMobileEditorTab} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} mobileScoreDraft={mobileEditor.mobileScoreDraft} invalidCells={invalidCells} getCellKey={getCellKey} getMobileDraftKey={getMobileDraftKey} getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)} getMaxForCell={getMaxForCell} onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange} onMobileScoreCommit={mobileEditor.commitMobileScore} onApplyColumnMeta={metaHook.applyColumnMetaFromMobile} isViewOnly={editAccess.isViewOnly} aimsScores={mobileEditor.selectedMobileRecord ? aimsByStudent[mobileEditor.selectedMobileRecord.student.id] : undefined} aimsAssessmentTitles={Object.fromEntries(aimsAssessments.map(a => [a.assessmentId, a.title]))} />
 
-      <ClassRecordTour isOpen={isTourOpen} onClose={() => { setIsTourOpen(false); setShowAssessmentDetails(false); metaHook.setSelectedColumn(null); window.dispatchEvent(new Event("tour:end")); }} setShowAssessmentDetails={setShowAssessmentDetails} setSelectedColumn={metaHook.setSelectedColumn} />
+          <ClassRecordTour isOpen={isTourOpen} onClose={() => { setIsTourOpen(false); setShowAssessmentDetails(false); metaHook.setSelectedColumn(null); window.dispatchEvent(new Event("tour:end")); }} setShowAssessmentDetails={setShowAssessmentDetails} setSelectedColumn={metaHook.setSelectedColumn} hasAimsColumns={aimsAssessments.length > 0} />
 
       <Dialog open={showMobileWarning} onOpenChange={setShowMobileWarning}>
         <DialogContent className="sm:max-w-md">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Archive,
   ArrowUpRight,
@@ -10,7 +10,9 @@ import {
   ClipboardList,
   Filter,
   LayoutGrid,
+  Link2,
   List,
+  Plug,
   RefreshCw,
   Search,
   Trash2,
@@ -86,6 +88,7 @@ function AssignmentCard({
   archived: boolean;
   onDelete?: (id: string, name: string) => void;
 }) {
+  const navigate = useNavigate();
   const isTransferred = archived && assignment.archivedReason === 'ATLAS_REASSIGNED';
   const titleHover = archived ? (isTransferred ? "group-hover:text-amber-700" : "group-hover:text-rose-600") : "group-hover:text-indigo-600";
   const colors = getGradeColors(assignment.section.gradeLevel);
@@ -184,9 +187,31 @@ function AssignmentCard({
             </div>
 
             <div className={`${archived ? 'mt-3' : 'mt-4'} flex items-center justify-between`}>
-              <Badge className={`${archived ? (isTransferred ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-rose-100 text-rose-700 border-rose-200") : "bg-slate-100 text-muted-foreground border-0"} text-[10px] font-bold uppercase tracking-widest ${archived ? 'px-2' : 'px-3'}`}>
-                {archived ? (isTransferred ? "Transferred" : "Backup") : "Active Record"}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge className={`${archived ? (isTransferred ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-rose-100 text-rose-700 border-rose-200") : "bg-slate-100 text-muted-foreground border-0"} text-[10px] font-bold uppercase tracking-widest ${archived ? 'px-2' : 'px-3'}`}>
+                  {archived ? (isTransferred ? "Transferred" : "Backup") : "Active Record"}
+                </Badge>
+                {!archived && !assignment.aimsCourseId && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      navigate(`/teacher/records/${assignment.id}?connect=aims`);
+                    }}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border border-[var(--ledger-aims)]/30 hover:bg-[var(--ledger-aims)]/10 transition-colors"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    Connect AIMS
+                  </button>
+                )}
+                {!archived && assignment.aimsCourseId && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border border-[var(--ledger-aims)]/20" title="AIMS course connected">
+                    <Plug className="w-3 h-3" />
+                    AIMS ✓
+                  </span>
+                )}
+              </div>
               <div className={`${chevronClass} flex items-center justify-center transition-all group-hover:translate-x-2`}>
                 <ChevronRight className={`${archived ? 'w-5 h-5' : 'w-6 h-6'}`} />
               </div>
@@ -214,6 +239,7 @@ function AssignmentCard({
 
 export default function ClassRecordsList() {
   const { colors } = useTheme();
+  const navigate = useNavigate();
   const { syncVersion } = useSyncStream();
   const [classes, setClasses] = useState<ClassAssignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -518,6 +544,27 @@ export default function ClassRecordsList() {
                             </p>
                           </div>
                         </div>
+
+                        {!assignment.aimsCourseId && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              navigate(`/teacher/records/${assignment.id}?connect=aims`);
+                            }}
+                            className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border border-[var(--ledger-aims)]/30 hover:bg-[var(--ledger-aims)]/10 transition-colors"
+                          >
+                            <Link2 className="w-3 h-3" />
+                            Connect AIMS
+                          </button>
+                        )}
+                        {assignment.aimsCourseId && (
+                          <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border border-[var(--ledger-aims)]/20" title="AIMS course connected">
+                            <Plug className="w-3 h-3" />
+                            AIMS ✓
+                          </span>
+                        )}
 
                         <div className="w-12 h-12 rounded-2xl bg-slate-50 text-muted-foreground flex items-center justify-center group-hover:translate-x-2 transition-all">
                           <ChevronRight className="w-6 h-6" />

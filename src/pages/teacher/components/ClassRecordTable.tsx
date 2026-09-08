@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ClassAssignment, ClassRecord, ScoreItem } from "@/lib/api";
+import type { ClassAssignment, ClassRecord, ScoreItem, AimsAssessmentInfo, AimsRowScore } from "@/lib/api";
 import { getGradeColor, transmuteGrade, type TransmutationRow } from "@/lib/gradeMath";
 
 const terms = ["T1", "T2", "T3"] as const;
@@ -129,6 +129,8 @@ interface LedgerRowProps {
   isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => string | undefined;
   transmutationTable?: TransmutationRow[];
   isViewOnly?: boolean;
+  aimsAssessments?: AimsAssessmentInfo[];
+  aimsByStudent?: Record<string, Record<string, AimsRowScore>>;
 }
 
 const LedgerRow = React.memo(
@@ -149,6 +151,8 @@ const LedgerRow = React.memo(
     isCellInvalid,
     transmutationTable,
     isViewOnly = false,
+    aimsAssessments = [],
+    aimsByStudent = {},
   }: LedgerRowProps) => {
     const studentId = record?.student.id || "HPS";
     const grade = record?.grades?.find((g) => g.term === selectedTerm);
@@ -410,6 +414,29 @@ const LedgerRow = React.memo(
         >
           {isHps ? "100" : displayQuarterlyGrade ?? <span className="text-slate-300">-</span>}
         </TableCell>
+
+        {/* AIMS read-only cells */}
+        {aimsAssessments.map((a) => {
+          const score = !isHps ? aimsByStudent[studentId]?.[a.assessmentId] : undefined;
+          return (
+            <TableCell
+              key={`aims-${a.assessmentId}`}
+              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 w-16 min-w-[64px] max-w-[64px] ${
+                isHps
+                  ? "bg-slate-800 border-y border-slate-700 bg-clip-padding text-slate-500"
+                  : `text-[var(--ledger-aims)] ${score?.importedAt ? "bg-[var(--ledger-aims-bg)]" : ""}`
+              }`}
+              style={rowStyle}
+              title={
+                !isHps && score
+                  ? `${score.pointsEarned}/${score.maxPoints} · ${a.title} · ${a.category} · attempt ${score.attemptNumber} · graded ${score.gradedAt?.slice(0, 10) ?? "?"}${score.importedAt ? " (imported)" : ""}`
+                  : undefined
+              }
+            >
+              {isHps ? "—" : score?.pointsEarned ?? <span className="text-slate-300">-</span>}
+            </TableCell>
+          );
+        })}
       </TableRow>
     );
   }
@@ -461,6 +488,8 @@ interface ClassRecordTableProps {
   ledgerHeaderRef?: React.RefObject<HTMLDivElement | null>;
   onClearScores?: () => void;
   transmutationTable?: TransmutationRow[];
+  aimsAssessments?: AimsAssessmentInfo[];
+  aimsByStudent?: Record<string, Record<string, AimsRowScore>>;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -496,6 +525,8 @@ export function ClassRecordTable({
   ledgerHeaderRef,
   onClearScores,
   transmutationTable,
+  aimsAssessments = [],
+  aimsByStudent = {},
 }: ClassRecordTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
@@ -557,6 +588,7 @@ export function ClassRecordTable({
     qa: effectiveWeights?.qa ?? classAssignment.subject.quarterlyAssessWeight,
   };
 
+  const aimsCount = aimsAssessments.length;
   const tableRows = useMemo(() => {
     const rows: React.ReactNode[] = [];
     let rowCounter = 0;
@@ -565,7 +597,7 @@ export function ClassRecordTable({
       if (maleRecords.length > 0) {
         rows.push(
           <TableRow key="male-sep" className="bg-blue-50/60 hover:bg-blue-50/60 border-y border-blue-100/60 h-7">
-            <TableCell colSpan={wwCount + ptCount + 14} className="py-0.5 px-4">
+            <TableCell colSpan={wwCount + ptCount + 14 + aimsCount} className="py-0.5 px-4">
               <span className="sticky left-4 text-[11px] font-bold text-blue-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                 Male Learners ({maleRecords.length})
@@ -575,14 +607,14 @@ export function ClassRecordTable({
         );
         maleRecords.forEach((r, i) =>
           rows.push(
-            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} />
           )
         );
       }
       if (femaleRecords.length > 0) {
         rows.push(
           <TableRow key="female-sep" className="bg-pink-50/60 hover:bg-pink-50/60 border-y border-pink-100/60 h-7">
-            <TableCell colSpan={wwCount + ptCount + 14} className="py-0.5 px-4">
+            <TableCell colSpan={wwCount + ptCount + 14 + aimsCount} className="py-0.5 px-4">
               <span className="sticky left-4 text-[11px] font-bold text-pink-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
                 <div className="w-1.5 h-1.5 rounded-full bg-pink-500" />
                 Female Learners ({femaleRecords.length})
@@ -592,20 +624,20 @@ export function ClassRecordTable({
         );
         femaleRecords.forEach((r, i) =>
           rows.push(
-            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} />
           )
         );
       }
     } else {
       sortedRecords.forEach((r, i) =>
         rows.push(
-          <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} />
+          <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} />
         )
       );
     }
 
     return rows;
-  }, [sortedRecords, maleRecords, femaleRecords, separateByGender, selectedTerm, wwCount, ptCount, weights, isViewOnly, onHpsUpdate, onScoreCommit, onCellFocus, isCellInvalid, transmutationTable]);
+  }, [sortedRecords, maleRecords, femaleRecords, separateByGender, selectedTerm, wwCount, ptCount, weights, isViewOnly, onHpsUpdate, onScoreCommit, onCellFocus, isCellInvalid, transmutationTable, aimsAssessments, aimsByStudent]);
 
   const renderColGroup = () => (
     <colgroup>
@@ -629,6 +661,9 @@ export function ClassRecordTable({
       <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
       <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
       <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+      {aimsAssessments.map((_, i) => (
+        <col key={`col-aims-${i}`} style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+      ))}
     </colgroup>
   );
 
@@ -840,6 +875,16 @@ export function ClassRecordTable({
                   >
                     Grade Summary
                   </TableHead>
+
+                  {aimsAssessments.length > 0 && (
+                    <TableHead
+                      colSpan={aimsAssessments.length}
+                      id="tutorial-aims-group"
+                      className={`${thBase} border-r text-[var(--ledger-aims)] bg-[var(--ledger-aims-bg)] z-20`}
+                    >
+                      AIMS <span className="text-[9px] font-normal opacity-60">(read-only)</span>
+                    </TableHead>
+                  )}
                 </TableRow>
 
                 {/* ── Row 2: Column sub-headers ── */}
@@ -868,6 +913,17 @@ export function ClassRecordTable({
 
                   <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-emerald-600 uppercase border-r border-b border-slate-200 bg-emerald-50 bg-clip-padding">Initial</TableHead>
                   <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-slate-900 uppercase bg-emerald-100 bg-clip-padding border-r border-b border-slate-200">Grade</TableHead>
+
+                  {aimsAssessments.map((a) => (
+                    <TableHead
+                      key={`h-aims-${a.assessmentId}`}
+                      className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding"
+                      title={`${a.title} — ${a.maxPoints} max`}
+                    >
+                      <span className="truncate block max-w-[56px]">{a.title.length > 8 ? a.title.slice(0, 8) + "…" : a.title}</span>
+                      <span className="text-[9px] font-normal opacity-60">{a.category}</span>
+                    </TableHead>
+                  ))}
                 </TableRow>
 
                 {/* ── Row 3: HPS (MAX) Row ── */}
@@ -888,6 +944,8 @@ export function ClassRecordTable({
                   onCellFocus={onCellFocus}
                   isCellInvalid={isCellInvalid}
                   transmutationTable={transmutationTable}
+                  aimsAssessments={aimsAssessments}
+                  aimsByStudent={aimsByStudent}
                 />
               </TableHeader>
             </Table>

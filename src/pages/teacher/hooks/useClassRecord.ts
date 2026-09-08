@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { gradesApi, type ClassRecord, type ClassAssignment, type ScoreItem, type InheritedGrade, type InheritedFromTeacher } from "@/lib/api";
+import { gradesApi, type ClassRecord, type ClassAssignment, type ScoreItem, type InheritedGrade, type InheritedFromTeacher, type AimsScoresResponse } from "@/lib/api";
 import type { TransmutationRow } from "@/lib/gradeMath";
 
 interface ClassRecordResponse {
@@ -152,5 +152,23 @@ export function useBatchSave(classAssignmentId: string | undefined, selectedTerm
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["class-record", classAssignmentId] });
     },
+  });
+}
+
+export function useAimsScoresQuery(
+  classAssignmentId: string | undefined,
+  selectedTerm: string,
+  syncVersion: number,
+) {
+  return useQuery<AimsScoresResponse>({
+    queryKey: ["aims-scores", classAssignmentId, selectedTerm, syncVersion],
+    queryFn: async () => {
+      if (!classAssignmentId) throw new Error("No class assignment ID");
+      const res = await gradesApi.getAimsScores(classAssignmentId, selectedTerm);
+      return res.data;
+    },
+    enabled: !!classAssignmentId,
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
   });
 }

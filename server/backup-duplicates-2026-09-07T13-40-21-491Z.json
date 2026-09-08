@@ -1,0 +1,5124 @@
+{
+  "createdAt": "2026-09-07T13:40:21.490Z",
+  "schoolYear": "2029-2030",
+  "flaggedRecords": [
+    {
+      "id": "cmtn2uu4q01rd14ve802hftsu",
+      "teacherId": "cmth7nvl900cb94veryubq79j",
+      "subjectId": "cmth7pnva00kn94veeggvak7g",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T00:23:46.401Z",
+      "archivedReason": "ATLAS_STALE_WITH_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-04T14:56:57.866Z",
+      "updatedAt": "2026-09-07T00:23:46.401Z",
+      "_count": {
+        "grades": 2,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uexr004l6kver9l05z6i",
+      "teacherId": "cmth7nvkz00c394veha6c0tft",
+      "subjectId": "cmtr7uexd004k6kve9bvw7arf",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.444Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.959Z",
+      "updatedAt": "2026-09-07T12:40:47.445Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uey5004n6kvera9hwz2t",
+      "teacherId": "cmth7nvkz00c394veha6c0tft",
+      "subjectId": "cmtr7uey3004m6kvec7pl93q8",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.449Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.973Z",
+      "updatedAt": "2026-09-07T12:40:47.449Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueya004p6kvev898kji3",
+      "teacherId": "cmtj8cpsl0hel0sve1p3wn8h3",
+      "subjectId": "cmtr7uey6004o6kvee235l3b5",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.449Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.978Z",
+      "updatedAt": "2026-09-07T12:40:47.449Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueye004r6kve4vetblpb",
+      "teacherId": "cmtj8cpsl0hel0sve1p3wn8h3",
+      "subjectId": "cmtr7ueyd004q6kve36868m6v",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.450Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.982Z",
+      "updatedAt": "2026-09-07T12:40:47.450Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyi004t6kveqj49mm7a",
+      "teacherId": "cmtj8cpsl0hel0sve1p3wn8h3",
+      "subjectId": "cmtr7ueyg004s6kve741i8tte",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.451Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.986Z",
+      "updatedAt": "2026-09-07T12:40:47.451Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyk004v6kve7dp83bzx",
+      "teacherId": "cmtj8cpsl0hel0sve1p3wn8h3",
+      "subjectId": "cmtr7ueyj004u6kve9q06op23",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.452Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.988Z",
+      "updatedAt": "2026-09-07T12:40:47.452Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyl004w6kve107j4dl1",
+      "teacherId": "cmtj8cpsl0hel0sve1p3wn8h3",
+      "subjectId": "cmtr7ueyj004u6kve9q06op23",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.452Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.989Z",
+      "updatedAt": "2026-09-07T12:40:47.453Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyp004y6kveocsl2fd7",
+      "teacherId": "cmtj8cpsl0hel0sve1p3wn8h3",
+      "subjectId": "cmtr7ueyo004x6kve01gfk8d4",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.453Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.993Z",
+      "updatedAt": "2026-09-07T12:40:47.454Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyq004z6kveaorc53ld",
+      "teacherId": "cmtj8cpsl0hel0sve1p3wn8h3",
+      "subjectId": "cmtr7ueyo004x6kve01gfk8d4",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.454Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.994Z",
+      "updatedAt": "2026-09-07T12:40:47.454Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyt00516kveh0wziuwg",
+      "teacherId": "cmtj8cpsl0hel0sve1p3wn8h3",
+      "subjectId": "cmtr7ueyr00506kverfm03wsb",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.455Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.997Z",
+      "updatedAt": "2026-09-07T12:40:47.455Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyv00536kveln2glnmt",
+      "teacherId": "cmth7nvl300c694ve67pe9vfy",
+      "subjectId": "cmtr7ueyu00526kvekymftgiq",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.456Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:40.999Z",
+      "updatedAt": "2026-09-07T12:40:47.456Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyy00556kveg4947scw",
+      "teacherId": "cmtkv06e80ro1k0ve6prdrnw4",
+      "subjectId": "cmtr7ueyw00546kve4cgwn9ki",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.457Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.002Z",
+      "updatedAt": "2026-09-07T12:40:47.457Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyy00566kveulmxr96h",
+      "teacherId": "cmtkv06e80ro1k0ve6prdrnw4",
+      "subjectId": "cmtr7ueyg004s6kve741i8tte",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.459Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.002Z",
+      "updatedAt": "2026-09-07T12:40:47.459Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueyz00576kvepu7e1pr4",
+      "teacherId": "cmtkv06e80ro1k0ve6prdrnw4",
+      "subjectId": "cmtr7ueyg004s6kve741i8tte",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.460Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.003Z",
+      "updatedAt": "2026-09-07T12:40:47.460Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uez000586kve17jph0aq",
+      "teacherId": "cmtkv06e80ro1k0ve6prdrnw4",
+      "subjectId": "cmtr7ueyj004u6kve9q06op23",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.462Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.004Z",
+      "updatedAt": "2026-09-07T12:40:47.462Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uez100596kve4zay8uq2",
+      "teacherId": "cmtkv06e80ro1k0ve6prdrnw4",
+      "subjectId": "cmtr7ueyj004u6kve9q06op23",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.463Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.005Z",
+      "updatedAt": "2026-09-07T12:40:47.463Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uez2005a6kves9sa5eeo",
+      "teacherId": "cmtkv06e80ro1k0ve6prdrnw4",
+      "subjectId": "cmtr7ueyo004x6kve01gfk8d4",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.464Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.006Z",
+      "updatedAt": "2026-09-07T12:40:47.465Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uez4005c6kvehm60j9gb",
+      "teacherId": "cmtkv06e80ro1k0ve6prdrnw4",
+      "subjectId": "cmtr7ueyr00506kverfm03wsb",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.474Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.008Z",
+      "updatedAt": "2026-09-07T12:40:47.474Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uez7005e6kvejjokttcv",
+      "teacherId": "cmtkv06e90ro5k0veo1p3phiv",
+      "subjectId": "cmtr7uez6005d6kve4pwwtptq",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.475Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.011Z",
+      "updatedAt": "2026-09-07T12:40:47.475Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uez8005f6kve8a45b52w",
+      "teacherId": "cmtkv06e90ro5k0veo1p3phiv",
+      "subjectId": "cmtr7ueyg004s6kve741i8tte",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.476Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.012Z",
+      "updatedAt": "2026-09-07T12:40:47.476Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uez9005g6kvehyafe4qc",
+      "teacherId": "cmtkv06e90ro5k0veo1p3phiv",
+      "subjectId": "cmtr7ueyg004s6kve741i8tte",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.477Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.013Z",
+      "updatedAt": "2026-09-07T12:40:47.478Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueza005h6kvec4qtcf6s",
+      "teacherId": "cmtkv06e90ro5k0veo1p3phiv",
+      "subjectId": "cmtr7ueyj004u6kve9q06op23",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.479Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.014Z",
+      "updatedAt": "2026-09-07T12:40:47.479Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uezd005k6kvealbwop6t",
+      "teacherId": "cmtkv06e90ro5k0veo1p3phiv",
+      "subjectId": "cmtr7ueyr00506kverfm03wsb",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.482Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.017Z",
+      "updatedAt": "2026-09-07T12:40:47.482Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uezh005n6kverosxhaoy",
+      "teacherId": "cmth9pzdm009ctwveipq45nze",
+      "subjectId": "cmtr7uezf005m6kve8sduphor",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.484Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.021Z",
+      "updatedAt": "2026-09-07T12:40:47.484Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uezk005p6kveqeiao3o1",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uezi005o6kveusuufmwp",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.485Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.024Z",
+      "updatedAt": "2026-09-07T12:40:47.485Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uezp005r6kvefylzsubs",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uezn005q6kvebfu5zrkk",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.485Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.029Z",
+      "updatedAt": "2026-09-07T12:40:47.486Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uezt005t6kvebiczljto",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uezr005s6kve0jhla3v6",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.486Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.033Z",
+      "updatedAt": "2026-09-07T12:40:47.486Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uezx005v6kvejemswf4i",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uezv005u6kvew8suq7um",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.487Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.037Z",
+      "updatedAt": "2026-09-07T12:40:47.487Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf09005z6kvekr5pgfbd",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uf08005y6kve6i5dsfbj",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.489Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.049Z",
+      "updatedAt": "2026-09-07T12:40:47.489Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0c00616kveyjcpqkco",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uf0a00606kveobxn58zl",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.489Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.052Z",
+      "updatedAt": "2026-09-07T12:40:47.490Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0e00636kve048y0pte",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uf0d00626kveao4bl8au",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.490Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.054Z",
+      "updatedAt": "2026-09-07T12:40:47.490Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0g00656kveu9lm1mq4",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uf0f00646kvenq96gnm1",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.491Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.056Z",
+      "updatedAt": "2026-09-07T12:40:47.491Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0j00676kveme8dw0av",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uf0i00666kvegdspzwhm",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.492Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.059Z",
+      "updatedAt": "2026-09-07T12:40:47.492Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0p006b6kvez8cj7w6y",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uf0o006a6kve2trhyrug",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.493Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.065Z",
+      "updatedAt": "2026-09-07T12:40:47.493Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0q006c6kvef3t9oty0",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uezi005o6kveusuufmwp",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.494Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.066Z",
+      "updatedAt": "2026-09-07T12:40:47.494Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0q006d6kvefrns5s3b",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uezn005q6kvebfu5zrkk",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.494Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.066Z",
+      "updatedAt": "2026-09-07T12:40:47.494Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0r006e6kve63g2kbzu",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uezr005s6kve0jhla3v6",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.495Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.067Z",
+      "updatedAt": "2026-09-07T12:40:47.495Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0s006f6kvelq4nuz4g",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uezv005u6kvew8suq7um",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.496Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.068Z",
+      "updatedAt": "2026-09-07T12:40:47.496Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0u006h6kvemdl69lyt",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uf08005y6kve6i5dsfbj",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.497Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.070Z",
+      "updatedAt": "2026-09-07T12:40:47.497Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0v006i6kve220bd5xo",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uf0a00606kveobxn58zl",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.498Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.071Z",
+      "updatedAt": "2026-09-07T12:40:47.498Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0v006j6kveccb4f100",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uf0d00626kveao4bl8au",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.499Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.071Z",
+      "updatedAt": "2026-09-07T12:40:47.499Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0w006k6kve2pffan1f",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uf0f00646kvenq96gnm1",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.499Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.072Z",
+      "updatedAt": "2026-09-07T12:40:47.500Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0x006l6kve49kzsi3l",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uf0i00666kvegdspzwhm",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.500Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.073Z",
+      "updatedAt": "2026-09-07T12:40:47.500Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0z006n6kvel3cstp18",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uf0o006a6kve2trhyrug",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.501Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.075Z",
+      "updatedAt": "2026-09-07T12:40:47.501Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf10006o6kvemadw4zrr",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uezi005o6kveusuufmwp",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.502Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.076Z",
+      "updatedAt": "2026-09-07T12:40:47.502Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf12006p6kvehm9h9cdh",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uezn005q6kvebfu5zrkk",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.503Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.078Z",
+      "updatedAt": "2026-09-07T12:40:47.503Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf14006q6kveqx3qc8yy",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uezr005s6kve0jhla3v6",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.503Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.080Z",
+      "updatedAt": "2026-09-07T12:40:47.503Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf15006r6kver1s8o5ad",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uezv005u6kvew8suq7um",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.504Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.081Z",
+      "updatedAt": "2026-09-07T12:40:47.504Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf17006t6kveiqgn0qgh",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uf08005y6kve6i5dsfbj",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.506Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.083Z",
+      "updatedAt": "2026-09-07T12:40:47.506Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf18006u6kvenr758iml",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uf0a00606kveobxn58zl",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.508Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.084Z",
+      "updatedAt": "2026-09-07T12:40:47.508Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf19006v6kvet9shyck4",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uf0d00626kveao4bl8au",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.508Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.085Z",
+      "updatedAt": "2026-09-07T12:40:47.509Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1a006w6kve5py3tcrc",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uf0f00646kvenq96gnm1",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.509Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.086Z",
+      "updatedAt": "2026-09-07T12:40:47.510Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1b006x6kve7jr0w4mn",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uf0i00666kvegdspzwhm",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.511Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.087Z",
+      "updatedAt": "2026-09-07T12:40:47.511Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1c006z6kvecb007yvx",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uf0o006a6kve2trhyrug",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.513Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.088Z",
+      "updatedAt": "2026-09-07T12:40:47.513Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1d00706kve6ptdyw2u",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uezi005o6kveusuufmwp",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.514Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.089Z",
+      "updatedAt": "2026-09-07T12:40:47.514Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1e00716kvekg4rp2e1",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uezn005q6kvebfu5zrkk",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.515Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.090Z",
+      "updatedAt": "2026-09-07T12:40:47.515Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1f00726kvevln2vcz4",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uezr005s6kve0jhla3v6",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.516Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.091Z",
+      "updatedAt": "2026-09-07T12:40:47.516Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1g00736kvehi549a86",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uezv005u6kvew8suq7um",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.516Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.092Z",
+      "updatedAt": "2026-09-07T12:40:47.516Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1i00766kvehz87m3ee",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uf0a00606kveobxn58zl",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.519Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.094Z",
+      "updatedAt": "2026-09-07T12:40:47.519Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1k00786kved61remhq",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uf0f00646kvenq96gnm1",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.520Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.096Z",
+      "updatedAt": "2026-09-07T12:40:47.520Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1l00796kve2od7awac",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uf0i00666kvegdspzwhm",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.521Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.097Z",
+      "updatedAt": "2026-09-07T12:40:47.521Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1l007a6kvervd5irey",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uf0l00686kveqwwmjcr5",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.522Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.097Z",
+      "updatedAt": "2026-09-07T12:40:47.522Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1m007b6kvevhx3alvh",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uf0o006a6kve2trhyrug",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.523Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.098Z",
+      "updatedAt": "2026-09-07T12:40:47.523Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1n007c6kve3hzlek0t",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uezi005o6kveusuufmwp",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.524Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.099Z",
+      "updatedAt": "2026-09-07T12:40:47.525Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1o007e6kvepgj4ux1y",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uezr005s6kve0jhla3v6",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.526Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.100Z",
+      "updatedAt": "2026-09-07T12:40:47.526Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1p007f6kveuutsi0zk",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uezv005u6kvew8suq7um",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.527Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.101Z",
+      "updatedAt": "2026-09-07T12:40:47.527Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1y007g6kveqrun0ntj",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uezz005w6kve2xzrol95",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.527Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.110Z",
+      "updatedAt": "2026-09-07T12:40:47.528Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1z007h6kveqhw21bnh",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uf08005y6kve6i5dsfbj",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.528Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.111Z",
+      "updatedAt": "2026-09-07T12:40:47.528Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf21007i6kve9zjegm1k",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uf0a00606kveobxn58zl",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.529Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.113Z",
+      "updatedAt": "2026-09-07T12:40:47.529Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf23007k6kvemvqehjql",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uf0f00646kvenq96gnm1",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.530Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.115Z",
+      "updatedAt": "2026-09-07T12:40:47.530Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf23007l6kvemdzg3xjs",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uf0i00666kvegdspzwhm",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.531Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.115Z",
+      "updatedAt": "2026-09-07T12:40:47.531Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf24007m6kvelo3ow06s",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uf0l00686kveqwwmjcr5",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.531Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.116Z",
+      "updatedAt": "2026-09-07T12:40:47.531Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf25007n6kverzopp26t",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uf0o006a6kve2trhyrug",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.532Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.117Z",
+      "updatedAt": "2026-09-07T12:40:47.532Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf27007p6kvevbloar5w",
+      "teacherId": "cmth7nvl000c494vencdrz6zj",
+      "subjectId": "cmtr7uf26007o6kveya8z4wkp",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.533Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.119Z",
+      "updatedAt": "2026-09-07T12:40:47.533Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2a007s6kvergxq7pu4",
+      "teacherId": "cmth7nvl000c494vencdrz6zj",
+      "subjectId": "cmtr7uf29007r6kvee0e5nip9",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.534Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.122Z",
+      "updatedAt": "2026-09-07T12:40:47.534Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2b007t6kve2bbxi2el",
+      "teacherId": "cmth7nvl000c494vencdrz6zj",
+      "subjectId": "cmtr7uf29007r6kvee0e5nip9",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.535Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.123Z",
+      "updatedAt": "2026-09-07T12:40:47.535Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2d007v6kvesjpfmzno",
+      "teacherId": "cmth7nvl000c494vencdrz6zj",
+      "subjectId": "cmtr7uf2c007u6kveowe3qi4x",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.535Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.125Z",
+      "updatedAt": "2026-09-07T12:40:47.536Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2h007x6kve7ca1bzku",
+      "teacherId": "cmth7nvl000c494vencdrz6zj",
+      "subjectId": "cmtr7uf2f007w6kveym11mpsq",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.536Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.129Z",
+      "updatedAt": "2026-09-07T12:40:47.536Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2i007y6kve30b3br5d",
+      "teacherId": "cmth7nvl000c494vencdrz6zj",
+      "subjectId": "cmtr7uf2f007w6kveym11mpsq",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.537Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.130Z",
+      "updatedAt": "2026-09-07T12:40:47.537Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2k00806kvevgk4nzwx",
+      "teacherId": "cmth7nvla00cc94veyuuyw0h1",
+      "subjectId": "cmtr7uf26007o6kveya8z4wkp",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.540Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.132Z",
+      "updatedAt": "2026-09-07T12:40:47.540Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2l00816kveivlfq3ou",
+      "teacherId": "cmth7nvla00cc94veyuuyw0h1",
+      "subjectId": "cmtr7uf29007r6kvee0e5nip9",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.541Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.133Z",
+      "updatedAt": "2026-09-07T12:40:47.542Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2m00826kve74bq6g9d",
+      "teacherId": "cmth7nvla00cc94veyuuyw0h1",
+      "subjectId": "cmtr7uf2c007u6kveowe3qi4x",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.543Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.134Z",
+      "updatedAt": "2026-09-07T12:40:47.543Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2n00836kve8pc5oqkl",
+      "teacherId": "cmth7nvla00cc94veyuuyw0h1",
+      "subjectId": "cmtr7uf2c007u6kveowe3qi4x",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.543Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.135Z",
+      "updatedAt": "2026-09-07T12:40:47.544Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2o00846kvek3h2ig3c",
+      "teacherId": "cmth7nvla00cc94veyuuyw0h1",
+      "subjectId": "cmtr7uf2f007w6kveym11mpsq",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.544Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.136Z",
+      "updatedAt": "2026-09-07T12:40:47.544Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2p00866kveykiv1f3j",
+      "teacherId": "cmth7nvld00cg94vea2yid4ez",
+      "subjectId": "cmtr7uf26007o6kveya8z4wkp",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.546Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.137Z",
+      "updatedAt": "2026-09-07T12:40:47.546Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2q00876kvew3w1umvh",
+      "teacherId": "cmth7nvld00cg94vea2yid4ez",
+      "subjectId": "cmtr7uf29007r6kvee0e5nip9",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.546Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.138Z",
+      "updatedAt": "2026-09-07T12:40:47.547Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2r00886kvejcrpvfjw",
+      "teacherId": "cmth7nvld00cg94vea2yid4ez",
+      "subjectId": "cmtr7uf29007r6kvee0e5nip9",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.547Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.139Z",
+      "updatedAt": "2026-09-07T12:40:47.547Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2s00896kvejikzewo6",
+      "teacherId": "cmth7nvld00cg94vea2yid4ez",
+      "subjectId": "cmtr7uf2c007u6kveowe3qi4x",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.548Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.140Z",
+      "updatedAt": "2026-09-07T12:40:47.548Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2s008a6kve59l9hr5p",
+      "teacherId": "cmth7nvld00cg94vea2yid4ez",
+      "subjectId": "cmtr7uf2c007u6kveowe3qi4x",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.549Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.140Z",
+      "updatedAt": "2026-09-07T12:40:47.549Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2x008d6kve218nqix4",
+      "teacherId": "cmth7nvky00c294vepc8zdkif",
+      "subjectId": "cmtr7uf2w008c6kve871vzw72",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.550Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.145Z",
+      "updatedAt": "2026-09-07T12:40:47.550Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf30008f6kveeynj2k9w",
+      "teacherId": "cmth7nvky00c294vepc8zdkif",
+      "subjectId": "cmtr7uf2z008e6kveg2qawsa5",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.551Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.148Z",
+      "updatedAt": "2026-09-07T12:40:47.551Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf32008h6kvec0tyjepf",
+      "teacherId": "cmth7nvky00c294vepc8zdkif",
+      "subjectId": "cmtr7uf31008g6kvekdaue1wx",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.551Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.150Z",
+      "updatedAt": "2026-09-07T12:40:47.551Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf33008i6kvekdva4t4z",
+      "teacherId": "cmth7nvl600c994vesgllv0bf",
+      "subjectId": "cmtr7uf2w008c6kve871vzw72",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.552Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.151Z",
+      "updatedAt": "2026-09-07T12:40:47.552Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf35008k6kvetxreae9q",
+      "teacherId": "cmth7nvl600c994vesgllv0bf",
+      "subjectId": "cmtr7uf34008j6kve80cpqci0",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.552Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.153Z",
+      "updatedAt": "2026-09-07T12:40:47.553Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf39008o6kvedgkc2603",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf34008j6kve80cpqci0",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.556Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.157Z",
+      "updatedAt": "2026-09-07T12:40:47.556Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3f008r6kveu9klusfh",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf3b008p6kveah1nfskj",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.557Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.163Z",
+      "updatedAt": "2026-09-07T12:40:47.558Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3i008t6kve8d2feb5p",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf3h008s6kveckz04tz4",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.559Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.166Z",
+      "updatedAt": "2026-09-07T12:40:47.559Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3j008u6kvesnz0snwl",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf3h008s6kveckz04tz4",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.560Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.167Z",
+      "updatedAt": "2026-09-07T12:40:47.560Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3j008v6kveyd8kyygv",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf3h008s6kveckz04tz4",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.561Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.167Z",
+      "updatedAt": "2026-09-07T12:40:47.562Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3m008x6kvee4wc8ieo",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf3l008w6kvemzb1bd9r",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.563Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.170Z",
+      "updatedAt": "2026-09-07T12:40:47.563Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3n008z6kvedmqx5nnu",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf31008g6kvekdaue1wx",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.564Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.171Z",
+      "updatedAt": "2026-09-07T12:40:47.564Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3o00906kvea9ugj9lf",
+      "teacherId": "cmth7nvl900cb94veryubq79j",
+      "subjectId": "cmtr7uf38008m6kvecbo7mtj6",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.565Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.172Z",
+      "updatedAt": "2026-09-07T12:40:47.565Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3p00916kve81ja0egz",
+      "teacherId": "cmth7nvl900cb94veryubq79j",
+      "subjectId": "cmtr7uf31008g6kvekdaue1wx",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.565Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.173Z",
+      "updatedAt": "2026-09-07T12:40:47.566Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3q00926kveqd7s4hx3",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf2z008e6kveg2qawsa5",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.566Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.174Z",
+      "updatedAt": "2026-09-07T12:40:47.566Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3q00936kverzj30zmf",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf3b008p6kveah1nfskj",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.567Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.174Z",
+      "updatedAt": "2026-09-07T12:40:47.567Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3t00956kve0z9v92ji",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf3b008p6kveah1nfskj",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.568Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.177Z",
+      "updatedAt": "2026-09-07T12:40:47.568Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4200966kve0wiqsewf",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf3h008s6kveckz04tz4",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.569Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.186Z",
+      "updatedAt": "2026-09-07T12:40:47.569Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4300976kven984sj6g",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf3h008s6kveckz04tz4",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.569Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.187Z",
+      "updatedAt": "2026-09-07T12:40:47.569Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4400986kvem6q6sber",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf3l008w6kvemzb1bd9r",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.570Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.188Z",
+      "updatedAt": "2026-09-07T12:40:47.570Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4500996kvek14af872",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf3l008w6kvemzb1bd9r",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.570Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.189Z",
+      "updatedAt": "2026-09-07T12:40:47.571Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf46009b6kve83av30v6",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf31008g6kvekdaue1wx",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.572Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.190Z",
+      "updatedAt": "2026-09-07T12:40:47.572Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf49009d6kveu0ksbl5u",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf48009c6kvexho0pjvb",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.572Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.193Z",
+      "updatedAt": "2026-09-07T12:40:47.572Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4b009e6kve9kr6rcnv",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf48009c6kvexho0pjvb",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.573Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.195Z",
+      "updatedAt": "2026-09-07T12:40:47.573Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4c009f6kvery32sn5m",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf48009c6kvexho0pjvb",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.574Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.196Z",
+      "updatedAt": "2026-09-07T12:40:47.574Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4e009h6kvehtvf36vw",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf4d009g6kvev22gcmre",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.575Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.198Z",
+      "updatedAt": "2026-09-07T12:40:47.575Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4i009k6kvecpd8pylk",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf4h009j6kve469tkqs6",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.577Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.202Z",
+      "updatedAt": "2026-09-07T12:40:47.577Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4i009l6kvenpwqmu0p",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf4h009j6kve469tkqs6",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.577Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.202Z",
+      "updatedAt": "2026-09-07T12:40:47.577Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4j009m6kve40trq0o1",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf4h009j6kve469tkqs6",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.578Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.203Z",
+      "updatedAt": "2026-09-07T12:40:47.578Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4l009o6kvew1hn6mk9",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf4k009n6kveyzjbizm3",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.579Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.205Z",
+      "updatedAt": "2026-09-07T12:40:47.579Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4m009p6kvey8ew41vw",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf4k009n6kveyzjbizm3",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.579Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.206Z",
+      "updatedAt": "2026-09-07T12:40:47.580Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4o009r6kveypn0m7k6",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf48009c6kvexho0pjvb",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.581Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.208Z",
+      "updatedAt": "2026-09-07T12:40:47.581Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4p009s6kve55figg0t",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf4d009g6kvev22gcmre",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.581Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.209Z",
+      "updatedAt": "2026-09-07T12:40:47.581Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4r009t6kvemxwmqw3d",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf4d009g6kvev22gcmre",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.582Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.211Z",
+      "updatedAt": "2026-09-07T12:40:47.582Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4s009u6kveuvho9twz",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf4d009g6kvev22gcmre",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.583Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.212Z",
+      "updatedAt": "2026-09-07T12:40:47.583Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4t009v6kve70ytqm2m",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf4h009j6kve469tkqs6",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.583Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.213Z",
+      "updatedAt": "2026-09-07T12:40:47.583Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4v009x6kvey37pgqhg",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf4k009n6kveyzjbizm3",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.585Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.215Z",
+      "updatedAt": "2026-09-07T12:40:47.585Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4w009y6kvei5h4ut8d",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf4k009n6kveyzjbizm3",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.585Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.216Z",
+      "updatedAt": "2026-09-07T12:40:47.585Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4x009z6kveac1yjcqc",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf4k009n6kveyzjbizm3",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.586Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.217Z",
+      "updatedAt": "2026-09-07T12:40:47.586Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4z00a16kve4tx1hxwk",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf4y00a06kveehqzc5ww",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.587Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.219Z",
+      "updatedAt": "2026-09-07T12:40:47.587Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5000a26kvexcvxtala",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf4y00a06kveehqzc5ww",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.587Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.220Z",
+      "updatedAt": "2026-09-07T12:40:47.587Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5400a66kvefwliqg0v",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf5200a46kve4fq6ftdo",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.589Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.224Z",
+      "updatedAt": "2026-09-07T12:40:47.590Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5800a96kve78wdo20z",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf5600a76kveakgzw4ux",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.591Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.228Z",
+      "updatedAt": "2026-09-07T12:40:47.592Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5900aa6kvehrpkzdqu",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf5600a76kveakgzw4ux",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.593Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.229Z",
+      "updatedAt": "2026-09-07T12:40:47.593Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5c00ac6kvedjw34rwu",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf5b00ab6kvey6rvbkb5",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.594Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.232Z",
+      "updatedAt": "2026-09-07T12:40:47.595Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5d00ad6kvekkzyy15j",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf5b00ab6kvey6rvbkb5",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.596Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.233Z",
+      "updatedAt": "2026-09-07T12:40:47.596Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5e00ae6kve89jukyq1",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf4y00a06kveehqzc5ww",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.597Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.234Z",
+      "updatedAt": "2026-09-07T12:40:47.597Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5f00ag6kvei9qugzoc",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf5200a46kve4fq6ftdo",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.598Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.235Z",
+      "updatedAt": "2026-09-07T12:40:47.598Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5g00ah6kvegn8koh8b",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf5200a46kve4fq6ftdo",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.599Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.236Z",
+      "updatedAt": "2026-09-07T12:40:47.599Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5h00ai6kvetrwve0vl",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf5200a46kve4fq6ftdo",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.600Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.237Z",
+      "updatedAt": "2026-09-07T12:40:47.600Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5i00aj6kverfmyivx3",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf5600a76kveakgzw4ux",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.600Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.238Z",
+      "updatedAt": "2026-09-07T12:40:47.601Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5i00ak6kve4i1sbjrj",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf5600a76kveakgzw4ux",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.601Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.238Z",
+      "updatedAt": "2026-09-07T12:40:47.601Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5k00am6kveo6t4etnl",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf5b00ab6kvey6rvbkb5",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.602Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.240Z",
+      "updatedAt": "2026-09-07T12:40:47.602Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5l00an6kver8poheih",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf5b00ab6kvey6rvbkb5",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.603Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.241Z",
+      "updatedAt": "2026-09-07T12:40:47.603Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5o00ap6kvebcfv07b7",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5m00ao6kvex06gzw12",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.604Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.244Z",
+      "updatedAt": "2026-09-07T12:40:47.604Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5p00aq6kve364sk5g2",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5m00ao6kvex06gzw12",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.604Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.245Z",
+      "updatedAt": "2026-09-07T12:40:47.604Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5q00ar6kvelabl9rx8",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5m00ao6kvex06gzw12",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.605Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.246Z",
+      "updatedAt": "2026-09-07T12:40:47.605Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5s00at6kve7wu4f51s",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5m00ao6kvex06gzw12",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.606Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.248Z",
+      "updatedAt": "2026-09-07T12:40:47.606Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5u00av6kve9wponctu",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5t00au6kvegdaiuwfh",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.607Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.250Z",
+      "updatedAt": "2026-09-07T12:40:47.607Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5v00aw6kvebmnh4wn2",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5t00au6kvegdaiuwfh",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.608Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.251Z",
+      "updatedAt": "2026-09-07T12:40:47.608Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5w00ax6kve2w7o9mcg",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5t00au6kvegdaiuwfh",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.609Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.252Z",
+      "updatedAt": "2026-09-07T12:40:47.609Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5x00ay6kvezrt16ebm",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5t00au6kvegdaiuwfh",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.610Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.253Z",
+      "updatedAt": "2026-09-07T12:40:47.610Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6000b16kvebijffonl",
+      "teacherId": "cmth7nvku00bx94veetnxyfsp",
+      "subjectId": "cmtr7uf5z00b06kvemfonqq3t",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.612Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.256Z",
+      "updatedAt": "2026-09-07T12:40:47.612Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6000b26kvev0h50bzh",
+      "teacherId": "cmth7nvku00bx94veetnxyfsp",
+      "subjectId": "cmtr7uf5z00b06kvemfonqq3t",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.613Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.256Z",
+      "updatedAt": "2026-09-07T12:40:47.613Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6100b36kve11detp1j",
+      "teacherId": "cmth7nvku00bx94veetnxyfsp",
+      "subjectId": "cmtr7uf5z00b06kvemfonqq3t",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.614Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.257Z",
+      "updatedAt": "2026-09-07T12:40:47.614Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6400b56kveoy4nt6ri",
+      "teacherId": "cmth7nvku00bx94veetnxyfsp",
+      "subjectId": "cmtr7uf6300b46kve8r3b341v",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.615Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.260Z",
+      "updatedAt": "2026-09-07T12:40:47.616Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6500b66kve7hccwu6n",
+      "teacherId": "cmth7nvku00bx94veetnxyfsp",
+      "subjectId": "cmtr7uf6300b46kve8r3b341v",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.617Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.261Z",
+      "updatedAt": "2026-09-07T12:40:47.617Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6600b86kvebo87j1ls",
+      "teacherId": "cmth7nvkv00by94vesosh5i6m",
+      "subjectId": "cmtr7uf5z00b06kvemfonqq3t",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.619Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.262Z",
+      "updatedAt": "2026-09-07T12:40:47.619Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6700b96kvetguxis4n",
+      "teacherId": "cmth7nvkv00by94vesosh5i6m",
+      "subjectId": "cmtr7uf6300b46kve8r3b341v",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.620Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.263Z",
+      "updatedAt": "2026-09-07T12:40:47.620Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6800ba6kvehowcgswg",
+      "teacherId": "cmth7nvkv00by94vesosh5i6m",
+      "subjectId": "cmtr7uf6300b46kve8r3b341v",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.620Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.264Z",
+      "updatedAt": "2026-09-07T12:40:47.621Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6900bb6kvev9mcxmkr",
+      "teacherId": "cmth7nvkv00by94vesosh5i6m",
+      "subjectId": "cmtr7uf6300b46kve8r3b341v",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.621Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.265Z",
+      "updatedAt": "2026-09-07T12:40:47.621Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6b00bd6kve4lc62l9a",
+      "teacherId": "cmtkxi8os0vmmk0ve86341t6d",
+      "subjectId": "cmtr7uf6a00bc6kvepkrf65an",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.622Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.267Z",
+      "updatedAt": "2026-09-07T12:40:47.622Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6g00bh6kve79j6b54s",
+      "teacherId": "cmtkxi8os0vmmk0ve86341t6d",
+      "subjectId": "cmtr7uf6e00bg6kvespn0qmbz",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.623Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.272Z",
+      "updatedAt": "2026-09-07T12:40:47.624Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6i00bj6kvegxdeaxwn",
+      "teacherId": "cmtkxi8os0vmmk0ve86341t6d",
+      "subjectId": "cmtr7uf6h00bi6kverqq6f7yq",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.625Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.274Z",
+      "updatedAt": "2026-09-07T12:40:47.625Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6m00bl6kveg3daoklu",
+      "teacherId": "cmtkxi8os0vmmk0ve86341t6d",
+      "subjectId": "cmtr7uf6j00bk6kvenprm8db0",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.626Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.278Z",
+      "updatedAt": "2026-09-07T12:40:47.627Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6r00bn6kveqabcix4a",
+      "teacherId": "cmtkxi8os0vmmk0ve86341t6d",
+      "subjectId": "cmtr7uf6p00bm6kvek6ufzuhy",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.628Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.283Z",
+      "updatedAt": "2026-09-07T12:40:47.628Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6u00bp6kvet3md35ia",
+      "teacherId": "cmtkxi8os0vmmk0ve86341t6d",
+      "subjectId": "cmtr7uf6s00bo6kveon6rts2i",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.629Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.286Z",
+      "updatedAt": "2026-09-07T12:40:47.629Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6y00bt6kvewc0xlik2",
+      "teacherId": "cmth9pzdb008vtwvesyl3bz72",
+      "subjectId": "cmtr7uf6e00bg6kvespn0qmbz",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.633Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.290Z",
+      "updatedAt": "2026-09-07T12:40:47.633Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7100bw6kvem1ipiqp5",
+      "teacherId": "cmth9pzdb008vtwvesyl3bz72",
+      "subjectId": "cmtr7uf6j00bk6kvenprm8db0",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.634Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.293Z",
+      "updatedAt": "2026-09-07T12:40:47.634Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7400by6kve3vout6ab",
+      "teacherId": "cmth9pzdb008vtwvesyl3bz72",
+      "subjectId": "cmtr7uf7300bx6kvey6ik22p3",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.635Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.296Z",
+      "updatedAt": "2026-09-07T12:40:47.635Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7500bz6kvetvs52gpf",
+      "teacherId": "cmth9pzdb008vtwvesyl3bz72",
+      "subjectId": "cmtr7uf6s00bo6kveon6rts2i",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.636Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.297Z",
+      "updatedAt": "2026-09-07T12:40:47.636Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7800c16kvepk07gw40",
+      "teacherId": "cmtkv06dq0rnnk0ve63pbymb0",
+      "subjectId": "cmtr7uf7600c06kvekkd7tidi",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.637Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.300Z",
+      "updatedAt": "2026-09-07T12:40:47.637Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7900c26kvexknd63si",
+      "teacherId": "cmtkv06dq0rnnk0ve63pbymb0",
+      "subjectId": "cmtr7uf6c00be6kvef47twwrn",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.637Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.301Z",
+      "updatedAt": "2026-09-07T12:40:47.637Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7d00c56kveiy4jler0",
+      "teacherId": "cmtkv06dq0rnnk0ve63pbymb0",
+      "subjectId": "cmtr7uf6z00bu6kvelsdhmi8j",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.638Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.305Z",
+      "updatedAt": "2026-09-07T12:40:47.639Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7d00c66kvevp3kcwxt",
+      "teacherId": "cmtkv06dq0rnnk0ve63pbymb0",
+      "subjectId": "cmtr7uf6j00bk6kvenprm8db0",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.640Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.305Z",
+      "updatedAt": "2026-09-07T12:40:47.640Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7e00c76kvecko8i6de",
+      "teacherId": "cmtkv06dq0rnnk0ve63pbymb0",
+      "subjectId": "cmtr7uf7300bx6kvey6ik22p3",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.641Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.306Z",
+      "updatedAt": "2026-09-07T12:40:47.641Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7f00c86kvei3iq5dsm",
+      "teacherId": "cmtkv06dq0rnnk0ve63pbymb0",
+      "subjectId": "cmtr7uf6s00bo6kveon6rts2i",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.642Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.307Z",
+      "updatedAt": "2026-09-07T12:40:47.643Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7i00ca6kveoioew34r",
+      "teacherId": "cmtkv06e40rntk0vem2o5wosv",
+      "subjectId": "cmtr7uf7h00c96kvel7aiusag",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.644Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.310Z",
+      "updatedAt": "2026-09-07T12:40:47.644Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7m00cd6kvenql628a2",
+      "teacherId": "cmtkv06e40rntk0vem2o5wosv",
+      "subjectId": "cmtr7uf7a00c36kveecht84it",
+      "sectionId": "cmtmnf2kb0hnzasve9in7gqy3",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.646Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.314Z",
+      "updatedAt": "2026-09-07T12:40:47.646Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7n00ce6kvew087afau",
+      "teacherId": "cmtkv06e40rntk0vem2o5wosv",
+      "subjectId": "cmtr7uf6z00bu6kvelsdhmi8j",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.647Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.315Z",
+      "updatedAt": "2026-09-07T12:40:47.647Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7o00cf6kvebuzbmu1z",
+      "teacherId": "cmtkv06e40rntk0vem2o5wosv",
+      "subjectId": "cmtr7uf6j00bk6kvenprm8db0",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.648Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.316Z",
+      "updatedAt": "2026-09-07T12:40:47.648Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7p00cg6kvelqsd2ebp",
+      "teacherId": "cmtkv06e40rntk0vem2o5wosv",
+      "subjectId": "cmtr7uf7300bx6kvey6ik22p3",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.648Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.317Z",
+      "updatedAt": "2026-09-07T12:40:47.648Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7p00ch6kvezogjmqvu",
+      "teacherId": "cmtkv06e40rntk0vem2o5wosv",
+      "subjectId": "cmtr7uf6s00bo6kveon6rts2i",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.649Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.317Z",
+      "updatedAt": "2026-09-07T12:40:47.649Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7s00ck6kvev1t637o7",
+      "teacherId": "cmth7nvl100c594veboae6d48",
+      "subjectId": "cmtr7uf7k00cb6kve4jae08o9",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.650Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.320Z",
+      "updatedAt": "2026-09-07T12:40:47.650Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7t00cl6kve85u5qhbk",
+      "teacherId": "cmth7nvl100c594veboae6d48",
+      "subjectId": "cmtr7uf7a00c36kveecht84it",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.651Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.321Z",
+      "updatedAt": "2026-09-07T12:40:47.651Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7u00cm6kvemrv79aak",
+      "teacherId": "cmth7nvl100c594veboae6d48",
+      "subjectId": "cmtr7uf6z00bu6kvelsdhmi8j",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.652Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.322Z",
+      "updatedAt": "2026-09-07T12:40:47.652Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7v00cn6kve0okgdjws",
+      "teacherId": "cmth7nvl100c594veboae6d48",
+      "subjectId": "cmtr7uf6j00bk6kvenprm8db0",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.652Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.323Z",
+      "updatedAt": "2026-09-07T12:40:47.652Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7v00co6kve1olma32v",
+      "teacherId": "cmth7nvl100c594veboae6d48",
+      "subjectId": "cmtr7uf7300bx6kvey6ik22p3",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.653Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.323Z",
+      "updatedAt": "2026-09-07T12:40:47.653Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8000cr6kve7wzz0c9k",
+      "teacherId": "cmth9pzdk0096twve636ri026",
+      "subjectId": "cmtr7uf7y00cq6kvezbnsumno",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.654Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.328Z",
+      "updatedAt": "2026-09-07T12:40:47.654Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8100cs6kved9gqfl3k",
+      "teacherId": "cmth9pzdk0096twve636ri026",
+      "subjectId": "cmtr7uf7k00cb6kve4jae08o9",
+      "sectionId": "cmtmnf2jy0hnqasvewjhxgzrt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.655Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.329Z",
+      "updatedAt": "2026-09-07T12:40:47.655Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8200ct6kveiwya7oq1",
+      "teacherId": "cmth9pzdk0096twve636ri026",
+      "subjectId": "cmtr7uf7a00c36kveecht84it",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.655Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.330Z",
+      "updatedAt": "2026-09-07T12:40:47.655Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8300cu6kve4uvia4na",
+      "teacherId": "cmth9pzdk0096twve636ri026",
+      "subjectId": "cmtr7uf6z00bu6kvelsdhmi8j",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.657Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.331Z",
+      "updatedAt": "2026-09-07T12:40:47.657Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8400cv6kve5xljlcrj",
+      "teacherId": "cmth9pzdk0096twve636ri026",
+      "subjectId": "cmtr7uf7300bx6kvey6ik22p3",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.658Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.332Z",
+      "updatedAt": "2026-09-07T12:40:47.658Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8700cy6kvetliy1ocx",
+      "teacherId": "cmth7nvl500c894ve8d4n1bz7",
+      "subjectId": "cmtr7uf7k00cb6kve4jae08o9",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.660Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.335Z",
+      "updatedAt": "2026-09-07T12:40:47.660Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8800cz6kvempmhtjw1",
+      "teacherId": "cmth7nvl500c894ve8d4n1bz7",
+      "subjectId": "cmtr7uf7a00c36kveecht84it",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.661Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.336Z",
+      "updatedAt": "2026-09-07T12:40:47.661Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8a00d16kvehmwca6sz",
+      "teacherId": "cmth7nvl500c894ve8d4n1bz7",
+      "subjectId": "cmtr7uf8900d06kve5ls849v0",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.663Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.338Z",
+      "updatedAt": "2026-09-07T12:40:47.663Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8d00d36kve0c8u1wxq",
+      "teacherId": "cmth7nvl500c894ve8d4n1bz7",
+      "subjectId": "cmtr7uf8c00d26kvechmvk5w9",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.663Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.341Z",
+      "updatedAt": "2026-09-07T12:40:47.663Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8h00d56kvevf14sybl",
+      "teacherId": "cmtkv06ec0robk0ve54dmmjum",
+      "subjectId": "cmtr7uf8f00d46kvenr0kv5ol",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.664Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.345Z",
+      "updatedAt": "2026-09-07T12:40:47.664Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8j00d76kven2989sa5",
+      "teacherId": "cmtkv06ec0robk0ve54dmmjum",
+      "subjectId": "cmtr7uf6h00bi6kverqq6f7yq",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.665Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.347Z",
+      "updatedAt": "2026-09-07T12:40:47.665Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8k00d86kvedpugn8oq",
+      "teacherId": "cmtkv06ec0robk0ve54dmmjum",
+      "subjectId": "cmtr7uf8900d06kve5ls849v0",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.666Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.348Z",
+      "updatedAt": "2026-09-07T12:40:47.666Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8l00d96kvejs0fvmfn",
+      "teacherId": "cmtkv06ec0robk0ve54dmmjum",
+      "subjectId": "cmtr7uf6p00bm6kvek6ufzuhy",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.667Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.349Z",
+      "updatedAt": "2026-09-07T12:40:47.667Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8m00da6kvex3835d60",
+      "teacherId": "cmtkv06ec0robk0ve54dmmjum",
+      "subjectId": "cmtr7uf8c00d26kvechmvk5w9",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.667Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.350Z",
+      "updatedAt": "2026-09-07T12:40:47.667Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8p00dc6kveepq1pgb8",
+      "teacherId": "cmtkv06ed0rodk0veqnrnwiyj",
+      "subjectId": "cmtr7uf8o00db6kveogzvz5mv",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.668Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.353Z",
+      "updatedAt": "2026-09-07T12:40:47.668Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8q00de6kvee016t6rp",
+      "teacherId": "cmtkv06ed0rodk0veqnrnwiyj",
+      "subjectId": "cmtr7uf6h00bi6kverqq6f7yq",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.669Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.354Z",
+      "updatedAt": "2026-09-07T12:40:47.669Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8r00df6kve5dzl51oj",
+      "teacherId": "cmtkv06ed0rodk0veqnrnwiyj",
+      "subjectId": "cmtr7uf8900d06kve5ls849v0",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.670Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.355Z",
+      "updatedAt": "2026-09-07T12:40:47.670Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8s00dg6kvep5duiw87",
+      "teacherId": "cmtkv06ed0rodk0veqnrnwiyj",
+      "subjectId": "cmtr7uf6p00bm6kvek6ufzuhy",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.670Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.356Z",
+      "updatedAt": "2026-09-07T12:40:47.670Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8t00dh6kveu97km6te",
+      "teacherId": "cmtkv06ed0rodk0veqnrnwiyj",
+      "subjectId": "cmtr7uf8c00d26kvechmvk5w9",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.671Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.357Z",
+      "updatedAt": "2026-09-07T12:40:47.671Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8u00di6kve9ltcbrkp",
+      "teacherId": "cmtkv06eh0rofk0veo307q1v3",
+      "subjectId": "cmtr7uf6c00be6kvef47twwrn",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.672Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.358Z",
+      "updatedAt": "2026-09-07T12:40:47.672Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8u00dj6kve00kwgdb1",
+      "teacherId": "cmtkv06eh0rofk0veo307q1v3",
+      "subjectId": "cmtr7uf6e00bg6kvespn0qmbz",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.672Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.358Z",
+      "updatedAt": "2026-09-07T12:40:47.672Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8v00dk6kveilxbdhcd",
+      "teacherId": "cmtkv06eh0rofk0veo307q1v3",
+      "subjectId": "cmtr7uf6h00bi6kverqq6f7yq",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.673Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.359Z",
+      "updatedAt": "2026-09-07T12:40:47.673Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8w00dl6kvecqqkixck",
+      "teacherId": "cmtkv06eh0rofk0veo307q1v3",
+      "subjectId": "cmtr7uf8900d06kve5ls849v0",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.673Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.360Z",
+      "updatedAt": "2026-09-07T12:40:47.673Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8x00dm6kveyom7ldp4",
+      "teacherId": "cmtkv06eh0rofk0veo307q1v3",
+      "subjectId": "cmtr7uf6p00bm6kvek6ufzuhy",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.674Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.361Z",
+      "updatedAt": "2026-09-07T12:40:47.674Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8y00dn6kve67sjcd6y",
+      "teacherId": "cmtkv06eh0rofk0veo307q1v3",
+      "subjectId": "cmtr7uf8c00d26kvechmvk5w9",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.675Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.362Z",
+      "updatedAt": "2026-09-07T12:40:47.675Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8z00do6kve9kp7bqu7",
+      "teacherId": "cmth7nvle00ch94vey376gad3",
+      "subjectId": "cmtr7uf6c00be6kvef47twwrn",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.676Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.363Z",
+      "updatedAt": "2026-09-07T12:40:47.676Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8z00dp6kvehf40k1lm",
+      "teacherId": "cmth7nvle00ch94vey376gad3",
+      "subjectId": "cmtr7uf6e00bg6kvespn0qmbz",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.677Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.363Z",
+      "updatedAt": "2026-09-07T12:40:47.677Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf9000dq6kve7att7mgn",
+      "teacherId": "cmth7nvle00ch94vey376gad3",
+      "subjectId": "cmtr7uf6h00bi6kverqq6f7yq",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.677Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.364Z",
+      "updatedAt": "2026-09-07T12:40:47.677Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf9100dr6kvehf3urnp7",
+      "teacherId": "cmth7nvle00ch94vey376gad3",
+      "subjectId": "cmtr7uf8900d06kve5ls849v0",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.678Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.365Z",
+      "updatedAt": "2026-09-07T12:40:47.678Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf9200ds6kvecchovxkf",
+      "teacherId": "cmth7nvle00ch94vey376gad3",
+      "subjectId": "cmtr7uf6p00bm6kvek6ufzuhy",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.679Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.366Z",
+      "updatedAt": "2026-09-07T12:40:47.679Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf9300dt6kvedxnzyipy",
+      "teacherId": "cmth7nvle00ch94vey376gad3",
+      "subjectId": "cmtr7uf8c00d26kvechmvk5w9",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.679Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.367Z",
+      "updatedAt": "2026-09-07T12:40:47.680Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uez3005b6kve0lr3iz7q",
+      "teacherId": "cmtkv06e80ro1k0ve6prdrnw4",
+      "subjectId": "cmtr7ueyr00506kverfm03wsb",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.466Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.007Z",
+      "updatedAt": "2026-09-07T12:40:47.466Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uezb005i6kvenv02jv0t",
+      "teacherId": "cmtkv06e90ro5k0veo1p3phiv",
+      "subjectId": "cmtr7ueyo004x6kve01gfk8d4",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.480Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.015Z",
+      "updatedAt": "2026-09-07T12:40:47.480Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uezc005j6kveaevabdxq",
+      "teacherId": "cmtkv06e90ro5k0veo1p3phiv",
+      "subjectId": "cmtr7ueyo004x6kve01gfk8d4",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.481Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.016Z",
+      "updatedAt": "2026-09-07T12:40:47.481Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7ueze005l6kvec3q48qhp",
+      "teacherId": "cmtkv06e90ro5k0veo1p3phiv",
+      "subjectId": "cmtr7ueyr00506kverfm03wsb",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.483Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.018Z",
+      "updatedAt": "2026-09-07T12:40:47.483Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf04005x6kveom294ixa",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uezz005w6kve2xzrol95",
+      "sectionId": "cmtmnf2j50hnjasvexgtyaijo",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.488Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.045Z",
+      "updatedAt": "2026-09-07T12:40:47.488Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0m00696kverj6e5ybt",
+      "teacherId": "cmth7nvkw00c094vexozfvm2m",
+      "subjectId": "cmtr7uf0l00686kveqwwmjcr5",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.492Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.062Z",
+      "updatedAt": "2026-09-07T12:40:47.492Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0t006g6kve63pyoraf",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uezz005w6kve2xzrol95",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.496Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.069Z",
+      "updatedAt": "2026-09-07T12:40:47.496Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf0y006m6kve6xbu90iq",
+      "teacherId": "cmth7nvl900ca94ve9w3fcrq1",
+      "subjectId": "cmtr7uf0l00686kveqwwmjcr5",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.501Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.074Z",
+      "updatedAt": "2026-09-07T12:40:47.501Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf16006s6kvevfaa7tj4",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uezz005w6kve2xzrol95",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.505Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.082Z",
+      "updatedAt": "2026-09-07T12:40:47.505Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1b006y6kveo9xexckl",
+      "teacherId": "cmtl0wdh70xu0k0veg5pzmj3r",
+      "subjectId": "cmtr7uf0l00686kveqwwmjcr5",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.512Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.087Z",
+      "updatedAt": "2026-09-07T12:40:47.512Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1h00746kvekmu057kg",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uezz005w6kve2xzrol95",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.517Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.093Z",
+      "updatedAt": "2026-09-07T12:40:47.517Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1i00756kvemyaim01w",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uf08005y6kve6i5dsfbj",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.518Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.094Z",
+      "updatedAt": "2026-09-07T12:40:47.518Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1j00776kveay6fo46m",
+      "teacherId": "cmtl0wdhg0xu3k0vegpyobkwa",
+      "subjectId": "cmtr7uf0d00626kveao4bl8au",
+      "sectionId": "cmtmnf2kd0ho1asved8786i6k",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.519Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.095Z",
+      "updatedAt": "2026-09-07T12:40:47.519Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf1o007d6kvezhnz9xbd",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uezn005q6kvebfu5zrkk",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.525Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.100Z",
+      "updatedAt": "2026-09-07T12:40:47.525Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf22007j6kvezdcu6nh6",
+      "teacherId": "cmtl0wdhm0xuek0vez2rwadoc",
+      "subjectId": "cmtr7uf0d00626kveao4bl8au",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.529Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.114Z",
+      "updatedAt": "2026-09-07T12:40:47.529Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf28007q6kvecrfdpnw9",
+      "teacherId": "cmth7nvl000c494vencdrz6zj",
+      "subjectId": "cmtr7uf26007o6kveya8z4wkp",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.533Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.120Z",
+      "updatedAt": "2026-09-07T12:40:47.534Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2i007z6kveqm4fwqwa",
+      "teacherId": "cmth7nvla00cc94veyuuyw0h1",
+      "subjectId": "cmtr7uf26007o6kveya8z4wkp",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.538Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.130Z",
+      "updatedAt": "2026-09-07T12:40:47.538Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2p00856kvezuod5ahi",
+      "teacherId": "cmth7nvla00cc94veyuuyw0h1",
+      "subjectId": "cmtr7uf2f007w6kveym11mpsq",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.545Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.137Z",
+      "updatedAt": "2026-09-07T12:40:47.545Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf2u008b6kvemqxjoexp",
+      "teacherId": "cmth7nvld00cg94vea2yid4ez",
+      "subjectId": "cmtr7uf2f007w6kveym11mpsq",
+      "sectionId": "cmtmnf2kc0ho0asveim4f21ni",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.549Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.142Z",
+      "updatedAt": "2026-09-07T12:40:47.549Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf36008l6kveo23kl6fz",
+      "teacherId": "cmth7nvl600c994vesgllv0bf",
+      "subjectId": "cmtr7uf31008g6kvekdaue1wx",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.553Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.154Z",
+      "updatedAt": "2026-09-07T12:40:47.553Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf39008n6kveplyj3k4g",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf38008m6kvecbo7mtj6",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.554Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.157Z",
+      "updatedAt": "2026-09-07T12:40:47.555Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3d008q6kveibz67tvq",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf3b008p6kveah1nfskj",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.556Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.161Z",
+      "updatedAt": "2026-09-07T12:40:47.557Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3m008y6kve48nzgv13",
+      "teacherId": "cmtkxi8p30vnak0vepx3lxw07",
+      "subjectId": "cmtr7uf3l008w6kvemzb1bd9r",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.564Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.170Z",
+      "updatedAt": "2026-09-07T12:40:47.564Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf3r00946kvevkgsgab4",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf3b008p6kveah1nfskj",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.567Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.175Z",
+      "updatedAt": "2026-09-07T12:40:47.567Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf46009a6kveexgcfl1c",
+      "teacherId": "cmtj8cpso0heu0sve6qyptzy8",
+      "subjectId": "cmtr7uf3l008w6kvemzb1bd9r",
+      "sectionId": "cmtmnf2k90hnxasveutcgiub2",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.571Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.190Z",
+      "updatedAt": "2026-09-07T12:40:47.571Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4f009i6kveb44weahh",
+      "teacherId": "cmtj8cps70hee0svenbzolsfu",
+      "subjectId": "cmtr7uf4d009g6kvev22gcmre",
+      "sectionId": "cmtmnf2k00hnrasve6qlgsgh1",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.576Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.199Z",
+      "updatedAt": "2026-09-07T12:40:47.576Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4n009q6kveyogmmp6f",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf48009c6kvexho0pjvb",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.580Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.207Z",
+      "updatedAt": "2026-09-07T12:40:47.580Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf4u009w6kvey56jh7p6",
+      "teacherId": "cmtkxi8ow0vmxk0ve4qp832c3",
+      "subjectId": "cmtr7uf4h009j6kve469tkqs6",
+      "sectionId": "cmtmnf2k80hnwasvezu3vg84d",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.584Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.214Z",
+      "updatedAt": "2026-09-07T12:40:47.584Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5100a36kve5w1xfkcj",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf4y00a06kveehqzc5ww",
+      "sectionId": "cmtmnf2jq0hnnasve7tdxha5j",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.588Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.221Z",
+      "updatedAt": "2026-09-07T12:40:47.588Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5300a56kve3d3kyag5",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf5200a46kve4fq6ftdo",
+      "sectionId": "cmtmnf2jv0hnpasveezpy4mx0",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.589Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.223Z",
+      "updatedAt": "2026-09-07T12:40:47.589Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5700a86kvelhpl0thy",
+      "teacherId": "cmtkv06e50rnwk0ve1ce7d11k",
+      "subjectId": "cmtr7uf5600a76kveakgzw4ux",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.590Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.227Z",
+      "updatedAt": "2026-09-07T12:40:47.591Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5e00af6kvexosphyt3",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf4y00a06kveehqzc5ww",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.598Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.234Z",
+      "updatedAt": "2026-09-07T12:40:47.598Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5j00al6kvecupeitan",
+      "teacherId": "cmtkxi8p10vn5k0ve70l2z8x9",
+      "subjectId": "cmtr7uf5b00ab6kvey6rvbkb5",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.602Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.239Z",
+      "updatedAt": "2026-09-07T12:40:47.602Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5r00as6kveitfl62mg",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5m00ao6kvex06gzw12",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.606Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.247Z",
+      "updatedAt": "2026-09-07T12:40:47.606Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf5x00az6kve82znyxql",
+      "teacherId": "cmtj8cpsn0her0sveadtcw4cv",
+      "subjectId": "cmtr7uf5t00au6kvegdaiuwfh",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.611Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.253Z",
+      "updatedAt": "2026-09-07T12:40:47.611Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6600b76kvexbc1fdxw",
+      "teacherId": "cmth7nvkv00by94vesosh5i6m",
+      "subjectId": "cmtr7uf5z00b06kvemfonqq3t",
+      "sectionId": "cmtmnf2k40hnuasve5kkh8zad",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.618Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.262Z",
+      "updatedAt": "2026-09-07T12:40:47.618Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6d00bf6kve8wwinjlt",
+      "teacherId": "cmtkxi8os0vmmk0ve86341t6d",
+      "subjectId": "cmtr7uf6c00be6kvef47twwrn",
+      "sectionId": "cmtmnf2jm0hnlasveopa2wk66",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.623Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.269Z",
+      "updatedAt": "2026-09-07T12:40:47.623Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6w00br6kvel4b0iz0p",
+      "teacherId": "cmth9pzdb008vtwvesyl3bz72",
+      "subjectId": "cmtr7uf6v00bq6kvetlnbs4gg",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.631Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.288Z",
+      "updatedAt": "2026-09-07T12:40:47.631Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf6x00bs6kvexwin1qau",
+      "teacherId": "cmth9pzdb008vtwvesyl3bz72",
+      "subjectId": "cmtr7uf6c00be6kvef47twwrn",
+      "sectionId": "cmtmnf2jp0hnmasverfbehq76",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.632Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.289Z",
+      "updatedAt": "2026-09-07T12:40:47.632Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7000bv6kveg2s4okvh",
+      "teacherId": "cmth9pzdb008vtwvesyl3bz72",
+      "subjectId": "cmtr7uf6z00bu6kvelsdhmi8j",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.633Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.292Z",
+      "updatedAt": "2026-09-07T12:40:47.634Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7b00c46kve2g4m25es",
+      "teacherId": "cmtkv06dq0rnnk0ve63pbymb0",
+      "subjectId": "cmtr7uf7a00c36kveecht84it",
+      "sectionId": "cmtmnf2ka0hnyasvem7xt0tbt",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.638Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.303Z",
+      "updatedAt": "2026-09-07T12:40:47.638Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7m00cc6kve4937imx7",
+      "teacherId": "cmtkv06e40rntk0vem2o5wosv",
+      "subjectId": "cmtr7uf7k00cb6kve4jae08o9",
+      "sectionId": "cmtmnf2jt0hnoasveqe2eswkz",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.645Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.314Z",
+      "updatedAt": "2026-09-07T12:40:47.645Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7s00cj6kven2y8klzb",
+      "teacherId": "cmth7nvl100c594veboae6d48",
+      "subjectId": "cmtr7uf7r00ci6kvegzw136ra",
+      "sectionId": "cmtmnf2jj0hnkasvels5cafsa",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.650Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.320Z",
+      "updatedAt": "2026-09-07T12:40:47.650Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf7w00cp6kve28cxr8dk",
+      "teacherId": "cmth7nvl100c594veboae6d48",
+      "subjectId": "cmtr7uf6s00bo6kveon6rts2i",
+      "sectionId": "cmtmnf2kf0ho2asve928n3t6i",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.653Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.324Z",
+      "updatedAt": "2026-09-07T12:40:47.654Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8600cx6kvelvpvipkv",
+      "teacherId": "cmth7nvl500c894ve8d4n1bz7",
+      "subjectId": "cmtr7uf8500cw6kvewwv8szqo",
+      "sectionId": "cmtmnf2k60hnvasvesn3ry6b6",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.659Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.334Z",
+      "updatedAt": "2026-09-07T12:40:47.659Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8i00d66kve236lure9",
+      "teacherId": "cmtkv06ec0robk0ve54dmmjum",
+      "subjectId": "cmtr7uf7k00cb6kve4jae08o9",
+      "sectionId": "cmtmnf2k10hnsasve9byt3m7a",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.665Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.346Z",
+      "updatedAt": "2026-09-07T12:40:47.665Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    },
+    {
+      "id": "cmtr7uf8p00dd6kvefcei4rcw",
+      "teacherId": "cmtkv06ed0rodk0veqnrnwiyj",
+      "subjectId": "cmtr7uf6e00bg6kvespn0qmbz",
+      "sectionId": "cmtmnf2k30hntasvekcaybujq",
+      "schoolYear": "2029-2030",
+      "teachingMinutes": null,
+      "isActive": false,
+      "archivedAt": "2026-09-07T12:40:47.668Z",
+      "archivedReason": "ATLAS_STALE_NO_GRADES",
+      "successorTeacherId": null,
+      "source": "SYNC",
+      "createdAt": "2026-09-07T12:27:41.353Z",
+      "updatedAt": "2026-09-07T12:40:47.669Z",
+      "_count": {
+        "grades": 0,
+        "workloadEntries": 0
+      }
+    }
+  ],
+  "withGradesRecordGrades": [
+    {
+      "id": "cmtprjhep009jl0ve6j6w2ian",
+      "studentId": "cmtjp7szj00tgf0vezzyy958t",
+      "classAssignmentId": "cmtn2uu4q01rd14ve802hftsu",
+      "term": "T1",
+      "writtenWorkScores": [
+        {
+          "name": "WW 1",
+          "score": 0,
+          "maxScore": 10,
+          "description": "WW 1"
+        }
+      ],
+      "perfTaskScores": null,
+      "quarterlyAssessScore": 0,
+      "quarterlyAssessMax": 100,
+      "qaDescription": null,
+      "qaDate": null,
+      "writtenWorkPS": 0,
+      "perfTaskPS": null,
+      "quarterlyAssessPS": 0,
+      "initialGrade": null,
+      "quarterlyGrade": null,
+      "remarks": null,
+      "qualitativeDescriptor": null,
+      "isArchived": false,
+      "archivedAt": null,
+      "archivedReason": null,
+      "status": "DRAFT",
+      "finalizedBy": null,
+      "finalizedAt": null,
+      "createdAt": "2026-09-06T12:03:30.913Z",
+      "updatedAt": "2026-09-06T12:03:30.913Z"
+    },
+    {
+      "id": "cmtpt4a6k009vl0venn3abkkj",
+      "studentId": "cmtjgx0fv019akcve0n0zdeiz",
+      "classAssignmentId": "cmtn2uu4q01rd14ve802hftsu",
+      "term": "T1",
+      "writtenWorkScores": null,
+      "perfTaskScores": null,
+      "quarterlyAssessScore": 0,
+      "quarterlyAssessMax": 100,
+      "qaDescription": "Term Assessment",
+      "qaDate": null,
+      "writtenWorkPS": null,
+      "perfTaskPS": null,
+      "quarterlyAssessPS": 0,
+      "initialGrade": null,
+      "quarterlyGrade": null,
+      "remarks": null,
+      "qualitativeDescriptor": null,
+      "isArchived": false,
+      "archivedAt": null,
+      "archivedReason": null,
+      "status": "DRAFT",
+      "finalizedBy": null,
+      "finalizedAt": null,
+      "createdAt": "2026-09-06T12:47:40.940Z",
+      "updatedAt": "2026-09-06T14:03:42.019Z"
+    }
+  ],
+  "withGradesRecordWorkloadEntries": []
+}

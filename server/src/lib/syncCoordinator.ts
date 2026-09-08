@@ -24,6 +24,7 @@ import { broadcastSyncStatus } from './sseManager';
 import { prisma } from './prisma';
 import { invalidateAllCaches } from './syncCache';
 import { logger } from './logger';
+import { runAimsScoreSync, type AimsSyncResult } from './aimsScoreSync';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -79,6 +80,7 @@ export interface UnifiedSyncResult {
     unmatched: Array<{ lrn: string; reason: string }>;
   } | null;
   branding: boolean;
+  aims?: AimsSyncResult | null;
   error?: string;
 }
 
@@ -235,6 +237,7 @@ export async function runUnifiedSync(options?: {
   let atlasResult: UnifiedSyncResult['atlas'] = null;
   let transfereeResult: UnifiedSyncResult['transferees'] = null;
   let brandingSynced = false;
+  let aimsResult: AimsSyncResult | null = null;
   let error: string | undefined;
 
   try {
@@ -243,7 +246,7 @@ export async function runUnifiedSync(options?: {
     // Skipped when EnrollPro is offline (partial sync mode).
     if (!epOffline) {
       try {
-        logger.debug('[SyncCoordinator] Step 1/4: EnrollPro sync...');
+        logger.debug('[SyncCoordinator] Step 1/5: EnrollPro sync...');
         const epResult = await runEnrollProSync();
         if (epResult) {
           enrollproResult = {
@@ -269,7 +272,7 @@ export async function runUnifiedSync(options?: {
         };
       }
     } else {
-      logger.debug('[SyncCoordinator] Step 1/4: EnrollPro sync skipped (offline)');
+      logger.debug('[SyncCoordinator] Step 1/5: EnrollPro sync skipped (offline)');
     }
 
     // ── Step 1b: Auto-prune (SSOT enforcement) ──────────────────────────
@@ -317,7 +320,7 @@ export async function runUnifiedSync(options?: {
     // Skipped when Atlas is offline (partial sync mode).
     if (!atlasOffline) {
       try {
-        logger.debug('[SyncCoordinator] Step 2/4: Atlas sync...');
+        logger.debug('[SyncCoordinator] Step 2/5: Atlas sync...');
         const atResult = await runAtlasSync();
         if (atResult) {
           atlasResult = {
@@ -333,7 +336,7 @@ export async function runUnifiedSync(options?: {
         atlasResult = { matched: 0, created: 0, deleted: 0, teachersWithLoads: 0, errors: [err.message] };
       }
     } else {
-      logger.debug('[SyncCoordinator] Step 2/4: Atlas sync skipped (offline)');
+      logger.debug('[SyncCoordinator] Step 2/5: Atlas sync skipped (offline)');
     }
 
     // ── Step 3: Branding Sync (low frequency) ───────────────────────────
@@ -342,17 +345,17 @@ export async function runUnifiedSync(options?: {
       const shouldSyncBranding = options?.forceBranding || (syncCycleCount % BRANDING_SYNC_EVERY_N_CYCLES === 0);
       if (shouldSyncBranding) {
         try {
-          logger.debug('[SyncCoordinator] Step 3/4: Branding sync...');
+          logger.debug('[SyncCoordinator] Step 3/5: Branding sync...');
           await syncEnrollProBranding();
           brandingSynced = true;
         } catch (err: any) {
           logger.error('[SyncCoordinator] Branding sync failed:', err.message);
         }
       } else {
-        logger.debug(`[SyncCoordinator] Step 3/4: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
+        logger.debug(`[SyncCoordinator] Step 3/5: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
       }
     } else {
-      logger.debug('[SyncCoordinator] Step 3/4: Branding sync skipped (EnrollPro offline)');
+      logger.debug('[SyncCoordinator] Step 3/5: Branding sync skipped (EnrollPro offline)');
     }
 
     // ── Step 4: Student Profile Sync (hourly) ──────────────────────────
@@ -361,7 +364,7 @@ export async function runUnifiedSync(options?: {
       const shouldSyncStudentProfiles = syncCycleCount % STUDENT_PROFILE_SYNC_EVERY_N_CYCLES === 0;
       if (shouldSyncStudentProfiles) {
         try {
-          logger.debug('[SyncCoordinator] Step 4/4: Student profile sync...');
+          logger.debug('[SyncCoordinator] Step 4/5: Student profile sync...');
           const profileResult = await runStudentProfileSync();
           if (profileResult.errors.length > 0) {
             logger.warn(`[SyncCoordinator] Student profile sync had ${profileResult.errors.length} errors`);
@@ -370,10 +373,28 @@ export async function runUnifiedSync(options?: {
           logger.error('[SyncCoordinator] Student profile sync failed:', err.message);
         }
       } else {
-        logger.debug(`[SyncCoordinator] Step 4/4: Student profile sync skipped (next at cycle #${Math.ceil(syncCycleCount / STUDENT_PROFILE_SYNC_EVERY_N_CYCLES) * STUDENT_PROFILE_SYNC_EVERY_N_CYCLES})`);
+        logger.debug(`[SyncCoordinator] Step 4/5: Student profile sync skipped (next at cycle #${Math.ceil(syncCycleCount / STUDENT_PROFILE_SYNC_EVERY_N_CYCLES) * STUDENT_PROFILE_SYNC_EVERY_N_CYCLES})`);
       }
     } else {
-      logger.debug('[SyncCoordinator] Step 4/4: Student profile sync skipped (EnrollPro offline)');
+      logger.debug('[SyncCoordinator] Step 4/5: Student profile sync skipped (EnrollPro offline)');
+    }
+
+    // ── Step 5: AIMS Score Sync (non-critical, fail-soft) ──────────────
+    // Pulls per-student assessment scores from AIMS LMS for linked courses.
+    // Runs every cycle. AIMS offline = skipped step, never breaks the cycle.
+    try {
+      logger.debug('[SyncCoordinator] Step 5/5: AIMS score sync...');
+      aimsResult = await runAimsScoreSync();
+      if (aimsResult.status === 'ok' || aimsResult.status === 'partial') {
+        logger.info(
+          `[SyncCoordinator] AIMS sync: ${aimsResult.coursesSynced} courses, ${aimsResult.scoresUpserted} scores, ${aimsResult.unmatched.length} unmatched`,
+        );
+      } else if (aimsResult.reason) {
+        logger.debug(`[SyncCoordinator] AIMS sync: ${aimsResult.status} (${aimsResult.reason})`);
+      }
+    } catch (err: any) {
+      logger.error('[SyncCoordinator] AIMS sync failed (non-fatal):', err.message);
+      aimsResult = { status: 'offline', coursesSynced: 0, scoresUpserted: 0, unmatched: [], lastSyncedAt: null };
     }
 
   } catch (err: any) {
@@ -394,6 +415,7 @@ export async function runUnifiedSync(options?: {
     atlas: atlasResult,
     transferees: transfereeResult,
     branding: brandingSynced,
+    aims: aimsResult,
     ...(error ? { error } : {}),
   };
 
@@ -424,6 +446,12 @@ export async function runUnifiedSync(options?: {
         created: atlasResult.created,
         matched: atlasResult.matched,
         errors: atlasResult.errors.length,
+      } : null,
+      aims: aimsResult ? {
+        status: aimsResult.status,
+        coursesSynced: aimsResult.coursesSynced,
+        scoresUpserted: aimsResult.scoresUpserted,
+        unmatched: aimsResult.unmatched.length,
       } : null,
     },
   });
@@ -675,6 +703,7 @@ function buildEmptyResult(error: string): UnifiedSyncResult {
     atlas: null,
     transferees: null,
     branding: false,
+    aims: null,
     error,
   };
 }

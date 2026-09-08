@@ -64,6 +64,7 @@ model RefreshToken {
 model Student {
   id              String       @id @default(cuid())
   lrn             String       @unique
+  enrollproId     Int?         @unique // EnrollPro numeric learner ID — AIMS↔SMART student align key
   firstName       String
   middleName      String?
   lastName        String
@@ -95,6 +96,7 @@ model Student {
   attendance      Attendance[]
   enrollments     Enrollment[]
   grades          Grade[]
+  aimsScores      AimsScore[]
 
   @@index([lastName, firstName])
 }
@@ -154,6 +156,7 @@ model ClassAssignment {
   archivedReason     String?
   successorTeacherId String?         // set when Atlas reassigns this class to another teacher (transfer)
   source             String          @default("SYNC") // SYNC | MANUAL — MANUAL survives Atlas stale-check
+  aimsCourseId       String?         // linked AIMS course UUID — set via teacher link endpoint
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   section         Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
@@ -161,6 +164,7 @@ model ClassAssignment {
   teacher         Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   grades          Grade[]
   workloadEntries WorkloadEntry[]
+  aimsScores      AimsScore[]
 
   @@unique([teacherId, subjectId, sectionId, schoolYear])
   @@index([schoolYear])
@@ -595,6 +599,32 @@ enum FormType {
   SF9
   SF10
   SF7
+}
+
+model AimsScore {
+  id                String    @id @default(cuid())
+  classAssignmentId String
+  studentId         String
+  term              Term      // T1 | T2 | T3 — derived by date-binning gradedAt
+  assessmentId      String    // "QUIZ:<uuid>" | "TASK:<uuid>" — AIMS composite ID
+  assessmentTitle   String
+  type              String    // "QUIZ" | "TASK"
+  category          String    // "WW" | "PT"
+  score             Float     // normalized 0-100 (AIMS `score`)
+  pointsEarned      Float     // raw points
+  maxPoints         Float     // raw max
+  isRemedial        Boolean   @default(false)
+  attemptNumber     Int       @default(1)
+  gradedAt          DateTime?
+  syncedAt          DateTime  @default(now())
+  importedAt        DateTime? // set when this row has been imported into the ledger
+
+  classAssignment ClassAssignment @relation(fields: [classAssignmentId], references: [id], onDelete: Cascade)
+  student         Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classAssignmentId, studentId, assessmentId])
+  @@index([classAssignmentId, term])
+  @@index([studentId])
 }
 
 model RemedialClass {

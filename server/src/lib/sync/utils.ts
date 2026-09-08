@@ -53,6 +53,14 @@ export async function upsertLearner(
   const incomingDisability = learner.disability && learner.disability !== 'NONE' ? learner.disability : null;
   const incomingIsBalikAral = learner.isBalikAral === true || String(learner.isBalikAral).toUpperCase() === 'YES';
 
+  // R1-1: Pre-read enrollproId so we can backfill only when currently null
+  const existingStudent = await prisma.student.findUnique({
+    where: { lrn: learner.lrn },
+    select: { enrollproId: true },
+  });
+
+  const incomingEnrollproId = Number(learner.id) || null;
+
   const student = await prisma.student.upsert({
     where: { lrn: learner.lrn },
     update: {
@@ -78,6 +86,8 @@ export async function upsertLearner(
       is4PsBeneficiary: incomingIs4Ps,
       disability: incomingDisability,
       isBalikAral: incomingIsBalikAral,
+      // R1-1: Only backfill enrollproId when currently null (don't overwrite)
+      ...(existingStudent?.enrollproId == null && incomingEnrollproId ? { enrollproId: incomingEnrollproId } : {}),
     },
     create: {
       lrn: learner.lrn,
@@ -103,6 +113,7 @@ export async function upsertLearner(
       is4PsBeneficiary: incomingIs4Ps,
       disability: incomingDisability,
       isBalikAral: incomingIsBalikAral,
+      enrollproId: Number(learner.id) || null,
     },
   });
   await prisma.enrollment.upsert({

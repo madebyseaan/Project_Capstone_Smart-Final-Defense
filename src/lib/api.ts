@@ -220,6 +220,7 @@ export interface ClassAssignment {
   successorTeacherId?: string | null;
   source?: string;
   successorTeacherName?: string | null;
+  aimsCourseId?: string | null;
   subject: Subject;
   section: Section;
   effectiveWeights?: {
@@ -486,7 +487,97 @@ export const gradesApi = {
 
   revokeEditRequest: (id: string) =>
     api.post<{ message: string; request: any }>(`/grades/admin/edit-requests/${id}/revoke`),
+
+  // AIMS integration methods
+  getAimsScores: (classAssignmentId: string, term: string) =>
+    api.get<AimsScoresResponse>(`/grades/aims-scores/${classAssignmentId}`, { params: { term } }),
+
+  linkAims: (classAssignmentId: string, aimsCourseId: string) =>
+    api.post<{ success: boolean; warnings: string[] }>(`/grades/aims-link/${classAssignmentId}`, { aimsCourseId }),
+
+  unlinkAims: (classAssignmentId: string) =>
+    api.delete<{ success: boolean }>(`/grades/aims-link/${classAssignmentId}`),
+
+  importAims: (classAssignmentId: string, term: string, assessmentIds?: string[]) =>
+    api.post<{ savedCount: number; skipped: { finalized: number; notFound: number; alreadyImported: number; archived: number }; importedAssessments: string[] }>(
+      `/grades/aims-import/${classAssignmentId}`,
+      { term, assessmentIds },
+    ),
+
+  getAimsCourses: () =>
+    api.get<{ courses: AimsCourseSummary[]; scope: "teacher" | "school" | "none" }>("/grades/aims-courses"),
+
+  syncAims: (classAssignmentId: string) =>
+    api.post<{ status: 'ok' | 'offline'; scoresUpserted: number; unmatchedCount: number }>(
+      `/grades/aims-sync/${classAssignmentId}`,
+    ),
 };
+
+// AIMS named types (P2-10: single source of truth)
+export interface AimsAssessmentInfo {
+  assessmentId: string;
+  title: string;
+  type: string;
+  category: string;
+  maxPoints: number;
+}
+
+export interface AimsRowScore {
+  assessmentId: string;
+  pointsEarned: number;
+  maxPoints: number;
+  score: number;
+  isRemedial: boolean;
+  attemptNumber: number;
+  gradedAt: string | null;
+  importedAt: string | null;
+}
+
+export interface AimsUnmatchedStudent {
+  enrollproId: number | null;
+  studentName: string;
+  studentEmail: string | null;
+}
+
+export interface AimsCourseInfo {
+  id: string;
+  name: string;
+  code: string;
+  subject: string;
+  gradeLevel: string;
+  sectionName: string;
+  schoolYear: string;
+}
+
+export interface AimsScoresResponse {
+  linked: boolean;
+  course: AimsCourseInfo | null;
+  weights: { ww: number; pt: number } | null;
+  lastSyncedAt: string | null;
+  aimsOffline: boolean;
+  unmatchedStudents: AimsUnmatchedStudent[];
+  assessments: AimsAssessmentInfo[];
+  rows: {
+    studentId: string;
+    scores: AimsRowScore[];
+  }[];
+  warnings: string[];
+}
+
+export interface AimsCourseSummary {
+  id: string;
+  name: string;
+  code: string;
+  subject: string;
+  gradeLevel: string;
+  sectionName: string;
+  schoolYear: string;
+  archived: boolean;
+  teacherEmail?: string | null;
+  teacherName?: string | null;
+  teacherUsername?: string | null;
+  studentCount?: number;
+}
 
 // Advisory API
 export interface AdvisoryStudent {
