@@ -278,6 +278,7 @@ export default function registerClasses(router: Router): void {
             t2EndDate: systemSettings?.t2EndDate,
             t3StartDate: systemSettings?.t3StartDate,
             t3EndDate: systemSettings?.t3EndDate,
+            derived: systemSettings?.termDatesDerived ?? false,
           },
           gradeLock: lockState.systemLocked || lockState.yearLocked || queriedTermLocked,
           locks: lockState,
@@ -972,6 +973,16 @@ export default function registerClasses(router: Router): void {
           },
         });
 
+        // Reset importedAt on AimsScore staging rows so re-import is self-service
+        const { count: resetCount } = await prisma.aimsScore.updateMany({
+          where: {
+            classAssignmentId,
+            term: term as any,
+            importedAt: { not: null },
+          },
+          data: { importedAt: null },
+        });
+
         const teacherUser = await prisma.user.findUnique({
           where: { id: req.user?.id },
           select: { id: true, firstName: true, lastName: true, role: true },
@@ -983,7 +994,7 @@ export default function registerClasses(router: Router): void {
             { id: teacherUser.id, firstName: teacherUser.firstName, lastName: teacherUser.lastName, role: teacherUser.role },
             `Clear Scores: ${classAssignment.subject.name} (${term})`,
             "Grades",
-            `Cleared all (${count}) grades for ${classAssignment.subject.name} in section ${classAssignment.section.name} for ${term}`,
+            `Cleared all (${count}) grades for ${classAssignment.subject.name} in section ${classAssignment.section.name} for ${term}${resetCount > 0 ? ` — reset ${resetCount} AIMS staging rows for re-import` : ""}`,
             (req.ip as string) || req.socket?.remoteAddress,
             AuditSeverity.WARNING
           );

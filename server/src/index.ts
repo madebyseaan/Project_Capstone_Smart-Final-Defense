@@ -276,24 +276,55 @@ function startAutoTermScheduler() {
       // which queries EnrollPro's /integration/v1/active-term live.
       // The scheduler does NOT advance terms — that would conflict with the live source of truth.
 
-      // Auto-lock per-term / per-year when term end dates pass (never writes term state)
+      // Auto-lock per-term / per-year when term end dates pass (never writes term state).
+      // Cross-checks EnrollPro's live active-term before locking — if EnrollPro still
+      // considers the term active, we skip locking even if the local date has passed.
+      // This prevents premature locking when local term dates are stale or derived.
       try {
         const { getActiveSchoolYear } = await import("./lib/schoolYearResolver");
         const { setTermLock, setYearLock } = await import("./lib/gradeLocks");
+        const { getIntegrationV1ActiveTerm } = await import("./lib/enrollproClient");
         const activeYear = await getActiveSchoolYear();
         const actor = { id: "scheduler", name: "Auto-Term Scheduler" };
+
+        // Fetch live active term from EnrollPro — this is the source of truth
+        let enrollProActiveTerm: string | null = null;
+        try {
+          const epTerm = await getIntegrationV1ActiveTerm();
+          if (epTerm?.activeTerm && ['T1', 'T2', 'T3'].includes(epTerm.activeTerm.toUpperCase())) {
+            enrollProActiveTerm = epTerm.activeTerm.toUpperCase();
+          }
+        } catch {
+          // EnrollPro unreachable — fall back to date-based locking
+        }
+
         const termEndDates: Record<string, Date | null> = {
           T1: t1EndDate,
           T2: t2EndDate,
           T3: t3EndDate,
         };
+
+        // Load current lock state to detect premature locks
+        const { getGradeLockState } = await import("./lib/gradeLocks");
+        const lockState = await getGradeLockState(activeYear.label);
+
         for (const term of ["T1", "T2", "T3"] as const) {
           const endDate = termEndDates[term];
           if (endDate && now > endDate) {
-            await setTermLock(activeYear.id, term, true, actor);
+            // Only lock if EnrollPro does NOT consider this term active
+            if (enrollProActiveTerm !== term) {
+              await setTermLock(activeYear.id, term, true, actor);
+            } else {
+              console.log(`[Scheduler] Skipping lock for ${term} — EnrollPro still reports it as active (local endDate=${endDate.toISOString()}, EnrollPro activeTerm=${enrollProActiveTerm})`);
+              // Auto-unlock: if prematurely locked, unlock to mirror EnrollPro
+              if (lockState.termLocks[term]) {
+                await setTermLock(activeYear.id, term, false, actor);
+                console.log(`[Scheduler] Auto-unlocked ${term} — was locked but EnrollPro still considers it active`);
+              }
+            }
           }
         }
-        if (t3EndDate && now > t3EndDate) {
+        if (t3EndDate && now > t3EndDate && enrollProActiveTerm !== 'T3') {
           await setYearLock(activeYear.id, true, actor);
         }
       } catch (err: any) {

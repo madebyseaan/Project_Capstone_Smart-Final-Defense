@@ -13,6 +13,8 @@ const scoreItemSchema = z.object({
   description: z.string().optional(),
   date: z.string().optional(),
   status: z.enum(['A', 'E']).optional(),
+  isAims: z.boolean().optional(),
+  assessmentId: z.string().nullable().optional(),
 });
 
 export const gradeSaveSchema = z.object({

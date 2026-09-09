@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ClassRecord } from "@/lib/api";
+import type { ClassRecord, AimsAssessmentInfo } from "@/lib/api";
 
 interface ClassRecordMobileListProps {
   records: ClassRecord[];
@@ -19,6 +19,7 @@ interface ClassRecordMobileListProps {
   getGradeColor: (grade: number | null) => string;
   isViewOnly?: boolean;
   aimsByStudent?: Record<string, Record<string, { pointsEarned: number; maxPoints: number; score: number }>>;
+  aimsAssessments?: AimsAssessmentInfo[];
 }
 
 const terms = ["T1", "T2", "T3"] as const;
@@ -32,6 +33,7 @@ export function ClassRecordMobileList({
   getGradeColor,
   isViewOnly = false,
   aimsByStudent = {},
+  aimsAssessments = [],
 }: ClassRecordMobileListProps) {
   return (
     <Card className="lg:hidden border-0 shadow-lg shadow-slate-200/40 rounded-[2rem] overflow-hidden bg-white">
@@ -96,6 +98,11 @@ export function ClassRecordMobileList({
                         <span className="text-[10px] font-bold text-[var(--ledger-ww)]">
                           {wwMax > 0 ? `${wwTotal}/${wwMax}` : "—"}
                         </span>
+                        {(() => {
+                          const wwAims = aimsAssessments.filter(a => a.category === 'WW');
+                          if (wwAims.length === 0) return null;
+                          return <span className="text-[9px] text-[var(--ledger-aims)] ml-0.5">+{wwAims.length} AIMS</span>;
+                        })()}
                       </div>
                       <div className="w-px h-3 bg-slate-200" />
                       <div className="flex items-center gap-1">
@@ -103,6 +110,11 @@ export function ClassRecordMobileList({
                         <span className="text-[10px] font-bold text-[var(--ledger-pt)]">
                           {ptMax > 0 ? `${ptTotal}/${ptMax}` : "—"}
                         </span>
+                        {(() => {
+                          const ptAims = aimsAssessments.filter(a => a.category === 'PT');
+                          if (ptAims.length === 0) return null;
+                          return <span className="text-[9px] text-[var(--ledger-aims)] ml-0.5">+{ptAims.length} AIMS</span>;
+                        })()}
                       </div>
                       <div className="w-px h-3 bg-slate-200" />
                       <div className="flex items-center gap-1">
@@ -110,23 +122,12 @@ export function ClassRecordMobileList({
                         <span className="text-[10px] font-bold text-[var(--ledger-ta)]">
                           {qaScore !== null ? (qaMax ? `${qaScore}/${qaMax}` : String(qaScore)) : "—"}
                         </span>
+                        {(() => {
+                          const qaAims = aimsAssessments.filter(a => a.category === 'QA');
+                          if (qaAims.length === 0) return null;
+                          return <span className="text-[9px] text-[var(--ledger-aims)] ml-0.5">+{qaAims.length} AIMS</span>;
+                        })()}
                       </div>
-                      {/* R3-3: AIMS read-only chip */}
-                      {(() => {
-                        const aimsScores = aimsByStudent[record.student.id];
-                        if (!aimsScores || Object.keys(aimsScores).length === 0) return null;
-                        return (
-                          <>
-                            <div className="w-px h-3 bg-slate-200" />
-                            <div className="flex items-center gap-1">
-                              <span className="text-[9px] font-bold text-[var(--ledger-aims)] uppercase tracking-widest">AIMS</span>
-                              <span className="text-[10px] font-bold text-[var(--ledger-aims)]">
-                                {Object.keys(aimsScores).length} item(s)
-                              </span>
-                            </div>
-                          </>
-                        );
-                      })()}
                     </div>
                   )}
                 </div>

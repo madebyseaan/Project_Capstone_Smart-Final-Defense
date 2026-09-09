@@ -62,7 +62,13 @@ export function useAssessmentMeta(opts: {
     const wwSample = gradeSamples.find((g) => Array.isArray(g.writtenWorkScores) && g.writtenWorkScores.length > 0);
     const ptSample = gradeSamples.find((g) => Array.isArray(g.perfTaskScores) && g.perfTaskScores.length > 0);
 
-    const structureKey = `${selectedTerm}|${wwCount}|${ptCount}|${wwSample?.writtenWorkScores?.length ?? 0}|${ptSample?.perfTaskScores?.length ?? 0}`;
+    // F1: include content fingerprint so import changes (name/date/isAims) trigger re-init
+    // even when column counts stay the same (e.g., consuming a placeholder)
+    const fp = (arr: any[]) => arr.map(s => `${s?.name ?? ''}|${s?.date ?? ''}|${s?.isAims ? 1 : 0}`).join(';');
+    const wwFp = fp((wwSample?.writtenWorkScores || []) as any[]);
+    const ptFp = fp((ptSample?.perfTaskScores || []) as any[]);
+    const qaFp = `${gradeSamples[0]?.qaDescription ?? ''}|${gradeSamples[0]?.qaDate ?? ''}`;
+    const structureKey = `${selectedTerm}|${wwCount}|${ptCount}|${wwFp}|${ptFp}|${qaFp}`;
     if (structureKey === metaStructureRef.current) return;
     metaStructureRef.current = structureKey;
 

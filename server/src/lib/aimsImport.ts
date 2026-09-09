@@ -25,6 +25,7 @@ export interface ImportResult {
     archived: number;
   };
   importedAssessments: string[];
+  qaSkippedOccupied: number;
 }
 
 export interface ImportInput {
@@ -34,6 +35,22 @@ export interface ImportInput {
   teacherId: string;
   teacherUserId: string;
 }
+
+// ---------------------------------------------------------------------------
+// Helpers for smart column allocation
+// ---------------------------------------------------------------------------
+
+const DEFAULT_NAME_RE = /^((WW|PT)\s*\d+)$/i;
+
+const isFreeItem = (it: any): boolean =>
+  !it || (
+    (!it.name || DEFAULT_NAME_RE.test(it.name.trim())) &&
+    (!it.description || DEFAULT_NAME_RE.test(it.description.trim())) &&
+    !it.date &&
+    (it.score ?? 0) === 0 &&
+    (it.maxScore ?? 10) <= 10 &&
+    !it.isAims
+  );
 
 // ---------------------------------------------------------------------------
 // Core import logic
@@ -46,18 +63,14 @@ export interface ImportInput {
  *   - Caller owns the class assignment
  *   - Assignment is active (not archived)
  *   - Subject is not Homeroom Guidance
- *   - Grade edit locks pass (archived → year → term; approved edit request bypasses term)
+ *   - Grade edit locks pass (archived -> year -> term; approved edit request bypasses term)
  *   - Current-term or approved edit request for past/future terms
  *
- * This function does the data work:
- *   - Reads AimsScore rows for the term
- *   - Groups by student
- *   - Per-student: checks FINALIZED, isArchived, importedAt
- *   - Appends AIMS items to existing WW/PT arrays (never overwrites)
- *   - Recomputes grades via calculateGrades
- *   - Upserts Grade in a transaction
- *   - Marks AimsScore.importedAt
- *   - Creates grade snapshots and audit logs
+ * Phase 7 changes:
+ *   - Includes QA in query (QA imports only when teacher slot is empty)
+ *   - Tags imported items with isAims: true + assessmentId
+ *   - Smart column allocation: occupies free placeholder slots, never overwrites teacher data
+ *   - Selective importedAt stamping: only marks rows actually written
  */
 export async function importAimsScoresToGrades(input: ImportInput): Promise<ImportResult> {
   const { classAssignmentId, term, assessmentIds, teacherId, teacherUserId } = input;
@@ -68,11 +81,11 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
     include: { subject: true, section: true },
   });
   if (!classAssignment) {
-    return { savedCount: 0, skipped: { finalized: 0, notFound: 0, alreadyImported: 0, archived: 0 }, importedAssessments: [] };
+    return { savedCount: 0, skipped: { finalized: 0, notFound: 0, alreadyImported: 0, archived: 0 }, importedAssessments: [], qaSkippedOccupied: 0 };
   }
 
-  // Fetch AimsScore rows (QA is read-only staging — never import into ledger)
-  const aimsWhere: any = { classAssignmentId, term, category: { in: ['WW', 'PT'] } };
+  // Phase 7: Include QA in the query (QA imports only when teacher slot is empty)
+  const aimsWhere: any = { classAssignmentId, term, category: { in: ['WW', 'PT', 'QA'] } };
   if (assessmentIds && assessmentIds.length > 0) aimsWhere.assessmentId = { in: assessmentIds };
   const aimsScores = await prisma.aimsScore.findMany({
     where: aimsWhere,
@@ -80,7 +93,7 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
   });
 
   if (aimsScores.length === 0) {
-    return { savedCount: 0, skipped: { finalized: 0, notFound: 0, alreadyImported: 0, archived: 0 }, importedAssessments: [] };
+    return { savedCount: 0, skipped: { finalized: 0, notFound: 0, alreadyImported: 0, archived: 0 }, importedAssessments: [], qaSkippedOccupied: 0 };
   }
 
   // Group by student
@@ -98,6 +111,7 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
   let notFoundSkipped = 0;
   let alreadyImportedSkipped = 0;
   let archivedSkipped = 0;
+  let qaSkippedOccupied = 0;
   const importedAssessmentIds = new Set<string>();
 
   // Check enrollments for DROPPED/TRANSFERRED status
@@ -113,6 +127,58 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
 
   // Fetch user for audit logging
   const user = await prisma.user.findUnique({ where: { id: teacherUserId } });
+
+  // Phase 7A: Compute global per-category allocation map BEFORE the per-student loop.
+  const allGrades = await prisma.grade.findMany({
+    where: { classAssignmentId, term },
+    select: { studentId: true, writtenWorkScores: true, perfTaskScores: true },
+  });
+
+  const freeIndices = (key: 'writtenWorkScores' | 'perfTaskScores'): number[] => {
+    const arrs = allGrades.map(g => (g[key] as any[]) ?? []);
+    if (arrs.length === 0) return [];
+    const maxLen = Math.max(...arrs.map(a => a.length));
+    const free: number[] = [];
+    for (let i = 0; i < maxLen; i++) if (arrs.every(a => isFreeItem(a[i]))) free.push(i);
+    return free;
+  };
+
+  const maxLenOf = (key: 'writtenWorkScores' | 'perfTaskScores'): number =>
+    Math.max(0, ...allGrades.map(g => ((g[key] as any[]) ?? []).length));
+
+  const catAssessments = (cat: 'WW' | 'PT'): string[] => {
+    const ids = new Set<string>();
+    const sorted: { id: string; at: string }[] = [];
+    for (const s of aimsScores) {
+      if (s.category !== cat || s.importedAt != null) continue;
+      if (!ids.has(s.assessmentId)) {
+        ids.add(s.assessmentId);
+        sorted.push({ id: s.assessmentId, at: s.gradedAt?.toISOString() ?? '' });
+      }
+    }
+    sorted.sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+    return sorted.map(s => s.id);
+  };
+
+  const allocateIndices = (cat: 'WW' | 'PT'): Map<string, number> => {
+    const key = cat === 'WW' ? 'writtenWorkScores' : 'perfTaskScores';
+    const free = freeIndices(key);
+    const assessments = catAssessments(cat);
+    const alloc = new Map<string, number>();
+    let freeIdx = 0;
+    let overflow = maxLenOf(key);
+    for (const id of assessments) {
+      if (freeIdx < free.length) {
+        alloc.set(id, free[freeIdx++]);
+      } else {
+        alloc.set(id, overflow++);
+      }
+    }
+    return alloc;
+  };
+
+  const wwAllocation = allocateIndices('WW');
+  const ptAllocation = allocateIndices('PT');
 
   // Transaction: per-student import
   await prisma.$transaction(async (tx) => {
@@ -147,41 +213,106 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
         continue;
       }
 
-      // Split into WW and PT
-      const wwScores = nonImported.filter(s => s.category === "WW");
-      const ptScores = nonImported.filter(s => s.category === "PT");
+      // Defensive dedupe: skip assessments already in the grade array with isAims
       const existingWW = (existingGrade?.writtenWorkScores as any[] ?? []);
       const existingPT = (existingGrade?.perfTaskScores as any[] ?? []);
+      const existingAimsIds = new Set<string>();
+      for (const it of [...existingWW, ...existingPT]) {
+        if (it?.isAims && it?.assessmentId) existingAimsIds.add(it.assessmentId);
+      }
 
-      // Append (never overwrite)
-      const mergedWW = [...existingWW, ...wwScores.map(s => ({
-        name: s.assessmentTitle,
-        score: s.pointsEarned,
-        maxScore: s.maxPoints,
-        date: s.gradedAt?.toISOString().slice(0, 10) ?? null,
-      }))];
-      const mergedPT = [...existingPT, ...ptScores.map(s => ({
-        name: s.assessmentTitle,
-        score: s.pointsEarned,
-        maxScore: s.maxPoints,
-        date: s.gradedAt?.toISOString().slice(0, 10) ?? null,
-      }))];
+      // Split into WW, PT, QA
+      const wwScores = nonImported.filter(s => s.category === "WW" && !existingAimsIds.has(s.assessmentId));
+      const ptScores = nonImported.filter(s => s.category === "PT" && !existingAimsIds.has(s.assessmentId));
+      const qaScores = nonImported.filter(s => s.category === "QA");
+
+      // Smart column allocation — place items at allocated indices
+      const place = (arr: any[], idx: number, item: any | null, cat: 'WW' | 'PT'): any[] => {
+        const out = [...arr];
+        while (out.length < idx) out.push({ name: `${cat} ${out.length + 1}`, score: 0, maxScore: 0 });
+        if (out.length === idx) out.push(item ?? { name: `${cat} ${idx + 1}`, score: 0, maxScore: 0 });
+        else if (item) out[idx] = item;
+        return out;
+      };
+
+      // Place WW items
+      let mergedWW = [...existingWW];
+      for (const s of wwScores) {
+        const targetIdx = wwAllocation.get(s.assessmentId);
+        if (targetIdx !== undefined) {
+          mergedWW = place(mergedWW, targetIdx, {
+            name: s.assessmentTitle,
+            score: s.pointsEarned,
+            maxScore: s.maxPoints,
+            date: s.gradedAt?.toISOString().slice(0, 10) ?? null,
+            isAims: true,
+            assessmentId: s.assessmentId,
+          }, 'WW');
+        }
+      }
+
+      // Place PT items
+      let mergedPT = [...existingPT];
+      for (const s of ptScores) {
+        const targetIdx = ptAllocation.get(s.assessmentId);
+        if (targetIdx !== undefined) {
+          mergedPT = place(mergedPT, targetIdx, {
+            name: s.assessmentTitle,
+            score: s.pointsEarned,
+            maxScore: s.maxPoints,
+            date: s.gradedAt?.toISOString().slice(0, 10) ?? null,
+            isAims: true,
+            assessmentId: s.assessmentId,
+          }, 'PT');
+        }
+      }
+
+      // QA import — skip-if-occupied
+      let finalQAScore = existingGrade?.quarterlyAssessScore ?? 0;
+      let finalQAMax = existingGrade?.quarterlyAssessMax ?? 100;
+      let finalQADesc = existingGrade?.qaDescription ?? null;
+      let finalQADate = existingGrade?.qaDate ?? null;
+      let qaApplied = false;
+      const rowsToMark: string[] = [];
+
+      if (qaScores.length > 0) {
+        const occupied = (existingGrade?.quarterlyAssessScore ?? 0) > 0;
+        if (occupied) {
+          qaSkippedOccupied++;
+        } else {
+          const latest = qaScores.reduce((l, s) => ((s.gradedAt ?? '') >= (l?.gradedAt ?? '') ? s : l), qaScores[0]);
+          finalQAScore = latest.pointsEarned;
+          finalQAMax = latest.maxPoints;
+          finalQADesc = latest.assessmentTitle;
+          finalQADate = latest.gradedAt?.toISOString().slice(0, 10) ?? null;
+          qaApplied = true;
+          rowsToMark.push(latest.id);
+          importedAssessmentIds.add(latest.assessmentId);
+        }
+      }
+
+      // Collect rows to mark for WW/PT
+      for (const s of wwScores) {
+        if (wwAllocation.has(s.assessmentId)) rowsToMark.push(s.id);
+      }
+      for (const s of ptScores) {
+        if (ptAllocation.has(s.assessmentId)) rowsToMark.push(s.id);
+      }
 
       // Recompute grades (never trust AIMS-computed grades)
       const calculated = await calculateGrades(
         mergedWW, mergedPT,
-        existingGrade?.quarterlyAssessScore ?? 0,
-        existingGrade?.quarterlyAssessMax || 100,
+        finalQAScore, finalQAMax,
         effectiveWeights.ww, effectiveWeights.pt, effectiveWeights.qa,
       );
 
       const gradePayload = {
         writtenWorkScores: mergedWW,
         perfTaskScores: mergedPT,
-        quarterlyAssessScore: existingGrade?.quarterlyAssessScore ?? 0,
-        quarterlyAssessMax: existingGrade?.quarterlyAssessMax ?? 100,
-        qaDescription: existingGrade?.qaDescription ?? null,
-        qaDate: existingGrade?.qaDate ?? null,
+        quarterlyAssessScore: finalQAScore,
+        quarterlyAssessMax: finalQAMax,
+        qaDescription: finalQADesc,
+        qaDate: finalQADate,
         writtenWorkPS: calculated.writtenWorkPS,
         perfTaskPS: calculated.perfTaskPS,
         quarterlyAssessPS: calculated.quarterlyAssessPS,
@@ -196,13 +327,19 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
         create: { studentId, classAssignmentId, term, ...gradePayload },
       });
 
-      // Mark imported
-      await tx.aimsScore.updateMany({
-        where: { id: { in: nonImported.map(s => s.id) } },
-        data: { importedAt: new Date() },
-      });
+      // Selective importedAt stamping — only mark rows actually written
+      if (rowsToMark.length > 0) {
+        await tx.aimsScore.updateMany({
+          where: { id: { in: rowsToMark } },
+          data: { importedAt: new Date() },
+        });
+      }
 
-      for (const s of nonImported) importedAssessmentIds.add(s.assessmentId);
+      for (const s of [...wwScores, ...ptScores]) {
+        if (wwAllocation.has(s.assessmentId) || ptAllocation.has(s.assessmentId)) {
+          importedAssessmentIds.add(s.assessmentId);
+        }
+      }
 
       // Snapshot + audit
       const student = await tx.student.findUnique({ where: { id: studentId }, select: { firstName: true, lastName: true } });
@@ -225,7 +362,7 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
           existingGrade ? AuditAction.UPDATE : AuditAction.CREATE,
           { id: user.id, firstName: user.firstName, lastName: user.lastName, role: user.role },
           `AIMS Import: ${student?.firstName || ""} ${student?.lastName || ""} — ${classAssignment.subject.name} (${term})`,
-          "Grades", `Imported ${nonImported.length} AIMS score(s)`,
+          "Grades", `Imported ${rowsToMark.length} AIMS score(s)${qaApplied ? ' (incl. QA)' : ''}`,
           undefined, AuditSeverity.INFO, grade.id,
         );
       }
@@ -242,5 +379,6 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
       archived: archivedSkipped,
     },
     importedAssessments: Array.from(importedAssessmentIds),
+    qaSkippedOccupied,
   };
 }

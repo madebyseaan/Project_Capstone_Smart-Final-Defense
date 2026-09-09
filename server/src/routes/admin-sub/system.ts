@@ -588,6 +588,46 @@ export default function (router: Router) {
     }
   );
 
+  router.post(
+    "/settings/reset-term-dates",
+    authenticateToken,
+    requireAdmin,
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        await prisma.systemSettings.update({
+          where: { id: "main" },
+          data: {
+            t1StartDate: null,
+            t1EndDate: null,
+            t2StartDate: null,
+            t2EndDate: null,
+            t3StartDate: null,
+            t3EndDate: null,
+            termDatesDerived: false,
+          },
+        });
+
+        await createAuditLog(
+          AuditAction.CONFIG,
+          req.user!,
+          "System Settings",
+          "Config",
+          "Term dates cleared — will be repopulated from EnrollPro on next sync",
+          req.ip,
+          AuditSeverity.WARNING
+        );
+
+        // Trigger an immediate branding sync to repopulate from EnrollPro
+        const settings = await syncEnrollProBranding(path.join(__dirname, "../../uploads"));
+
+        res.json({ message: "Term dates reset and repopulated from EnrollPro", settings });
+      } catch (error) {
+        logger.error("Error resetting term dates:", error);
+        res.status(500).json({ message: "Failed to reset term dates" });
+      }
+    }
+  );
+
   // ── EnrollPro Credentials ────────────────────────────────────────────────
 
   router.get("/settings/enrollpro-credentials", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {

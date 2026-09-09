@@ -441,6 +441,7 @@ model SystemSettings {
   t2StartDate        DateTime?
   t3EndDate          DateTime?
   t3StartDate        DateTime?
+  termDatesDerived   Boolean   @default(false)  // true = dates are approximate (derived from school year boundaries)
   lastEnrollProSync  DateTime?
   gradeLock          Boolean   @default(false)  // When true, teachers cannot edit grades (EOSY lock)
   transitionLock     Boolean   @default(false)  // When true, teachers cannot log in (year transition window)

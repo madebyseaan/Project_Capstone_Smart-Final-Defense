@@ -155,6 +155,8 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
       updateData.t3StartDate = new Date(termMap.T3.start);
       updateData.t3EndDate = new Date(termMap.T3.end);
     }
+    // EnrollPro provided real term dates — mark as NOT derived
+    updateData.termDatesDerived = false;
     logger.info(`[BrandingSync] Synced term dates from EnrollPro: T1=${termMap.T1?.start || 'N/A'}-${termMap.T1?.end || 'N/A'}, T2=${termMap.T2?.start || 'N/A'}-${termMap.T2?.end || 'N/A'}, T3=${termMap.T3?.start || 'N/A'}-${termMap.T3?.end || 'N/A'}`);
   } else {
     // EnrollPro /settings/public does not expose individual term dates.
@@ -169,7 +171,7 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
         const t2Start = new Date(t1End.getTime() + 1);
         const t2End = new Date(t2Start.getTime() + thirdMs);
         const t3Start = new Date(t2End.getTime() + 1);
-        // Only write if not already set (don't overwrite admin-entered dates)
+        // Only write if not already set (don't overwrite admin-entered or EnrollPro-provided dates)
         const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
         if (!settings?.t1StartDate) {
           updateData.t1StartDate = opening;
@@ -178,7 +180,8 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
           updateData.t2EndDate = t2End;
           updateData.t3StartDate = t3Start;
           updateData.t3EndDate = closing;
-          logger.info(`[BrandingSync] Derived term dates from school year: T1=${opening.toISOString().slice(0,10)}-${t1End.toISOString().slice(0,10)}, T2=${t2Start.toISOString().slice(0,10)}-${t2End.toISOString().slice(0,10)}, T3=${t3Start.toISOString().slice(0,10)}-${closing.toISOString().slice(0,10)}`);
+          updateData.termDatesDerived = true;
+          logger.info(`[BrandingSync] Derived term dates from school year (approximate): T1=${opening.toISOString().slice(0,10)}-${t1End.toISOString().slice(0,10)}, T2=${t2Start.toISOString().slice(0,10)}-${t2End.toISOString().slice(0,10)}, T3=${t3Start.toISOString().slice(0,10)}-${closing.toISOString().slice(0,10)}`);
         }
       }
     } else {

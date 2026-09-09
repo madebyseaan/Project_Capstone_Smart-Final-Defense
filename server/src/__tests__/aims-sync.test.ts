@@ -10,6 +10,7 @@ import { binTerm, dedupLatestAttempt, processAimsCourseData, type TermEndDates }
 import { importAimsScoresToGrades } from "../lib/aimsImport";
 import { computeCourseWarnings } from "../lib/aimsCourseMatch";
 import type { AimsPublicScoresPayload } from "../schemas/aims";
+import { gradeSaveSchema } from "../schemas/grades";
 import { prisma } from "../lib/prisma";
 
 vi.mock("../lib/enrollproClient", () => ({
@@ -286,27 +287,153 @@ describe("importAimsScoresToGrades", () => {
     await prisma.grade.delete({ where: { id: g.id } });
   });
 
-  it("P4-5: import excludes QA — WW appended, QA stays un-imported", async () => {
+  it("P4-5 (updated P7): import includes QA — WW appended, QA imported to quarterlyAssessScore", async () => {
     const g = await prisma.grade.create({ data: { studentId: stId, classAssignmentId: caId, term: "T1", writtenWorkScores: [], perfTaskScores: [] } });
     await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "IMP:qa-ww", assessmentTitle: "WW Item", type: "QUIZ", category: "WW", score: 80, pointsEarned: 80, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-15") } });
     await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "IMP:qa-qa", assessmentTitle: "QA Item", type: "QUIZ", category: "QA", score: 90, pointsEarned: 90, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-15") } });
     const r = await importAimsScoresToGrades({ classAssignmentId: caId, term: "T1", teacherId: tid, teacherUserId: uid });
     expect(r.savedCount).toBe(1);
     expect(r.importedAssessments).toContain("IMP:qa-ww");
-    expect(r.importedAssessments).not.toContain("IMP:qa-qa");
-    // QA row should still be un-imported
+    expect(r.importedAssessments).toContain("IMP:qa-qa");
+    // QA row should be imported
     const qaScore = await prisma.aimsScore.findFirst({ where: { classAssignmentId: caId, assessmentId: "IMP:qa-qa" } });
-    expect(qaScore!.importedAt).toBeNull();
+    expect(qaScore!.importedAt).not.toBeNull();
     // WW row should be imported
     const wwScore = await prisma.aimsScore.findFirst({ where: { classAssignmentId: caId, assessmentId: "IMP:qa-ww" } });
     expect(wwScore!.importedAt).not.toBeNull();
-    // Grade should have WW but not QA
+    // Grade should have WW and QA
     const refreshed = await prisma.grade.findUnique({ where: { id: g.id } });
     const ww = refreshed!.writtenWorkScores as any[];
     expect(ww).toHaveLength(1);
     expect(ww[0].name).toBe("WW Item");
+    expect(refreshed!.quarterlyAssessScore).toBe(90);
+    expect(refreshed!.qaDescription).toBe("QA Item");
     // Clean up
     await prisma.aimsScore.deleteMany({ where: { classAssignmentId: caId, assessmentId: { in: ["IMP:qa-ww", "IMP:qa-qa"] } } });
+    await prisma.gradeSnapshot.deleteMany({ where: { gradeId: g.id } });
+    await prisma.grade.delete({ where: { id: g.id } });
+  });
+
+  it("P7-1: QA import fills empty TA — quarterlyAssessScore, qaDescription, qaDate set; grades recomputed", async () => {
+    const g = await prisma.grade.create({ data: { studentId: stId, classAssignmentId: caId, term: "T1", writtenWorkScores: [], perfTaskScores: [], quarterlyAssessScore: 0, quarterlyAssessMax: 100 } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "P7:qa1", assessmentTitle: "Quarterly Exam", type: "QUIZ", category: "QA", score: 85, pointsEarned: 85, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-20") } });
+    const r = await importAimsScoresToGrades({ classAssignmentId: caId, term: "T1", teacherId: tid, teacherUserId: uid });
+    expect(r.savedCount).toBe(1);
+    expect(r.importedAssessments).toContain("P7:qa1");
+    const refreshed = await prisma.grade.findUnique({ where: { id: g.id } });
+    expect(refreshed!.quarterlyAssessScore).toBe(85);
+    expect(refreshed!.quarterlyAssessMax).toBe(100);
+    expect(refreshed!.qaDescription).toBe("Quarterly Exam");
+    expect(refreshed!.qaDate).toBe("2026-09-20");
+    expect(refreshed!.quarterlyAssessPS).not.toBeNull();
+    await prisma.aimsScore.deleteMany({ where: { classAssignmentId: caId, assessmentId: "P7:qa1" } });
+    await prisma.gradeSnapshot.deleteMany({ where: { gradeId: g.id } });
+    await prisma.grade.delete({ where: { id: g.id } });
+  });
+
+  it("P7-2: QA skip-if-occupied — teacher QA (85) preserved AND QA staging row still has importedAt: null", async () => {
+    const g = await prisma.grade.create({ data: { studentId: stId, classAssignmentId: caId, term: "T1", writtenWorkScores: [], perfTaskScores: [], quarterlyAssessScore: 85, quarterlyAssessMax: 100, qaDescription: "Teacher QA" } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "P7:qa2", assessmentTitle: "AIMS QA", type: "QUIZ", category: "QA", score: 90, pointsEarned: 90, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-20") } });
+    const r = await importAimsScoresToGrades({ classAssignmentId: caId, term: "T1", teacherId: tid, teacherUserId: uid });
+    expect(r.savedCount).toBe(1);
+    expect(r.qaSkippedOccupied).toBe(1);
+    const refreshed = await prisma.grade.findUnique({ where: { id: g.id } });
+    expect(refreshed!.quarterlyAssessScore).toBe(85);
+    expect(refreshed!.qaDescription).toBe("Teacher QA");
+    const qaScore = await prisma.aimsScore.findFirst({ where: { classAssignmentId: caId, assessmentId: "P7:qa2" } });
+    expect(qaScore!.importedAt).toBeNull();
+    await prisma.aimsScore.deleteMany({ where: { classAssignmentId: caId, assessmentId: "P7:qa2" } });
+    await prisma.gradeSnapshot.deleteMany({ where: { gradeId: g.id } });
+    await prisma.grade.delete({ where: { id: g.id } });
+  });
+
+  it("P7-3: imported items have isAims: true + assessmentId in both arrays", async () => {
+    const g = await prisma.grade.create({ data: { studentId: stId, classAssignmentId: caId, term: "T1", writtenWorkScores: [], perfTaskScores: [] } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "P7:ww3", assessmentTitle: "AIMS WW", type: "QUIZ", category: "WW", score: 80, pointsEarned: 80, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-15") } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "P7:pt3", assessmentTitle: "AIMS PT", type: "TASK", category: "PT", score: 70, pointsEarned: 70, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-16") } });
+    const r = await importAimsScoresToGrades({ classAssignmentId: caId, term: "T1", teacherId: tid, teacherUserId: uid });
+    expect(r.savedCount).toBe(1);
+    const refreshed = await prisma.grade.findUnique({ where: { id: g.id } });
+    const ww = refreshed!.writtenWorkScores as any[];
+    const pt = refreshed!.perfTaskScores as any[];
+    expect(ww[0].isAims).toBe(true);
+    expect(ww[0].assessmentId).toBe("P7:ww3");
+    expect(pt[0].isAims).toBe(true);
+    expect(pt[0].assessmentId).toBe("P7:pt3");
+    await prisma.aimsScore.deleteMany({ where: { classAssignmentId: caId, assessmentId: { in: ["P7:ww3", "P7:pt3"] } } });
+    await prisma.gradeSnapshot.deleteMany({ where: { gradeId: g.id } });
+    await prisma.grade.delete({ where: { id: g.id } });
+  });
+
+  it("P7-4: idempotency incl. QA — second import changes nothing", async () => {
+    const g = await prisma.grade.create({ data: { studentId: stId, classAssignmentId: caId, term: "T1", writtenWorkScores: [], perfTaskScores: [], quarterlyAssessScore: 0 } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "P7:ww4", assessmentTitle: "WW4", type: "QUIZ", category: "WW", score: 80, pointsEarned: 80, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-15") } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "P7:qa4", assessmentTitle: "QA4", type: "QUIZ", category: "QA", score: 90, pointsEarned: 90, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-15") } });
+    const r1 = await importAimsScoresToGrades({ classAssignmentId: caId, term: "T1", teacherId: tid, teacherUserId: uid });
+    expect(r1.savedCount).toBe(1);
+    const r2 = await importAimsScoresToGrades({ classAssignmentId: caId, term: "T1", teacherId: tid, teacherUserId: uid });
+    expect(r2.savedCount).toBe(0);
+    expect(r2.skipped.alreadyImported).toBeGreaterThan(0);
+    const refreshed = await prisma.grade.findUnique({ where: { id: g.id } });
+    const ww = refreshed!.writtenWorkScores as any[];
+    expect(ww).toHaveLength(1);
+    expect(refreshed!.quarterlyAssessScore).toBe(90);
+    await prisma.aimsScore.deleteMany({ where: { classAssignmentId: caId, assessmentId: { in: ["P7:ww4", "P7:qa4"] } } });
+    await prisma.gradeSnapshot.deleteMany({ where: { gradeId: g.id } });
+    await prisma.grade.delete({ where: { id: g.id } });
+  });
+
+  it("P7-5: smart allocation — placeholder slot replaced, teacher data untouched, appends after maxLen", async () => {
+    const st2 = await prisma.student.create({ data: { lrn: `SL2-${TS}`, firstName: "S2", lastName: "S2", enrollproId: 80000 + (TS % 10000) } });
+    await prisma.enrollment.create({ data: { studentId: st2.id, sectionId: sid, schoolYear: SY, status: "ENROLLED" } });
+    // Clean up any leftover grades for stId in T1 from prior tests
+    await prisma.gradeSnapshot.deleteMany({ where: { studentId: stId, classAssignmentId: caId, term: "T1" } });
+    await prisma.grade.deleteMany({ where: { studentId: stId, classAssignmentId: caId, term: "T1" } });
+    const g1 = await prisma.grade.create({ data: { studentId: stId, classAssignmentId: caId, term: "T1", writtenWorkScores: [{ name: "WW 1", score: 0, maxScore: 10 }, { name: "WW 2", score: 0, maxScore: 10 }], perfTaskScores: [] } });
+    const g2 = await prisma.grade.create({ data: { studentId: st2.id, classAssignmentId: caId, term: "T1", writtenWorkScores: [{ name: "My Quiz", score: 15, maxScore: 20, description: "Custom" }], perfTaskScores: [] } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "P7:alloc1", assessmentTitle: "AIMS A", type: "QUIZ", category: "WW", score: 80, pointsEarned: 80, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-15") } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: st2.id, term: "T1", assessmentId: "P7:alloc1", assessmentTitle: "AIMS A", type: "QUIZ", category: "WW", score: 90, pointsEarned: 90, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-15") } });
+    const r = await importAimsScoresToGrades({ classAssignmentId: caId, term: "T1", teacherId: tid, teacherUserId: uid });
+    expect(r.savedCount).toBe(2);
+    const refreshed1 = await prisma.grade.findUnique({ where: { id: g1.id } });
+    const ww1 = refreshed1!.writtenWorkScores as any[];
+    // Column 0 is NOT free (student 2 has real data there), so AIMS goes to column 1
+    expect(ww1[0].name).toBe("WW 1");
+    expect(ww1[0].isAims).toBeUndefined();
+    expect(ww1[1].isAims).toBe(true);
+    expect(ww1[1].assessmentId).toBe("P7:alloc1");
+    expect(ww1[1].score).toBe(80);
+    const refreshed2 = await prisma.grade.findUnique({ where: { id: g2.id } });
+    const ww2 = refreshed2!.writtenWorkScores as any[];
+    expect(ww2[0].name).toBe("My Quiz");
+    expect(ww2[0].score).toBe(15);
+    expect(ww2[0].isAims).toBeUndefined();
+    expect(ww2[1].isAims).toBe(true);
+    expect(ww2[1].assessmentId).toBe("P7:alloc1");
+    expect(ww2[1].score).toBe(90);
+    await prisma.aimsScore.deleteMany({ where: { classAssignmentId: caId, assessmentId: "P7:alloc1" } });
+    await prisma.gradeSnapshot.deleteMany({ where: { gradeId: { in: [g1.id, g2.id] } } });
+    await prisma.grade.deleteMany({ where: { id: { in: [g1.id, g2.id] } } });
+    await prisma.enrollment.deleteMany({ where: { studentId: st2.id, sectionId: sid, schoolYear: SY } });
+    await prisma.student.delete({ where: { id: st2.id } });
+  });
+
+  it("P7-6: free-column detection respects isAims and custom names", async () => {
+    // Clean up any leftover grades for stId in T1
+    await prisma.gradeSnapshot.deleteMany({ where: { studentId: stId, classAssignmentId: caId, term: "T1" } });
+    await prisma.grade.deleteMany({ where: { studentId: stId, classAssignmentId: caId, term: "T1" } });
+    const g = await prisma.grade.create({ data: { studentId: stId, classAssignmentId: caId, term: "T1", writtenWorkScores: [{ name: "AIMS WW", score: 80, maxScore: 100, isAims: true, assessmentId: "P7:old" }], perfTaskScores: [] } });
+    await prisma.aimsScore.create({ data: { classAssignmentId: caId, studentId: stId, term: "T1", assessmentId: "P7:new", assessmentTitle: "New AIMS", type: "QUIZ", category: "WW", score: 90, pointsEarned: 90, maxPoints: 100, attemptNumber: 1, gradedAt: new Date("2026-09-20") } });
+    const r = await importAimsScoresToGrades({ classAssignmentId: caId, term: "T1", teacherId: tid, teacherUserId: uid });
+    expect(r.savedCount).toBe(1);
+    const refreshed = await prisma.grade.findUnique({ where: { id: g.id } });
+    const ww = refreshed!.writtenWorkScores as any[];
+    expect(ww).toHaveLength(2);
+    expect(ww[0].assessmentId).toBe("P7:old");
+    expect(ww[0].isAims).toBe(true);
+    expect(ww[1].assessmentId).toBe("P7:new");
+    expect(ww[1].isAims).toBe(true);
+    await prisma.aimsScore.deleteMany({ where: { classAssignmentId: caId, assessmentId: { in: ["P7:old", "P7:new"] } } });
     await prisma.gradeSnapshot.deleteMany({ where: { gradeId: g.id } });
     await prisma.grade.delete({ where: { id: g.id } });
   });
@@ -378,5 +505,58 @@ describe("computeCourseWarnings / subjectsMatch", () => {
     expect(warnings.some(w => w.includes("School year mismatch"))).toBe(true);
     expect(warnings.some(w => w.includes("Section mismatch"))).toBe(true);
     expect(warnings.filter(w => w.includes("Subject"))).toHaveLength(0);
+  });
+});
+
+// ─── P7-7: Schema preserves AIMS provenance ──────────────────────────────────
+
+describe("P7-7: scoreItemSchema preserves isAims/assessmentId", () => {
+  it("gradeSaveSchema preserves isAims and assessmentId in writtenWorkScores", () => {
+    const input = {
+      body: {
+        studentId: "test-student",
+        classAssignmentId: "test-ca",
+        term: "T1" as const,
+        writtenWorkScores: [
+          { name: "Reading Comprehension", score: 65, maxScore: 100, isAims: true, assessmentId: "QUIZ:abc-123" },
+          { name: "WW 2", score: 10, maxScore: 10 },
+        ],
+      },
+    };
+    const result = gradeSaveSchema.parse(input);
+    expect(result.body.writtenWorkScores![0]).toMatchObject({
+      name: "Reading Comprehension",
+      score: 65,
+      maxScore: 100,
+      isAims: true,
+      assessmentId: "QUIZ:abc-123",
+    });
+    expect(result.body.writtenWorkScores![1]).toMatchObject({
+      name: "WW 2",
+      score: 10,
+      maxScore: 10,
+    });
+    expect((result.body.writtenWorkScores![1] as any).isAims).toBeUndefined();
+  });
+
+  it("gradeSaveSchema preserves isAims in perfTaskScores", () => {
+    const input = {
+      body: {
+        studentId: "test-student",
+        classAssignmentId: "test-ca",
+        term: "T1" as const,
+        perfTaskScores: [
+          { name: "Persuasive Essay", score: 80, maxScore: 100, isAims: true, assessmentId: "TASK:def-456" },
+        ],
+      },
+    };
+    const result = gradeSaveSchema.parse(input);
+    expect(result.body.perfTaskScores![0]).toMatchObject({
+      name: "Persuasive Essay",
+      score: 80,
+      maxScore: 100,
+      isAims: true,
+      assessmentId: "TASK:def-456",
+    });
   });
 });

@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, CheckCircle, Clock, Lock, Pencil } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, Lock, Pencil, Info } from "lucide-react";
 
 interface GradeStatusBannerProps {
   currentTerm: string;
@@ -11,6 +11,7 @@ interface GradeStatusBannerProps {
   editTimeRemaining?: string;
   onRequestEdit?: () => void;
   termLabels?: { T1: string; T2: string; T3: string };
+  termDatesDerived?: boolean;
 }
 
 function daysBetween(a: Date, b: Date): number {
@@ -37,8 +38,22 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
   editTimeRemaining,
   onRequestEdit,
   termLabels,
+  termDatesDerived,
 }: GradeStatusBannerProps) {
   const isViewingPastTerm = selectedTerm && currentTerm && TERM_ORDER[selectedTerm] < TERM_ORDER[currentTerm];
+
+  // --- Derived dates warning ---
+  if (termDatesDerived) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs mb-3">
+        <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+        <span className="text-blue-700">
+          <span className="font-semibold">Term dates are approximate</span>
+          {" — derived from school year boundaries. Contact admin to set exact dates or sync from EnrollPro."}
+        </span>
+      </div>
+    );
+  }
 
   // --- Locked ---
   if (gradeLock) {

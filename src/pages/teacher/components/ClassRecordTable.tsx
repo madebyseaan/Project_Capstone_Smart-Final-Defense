@@ -37,6 +37,7 @@ interface LedgerScoreCellProps {
   onFocus: () => void;
   rowIndex: number;
   ariaLabel: string;
+  aims?: boolean;
 }
 
 const LedgerScoreCell = React.memo(function LedgerScoreCell({
@@ -53,6 +54,7 @@ const LedgerScoreCell = React.memo(function LedgerScoreCell({
   onFocus,
   rowIndex,
   ariaLabel,
+  aims,
 }: LedgerScoreCellProps) {
   return (
     <input
@@ -68,6 +70,7 @@ const LedgerScoreCell = React.memo(function LedgerScoreCell({
       className={`w-full text-center text-[11px] font-bold border-0 outline-none bg-transparent tabular-nums ${isHps ? hpsColorClass : (
         status === "A" ? "text-rose-600 bg-rose-500/10 font-bold rounded-lg" :
         status === "E" ? "text-indigo-600 bg-indigo-500/10 font-bold rounded-lg" :
+        aims ? "text-[var(--ledger-aims)] font-bold bg-[var(--ledger-aims-bg)]" :
         "text-slate-600"
       )} ${
         invalid ? "ring-1 ring-inset ring-rose-500 bg-rose-50/40 text-rose-700" : ""
@@ -131,6 +134,11 @@ interface LedgerRowProps {
   isViewOnly?: boolean;
   aimsAssessments?: AimsAssessmentInfo[];
   aimsByStudent?: Record<string, Record<string, AimsRowScore>>;
+  aimsWW?: AimsAssessmentInfo[];
+  aimsPT?: AimsAssessmentInfo[];
+  aimsQA?: AimsAssessmentInfo[];
+  wwColIsAims?: boolean[];
+  ptColIsAims?: boolean[];
 }
 
 const LedgerRow = React.memo(
@@ -153,6 +161,11 @@ const LedgerRow = React.memo(
     isViewOnly = false,
     aimsAssessments = [],
     aimsByStudent = {},
+    aimsWW = [],
+    aimsPT = [],
+    aimsQA = [],
+    wwColIsAims = [],
+    ptColIsAims = [],
   }: LedgerRowProps) => {
     const studentId = record?.student.id || "HPS";
     const grade = record?.grades?.find((g) => g.term === selectedTerm);
@@ -269,9 +282,33 @@ const LedgerRow = React.memo(
               onFocus={() => onCellFocus("WW", i)}
               rowIndex={rowIndex}
               ariaLabel={`WW ${i + 1} score for student, max ${wwScores[i]?.maxScore || 0}`}
+              aims={!!(wwScores[i] as any)?.isAims || wwColIsAims[i]}
             />
           </TableCell>
         ))}
+
+        {/* AIMS WW staging columns */}
+        {aimsWW.map((a) => {
+          const score = !isHps ? aimsByStudent[studentId]?.[a.assessmentId] : undefined;
+          return (
+            <TableCell
+              key={`aims-ww-${a.assessmentId}`}
+              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 w-16 min-w-[64px] max-w-[64px] ${
+                isHps
+                  ? "bg-slate-800 border-y border-slate-700 bg-clip-padding text-[var(--ledger-aims)]"
+                  : `text-[var(--ledger-aims)] ${score?.importedAt ? "bg-[var(--ledger-aims-bg)]" : ""}`
+              }`}
+              style={rowStyle}
+              title={
+                !isHps && score
+                  ? `${score.pointsEarned}/${score.maxPoints} · ${a.title} · WW · attempt ${score.attemptNumber} · graded ${score.gradedAt?.slice(0, 10) ?? "?"}${score.importedAt ? " (imported)" : ""}`
+                  : undefined
+              }
+            >
+              {isHps ? a.maxPoints : score?.pointsEarned ?? <span className="text-slate-300">-</span>}
+            </TableCell>
+          );
+        })}
 
         {/* WW TOTAL */}
         <TableCell
@@ -322,9 +359,33 @@ const LedgerRow = React.memo(
               onFocus={() => onCellFocus("PT", i)}
               rowIndex={rowIndex}
               ariaLabel={`PT ${i + 1} score for student, max ${ptScores[i]?.maxScore || 0}`}
+              aims={!!(ptScores[i] as any)?.isAims || ptColIsAims[i]}
             />
           </TableCell>
         ))}
+
+        {/* AIMS PT staging columns */}
+        {aimsPT.map((a) => {
+          const score = !isHps ? aimsByStudent[studentId]?.[a.assessmentId] : undefined;
+          return (
+            <TableCell
+              key={`aims-pt-${a.assessmentId}`}
+              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 w-16 min-w-[64px] max-w-[64px] ${
+                isHps
+                  ? "bg-slate-800 border-y border-slate-700 bg-clip-padding text-[var(--ledger-aims)]"
+                  : `text-[var(--ledger-aims)] ${score?.importedAt ? "bg-[var(--ledger-aims-bg)]" : ""}`
+              }`}
+              style={rowStyle}
+              title={
+                !isHps && score
+                  ? `${score.pointsEarned}/${score.maxPoints} · ${a.title} · PT · attempt ${score.attemptNumber} · graded ${score.gradedAt?.slice(0, 10) ?? "?"}${score.importedAt ? " (imported)" : ""}`
+                  : undefined
+              }
+            >
+              {isHps ? a.maxPoints : score?.pointsEarned ?? <span className="text-slate-300">-</span>}
+            </TableCell>
+          );
+        })}
 
         {/* PT TOTAL */}
         <TableCell
@@ -375,6 +436,30 @@ const LedgerRow = React.memo(
             ariaLabel={`QA score for student, max ${qaMax}`}
           />
         </TableCell>
+
+        {/* AIMS QA staging columns */}
+        {aimsQA.map((a) => {
+          const score = !isHps ? aimsByStudent[studentId]?.[a.assessmentId] : undefined;
+          return (
+            <TableCell
+              key={`aims-qa-${a.assessmentId}`}
+              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 w-16 min-w-[64px] max-w-[64px] ${
+                isHps
+                  ? "bg-slate-800 border-y border-slate-700 bg-clip-padding text-[var(--ledger-aims)]"
+                  : `text-[var(--ledger-aims)] ${score?.importedAt ? "bg-[var(--ledger-aims-bg)]" : ""}`
+              }`}
+              style={rowStyle}
+              title={
+                !isHps && score
+                  ? `${score.pointsEarned}/${score.maxPoints} · ${a.title} · QA · attempt ${score.attemptNumber} · graded ${score.gradedAt?.slice(0, 10) ?? "?"}${score.importedAt ? " (imported)" : ""}`
+                  : undefined
+              }
+            >
+              {isHps ? a.maxPoints : score?.pointsEarned ?? <span className="text-slate-300">-</span>}
+            </TableCell>
+          );
+        })}
+
         {/* QA PS */}
         <TableCell
           className={`text-center font-bold text-[11px] border-r border-b border-slate-200 ${
@@ -414,29 +499,6 @@ const LedgerRow = React.memo(
         >
           {isHps ? "100" : displayQuarterlyGrade ?? <span className="text-slate-300">-</span>}
         </TableCell>
-
-        {/* AIMS read-only cells */}
-        {aimsAssessments.map((a) => {
-          const score = !isHps ? aimsByStudent[studentId]?.[a.assessmentId] : undefined;
-          return (
-            <TableCell
-              key={`aims-${a.assessmentId}`}
-              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 w-16 min-w-[64px] max-w-[64px] ${
-                isHps
-                  ? "bg-slate-800 border-y border-slate-700 bg-clip-padding text-slate-500"
-                  : `text-[var(--ledger-aims)] ${score?.importedAt ? "bg-[var(--ledger-aims-bg)]" : ""}`
-              }`}
-              style={rowStyle}
-              title={
-                !isHps && score
-                  ? `${score.pointsEarned}/${score.maxPoints} · ${a.title} · ${a.category} · attempt ${score.attemptNumber} · graded ${score.gradedAt?.slice(0, 10) ?? "?"}${score.importedAt ? " (imported)" : ""}`
-                  : undefined
-              }
-            >
-              {isHps ? "—" : score?.pointsEarned ?? <span className="text-slate-300">-</span>}
-            </TableCell>
-          );
-        })}
       </TableRow>
     );
   }
@@ -490,6 +552,7 @@ interface ClassRecordTableProps {
   transmutationTable?: TransmutationRow[];
   aimsAssessments?: AimsAssessmentInfo[];
   aimsByStudent?: Record<string, Record<string, AimsRowScore>>;
+  aimsAllAssessments?: AimsAssessmentInfo[];
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -527,6 +590,7 @@ export function ClassRecordTable({
   transmutationTable,
   aimsAssessments = [],
   aimsByStudent = {},
+  aimsAllAssessments = [],
 }: ClassRecordTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
@@ -589,6 +653,47 @@ export function ClassRecordTable({
   };
 
   const aimsCount = aimsAssessments.length;
+
+  // Phase 7: Partition visible AIMS assessments by category
+  const aimsWW = aimsAssessments.filter(a => a.category === 'WW');
+  const aimsPT = aimsAssessments.filter(a => a.category === 'PT');
+  const aimsQA = aimsAssessments.filter(a => a.category === 'QA');
+
+  // Phase 7: Derive per-column isAims flags from ALL grades for the selected term
+  const gradeList = useMemo(() =>
+    sortedRecords.map(r => r.grades.find(g => g.term === selectedTerm)).filter(Boolean),
+    [sortedRecords, selectedTerm]
+  );
+  const wwColIsAims = useMemo(() =>
+    Array.from({ length: wwCount }, (_, i) =>
+      gradeList.some(g => (g?.writtenWorkScores as any[])?.[i]?.isAims)
+    ),
+    [gradeList, wwCount]
+  );
+  const ptColIsAims = useMemo(() =>
+    Array.from({ length: ptCount }, (_, i) =>
+      gradeList.some(g => (g?.perfTaskScores as any[])?.[i]?.isAims)
+    ),
+    [gradeList, ptCount]
+  );
+
+  // Per-column AIMS titles for tooltips on ledger numbered headers
+  const wwColAimsTitle = useMemo(() =>
+    Array.from({ length: wwCount }, (_, i) => {
+      const item = gradeList.find(g => (g?.writtenWorkScores as any[])?.[i]?.isAims);
+      return ((item?.writtenWorkScores as any[])?.[i]?.name as string) || undefined;
+    }),
+    [gradeList, wwCount]
+  );
+  const ptColAimsTitle = useMemo(() =>
+    Array.from({ length: ptCount }, (_, i) => {
+      const item = gradeList.find(g => (g?.perfTaskScores as any[])?.[i]?.isAims);
+      return ((item?.perfTaskScores as any[])?.[i]?.name as string) || undefined;
+    }),
+    [gradeList, ptCount]
+  );
+
+  const aimsDistributedCount = aimsWW.length + aimsPT.length + aimsQA.length;
   const tableRows = useMemo(() => {
     const rows: React.ReactNode[] = [];
     let rowCounter = 0;
@@ -597,7 +702,7 @@ export function ClassRecordTable({
       if (maleRecords.length > 0) {
         rows.push(
           <TableRow key="male-sep" className="bg-blue-50/60 hover:bg-blue-50/60 border-y border-blue-100/60 h-7">
-            <TableCell colSpan={wwCount + ptCount + 14 + aimsCount} className="py-0.5 px-4">
+            <TableCell colSpan={wwCount + ptCount + 14 + aimsDistributedCount} className="py-0.5 px-4">
               <span className="sticky left-4 text-[11px] font-bold text-blue-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                 Male Learners ({maleRecords.length})
@@ -607,14 +712,14 @@ export function ClassRecordTable({
         );
         maleRecords.forEach((r, i) =>
           rows.push(
-            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} />
+            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
           )
         );
       }
       if (femaleRecords.length > 0) {
         rows.push(
           <TableRow key="female-sep" className="bg-pink-50/60 hover:bg-pink-50/60 border-y border-pink-100/60 h-7">
-            <TableCell colSpan={wwCount + ptCount + 14 + aimsCount} className="py-0.5 px-4">
+            <TableCell colSpan={wwCount + ptCount + 14 + aimsDistributedCount} className="py-0.5 px-4">
               <span className="sticky left-4 text-[11px] font-bold text-pink-600 uppercase tracking-[0.2em] inline-flex items-center gap-2 z-10">
                 <div className="w-1.5 h-1.5 rounded-full bg-pink-500" />
                 Female Learners ({femaleRecords.length})
@@ -624,46 +729,56 @@ export function ClassRecordTable({
         );
         femaleRecords.forEach((r, i) =>
           rows.push(
-            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} />
+            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
           )
         );
       }
     } else {
       sortedRecords.forEach((r, i) =>
         rows.push(
-          <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} />
+          <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
         )
       );
     }
 
     return rows;
-  }, [sortedRecords, maleRecords, femaleRecords, separateByGender, selectedTerm, wwCount, ptCount, weights, isViewOnly, onHpsUpdate, onScoreCommit, onCellFocus, isCellInvalid, transmutationTable, aimsAssessments, aimsByStudent]);
+  }, [sortedRecords, maleRecords, femaleRecords, separateByGender, selectedTerm, wwCount, ptCount, weights, isViewOnly, onHpsUpdate, onScoreCommit, onCellFocus, isCellInvalid, transmutationTable, aimsAssessments, aimsByStudent, aimsWW, aimsPT, aimsQA, wwColIsAims, ptColIsAims]);
 
   const renderColGroup = () => (
     <colgroup>
       <col style={{ width: "40px", minWidth: "40px", maxWidth: "40px" }} />
       <col style={{ width: "128px", minWidth: "128px", maxWidth: "128px" }} />
       <col style={{ width: "256px", minWidth: "256px", maxWidth: "256px" }} />
+      {/* WW columns */}
       {Array.from({ length: wwCount }).map((_, i) => (
         <col key={`col-ww-${i}`} style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
       ))}
+      {aimsWW.map((a) => (
+        <col key={`col-aims-ww-${a.assessmentId}`} style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+      ))}
       <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
       <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
       <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      {/* PT columns */}
       {Array.from({ length: ptCount }).map((_, i) => (
         <col key={`col-pt-${i}`} style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
       ))}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
-      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
-      {aimsAssessments.map((_, i) => (
-        <col key={`col-aims-${i}`} style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+      {aimsPT.map((a) => (
+        <col key={`col-aims-pt-${a.assessmentId}`} style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
       ))}
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      {/* TA columns */}
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      {aimsQA.map((a) => (
+        <col key={`col-aims-qa-${a.assessmentId}`} style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+      ))}
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      {/* Grade columns */}
+      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
     </colgroup>
   );
 
@@ -817,7 +932,7 @@ export function ClassRecordTable({
                   </TableHead>
 
                   <TableHead
-                    colSpan={wwCount + 3}
+                    colSpan={wwCount + aimsWW.length + 3}
                     className={`${thBase} border-r text-[var(--ledger-ww)] bg-[var(--ledger-ww-bg)] z-20`}
                   >
                     <div className="flex items-center justify-center gap-2">
@@ -840,7 +955,7 @@ export function ClassRecordTable({
                   </TableHead>
 
                   <TableHead
-                    colSpan={ptCount + 3}
+                    colSpan={ptCount + aimsPT.length + 3}
                     className={`${thBase} border-r text-[var(--ledger-pt)] bg-[var(--ledger-pt-bg)] z-20`}
                   >
                     <div className="flex items-center justify-center gap-2">
@@ -863,7 +978,7 @@ export function ClassRecordTable({
                   </TableHead>
 
                   <TableHead
-                    colSpan={3}
+                    colSpan={3 + aimsQA.length}
                     className={`${thBase} border-r text-[var(--ledger-ta)] bg-[var(--ledger-ta-bg)] z-20`}
                   >
                     TA ({effectiveWeights?.qa ?? classAssignment.subject.quarterlyAssessWeight}%)
@@ -875,16 +990,6 @@ export function ClassRecordTable({
                   >
                     Grade Summary
                   </TableHead>
-
-                  {aimsAssessments.length > 0 && (
-                    <TableHead
-                      colSpan={aimsAssessments.length}
-                      id="tutorial-aims-group"
-                      className={`${thBase} border-r text-[var(--ledger-aims)] bg-[var(--ledger-aims-bg)] z-20`}
-                    >
-                      AIMS <span className="text-[9px] font-normal opacity-60">(read-only)</span>
-                    </TableHead>
-                  )}
                 </TableRow>
 
                 {/* ── Row 2: Column sub-headers ── */}
@@ -894,36 +999,40 @@ export function ClassRecordTable({
                   <TableHead className="w-64 min-w-[256px] max-w-[256px] text-[11px] font-bold text-slate-400 uppercase border-r border-b border-slate-200 px-2 bg-white sticky left-[168px] z-[25] bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]">Full Name</TableHead>
 
                   {Array.from({ length: wwCount }).map((_, i) => (
-                    <TableHead key={`h-ww-${i}`} className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-slate-400 uppercase border-r border-b border-slate-200 bg-white bg-clip-padding cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors" onClick={() => onCellFocus("WW", i)}>{i + 1}</TableHead>
+                    <TableHead key={`h-ww-${i}`} className={`w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold uppercase border-r border-b border-slate-200 bg-clip-padding cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors ${wwColIsAims[i] ? "text-[var(--ledger-aims)] bg-[var(--ledger-aims-bg)]" : "text-slate-400 bg-white"}`} onClick={() => onCellFocus("WW", i)} title={wwColAimsTitle[i]}>{i + 1}</TableHead>
+                  ))}
+                  {aimsWW.map((a) => (
+                    <TableHead key={`h-aims-ww-${a.assessmentId}`} className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
+                      <span>{wwCount + 1}</span>
+                    </TableHead>
                   ))}
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding">Total</TableHead>
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-indigo-600 uppercase border-r border-b border-slate-200 bg-indigo-50 bg-clip-padding">PS</TableHead>
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-indigo-700 uppercase border-r border-b border-slate-200 bg-indigo-100 bg-clip-padding">WS</TableHead>
 
                   {Array.from({ length: ptCount }).map((_, i) => (
-                    <TableHead key={`h-pt-${i}`} className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-slate-400 uppercase border-r border-b border-slate-200 bg-white bg-clip-padding cursor-pointer hover:bg-purple-50 hover:text-purple-600 transition-colors" onClick={() => onCellFocus("PT", i)}>{i + 1}</TableHead>
+                    <TableHead key={`h-pt-${i}`} className={`w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold uppercase border-r border-b border-slate-200 bg-clip-padding cursor-pointer hover:bg-purple-50 hover:text-purple-600 transition-colors ${ptColIsAims[i] ? "text-[var(--ledger-aims)] bg-[var(--ledger-aims-bg)]" : "text-slate-400 bg-white"}`} onClick={() => onCellFocus("PT", i)} title={ptColAimsTitle[i]}>{i + 1}</TableHead>
+                  ))}
+                  {aimsPT.map((a) => (
+                    <TableHead key={`h-aims-pt-${a.assessmentId}`} className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
+                      <span>{ptCount + 1}</span>
+                    </TableHead>
                   ))}
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding">Total</TableHead>
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-purple-600 uppercase border-r border-b border-slate-200 bg-purple-50 bg-clip-padding">PS</TableHead>
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-purple-700 uppercase border-r border-b border-slate-200 bg-purple-100 bg-clip-padding">WS</TableHead>
 
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => onCellFocus("QA", 0)}>Score</TableHead>
+                  {aimsQA.map((a) => (
+                    <TableHead key={`h-aims-qa-${a.assessmentId}`} className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
+                      <span>AIMS</span>
+                    </TableHead>
+                  ))}
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding">PS</TableHead>
                   <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-amber-700 uppercase border-r border-b border-slate-200 bg-amber-100 bg-clip-padding">WS</TableHead>
 
                   <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-emerald-600 uppercase border-r border-b border-slate-200 bg-emerald-50 bg-clip-padding">Initial</TableHead>
                   <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-slate-900 uppercase bg-emerald-100 bg-clip-padding border-r border-b border-slate-200">Grade</TableHead>
-
-                  {aimsAssessments.map((a) => (
-                    <TableHead
-                      key={`h-aims-${a.assessmentId}`}
-                      className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding"
-                      title={`${a.title} — ${a.maxPoints} max`}
-                    >
-                      <span className="truncate block max-w-[56px]">{a.title.length > 8 ? a.title.slice(0, 8) + "…" : a.title}</span>
-                      <span className="text-[9px] font-normal opacity-60">{a.category}</span>
-                    </TableHead>
-                  ))}
                 </TableRow>
 
                 {/* ── Row 3: HPS (MAX) Row ── */}
@@ -946,6 +1055,11 @@ export function ClassRecordTable({
                   transmutationTable={transmutationTable}
                   aimsAssessments={aimsAssessments}
                   aimsByStudent={aimsByStudent}
+                  aimsWW={aimsWW}
+                  aimsPT={aimsPT}
+                  aimsQA={aimsQA}
+                  wwColIsAims={wwColIsAims}
+                  ptColIsAims={ptColIsAims}
                 />
               </TableHeader>
             </Table>

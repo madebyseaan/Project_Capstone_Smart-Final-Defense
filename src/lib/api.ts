@@ -237,6 +237,8 @@ export interface ScoreItem {
   maxScore: number;
   description?: string;
   date?: string;
+  isAims?: boolean;
+  assessmentId?: string;
 }
 
 export interface Grade {
@@ -383,6 +385,7 @@ export const gradesApi = {
         t2EndDate?: string | null;
         t3StartDate?: string | null;
         t3EndDate?: string | null;
+        derived?: boolean;
       };
       gradeLock?: boolean;
       locks?: {
@@ -1399,6 +1402,7 @@ export interface SystemSettings {
   t2EndDate?: string;
   t3StartDate?: string;
   t3EndDate?: string;
+  termDatesDerived?: boolean;
   autoAdvanceTerm?: boolean;
   // Theming
   logoUrl?: string;

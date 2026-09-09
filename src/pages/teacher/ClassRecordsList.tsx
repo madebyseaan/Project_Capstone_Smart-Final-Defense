@@ -245,6 +245,7 @@ export default function ClassRecordsList() {
   const [loading, setLoading] = useState(true);
   const [gradeDeadline, setGradeDeadline] = useState<GradeDeadlineInfo | null>(null);
   const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+  const [termDatesDerived, setTermDatesDerived] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
@@ -286,6 +287,7 @@ export default function ClassRecordsList() {
         setClasses(classesRes.data);
         setGradeDeadline(deadlineRes.data.gradeDeadline);
         if (settingsRes.data.termLabels) setTermLabels(settingsRes.data.termLabels);
+        if (settingsRes.data.settings?.termDatesDerived) setTermDatesDerived(true);
       } catch (err) {
         console.error("Failed to fetch classes:", err);
       } finally {
@@ -372,6 +374,7 @@ export default function ClassRecordsList() {
         gradeLock={gradeDeadline?.gradeLock ?? false}
         colors={colors}
         termLabels={termLabels}
+        termDatesDerived={termDatesDerived}
       />
 
       {(activeClasses.length > 0 || hasArchived) && (

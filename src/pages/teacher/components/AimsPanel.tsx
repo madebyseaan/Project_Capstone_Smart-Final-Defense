@@ -64,8 +64,8 @@ export function AimsPanel({ classAssignmentId, selectedTerm, aimsData, isViewOnl
   };
 
   const openImportDialog = () => {
-    // Default selection: WW/PT only — QA is read-only staging (never imports)
-    setSelectedAssessments(new Set(assessments.filter(a => a.category !== "QA").map((a) => a.assessmentId)));
+    // Default selection: all assessments including QA
+    setSelectedAssessments(new Set(assessments.map((a) => a.assessmentId)));
     setShowImportDialog(true);
   };
 
@@ -144,6 +144,7 @@ export function AimsPanel({ classAssignmentId, selectedTerm, aimsData, isViewOnl
       if (skipped.archived > 0) parts.push(`${skipped.archived} archived (skipped)`);
       if (skipped.notFound > 0) parts.push(`${skipped.notFound} not found (skipped)`);
       if (skipped.alreadyImported > 0) parts.push(`${skipped.alreadyImported} already imported`);
+      if (res.data.qaSkippedOccupied > 0) parts.push(`${res.data.qaSkippedOccupied} QA kept (teacher score exists)`);
       toast.success(parts.join(", "));
       setShowImportDialog(false);
       onImportComplete();
@@ -175,9 +176,6 @@ export function AimsPanel({ classAssignmentId, selectedTerm, aimsData, isViewOnl
   };
 
   const toggleAssessment = (id: string) => {
-    // QA is read-only staging — never allow selection
-    const assessment = assessments.find(a => a.assessmentId === id);
-    if (assessment?.category === "QA") return;
     setSelectedAssessments((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -403,10 +401,13 @@ export function AimsPanel({ classAssignmentId, selectedTerm, aimsData, isViewOnl
 
       {/* Assessment summary */}
       {assessments.length > 0 && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className={`flex items-center gap-2 text-xs ${importedCount < assessments.length ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
           <Info className="w-3.5 h-3.5" />
           <span>
-            {assessments.length} assessment(s) · {importedCount} imported · WW/PT scores shown as read-only cyan columns in the ledger
+            {importedCount < assessments.length
+              ? `${assessments.length - importedCount} assessment(s) ready to import — grades won't compute until imported`
+              : `${assessments.length} assessment(s) · all imported`
+            }
           </span>
         </div>
       )}
@@ -426,11 +427,10 @@ export function AimsPanel({ classAssignmentId, selectedTerm, aimsData, isViewOnl
               const isQA = a.category === "QA";
               const hasImported = aimsData?.rows?.some((r) => r.scores.some((s) => s.assessmentId === a.assessmentId && s.importedAt));
               return (
-                <label key={a.assessmentId} className={`flex items-center gap-3 p-2.5 rounded-lg border border-border ${isQA ? "opacity-70 cursor-not-allowed" : "hover:bg-accent/50 cursor-pointer"}`}>
+                <label key={a.assessmentId} className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-accent/50 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedAssessments.has(a.assessmentId)}
-                    disabled={isQA}
                     onChange={() => toggleAssessment(a.assessmentId)}
                     className="h-4 w-4 rounded border-border text-[var(--ledger-aims)] focus:ring-[var(--ledger-aims)]"
                   />
@@ -445,7 +445,7 @@ export function AimsPanel({ classAssignmentId, selectedTerm, aimsData, isViewOnl
                     </p>
                     {isQA && (
                       <p className="text-[10px] text-muted-foreground mt-0.5">
-                        QA scores stay read-only — record the Quarterly Assessment manually in the TA column.
+                        Imports to the TA column. If you already entered a QA score, yours is kept (AIMS QA stays available to import later).
                       </p>
                     )}
                   </div>
