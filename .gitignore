@@ -39,6 +39,9 @@ server/uploads/
 *.xlsx
 check_centering.*
 
+# Official E-Class-Record templates are load-bearing (ECR export clones them)
+!server/assets/ecr/*.xlsx
+
 # Codex/OpenCode lock
 skills-lock.json
 

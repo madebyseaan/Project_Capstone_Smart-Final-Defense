@@ -537,6 +537,20 @@ export const gradesApi = {
     api.post<{ status: 'ok' | 'offline'; scoresUpserted: number; unmatchedCount: number }>(
       `/grades/aims-sync/${classAssignmentId}`,
     ),
+
+  // E-Class-Record Excel exchange
+  ecrImport: (classAssignmentId: string, term: string, file: File, dryRun: boolean) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("term", term);
+    fd.append("dryRun", String(dryRun));
+    return api.post<EcrImportReport>(`/grades/ecr-import/${classAssignmentId}`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  ecrExport: (classAssignmentId: string, term: string) =>
+    api.get(`/grades/ecr-export/${classAssignmentId}`, { params: { term }, responseType: "blob" }),
 };
 
 // AIMS named types (P2-10: single source of truth)
@@ -603,6 +617,17 @@ export interface AimsCourseSummary {
   teacherName?: string | null;
   teacherUsername?: string | null;
   studentCount?: number;
+}
+
+// E-Class-Record Excel exchange
+export interface EcrImportReport {
+  matched: number;
+  savedCount: number;
+  unmatched: string[];
+  emptySkipped: number;
+  specialSkipped: string[];
+  overwrittenCount: number;
+  warnings: string[];
 }
 
 // Advisory API

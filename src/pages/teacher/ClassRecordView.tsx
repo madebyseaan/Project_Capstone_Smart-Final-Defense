@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { Loader2, Monitor, AlertTriangle } from "lucide-react";
-import { gradesApi, adminApi, type ClassRecord, type ScoreItem, type TermLabels, type AimsRowScore } from "@/lib/api";
+import { Loader2, AlertTriangle } from "lucide-react";
+import { gradesApi, adminApi, type ClassRecord, type ScoreItem, type TermLabels } from "@/lib/api";
 import { ClassRecordTable } from "./components/ClassRecordTable";
 import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
 import { GradeEditModal } from "./components/GradeEditModal";
@@ -13,20 +13,21 @@ import { ClassRecordTour } from "./components/ClassRecordTour";
 import { EditRequestModal } from "./components/EditRequestModal";
 import { AssessmentHeader } from "./components/AssessmentHeader";
 import RotationBanner from "./components/RotationBanner";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "@/lib/toast";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
 import { getDisplayFinalGrade as computeDisplayFinalGrade, getMobileDraftKey, getScoreFromGrade as computeScoreFromGrade } from "./components/classRecordMobileUtils";
 import { getGradeColor } from "@/lib/gradeMath";
-import { useClassRecordQuery, useTransmutationTable, useAimsScoresQuery } from "./hooks/useClassRecord";
+import { useClassRecordQuery, useTransmutationTable } from "./hooks/useClassRecord";
 import { useEditAccess } from "./hooks/useEditAccess";
 import { useAssessmentMeta } from "./hooks/useAssessmentMeta";
 import { useMobileEditor } from "./hooks/useMobileEditor";
 import { useStickyLayout } from "./hooks/useStickyLayout";
-import { useSyncStream } from "@/hooks/useSyncStream";
+import { useAimsData } from "./hooks/useAimsData";
 import { AimsPanel } from "./components/AimsPanel";
+import { ExcelExchangePanel } from "./components/ExcelExchangePanel";
+import { InheritedGradesNotice } from "./components/InheritedGradesNotice";
+import { MobileWarningDialog } from "./components/MobileWarningDialog";
 
 export default function ClassRecordView() {
   const { classAssignmentId } = useParams();
@@ -48,8 +49,6 @@ export default function ClassRecordView() {
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [showMobileWarning, setShowMobileWarning] = useState(false);
   const [separateByGender, setSeparateByGender] = useState(false);
-  const [linkDialogSignal, setLinkDialogSignal] = useState(0);
-  const [searchParams, setSearchParams] = useSearchParams();
 
   // Toast wrappers for hooks that expect setError/setSuccess
   const setError = useCallback((msg: string | null) => { if (msg) toast.error(msg); }, []) as React.Dispatch<React.SetStateAction<string | null>>;
@@ -223,48 +222,15 @@ export default function ClassRecordView() {
   const layout = useStickyLayout({ classAssignmentId, showAssessmentDetails, selectedColumn: metaHook.selectedColumn });
 
   // AIMS integration
-  const { syncVersion } = useSyncStream();
-  const aimsQuery = useAimsScoresQuery(classAssignmentId, selectedTerm, syncVersion);
-  const aimsData = aimsQuery.data;
-
-  // Auto-open AIMS link dialog from ?connect=aims query param
-  useEffect(() => {
-    if (searchParams.get("connect") === "aims") {
-      if (!aimsData?.linked) {
-        setLinkDialogSignal(s => s + 1);
-      }
-      setSearchParams({}, { replace: true });
-    }
-  }, [searchParams, aimsData?.linked, setSearchParams]);
-
-  const aimsAssessments = useMemo(() => {
-    if (!aimsData?.linked || !aimsData.assessments) return [];
-    // Hide staging columns entirely — AimsPanel shows "ready to import" badge.
-    // After import, scores land in DepEd columns; no raw staging preview needed.
-    const rows = aimsData.rows ?? [];
-    const hasUnimported = rows.some(r => r.scores.some(s => !s.importedAt));
-    return hasUnimported ? [] : aimsData.assessments.filter(a => {
-      const aRows = rows.flatMap(r => r.scores.filter(s => s.assessmentId === a.assessmentId));
-      return aRows.length === 0 || aRows.some(s => !s.importedAt);
-    });
-  }, [aimsData]);
-
-  const aimsAllAssessments = useMemo(() => {
-    if (!aimsData?.linked || !aimsData.assessments) return [];
-    return aimsData.assessments;
-  }, [aimsData]);
-
-  const aimsByStudent = useMemo(() => {
-    if (!aimsData?.linked || !aimsData.rows) return {} as Record<string, Record<string, AimsRowScore>>;
-    const map: Record<string, Record<string, AimsRowScore>> = {};
-    for (const row of aimsData.rows) {
-      map[row.studentId] = {};
-      for (const score of row.scores) {
-        map[row.studentId][score.assessmentId] = score;
-      }
-    }
-    return map;
-  }, [aimsData]);
+  const {
+    aimsQuery,
+    aimsData,
+    aimsAssessments,
+    aimsAllAssessments,
+    aimsByStudent,
+    linkDialogSignal,
+    setLinkDialogSignal,
+  } = useAimsData(classAssignmentId, selectedTerm);
 
   const commitScoreInput = useCallback((inputEl: HTMLInputElement, studentId: string, category: "WW" | "PT" | "QA", index: number): boolean => {
     const rawValue = inputEl.value.trim().toUpperCase();
@@ -342,43 +308,22 @@ export default function ClassRecordView() {
         />
       )}
 
+      {classAssignmentId && (
+        <ExcelExchangePanel
+          classAssignmentId={classAssignmentId}
+          selectedTerm={selectedTerm}
+          isViewOnly={editAccess.isViewOnly}
+        />
+      )}
+
       {/* Inherited Grades Notice */}
       {inheritedFromTeachers.length > 0 && (
-        <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 flex items-start gap-3">
-          <div className="p-2 rounded-xl bg-blue-100 text-blue-600 shrink-0 mt-0.5">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-blue-900">
-              Grade history inherited from {inheritedFromTeachers.map(t => `${t.name} (${t.termsCovered.join(', ')})`).join('; ')}
-            </p>
-            <p className="text-xs text-blue-700 mt-1">
-              Scores from the previous teacher are shown below. Editing any cell copies the inherited history into your class record.
-            </p>
-            {/* Show inherited grades for the selected term */}
-            {(() => {
-              const termInherited = inheritedGrades.filter(g => g.term === selectedTerm);
-              if (termInherited.length === 0) return null;
-              return (
-                <div className="mt-3 space-y-1">
-                  {termInherited.map((ig) => {
-                    const student = mergedRecords.find(r => r.student.id === ig.studentId);
-                    const studentName = student ? `${student.student.lastName}, ${student.student.firstName}` : ig.studentId;
-                    return (
-                      <div key={ig.studentId} className="flex items-center justify-between text-xs bg-blue-100/50 rounded-lg px-3 py-1.5">
-                        <span className="font-medium text-blue-800">{studentName}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-blue-900">{ig.quarterlyGrade?.toFixed(1) ?? '—'}</span>
-                          <span className="text-[10px] text-blue-600">from {ig.inheritedFrom}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
+        <InheritedGradesNotice
+          inheritedFromTeachers={inheritedFromTeachers}
+          inheritedGrades={inheritedGrades}
+          mergedRecords={mergedRecords}
+          selectedTerm={selectedTerm}
+        />
       )}
 
       {mergedRecords.length === 0 ? (
@@ -395,16 +340,7 @@ export default function ClassRecordView() {
 
           <ClassRecordTour isOpen={isTourOpen} onClose={() => { setIsTourOpen(false); setShowAssessmentDetails(false); metaHook.setSelectedColumn(null); window.dispatchEvent(new Event("tour:end")); }} setShowAssessmentDetails={setShowAssessmentDetails} setSelectedColumn={metaHook.setSelectedColumn} hasAimsColumns={aimsAssessments.length > 0} />
 
-      <Dialog open={showMobileWarning} onOpenChange={setShowMobileWarning}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><div className="p-2 bg-amber-100 rounded-xl"><Monitor className="w-5 h-5 text-amber-600" /></div>Desktop Recommended</DialogTitle>
-            <DialogDescription className="text-slate-600 pt-2">The interactive tutorial is optimized for desktop screens (1024px and wider). For the best experience, we recommend using a laptop or desktop computer the first time you go through the tutorial.</DialogDescription>
-          </DialogHeader>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 my-2"><p className="text-sm text-amber-800 font-medium"><strong>Why desktop?</strong> The tutorial highlights specific UI elements and may not display correctly on smaller screens.</p></div>
-          <DialogFooter className="gap-2 sm:gap-0"><Button onClick={() => setShowMobileWarning(false)} className="bg-indigo-600 hover:bg-indigo-700">Got it, I'll use Desktop</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MobileWarningDialog open={showMobileWarning} onOpenChange={setShowMobileWarning} />
 
       <EditRequestModal open={editAccess.editRequestModalOpen} onOpenChange={editAccess.setEditRequestModalOpen} onSuccess={editAccess.onEditRequestSuccess} selectedTerm={selectedTerm} classAssignment={classAssignment} userName={userName} />
         </>

@@ -21,6 +21,7 @@ declare module 'xlsx-populate' {
     row(rowNum: number): Row;
     usedRange(): Range | undefined;
     name(): string;
+    cell(addr: string): Cell;
   }
 
   interface Workbook {
