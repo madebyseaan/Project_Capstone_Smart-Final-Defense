@@ -295,11 +295,31 @@ export interface InheritedGrade {
   quarterlyGrade: number | null;
   inheritedFrom: string;
   classAssignmentId: string;
+  id?: string;
+  writtenWorkScores?: ScoreItem[] | null;
+  perfTaskScores?: ScoreItem[] | null;
+  quarterlyAssessScore?: number | null;
+  quarterlyAssessMax?: number | null;
+  qaDescription?: string | null;
+  qaDate?: string | null;
+  writtenWorkPS?: number | null;
+  perfTaskPS?: number | null;
+  quarterlyAssessPS?: number | null;
+  initialGrade?: number | null;
+  qualitativeDescriptor?: string | null;
 }
 
 export interface InheritedFromTeacher {
   name: string;
   termsCovered: string[];
+}
+
+export interface RotationSibling {
+  classAssignmentId: string;
+  subjectName: string;
+  term: string;
+  isMine: boolean;
+  teacherName: string;
 }
 
 // Auth API
@@ -348,6 +368,8 @@ export const gradesApi = {
         studentsAtRisk: { id: string; name: string; grade: number; class: string }[];
         honorsStudents: { id: string; name: string; grade: number; honor: string }[];
         withHonorsStudents: { id: string; name: string; grade: number; honor: string }[];
+        rotationTermRank?: number | null;
+        rotationOffTerm?: boolean;
       }[];
       summary: {
         totalClasses: number;
@@ -396,6 +418,7 @@ export const gradesApi = {
       inheritedGrades?: InheritedGrade[];
       inheritedFromTeachers?: InheritedFromTeacher[];
       successorTeacherName?: string | null;
+      rotationSiblings?: RotationSibling[] | null;
     }>(`/grades/class-record/${classAssignmentId}`, {
       params: term ? { term } : {},
     }),
@@ -843,10 +866,13 @@ export interface RegistrarSyncStatus {
 // Transferee types
 export interface TransfereeRow {
   enrollmentId: string;
+  schoolYear?: string;
   lrn: string;
   studentName: string;
   section: { id: string; name: string; gradeLevel: string };
   transferInDate: string | null;
+  birthDate: string | null;
+  gender: string | null;
   details: {
     previousSchool: string | null;
     lastGradeCompleted: string | null;
@@ -865,6 +891,8 @@ export interface TransfereesResponse {
   transferees: TransfereeRow[];
   unmatchedFromLastSync: Array<{ lrn: string; reason: string }>;
   schoolYear: string;
+  currentSchoolYear?: string;
+  availableYears?: Array<{ label: string; count: number }>;
 }
 
 export interface TransfereeUpdatePayload {
@@ -1114,6 +1142,17 @@ export interface SF1Data {
 export const registrarApi = {
   getDashboard: () => api.get<RegistrarDashboard>("/registrar/dashboard"),
 
+  getRolloverStatus: () =>
+    api.get<{
+      currentSY: { id: string; label: string; status: string } | null;
+      previousYear: { id: string; label: string; status: string } | null;
+      unfinalizedCount: number;
+      unfinalizedSections: Array<{ sectionId: string; sectionName: string; gradeLevel: string; draftBlockerCount: number }>;
+      snapshotGapCount: number;
+      snapshotGapSections: Array<{ sectionId: string; sectionName: string; finalizedCount: number; snapshotCount: number }>;
+      canArchive: boolean;
+    }>("/registrar/rollover-status"),
+
   getSyncStatus: () => api.get<RegistrarSyncStatus>("/registrar/sync/status"),
 
   runSync: () => api.post<{ message: string }>("/registrar/sync/run", {}),
@@ -1290,8 +1329,8 @@ export const registrarApi = {
     api.post<{ message: string; fetched: number; inactive: number; upserted: number }>("/registrar/sync-inactive-students"),
 
   // Transferees
-  getTransferees: () =>
-    api.get<TransfereesResponse>("/registrar/transferees"),
+  getTransferees: (params?: { schoolYear?: string }) =>
+    api.get<TransfereesResponse>("/registrar/transferees", { params }),
 
   updateTransferee: (enrollmentId: string, data: TransfereeUpdatePayload) =>
     api.patch<{ message: string }>(`/registrar/transferees/${enrollmentId}`, data),
@@ -1508,6 +1547,15 @@ export interface AdminSystemHealth {
 export const adminApi = {
   // Dashboard
   getDashboard: () => api.get<AdminDashboard>("/admin/dashboard"),
+
+  // Dev / Demo tools
+  seedScores: (body: { action: "seed" | "clear"; finalized?: boolean; clearFirst?: boolean }) =>
+    api.post<{
+      message: string;
+      output?: string;
+      summary?: string;
+      cleared?: { grades: number; snapshots: number; remedial: number; promotionStatus: number };
+    }>("/admin/dev/seed-scores", body),
 
   // User Management
   getUsers: (params?: { search?: string; role?: string; status?: string }) =>

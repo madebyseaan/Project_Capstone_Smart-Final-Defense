@@ -12,6 +12,7 @@ import { ClassRecordStats } from "./components/ClassRecordStats";
 import { ClassRecordTour } from "./components/ClassRecordTour";
 import { EditRequestModal } from "./components/EditRequestModal";
 import { AssessmentHeader } from "./components/AssessmentHeader";
+import RotationBanner from "./components/RotationBanner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -42,7 +43,7 @@ export default function ClassRecordView() {
   const [selectedTerm, setSelectedTerm] = useState("T1");
   const [termInitialized, setTermInitialized] = useState(false);
   const [showAssessmentDetails, setShowAssessmentDetails] = useState(false);
-  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Term 1", T2: "Term 2", T3: "Term 3" });
   const [invalidCells, setInvalidCells] = useState<Record<string, string>>({});
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [showMobileWarning, setShowMobileWarning] = useState(false);
@@ -59,8 +60,29 @@ export default function ClassRecordView() {
   const transmutationQuery = useTransmutationTable();
 
   const classRecord = classRecordQuery.data?.classRecord ?? [];
-  const classRecordRef = useRef(classRecord);
-  useEffect(() => { classRecordRef.current = classRecord; }, [classRecord]);
+  const inheritedGrades = classRecordQuery.data?.inheritedGrades ?? [];
+
+  // Merge inherited stubs into classRecord for display + save base
+  const mergedRecords = useMemo(() => {
+    if (inheritedGrades.length === 0) return classRecord;
+    const stubs = inheritedGrades.filter(
+      (ig) => ig.term === selectedTerm && !classRecord.some((r) => r.student.id === ig.studentId && r.grades.some((g) => g.term === selectedTerm))
+    );
+    if (stubs.length === 0) return classRecord;
+    return classRecord.map((r) => {
+      const stub = stubs.find((s) => s.studentId === r.student.id);
+      if (!stub) return r;
+      const { studentId, classAssignmentId: _caid, inheritedFrom, ...gradeFields } = stub as any;
+      return { ...r, grades: [...r.grades, { ...gradeFields, id: `inherited-${studentId}-${stub.term}`, studentId, classAssignmentId: _caid, term: stub.term, inheritedFrom }] };
+    });
+  }, [classRecord, inheritedGrades, selectedTerm]);
+
+  const rawClassRecordRef = useRef(classRecord);
+  useEffect(() => { rawClassRecordRef.current = classRecord; }, [classRecord]);
+  const classRecordRef = useRef(mergedRecords);
+  useEffect(() => { classRecordRef.current = mergedRecords; }, [mergedRecords]);
+  const inheritedGradesRef = useRef(inheritedGrades);
+  useEffect(() => { inheritedGradesRef.current = inheritedGrades; }, [inheritedGrades]);
   const classAssignment = classRecordQuery.data?.classAssignment ?? null;
   const effectiveWeights = classRecordQuery.data?.effectiveWeights ?? null;
   const currentTerm = classRecordQuery.data?.currentTerm ?? "T1";
@@ -68,9 +90,9 @@ export default function ClassRecordView() {
   const gradeLock = classRecordQuery.data?.gradeLock ?? false;
   const loading = classRecordQuery.isLoading;
   const transmutationTable = transmutationQuery.data ?? [];
-  const inheritedGrades = classRecordQuery.data?.inheritedGrades ?? [];
   const inheritedFromTeachers = classRecordQuery.data?.inheritedFromTeachers ?? [];
   const successorTeacherName = classRecordQuery.data?.successorTeacherName ?? null;
+  const rotationSiblings = classRecordQuery.data?.rotationSiblings ?? null;
 
   const lockedTerm = classAssignment?.subject?.rotationTermRank ? `T${classAssignment.subject.rotationTermRank}` : null;
   const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
@@ -78,11 +100,25 @@ export default function ClassRecordView() {
   const isArchivedAssignment = classAssignment?.isActive === false;
   const isTransferredAssignment = isArchivedAssignment && classAssignment?.archivedReason === 'ATLAS_REASSIGNED';
 
-  // setClassRecord wrapper for action functions
+  // setClassRecord wrapper for action functions — injects inherited seeds before optimistic updates
   const setClassRecord = useCallback((updater: React.SetStateAction<ClassRecord[]>) => {
     queryClient.setQueryData(["class-record", classAssignmentId, selectedTerm], (old: any) => {
       if (!old) return old;
-      return { ...old, classRecord: typeof updater === "function" ? updater(old.classRecord) : updater };
+      let base = old.classRecord as ClassRecord[];
+      const igs = (old.inheritedGrades ?? []) as any[];
+      if (igs.length > 0) {
+        const existingKeys = new Set(base.flatMap((r: ClassRecord) => r.grades.filter((g) => g.term === selectedTerm).map((g: any) => `${r.student.id}:${g.term}`)));
+        const stubs = igs.filter((ig: any) => ig.term === selectedTerm && !existingKeys.has(`${ig.studentId}:${ig.term}`));
+        if (stubs.length > 0) {
+          base = base.map((r: ClassRecord) => {
+            const stub = stubs.find((s: any) => s.studentId === r.student.id);
+            if (!stub) return r;
+            const { studentId, classAssignmentId: _caid, inheritedFrom, ...gradeFields } = stub;
+            return { ...r, grades: [...r.grades, { ...gradeFields, id: `inherited-${studentId}-${stub.term}`, studentId, classAssignmentId: _caid, term: stub.term, inheritedFrom }] };
+          });
+        }
+      }
+      return { ...old, classRecord: typeof updater === "function" ? updater(base) : updater };
     });
   }, [queryClient, classAssignmentId, selectedTerm]);
 
@@ -119,7 +155,7 @@ export default function ClassRecordView() {
 
   // Assessment meta hook
   const metaHook = useAssessmentMeta({
-    classRecord, selectedTerm, classAssignmentId,
+    classRecord: mergedRecords, selectedTerm, classAssignmentId,
     setSuccess, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly,
   });
 
@@ -128,7 +164,7 @@ export default function ClassRecordView() {
     const wwScores: ScoreItem[] = Array.from({ length: metaHook.wwCount }, (_, i) => ({ name: `WW ${i + 1}`, score: 0, maxScore: 0 }));
     const ptScores: ScoreItem[] = Array.from({ length: metaHook.ptCount }, (_, i) => ({ name: `PT ${i + 1}`, score: 0, maxScore: 0 }));
     let qaMax = 0;
-    classRecord.forEach((record) => {
+    mergedRecords.forEach((record) => {
       const grade = record.grades.find((g) => g.term === selectedTerm);
       if (!grade) return;
       (grade.writtenWorkScores || []).forEach((item: any, i: number) => { if (i < wwScores.length) wwScores[i].maxScore = Math.max(wwScores[i].maxScore || 0, Number(item.maxScore) || 0); });
@@ -136,7 +172,7 @@ export default function ClassRecordView() {
       qaMax = Math.max(qaMax, Number(grade.quarterlyAssessMax) || 0);
     });
     return { wwScores, ptScores, qaMax: qaMax || 100 };
-  }, [classRecord, selectedTerm, metaHook.wwCount, metaHook.ptCount]);
+  }, [mergedRecords, selectedTerm, metaHook.wwCount, metaHook.ptCount]);
 
   const getCellKey = useCallback((sid: string, cat: "WW" | "PT" | "QA", idx: number) => `${sid}:${cat}:${idx}`, []);
   const getMaxForCell = useCallback((cat: "WW" | "PT" | "QA", idx: number): number => {
@@ -167,18 +203,18 @@ export default function ClassRecordView() {
     await executeRemoveTask({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, category, wwCount: metaHook.wwCount, ptCount: metaHook.ptCount, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setWwMeta: metaHook.setWwMeta, setPtMeta: metaHook.setPtMeta, setSuccess, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
   }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook, metaHook.applyMetaToScores, fetchClassRecord]);
 
-  const sortedRecords = useMemo(() => [...classRecord].sort((a, b) => `${a.student.lastName}, ${a.student.firstName}`.localeCompare(`${b.student.lastName}, ${b.student.firstName}`)), [classRecord]);
+  const sortedRecords = useMemo(() => [...mergedRecords].sort((a, b) => `${a.student.lastName}, ${a.student.firstName}`.localeCompare(`${b.student.lastName}, ${b.student.firstName}`)), [mergedRecords]);
   const maleRecords = useMemo(() => sortedRecords.filter((r) => r.student.gender?.toLowerCase() === "male"), [sortedRecords]);
   const femaleRecords = useMemo(() => sortedRecords.filter((r) => r.student.gender?.toLowerCase() === "female"), [sortedRecords]);
 
   const activeWeights = useMemo(() => ({ ww: effectiveWeights?.ww ?? classAssignment?.subject?.writtenWorkWeight ?? 0, pt: effectiveWeights?.pt ?? classAssignment?.subject?.perfTaskWeight ?? 0, qa: effectiveWeights?.qa ?? classAssignment?.subject?.quarterlyAssessWeight ?? 0 }), [effectiveWeights, classAssignment]);
   const getDisplayFinalGrade = useCallback((record: ClassRecord) => computeDisplayFinalGrade(record, selectedTerm, activeWeights, transmutationTable), [selectedTerm, activeWeights, transmutationTable]);
   const stats = useMemo(() => {
-    if (classRecord.length === 0) return null;
-    const grades = classRecord.map((r) => getDisplayFinalGrade(r)).filter((g): g is number => g != null);
+    if (mergedRecords.length === 0) return null;
+    const grades = mergedRecords.map((r) => getDisplayFinalGrade(r)).filter((g): g is number => g != null);
     if (grades.length === 0) return { avg: 0, passed: 0, highest: 0, lowest: 0 };
     return { avg: grades.reduce((a, b) => a + b, 0) / grades.length, passed: grades.filter((g) => g >= 75).length, highest: Math.max(...grades), lowest: Math.min(...grades) };
-  }, [classRecord, selectedTerm, activeWeights]);
+  }, [mergedRecords, selectedTerm, activeWeights]);
 
   // Mobile editor hook
   const mobileEditor = useMobileEditor({ sortedRecords, selectedTerm, wwCount: metaHook.wwCount, ptCount: metaHook.ptCount, getMaxForCell, getCellKey, handleScoreUpdate, setInvalidCells, setError, isViewOnly: editAccess.isViewOnly });
@@ -280,7 +316,17 @@ export default function ClassRecordView() {
 
       <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={isPastTerm && !gradeLock && editAccess.editRequestStatus === "idle" ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} termDatesDerived={termDates?.derived} />
 
-      {stats && <ClassRecordStats avg={stats.avg} passed={stats.passed} total={classRecord.length} highest={stats.highest} lowest={stats.lowest} />}
+      {lockedTerm && classAssignment?.subject?.rotationTermRank && (
+        <RotationBanner
+          subjectName={classAssignment.subject.name}
+          rotationTermRank={classAssignment.subject.rotationTermRank}
+          termLabel={termLabels[lockedTerm as keyof typeof termLabels] ?? lockedTerm}
+          currentTermLabel={termLabels[currentTerm as keyof typeof termLabels] ?? currentTerm}
+          siblings={rotationSiblings}
+        />
+      )}
+
+      {stats && <ClassRecordStats avg={stats.avg} passed={stats.passed} total={mergedRecords.length} highest={stats.highest} lowest={stats.lowest} />}
 
       {classAssignmentId && (
         <AimsPanel
@@ -307,7 +353,7 @@ export default function ClassRecordView() {
               Grade history inherited from {inheritedFromTeachers.map(t => `${t.name} (${t.termsCovered.join(', ')})`).join('; ')}
             </p>
             <p className="text-xs text-blue-700 mt-1">
-              These cells are read-only. Continue encoding from the current term. Inherited grades are not included in save operations.
+              Scores from the previous teacher are shown below. Editing any cell copies the inherited history into your class record.
             </p>
             {/* Show inherited grades for the selected term */}
             {(() => {
@@ -316,7 +362,7 @@ export default function ClassRecordView() {
               return (
                 <div className="mt-3 space-y-1">
                   {termInherited.map((ig) => {
-                    const student = classRecord.find(r => r.student.id === ig.studentId);
+                    const student = mergedRecords.find(r => r.student.id === ig.studentId);
                     const studentName = student ? `${student.student.lastName}, ${student.student.firstName}` : ig.studentId;
                     return (
                       <div key={ig.studentId} className="flex items-center justify-between text-xs bg-blue-100/50 rounded-lg px-3 py-1.5">
@@ -335,7 +381,7 @@ export default function ClassRecordView() {
         </div>
       )}
 
-      {classRecord.length === 0 ? (
+      {mergedRecords.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
           <p className="text-slate-500 font-medium">No learners enrolled in this class for this school year.</p>
         </div>
@@ -343,7 +389,7 @@ export default function ClassRecordView() {
         <>
           <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} aimsByStudent={aimsByStudent} aimsAssessments={aimsAssessments} />
 
-      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} lockedTerm={lockedTerm} currentTerm={currentTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={metaHook.openMetaEditor} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsAllAssessments={aimsAllAssessments} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
+      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} lockedTerm={lockedTerm} currentTerm={currentTerm} termLabels={termLabels} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={metaHook.openMetaEditor} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsAllAssessments={aimsAllAssessments} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
 
       <GradeEditModal open={mobileEditor.mobileEditorOpen} onOpenChange={(open) => { mobileEditor.setMobileEditorOpen(open); if (!open) { mobileEditor.setMobileEditorStudentId(null); mobileEditor.setMobileScoreDraft({}); } }} selectedRecord={mobileEditor.selectedMobileRecord} selectedTerm={selectedTerm} mobileEditorTab={mobileEditor.mobileEditorTab} onTabChange={mobileEditor.setMobileEditorTab} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} mobileScoreDraft={mobileEditor.mobileScoreDraft} invalidCells={invalidCells} getCellKey={getCellKey} getMobileDraftKey={getMobileDraftKey} getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)} getMaxForCell={getMaxForCell} onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange} onMobileScoreCommit={mobileEditor.commitMobileScore} onApplyColumnMeta={metaHook.applyColumnMetaFromMobile} isViewOnly={editAccess.isViewOnly} aimsScores={mobileEditor.selectedMobileRecord ? aimsByStudent[mobileEditor.selectedMobileRecord.student.id] : undefined} aimsAssessmentTitles={Object.fromEntries(aimsAssessments.map(a => [a.assessmentId, a.title]))} aimsAllAssessments={aimsAllAssessments} aimsByStudent={aimsByStudent} />
 

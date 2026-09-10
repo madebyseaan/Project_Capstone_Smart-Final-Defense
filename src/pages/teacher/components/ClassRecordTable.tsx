@@ -169,6 +169,7 @@ const LedgerRow = React.memo(
   }: LedgerRowProps) => {
     const studentId = record?.student.id || "HPS";
     const grade = record?.grades?.find((g) => g.term === selectedTerm);
+    const isInherited = !!(grade as any)?.inheritedFrom;
 
     const wwScores = isHps ? hpsData?.wwScores || [] : ((grade?.writtenWorkScores || []) as ScoreItem[]);
     const ptScores = isHps ? hpsData?.ptScores || [] : ((grade?.perfTaskScores || []) as ScoreItem[]);
@@ -218,9 +219,12 @@ const LedgerRow = React.memo(
         className={
           isHps
             ? "bg-slate-800 text-white h-9 hover:bg-slate-800 transition-none group/hps sticky z-15"
-            : "hover:bg-indigo-50/20 transition-all group h-9"
+            : isInherited
+              ? "bg-blue-50/40 hover:bg-blue-50/60 transition-all group h-9"
+              : "hover:bg-indigo-50/20 transition-all group h-9"
         }
         style={rowStyle}
+        title={isInherited && grade ? `Inherited from ${(grade as any).inheritedFrom} — editing copies it to your record` : undefined}
       >
         {/* # */}
         <TableCell
@@ -524,6 +528,8 @@ interface ClassRecordTableProps {
   lockedTerm?: string | null;
   /** The system's current active term — past terms are disabled */
   currentTerm?: string;
+  /** Term labels from settings (e.g. "Term 1", "Term 2") */
+  termLabels?: { T1: string; T2: string; T3: string };
   /** View-only mode — past terms or locked grades */
   isViewOnly?: boolean;
   separateByGender: boolean;
@@ -564,6 +570,7 @@ export function ClassRecordTable({
   onTermChange,
   lockedTerm,
   currentTerm,
+  termLabels: termLabelsProp,
   isViewOnly,
   separateByGender,
   onSeparateByGenderChange,
@@ -862,18 +869,15 @@ export function ClassRecordTable({
               )}
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Period:</span>
-                {lockedTerm && (
-                  <span
-                    className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-2 py-0.5 flex items-center gap-1"
-                    title={`This is a rotating subject. You may only enter grades for ${lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'}.`}
-                  >
-                    Rotating — {lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'} only
+                {lockedTerm ? (
+                  <span className="text-[11px] font-bold text-foreground bg-slate-100 border border-slate-200 rounded-lg px-3 py-1">
+                    {termLabelsProp?.[lockedTerm as keyof typeof termLabelsProp] ?? (lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3')} — fixed schedule
                   </span>
-                )}
+                ) : (
                 <Select
                   value={selectedTerm}
                   onValueChange={(val) => {
-                    if (val && (!lockedTerm || val === lockedTerm)) onTermChange(val);
+                    if (val) onTermChange(val);
                   }}
                 >
                   <SelectTrigger className="w-24 font-bold" size="sm">
@@ -881,28 +885,23 @@ export function ClassRecordTable({
                   </SelectTrigger>
                   <SelectContent className="shadow-2xl">
                     {terms.map((q) => {
-                      const isLocked = !!lockedTerm && q !== lockedTerm;
                       const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
                       const isPastTerm = currentTerm && termOrder[q] < termOrder[currentTerm];
-                      const disabled = isLocked; // Allow future terms for testing
-                      const label = isPastTerm ? "Past term — view only" : undefined;
                       return (
                         <SelectItem
                           key={q}
                           value={q}
-                          disabled={disabled}
-                          className={`text-[11px] font-bold ${
-                            disabled ? "opacity-40 cursor-not-allowed" : ""
-                          }`}
-                          title={isLocked ? `This rotating subject is only taught in ${lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3'}` : label}
+                          className="text-[11px] font-bold"
+                          title={isPastTerm ? "Past term — view only" : undefined}
                         >
                           {q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3"}
-                          {isLocked ? " (Locked)" : isPastTerm ? " (View Only)" : ""}
+                          {isPastTerm ? " (View Only)" : ""}
                         </SelectItem>
                       );
                     })}
                   </SelectContent>
                 </Select>
+                )}
               </div>
             </div>
           </div>

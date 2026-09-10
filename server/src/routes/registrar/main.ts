@@ -9,11 +9,13 @@ import {
   resolveEnrollProSchoolYear,
   getEnrollProSectionRoster,
 } from "../../lib/enrollproClient";
-import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
+import { getActiveSchoolYearLabel, getActiveSchoolYear } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
 import { withSectionLock } from "../../lib/sectionLock";
 import { validate } from "../../middleware/validate";
 import { enrollmentStatusSchema, finalizeGradesSchema } from "../../schemas/registrar";
+import { listUnfinalizedSections, finalizeSectionEosy } from "../../lib/promotion";
+import { findSnapshotGapSections } from "../../lib/rollover";
 import {
   resolveCurrentSchoolYearLabel,
   getSyncFreshness,
@@ -49,7 +51,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         _count: {
           select: { 
             enrollments: {
-              where: { status: "ENROLLED" }
+              where: { status: "ENROLLED", isArchived: false }
             }
           }
         },
@@ -65,7 +67,8 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
     const localEnrolledStudents = await prisma.enrollment.findMany({
       where: { 
         schoolYear: currentSchoolYear,
-        status: "ENROLLED"
+        status: "ENROLLED",
+        isArchived: false,
       },
       distinct: ["studentId"],
       select: {
@@ -101,7 +104,8 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
       by: ['sectionId'],
       where: {
         schoolYear: currentSchoolYear,
-        status: "ENROLLED"
+        status: "ENROLLED",
+        isArchived: false,
       },
       _count: true
     });
@@ -181,7 +185,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
     // Enrollment status breakdown for current school year
     const enrollmentStatusCounts = await prisma.enrollment.groupBy({
       by: ['status'],
-      where: { schoolYear: currentSchoolYear },
+      where: { schoolYear: currentSchoolYear, isArchived: false },
       _count: true,
     });
     const statusMap = new Map(enrollmentStatusCounts.map((row) => [row.status, row._count]));
@@ -196,6 +200,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         schoolYear: currentSchoolYear,
         status: "ENROLLED",
         transferInDate: { not: null },
+        isArchived: false,
       },
       include: { student: { select: { birthDate: true, gender: true, previousSchool: true, transferCertNo: true } } },
     });
@@ -240,6 +245,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
           },
           term: currentTerm,
           quarterlyGrade: { not: null },
+          isArchived: false,
         },
         select: {
           quarterlyGrade: true,
@@ -385,6 +391,52 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
   } catch (error) {
     logger.error("Error fetching registrar dashboard:", error);
     res.status(500).json({ message: "Failed to fetch dashboard data" });
+  }
+});
+
+// Get rollover/archive readiness for the previous school year (Registrar view)
+router.get("/rollover-status", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+
+    const currentSY = await getActiveSchoolYear();
+    const years = await prisma.schoolYear.findMany({ orderBy: { label: "desc" } });
+    const previousYear = years.find((y) => y.id !== currentSY.id && y.status !== "ARCHIVED");
+
+    let unfinalized: any[] = [];
+    let snapshotGaps: any[] = [];
+    if (previousYear) {
+      const [unfinalizedRes, gapsRes] = await Promise.all([
+        listUnfinalizedSections(previousYear.label),
+        findSnapshotGapSections(previousYear.label),
+      ]);
+      unfinalized = unfinalizedRes;
+      snapshotGaps = gapsRes;
+    }
+
+    res.json({
+      currentSY: { id: currentSY.id, label: currentSY.label, status: currentSY.status },
+      previousYear: previousYear
+        ? { id: previousYear.id, label: previousYear.label, status: previousYear.status }
+        : null,
+      unfinalizedCount: unfinalized.length,
+      unfinalizedSections: unfinalized.map((s) => ({
+        sectionId: s.sectionId,
+        sectionName: s.sectionName,
+        gradeLevel: s.gradeLevel,
+        draftBlockerCount: s.draftBlockerCount,
+      })),
+      snapshotGapCount: snapshotGaps.length,
+      snapshotGapSections: snapshotGaps,
+      canArchive: unfinalized.length === 0 && snapshotGaps.length === 0 && !!previousYear,
+    });
+  } catch (error) {
+    logger.error("Error fetching rollover status:", error);
+    res.status(500).json({ message: "Failed to fetch rollover status" });
   }
 });
 
@@ -1228,6 +1280,31 @@ router.post("/finalize-grades", authenticateToken, validate(finalizeGradesSchema
 
       logger.info(`[Registrar] ${user.username} finalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
 
+      // Auto-create EOSY promotion snapshots once the section is fully locked.
+      // Safety net: prevents the "grades finalized but no promotion snapshots" state
+      // that silently blocked rollover (snapshot-gap guardrail).
+      let eosyFinalized = false;
+      let eosySnapshotsCreated = 0;
+      try {
+        const remainingDrafts = await prisma.grade.count({
+          where: { classAssignment: { sectionId, schoolYear: schoolYearLabel }, status: "DRAFT" },
+        });
+        if (remainingDrafts === 0) {
+          const eosy = await finalizeSectionEosy({
+            sectionId,
+            schoolYear: schoolYearLabel,
+            actor: { id: user.id, name: user.username, role: user.role },
+          });
+          if (eosy.ok) {
+            eosyFinalized = true;
+            eosySnapshotsCreated = eosy.snapshotsCreated;
+            logger.info(`[Registrar] Auto EOSY finalize for section ${sectionId}: ${eosy.snapshotsCreated} snapshots created`);
+          }
+        }
+      } catch (eosyErr: any) {
+        logger.warn(`[Registrar] Auto EOSY finalize failed for section ${sectionId}: ${eosyErr.message}`);
+      }
+
       return {
         status: 200 as const,
         body: {
@@ -1236,6 +1313,8 @@ router.post("/finalize-grades", authenticateToken, validate(finalizeGradesSchema
           sectionId,
           term,
           subjectId,
+          eosyFinalized,
+          snapshotsCreated: eosySnapshotsCreated,
         },
       };
     });

@@ -351,6 +351,8 @@ export default function registerDashboard(router: Router): void {
             studentsAtRisk,
             honorsStudents,
             withHonorsStudents,
+            rotationTermRank: (ca.subject as any).rotationTermRank ?? null,
+            rotationOffTerm: !!(ca.subject as any).rotationTermRank && `T${(ca.subject as any).rotationTermRank}` !== currentTerm,
           };
         }));
 

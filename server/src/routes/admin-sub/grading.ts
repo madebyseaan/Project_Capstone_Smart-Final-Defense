@@ -63,7 +63,7 @@ export default function (router: Router) {
         orderBy: { subjectType: "asc" },
       });
 
-      let termLabels = { T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" };
+      let termLabels = { T1: "Term 1", T2: "Term 2", T3: "Term 3" };
       try {
         termLabels = await getActiveTermLabels();
       } catch (e: any) {
@@ -164,7 +164,7 @@ export default function (router: Router) {
         orderBy: { subjectType: "asc" },
       });
 
-      let termLabels = { T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" };
+      let termLabels = { T1: "Term 1", T2: "Term 2", T3: "Term 3" };
       try {
         termLabels = await getActiveTermLabels();
       } catch (e: any) {

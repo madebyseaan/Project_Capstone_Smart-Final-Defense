@@ -1,4 +1,4 @@
-import { Loader2, CheckCircle, FileCheck, FileEdit } from "lucide-react";
+import { Loader2, CheckCircle, FileCheck, FileEdit, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ interface EOSYGradeLockingTabProps {
   finalizingSubject: string | null;
   finalizeMessage: string | null;
   epSectionName: string | null;
+  eosyPending?: boolean;
   onFinalizeAll: () => void;
   onUnfinalizeAll: () => void;
 }
@@ -21,6 +22,7 @@ export default function EOSYGradeLockingTab({
   finalizingSubject,
   finalizeMessage,
   epSectionName,
+  eosyPending,
   onFinalizeAll,
   onUnfinalizeAll,
 }: EOSYGradeLockingTabProps) {
@@ -44,6 +46,24 @@ export default function EOSYGradeLockingTab({
 
   return (
     <div className="space-y-5">
+      {/* EOSY Pending Warning */}
+      {eosyPending && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">
+              Grades are locked, but EOSY promotion is not finalized
+            </p>
+            <p className="text-xs text-amber-700 mt-1">
+              Finalizing grades alone does not create the EOSY promotion snapshots required for rollover. Go to{" "}
+              <strong>Overview → Finalize EOSY</strong> for {epSectionName ?? "this section"} (or use{" "}
+              <strong>Finalize All</strong> here, which now also finalizes EOSY). The school year cannot be archived
+              until this is done.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Summary Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-6">

@@ -18,9 +18,10 @@
 
 import { prisma } from './prisma';
 import { logger } from './logger';
-import { Prisma } from '@prisma/client';
+import { Prisma, AuditAction, AuditSeverity } from '@prisma/client';
 import type { SchoolYear } from '@prisma/client';
 import { readLiveSnapshot } from './schoolSettingsSnapshot';
+import { createAuditLog } from './audit';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -89,9 +90,9 @@ export async function getActiveSchoolYearLabel(): Promise<string> {
 export async function getActiveTermLabels(): Promise<{ T1: string; T2: string; T3: string }> {
   const year = await getActiveSchoolYear();
   return {
-    T1: year.termLabelT1 || "Quarterly 1",
-    T2: year.termLabelT2 || "Quarterly 2",
-    T3: year.termLabelT3 || "Quarterly 3",
+    T1: year.termLabelT1 || "Term 1",
+    T2: year.termLabelT2 || "Term 2",
+    T3: year.termLabelT3 || "Term 3",
   };
 }
 
@@ -154,14 +155,31 @@ export async function ensureSchoolYearFromEnrollPro(
   });
 
   if (prevSettings?.schoolYearId && prevSettings.schoolYearId !== year.id) {
+    let prevYearLabel: string | null = null;
     try {
       const { handleYearChangeRollover } = await import('./rollover');
       const prevYear = await prisma.schoolYear.findUnique({ where: { id: prevSettings.schoolYearId } });
+      prevYearLabel = prevYear?.label ?? null;
       if (prevYear) {
         await handleYearChangeRollover(prevYear.id, prevYear.label, year.id, yearLabel);
       }
     } catch (err: any) {
       logger.error(`[SchoolYearResolver] Rollover handling failed: ${err.message}`);
+      // Surface the failure in the audit trail so it can't silently leave the
+      // previous year "active" without an explanation (prevents stale dashboards).
+      try {
+        await createAuditLog(
+          AuditAction.CONFIG,
+          { id: "system", firstName: "System", lastName: "", role: "ADMIN" },
+          `School Year Rollover Blocked: ${prevYearLabel ?? prevSettings.schoolYearId}`,
+          "Config",
+          `Rollover to ${yearLabel} failed: ${err.message}. Active year reverted to ${prevYearLabel ?? prevSettings.schoolYearId} — fix the blocker and retry on next sync.`,
+          undefined,
+          AuditSeverity.WARNING
+        );
+      } catch (auditErr: any) {
+        logger.error(`[SchoolYearResolver] Failed to write rollover-failure audit log: ${auditErr.message}`);
+      }
       // Revert FK so next sync retries the rollover (self-healing)
       try {
         await prisma.systemSettings.updateMany({

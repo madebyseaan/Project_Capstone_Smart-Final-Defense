@@ -3,6 +3,7 @@ import { AuditAction, AuditSeverity, Term } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import path from "path";
 import fs from "fs";
+import { spawn } from "child_process";
 import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
 import { addSettingsSseClient, removeSettingsSseClient, broadcastSettingsUpdate } from "../../lib/sseManager";
@@ -11,13 +12,13 @@ import { invalidateEnrollProCredentials } from "../../lib/enrollproClient";
 import { getRecentSyncHistory, runUnifiedSync } from "../../lib/syncCoordinator";
 import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
-import { getActiveTermLabels, invalidateSchoolYearCache } from "../../lib/schoolYearResolver";
+import { getActiveTermLabels, invalidateSchoolYearCache, getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { syncActiveYearSnapshot } from "../../lib/schoolSettingsSnapshot";
 import { logger } from "../../lib/logger";
 import { validate } from "../../middleware/validate";
 import { setYearLock, setTermLock } from "../../lib/gradeLocks";
 import { listUnfinalizedSections } from "../../lib/promotion";
-import { archiveSchoolYear, handleYearChangeRollover } from "../../lib/rollover";
+import { archiveSchoolYear, handleYearChangeRollover, findSnapshotGapSections } from "../../lib/rollover";
 import {
   settingsUpdateSchema,
   colorSettingsSchema,
@@ -99,7 +100,7 @@ export default function (router: Router) {
         });
       }
 
-      let termLabels = { T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" };
+      let termLabels = { T1: "Term 1", T2: "Term 2", T3: "Term 3" };
       try {
         termLabels = await getActiveTermLabels();
       } catch {
@@ -213,6 +214,9 @@ export default function (router: Router) {
 
       // Keep active year's snapshot in step with admin edits (W2)
       await syncActiveYearSnapshot();
+
+      // Active school year may have changed — drop the 5-min resolver cache
+      invalidateSchoolYearCache();
 
       await createAuditLog(
         AuditAction.CONFIG,
@@ -386,8 +390,14 @@ export default function (router: Router) {
       const pendingYearsCount = years.filter((y) => y.id !== currentSY?.id && y.status !== "ARCHIVED").length;
 
       let unfinalized: any[] = [];
+      let snapshotGaps: any[] = [];
       if (previousYear) {
-        unfinalized = await listUnfinalizedSections(previousYear.label);
+        const [unfinalizedRes, gapsRes] = await Promise.all([
+          listUnfinalizedSections(previousYear.label),
+          findSnapshotGapSections(previousYear.label),
+        ]);
+        unfinalized = unfinalizedRes;
+        snapshotGaps = gapsRes;
       }
 
       res.json({
@@ -395,12 +405,113 @@ export default function (router: Router) {
         previousYear: previousYear ? { id: previousYear.id, label: previousYear.label, status: previousYear.status } : null,
         unfinalizedCount: unfinalized.length,
         unfinalizedSections: unfinalized.map((s) => ({ sectionId: s.sectionId, sectionName: s.sectionName, gradeLevel: s.gradeLevel, draftBlockerCount: s.draftBlockerCount })),
-        canArchive: unfinalized.length === 0 && !!previousYear,
+        snapshotGapCount: snapshotGaps.length,
+        snapshotGapSections: snapshotGaps,
+        canArchive: unfinalized.length === 0 && snapshotGaps.length === 0 && !!previousYear,
         pendingYearsCount: pendingYearsCount > 1 ? pendingYearsCount : undefined,
       });
     } catch (error) {
       logger.error("Error fetching rollover status:", error);
       res.status(500).json({ message: "Failed to fetch rollover status" });
+    }
+  });
+
+  // Dev-only demo seeding tool. Runs the seed-teacher-scores script for the
+  // active school year so admins can test with realistic data. Finalized seeds
+  // auto-run the EOSY finalize inside the script, so rollover stays safe.
+  router.post("/dev/seed-scores", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { action, finalized, clearFirst } = req.body as {
+        action?: "seed" | "clear";
+        finalized?: boolean;
+        clearFirst?: boolean;
+      };
+      const user = req.user!;
+
+      const schoolYearLabel = await getActiveSchoolYearLabel();
+
+      if (action === "clear" || (action === "seed" && clearFirst)) {
+        const [delGrades, delSnaps, delRemedial] = await Promise.all([
+          prisma.grade.deleteMany({ where: { classAssignment: { schoolYear: schoolYearLabel } } }),
+          prisma.gradeSnapshot.deleteMany({ where: { schoolYear: schoolYearLabel } }),
+          prisma.remedialClass.deleteMany({ where: { schoolYear: schoolYearLabel } }),
+        ]);
+        const resetPromo = await prisma.enrollment.updateMany({
+          where: { schoolYear: schoolYearLabel },
+          data: { promotionStatus: null, promotedToGradeLevel: null },
+        });
+        if (action === "clear") {
+          await createAuditLog(
+            AuditAction.UPDATE,
+            user,
+            "Dev Seed: Clear Grades",
+            "Dev",
+            `Cleared grades/snapshots/remedial for ${schoolYearLabel}`,
+            req.ip,
+            AuditSeverity.WARNING
+          );
+          res.json({
+            message: `Cleared grades for ${schoolYearLabel}`,
+            cleared: { grades: delGrades.count, snapshots: delSnaps.count, remedial: delRemedial.count, promotionStatus: resetPromo.count },
+          });
+          return;
+        }
+      }
+
+      if (action === "seed") {
+        // Pre-check: seeding needs enrolled students + assigned teachers
+        const [studentCount, caCount] = await Promise.all([
+          prisma.enrollment.count({ where: { schoolYear: schoolYearLabel, status: "ENROLLED", isArchived: false } }),
+          prisma.classAssignment.count({ where: { schoolYear: schoolYearLabel, isActive: true } }),
+        ]);
+        if (studentCount === 0 || caCount === 0) {
+          res.status(400).json({
+            message: `Cannot seed: ${schoolYearLabel} has ${studentCount} enrolled student(s) and ${caCount} active class assignment(s). Run EnrollPro enrollment + ATLAS teaching load and sync first.`,
+          });
+          return;
+        }
+
+        const serverRoot = path.resolve(__dirname, "..", "..", "..");
+        const bin = path.join(serverRoot, "node_modules", "ts-node", "dist", "bin.js");
+        const scriptArgs = ["--transpile-only", "prisma/seed-teacher-scores.ts", "--all", "--complete-transferees"];
+        if (finalized) scriptArgs.push("--finalized");
+        if (clearFirst) scriptArgs.push("--clear");
+
+        const output = await new Promise<string>((resolvePromise, rejectPromise) => {
+          const child = spawn(process.execPath, [bin, ...scriptArgs], { cwd: serverRoot, env: process.env });
+          let out = "";
+          child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+          child.stderr.on("data", (d: Buffer) => { out += d.toString(); });
+          child.on("error", (err) => rejectPromise(err));
+          child.on("close", (code) => {
+            if (code === 0) resolvePromise(out);
+            else rejectPromise(new Error(`Seed script exited with code ${code}`));
+          });
+        });
+
+        await createAuditLog(
+          AuditAction.UPDATE,
+          user,
+          "Dev Seed: Scores",
+          "Dev",
+          `Seeded simulated scores for ${schoolYearLabel}${finalized ? " (finalized + EOSY)" : " (draft)"}`,
+          req.ip,
+          AuditSeverity.WARNING
+        );
+
+        const summaryLine = output.split("\n").filter((l) => l.includes("GRAND SUMMARY") || l.includes("Total grades") || l.includes("EOSY finalize") || l.includes("sections OK")).join("\n").trim();
+        res.json({
+          message: `Seeding complete for ${schoolYearLabel}${finalized ? " — grades finalized and EOSY-ready (rollover safe)" : " — draft grades (finalize via EOSY page)"}`,
+          output: output.slice(-4000),
+          summary: summaryLine || output.slice(-1200),
+        });
+        return;
+      }
+
+      res.status(400).json({ message: 'Invalid action. Use "seed" or "clear".' });
+    } catch (error: any) {
+      logger.error("Error running dev seed:", error);
+      res.status(500).json({ message: error?.message || "Failed to run seed" });
     }
   });
 

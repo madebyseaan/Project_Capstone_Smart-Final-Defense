@@ -134,8 +134,69 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
     select: { studentId: true, writtenWorkScores: true, perfTaskScores: true },
   });
 
+  // Fetch predecessor grades for allocation (students without own grades)
+  const allStudentIds = Array.from(scoresByStudent.keys());
+  const ownStudentIds = new Set(allGrades.map(g => g.studentId));
+  const needsPredIds = allStudentIds.filter(sid => !ownStudentIds.has(sid));
+  let predGradesForAlloc: typeof allGrades = [];
+  if (needsPredIds.length > 0) {
+    const predAssignments = await prisma.classAssignment.findMany({
+      where: {
+        subjectId: classAssignment.subjectId,
+        sectionId: classAssignment.sectionId,
+        schoolYear: classAssignment.schoolYear,
+        isActive: false,
+        id: { not: classAssignmentId },
+        grades: { some: {} },
+      },
+      select: { id: true, archivedAt: true },
+      orderBy: { archivedAt: 'desc' },
+    });
+    if (predAssignments.length > 0) {
+      const predIds = predAssignments.map(p => p.id);
+      const rawPredGrades = await prisma.grade.findMany({
+        where: { classAssignmentId: { in: predIds }, studentId: { in: needsPredIds }, term },
+        select: { studentId: true, writtenWorkScores: true, perfTaskScores: true },
+        orderBy: { classAssignment: { archivedAt: 'desc' } },
+      });
+      const seen = new Set<string>();
+      for (const pg of rawPredGrades) {
+        if (!seen.has(pg.studentId)) { seen.add(pg.studentId); predGradesForAlloc.push(pg); }
+      }
+    }
+  }
+
+  // Build per-student seed map for import (full predecessor rows)
+  const predSeedMap = new Map<string, any>();
+  if (needsPredIds.length > 0) {
+    const predAssignments2 = await prisma.classAssignment.findMany({
+      where: {
+        subjectId: classAssignment.subjectId,
+        sectionId: classAssignment.sectionId,
+        schoolYear: classAssignment.schoolYear,
+        isActive: false,
+        id: { not: classAssignmentId },
+        grades: { some: {} },
+      },
+      select: { id: true, archivedAt: true },
+      orderBy: { archivedAt: 'desc' },
+    });
+    if (predAssignments2.length > 0) {
+      const predIds2 = predAssignments2.map(p => p.id);
+      const rawSeeds = await prisma.grade.findMany({
+        where: { classAssignmentId: { in: predIds2 }, studentId: { in: needsPredIds }, term },
+        orderBy: { classAssignment: { archivedAt: 'desc' } },
+      });
+      for (const sg of rawSeeds) {
+        if (!predSeedMap.has(sg.studentId)) predSeedMap.set(sg.studentId, sg);
+      }
+    }
+  }
+
+  const allGradesMerged = [...allGrades, ...predGradesForAlloc];
+
   const freeIndices = (key: 'writtenWorkScores' | 'perfTaskScores'): number[] => {
-    const arrs = allGrades.map(g => (g[key] as any[]) ?? []);
+    const arrs = allGradesMerged.map(g => (g[key] as any[]) ?? []);
     if (arrs.length === 0) return [];
     const maxLen = Math.max(...arrs.map(a => a.length));
     const free: number[] = [];
@@ -144,7 +205,7 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
   };
 
   const maxLenOf = (key: 'writtenWorkScores' | 'perfTaskScores'): number =>
-    Math.max(0, ...allGrades.map(g => ((g[key] as any[]) ?? []).length));
+    Math.max(0, ...allGradesMerged.map(g => ((g[key] as any[]) ?? []).length));
 
   const catAssessments = (cat: 'WW' | 'PT'): string[] => {
     const ids = new Set<string>();
@@ -194,6 +255,8 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
         where: { studentId_classAssignmentId_term: { studentId, classAssignmentId, term } },
       });
 
+      const seedGrade = existingGrade ?? predSeedMap.get(studentId) ?? null;
+
       // Skip FINALIZED
       if (existingGrade?.status === "FINALIZED") {
         finalizedSkipped++;
@@ -214,8 +277,8 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
       }
 
       // Defensive dedupe: skip assessments already in the grade array with isAims
-      const existingWW = (existingGrade?.writtenWorkScores as any[] ?? []);
-      const existingPT = (existingGrade?.perfTaskScores as any[] ?? []);
+      const existingWW = (seedGrade?.writtenWorkScores as any[] ?? []);
+      const existingPT = (seedGrade?.perfTaskScores as any[] ?? []);
       const existingAimsIds = new Set<string>();
       for (const it of [...existingWW, ...existingPT]) {
         if (it?.isAims && it?.assessmentId) existingAimsIds.add(it.assessmentId);
@@ -268,15 +331,15 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
       }
 
       // QA import — skip-if-occupied
-      let finalQAScore = existingGrade?.quarterlyAssessScore ?? 0;
-      let finalQAMax = existingGrade?.quarterlyAssessMax ?? 100;
-      let finalQADesc = existingGrade?.qaDescription ?? null;
-      let finalQADate = existingGrade?.qaDate ?? null;
+      let finalQAScore = seedGrade?.quarterlyAssessScore ?? 0;
+      let finalQAMax = seedGrade?.quarterlyAssessMax ?? 100;
+      let finalQADesc = seedGrade?.qaDescription ?? null;
+      let finalQADate = seedGrade?.qaDate ?? null;
       let qaApplied = false;
       const rowsToMark: string[] = [];
 
       if (qaScores.length > 0) {
-        const occupied = (existingGrade?.quarterlyAssessScore ?? 0) > 0;
+        const occupied = (seedGrade?.quarterlyAssessScore ?? 0) > 0;
         if (occupied) {
           qaSkippedOccupied++;
         } else {

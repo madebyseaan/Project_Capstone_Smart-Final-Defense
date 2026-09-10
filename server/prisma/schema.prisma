@@ -365,9 +365,9 @@ model SchoolYear {
   label      String    @unique // "2026-2027"
   externalId Int?      @unique  // EnrollPro numeric ID — primary align key
   status     String    @default("ACTIVE") // DRAFT, ACTIVE, ARCHIVED, COMPLETED
-  termLabelT1 String   @default("Quarterly 1") // configurable display label for T1
-  termLabelT2 String   @default("Quarterly 2") // configurable display label for T2
-  termLabelT3 String   @default("Quarterly 3") // configurable display label for T3
+  termLabelT1 String   @default("Term 1") // configurable display label for T1
+  termLabelT2 String   @default("Term 2") // configurable display label for T2
+  termLabelT3 String   @default("Term 3") // configurable display label for T3
   startDate  DateTime?
   endDate    DateTime?
   archivedAt DateTime?

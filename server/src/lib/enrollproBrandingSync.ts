@@ -16,7 +16,7 @@ import fs from "fs";
 import https from "https";
 import http from "http";
 import { prisma } from "./prisma";
-import { getEnrollProPublicSettings, getIntegrationV1ActiveTerm, getIntegrationV1ActiveSchoolYear } from "./enrollproClient";
+import { getEnrollProPublicSettings, getIntegrationV1ActiveTerm, getIntegrationV1ActiveSchoolYear, getEnrollProSchoolYearWithTerms } from "./enrollproClient";
 import { ensureSchoolYearFromEnrollPro, invalidateSchoolYearCache } from "./schoolYearResolver";
 import { broadcastSettingsUpdate } from "./sseManager";
 import { syncActiveYearSnapshot } from "./schoolSettingsSnapshot";
@@ -128,11 +128,41 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
   if (epSettings.activeSchoolYearLabel) updateData.currentSchoolYear = epSettings.activeSchoolYearLabel;
   if (epSettings.depedEmail) updateData.email = epSettings.depedEmail;
 
-  // Sync term dates from EP if available
-  if (epSettings.terms && Array.isArray(epSettings.terms) && epSettings.terms.length > 0) {
+  // ── Sync term dates from EnrollPro (3-tier fallback) ───────────────────────
+  // Tier 1: Fetch from /api/school-years/:id (admin auth) — most reliable source
+  // Tier 2: Use terms[] array from /settings/public (if available)
+  // Tier 3: Derive approximate dates from classOpeningDate/classEndDate
+
+  let termDatesSynced = false;
+
+  // Tier 1: School-years admin endpoint (flat fields: term1Start, term1End, etc.)
+  if (epSettings.activeSchoolYearId && !termDatesSynced) {
+    try {
+      const yearDetails = await getEnrollProSchoolYearWithTerms(epSettings.activeSchoolYearId);
+      if (yearDetails?.term1Start && yearDetails?.term1End) {
+        updateData.t1StartDate = new Date(yearDetails.term1Start);
+        updateData.t1EndDate = new Date(yearDetails.term1End);
+        if (yearDetails.term2Start && yearDetails.term2End) {
+          updateData.t2StartDate = new Date(yearDetails.term2Start);
+          updateData.t2EndDate = new Date(yearDetails.term2End);
+        }
+        if (yearDetails.term3Start && yearDetails.term3End) {
+          updateData.t3StartDate = new Date(yearDetails.term3Start);
+          updateData.t3EndDate = new Date(yearDetails.term3End);
+        }
+        updateData.termDatesDerived = false;
+        termDatesSynced = true;
+        logger.info(`[BrandingSync] Synced term dates from EnrollPro /school-years/${epSettings.activeSchoolYearId}: T1=${yearDetails.term1Start?.slice(0,10)}-${yearDetails.term1End?.slice(0,10)}, T2=${yearDetails.term2Start?.slice(0,10)}-${yearDetails.term2End?.slice(0,10)}, T3=${yearDetails.term3Start?.slice(0,10)}-${yearDetails.term3End?.slice(0,10)}`);
+      }
+    } catch (err: any) {
+      logger.warn(`[BrandingSync] Failed to fetch term dates from school-years endpoint: ${err.message}`);
+    }
+  }
+
+  // Tier 2: Public settings terms[] array (if available)
+  if (!termDatesSynced && epSettings.terms && Array.isArray(epSettings.terms) && epSettings.terms.length > 0) {
     const termMap: Record<string, { start: string; end: string }> = {};
     for (const term of epSettings.terms) {
-      // Flexible matching: "T1", "TERM 1", "Term 1", "1" → T1
       const raw = (term.label ?? '').trim().toUpperCase();
       const numMatch = raw.match(/(?:TERM\s*)?(\d)/);
       const num = numMatch?.[1];
@@ -155,37 +185,33 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
       updateData.t3StartDate = new Date(termMap.T3.start);
       updateData.t3EndDate = new Date(termMap.T3.end);
     }
-    // EnrollPro provided real term dates — mark as NOT derived
     updateData.termDatesDerived = false;
-    logger.info(`[BrandingSync] Synced term dates from EnrollPro: T1=${termMap.T1?.start || 'N/A'}-${termMap.T1?.end || 'N/A'}, T2=${termMap.T2?.start || 'N/A'}-${termMap.T2?.end || 'N/A'}, T3=${termMap.T3?.start || 'N/A'}-${termMap.T3?.end || 'N/A'}`);
-  } else {
-    // EnrollPro /settings/public does not expose individual term dates.
-    // Derive approximate dates from classOpeningDate / classEndDate (3 equal trimesters).
-    if (epSettings.classOpeningDate && epSettings.classEndDate) {
-      const opening = new Date(epSettings.classOpeningDate);
-      const closing = new Date(epSettings.classEndDate);
-      const totalMs = closing.getTime() - opening.getTime();
-      const thirdMs = totalMs / 3;
-      if (thirdMs > 0) {
-        const t1End = new Date(opening.getTime() + thirdMs);
-        const t2Start = new Date(t1End.getTime() + 1);
-        const t2End = new Date(t2Start.getTime() + thirdMs);
-        const t3Start = new Date(t2End.getTime() + 1);
-        // Only write if not already set (don't overwrite admin-entered or EnrollPro-provided dates)
-        const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
-        if (!settings?.t1StartDate) {
-          updateData.t1StartDate = opening;
-          updateData.t1EndDate = t1End;
-          updateData.t2StartDate = t2Start;
-          updateData.t2EndDate = t2End;
-          updateData.t3StartDate = t3Start;
-          updateData.t3EndDate = closing;
-          updateData.termDatesDerived = true;
-          logger.info(`[BrandingSync] Derived term dates from school year (approximate): T1=${opening.toISOString().slice(0,10)}-${t1End.toISOString().slice(0,10)}, T2=${t2Start.toISOString().slice(0,10)}-${t2End.toISOString().slice(0,10)}, T3=${t3Start.toISOString().slice(0,10)}-${closing.toISOString().slice(0,10)}`);
-        }
+    termDatesSynced = true;
+    logger.info(`[BrandingSync] Synced term dates from EnrollPro /settings/public terms[]: T1=${termMap.T1?.start || 'N/A'}-${termMap.T1?.end || 'N/A'}, T2=${termMap.T2?.start || 'N/A'}-${termMap.T2?.end || 'N/A'}, T3=${termMap.T3?.start || 'N/A'}-${termMap.T3?.end || 'N/A'}`);
+  }
+
+  // Tier 3: Derive approximate dates from school year boundaries (last resort)
+  if (!termDatesSynced && epSettings.classOpeningDate && epSettings.classEndDate) {
+    const opening = new Date(epSettings.classOpeningDate);
+    const closing = new Date(epSettings.classEndDate);
+    const totalMs = closing.getTime() - opening.getTime();
+    const thirdMs = totalMs / 3;
+    if (thirdMs > 0) {
+      const t1End = new Date(opening.getTime() + thirdMs);
+      const t2Start = new Date(t1End.getTime() + 1);
+      const t2End = new Date(t2Start.getTime() + thirdMs);
+      const t3Start = new Date(t2End.getTime() + 1);
+      const settings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
+      if (!settings?.t1StartDate) {
+        updateData.t1StartDate = opening;
+        updateData.t1EndDate = t1End;
+        updateData.t2StartDate = t2Start;
+        updateData.t2EndDate = t2End;
+        updateData.t3StartDate = t3Start;
+        updateData.t3EndDate = closing;
+        updateData.termDatesDerived = true;
+        logger.info(`[BrandingSync] Derived term dates from school year (approximate — no EnrollPro dates available): T1=${opening.toISOString().slice(0,10)}-${t1End.toISOString().slice(0,10)}, T2=${t2Start.toISOString().slice(0,10)}-${t2End.toISOString().slice(0,10)}, T3=${t3Start.toISOString().slice(0,10)}-${closing.toISOString().slice(0,10)}`);
       }
-    } else {
-      logger.warn(`[BrandingSync] No term dates available from EnrollPro (terms array empty/missing, no classOpeningDate/classEndDate). Set them manually in Admin > System Settings.`);
     }
   }
 

@@ -6,6 +6,7 @@ import {
   Loader2,
   CloudDownload,
   RefreshCw,
+  History,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +68,8 @@ export default function Transferees() {
   const [transferees, setTransferees] = useState<TransfereeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [schoolYearFilter, setSchoolYearFilter] = useState<string>("current");
+  const [allYears, setAllYears] = useState(false);
 
   const [selected, setSelected] = useState<TransfereeRow | null>(null);
   const [saving, setSaving] = useState(false);
@@ -84,7 +87,13 @@ export default function Transferees() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await registrarApi.getTransferees();
+      const res = await registrarApi.getTransferees(
+        allYears
+          ? { schoolYear: "all" }
+          : schoolYearFilter === "current"
+            ? undefined
+            : { schoolYear: schoolYearFilter }
+      );
       setData(res.data);
       setTransferees(res.data.transferees || []);
     } catch (err) {
@@ -94,11 +103,18 @@ export default function Transferees() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [schoolYearFilter, allYears]);
 
   useEffect(() => {
     void loadData();
   }, [loadData, syncVersion]);
+
+  const availableYears = data?.availableYears ?? [];
+  const currentSchoolYear = data?.currentSchoolYear ?? "";
+  const yearOptions = [
+    { value: "current", label: currentSchoolYear ? `${currentSchoolYear} (Current Active SY)` : "This School Year" },
+    ...availableYears.filter((y) => y.label !== currentSchoolYear).map((y) => ({ value: y.label, label: y.label })),
+  ];
 
   const handleSync = async () => {
     setSyncModalOpen(true);
@@ -130,8 +146,8 @@ export default function Transferees() {
     setPreviousSchool(row.details.previousSchool ?? "");
     setLastGradeCompleted(row.details.lastGradeCompleted ?? "");
     setTransferCertNo(row.details.transferCertNo ?? "");
-    setGender("");
-    setBirthDate("");
+    setGender(row.gender ?? "");
+    setBirthDate(row.birthDate ? row.birthDate.split("T")[0] : "");
     setTransferInDate(row.transferInDate?.split("T")[0] ?? "");
   };
 
@@ -168,7 +184,7 @@ export default function Transferees() {
         actions={
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="px-3 py-1 text-xs font-medium bg-primary/5 text-primary border-primary/20">
-              S.Y. {data?.schoolYear || "—"}
+              {allYears ? "All Years (History)" : `S.Y. ${data?.schoolYear || "—"}`}
             </Badge>
             <Button
               onClick={() => void handleSync()}
@@ -195,7 +211,13 @@ export default function Transferees() {
       {/* Stats Row */}
       <div className="grid grid-cols-2 gap-4">
         <StatCard
-          label="Transferees (this SY)"
+          label={
+            allYears
+              ? "Transferees (all years)"
+              : schoolYearFilter === "current"
+                ? "Transferees (this SY)"
+                : `Transferees (${schoolYearFilter})`
+          }
           value={total}
           numericValue={total}
           icon={<ArrowLeftRight className="w-5 h-5 text-primary" />}
@@ -213,22 +235,50 @@ export default function Transferees() {
       {/* Main Table Card */}
       <Card className="border-0 shadow-sm bg-card overflow-hidden rounded-xl p-0">
         <div className="px-6 py-4 border-b border-border/30">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Transferee List</h2>
-              <p className="text-sm text-muted-foreground">
-                {filtered.length} learner{filtered.length !== 1 ? "s" : ""} found
-              </p>
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Transferee List</h2>
+                <p className="text-sm text-muted-foreground">
+                  {filtered.length} learner{filtered.length !== 1 ? "s" : ""} found
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <Select value={schoolYearFilter} onValueChange={(val) => val && setSchoolYearFilter(val)} disabled={allYears}>
+                  <SelectTrigger className="w-full sm:w-52 h-9 rounded-lg text-xs font-medium">
+                    <SelectValue placeholder="School year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {yearOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAllYears((v) => !v)}
+                  className={`h-9 rounded-lg text-xs font-medium px-3 whitespace-nowrap ${
+                    allYears
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "text-muted-foreground border-border/70 bg-background hover:bg-muted/70"
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5 mr-1.5" />
+                  {allYears ? "All years ON" : "All years"}
+                </Button>
+                <div className="relative">
+                  <Input
+                    placeholder="Search name or LRN..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-8 pr-4 h-9 w-full sm:w-64 rounded-lg text-xs"
+                  />
+                </div>
+              </div>
             </div>
-            <div className="relative">
-              <Input
-                placeholder="Search name or LRN..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 pr-4 h-9 w-64 rounded-lg text-xs"
-              />
-            </div>
-          </div>
         </div>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -238,6 +288,9 @@ export default function Transferees() {
                   <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[13%] text-left">LRN</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[28%] text-left">Learner Name</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[18%] text-left">Section</TableHead>
+                  {allYears && (
+                    <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[13%] text-left whitespace-nowrap">School Year</TableHead>
+                  )}
                   <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left whitespace-nowrap">Transferred In</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[15%] text-left">Status</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">Action</TableHead>
@@ -265,6 +318,7 @@ export default function Transferees() {
                       row.completeness.missingPreviousSchool ? "Prev. school" : null,
                       row.completeness.missingTransferCertNo ? "TC no." : null,
                     ].filter(Boolean) as string[];
+                    const isPastRow = !!row.schoolYear && row.schoolYear !== currentSchoolYear;
                     return (
                       <TableRow key={row.enrollmentId} className="border-b border-border/20 hover:bg-muted/50 transition-colors">
                         <TableCell className="py-3.5 px-4 font-mono text-[13px] text-muted-foreground tabular-nums text-left align-middle whitespace-nowrap">
@@ -297,6 +351,11 @@ export default function Transferees() {
                             </span>
                           </div>
                         </TableCell>
+                        {allYears && (
+                          <TableCell className="py-3.5 px-4 text-sm text-muted-foreground text-left align-middle whitespace-nowrap">
+                            {row.schoolYear ?? <Dash />}
+                          </TableCell>
+                        )}
                         <TableCell className="py-3.5 px-4 text-sm text-muted-foreground text-left align-middle whitespace-nowrap">
                           {row.transferInDate ? formatDate(row.transferInDate) : <Dash />}
                         </TableCell>
@@ -312,15 +371,19 @@ export default function Transferees() {
                           )}
                         </TableCell>
                         <TableCell className="py-3.5 px-4 text-left align-middle">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openDialog(row)}
-                            className="h-8 px-3 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap -ml-2.5"
-                          >
-                            <ClipboardCheck className="h-3.5 w-3.5 mr-1.5" />
-                            Complete details
-                          </Button>
+                          {isPastRow ? (
+                            <span className="text-[11px] text-muted-foreground whitespace-nowrap">View only</span>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openDialog(row)}
+                              className="h-8 px-3 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap -ml-2.5"
+                            >
+                              <ClipboardCheck className="h-3.5 w-3.5 mr-1.5" />
+                              Complete details
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -383,7 +446,10 @@ export default function Transferees() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="birthDate" className="text-xs font-medium text-foreground">
-                  Birth date
+                  Birth date{" "}
+                  {birthDate && (
+                    <span className="text-muted-foreground font-normal">(from EnrollPro)</span>
+                  )}
                 </Label>
                 <Input
                   id="birthDate"
@@ -395,7 +461,10 @@ export default function Transferees() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="gender" className="text-xs font-medium text-foreground">
-                  Sex
+                  Sex{" "}
+                  {gender && (
+                    <span className="text-muted-foreground font-normal">(from EnrollPro)</span>
+                  )}
                 </Label>
                 <Select value={gender || undefined} onValueChange={(v) => setGender(v)}>
                   <SelectTrigger id="gender" className="h-9 rounded-lg text-xs font-medium">

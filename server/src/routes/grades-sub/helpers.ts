@@ -125,7 +125,7 @@ export async function resolveTermDeadline(
   const activeClasses = await prisma.classAssignment.findMany({
     where: { teacherId, schoolYear: currentSchoolYear, isActive: true },
     include: {
-      subject: { select: { code: true, name: true } },
+      subject: { select: { code: true, name: true, rotationTermRank: true } },
       section: {
         select: {
           name: true,
@@ -144,6 +144,7 @@ export async function resolveTermDeadline(
 
   const teachingClasses = activeClasses.filter(
     (ca: any) => !isHomeroomGuidanceSubjectCode(ca.subject.code)
+      && (!ca.subject.rotationTermRank || `T${ca.subject.rotationTermRank}` === currentTerm)
   );
 
   const incompleteClasses: GradeDeadlineInfo['incompleteClasses'] = [];
@@ -371,6 +372,36 @@ export async function createGradeSnapshot(params: {
 
 // Re-export shared dependencies for sub-modules
 export { prisma } from "../../lib/prisma";
+// ─── Predecessor Grade Seeding (Transfer Support) ────────────────────────────
+
+export async function getPredecessorGradeBase(
+  classAssignment: { id: string; subjectId: string; sectionId: string; schoolYear: string },
+  studentId: string,
+  term: string,
+  tx?: any,
+): Promise<any | null> {
+  const db = tx ?? prisma;
+  const predecessors = await db.classAssignment.findMany({
+    where: {
+      subjectId: classAssignment.subjectId,
+      sectionId: classAssignment.sectionId,
+      schoolYear: classAssignment.schoolYear,
+      isActive: false,
+      id: { not: classAssignment.id },
+      grades: { some: {} },
+    },
+    select: { id: true, archivedAt: true },
+    orderBy: { archivedAt: 'desc' },
+  });
+  if (predecessors.length === 0) return null;
+  const predIds = predecessors.map((p: any) => p.id);
+  const predGrade = await db.grade.findFirst({
+    where: { classAssignmentId: { in: predIds }, studentId, term },
+    orderBy: { classAssignment: { archivedAt: 'desc' } },
+  });
+  return predGrade ?? null;
+}
+
 export { AuditAction, AuditSeverity, Prisma as PrismaClient } from "@prisma/client";
 export { createAuditLog } from "../../lib/audit";
 export { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";

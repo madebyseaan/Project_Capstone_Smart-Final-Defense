@@ -307,7 +307,7 @@ export default function EOSYFinalization() {
     setConfirmDialog({
       open: true,
       title: "Finalize all draft grades?",
-      description: `This will lock ${draftCount} subject(s) across all terms (T1, T2, T3) for ${epSection?.name}. Teachers will no longer be able to edit these grades.`,
+      description: `This will lock ${draftCount} subject(s) across all terms (T1, T2, T3) for ${epSection?.name}, then create the EOSY promotion snapshots for this section. Teachers will no longer be able to edit these grades.`,
       variant: "danger",
       onConfirm: async () => {
         setConfirmDialog((prev) => ({ ...prev, open: false }));
@@ -334,10 +334,25 @@ export default function EOSYFinalization() {
               }
             }
           }
+
+          // Also run the EOSY promotion finalize so promotion snapshots exist.
+          // Without this, the archive/rollover guardrail blocks the year (snapshot gap).
+          let eosyNote = "";
+          try {
+            const eosyRes = await registrarApi.finalizeEosySection(localSection.id, selectedSyLabel);
+            const snapCount = eosyRes.data?.snapshotsCreated ?? 0;
+            eosyNote = ` EOSY finalized (${snapCount} promotion snapshot${snapCount === 1 ? "" : "s"} created).`;
+            void loadSmartPromotion(localSection.id, selectedSyLabel);
+          } catch (eosyErr: any) {
+            eosyNote = eosyErr?.response?.data?.message
+              ? ` EOSY finalize needs attention: ${eosyErr.response.data.message}`
+              : " EOSY finalize could not be completed.";
+          }
+
           setFinalizeMessage(
             failed > 0
-              ? `Finalized ${totalFinalized} grades, ${failed} request(s) failed — try again for remaining`
-              : `Finalized ${totalFinalized} grades across ${draftSubjects.length} subjects (all terms)`,
+              ? `Finalized ${totalFinalized} grades, ${failed} request(s) failed — try again for remaining.${eosyNote}`
+              : `Finalized ${totalFinalized} grades across ${draftSubjects.length} subjects (all terms).${eosyNote}`,
           );
           void loadFinalizeStatus(localSection.id);
           void loadAllTermStatus(localSection.id);
@@ -368,7 +383,7 @@ export default function EOSYFinalization() {
     setConfirmDialog({
       open: true,
       title: "Unfinalize all grades?",
-      description: `This will unlock ${finalizedSubjects.length} subject(s) across all terms (T1, T2, T3) for ${epSection?.name}. Teachers will be able to edit grades again.`,
+      description: `This will unlock ${finalizedSubjects.length} subject(s) across all terms (T1, T2, T3) for ${epSection?.name}. Teachers will be able to edit grades again. NOTE: this only unlocks grades — EOSY promotion snapshots remain until the section is unfinalized in Overview.`,
       variant: "warning",
       onConfirm: async () => {
         setConfirmDialog((prev) => ({ ...prev, open: false }));
@@ -501,6 +516,15 @@ export default function EOSYFinalization() {
   });
 
   const hasSectionSelected = !!selectedSectionId;
+
+  // "Grades locked but EOSY promotion not finalized" — the exact state that
+  // previously blocked rollover silently. Surfaced as a warning in Grade Locking.
+  const gradesFullyLocked = allTermStatus.length > 0 && allTermStatus.every((s: any) => s.totalDraft === 0);
+  const eosyFinalized =
+    !!smartPromotion?.enrollments?.length &&
+    smartPromotion.enrollments.every((e: any) => e.stored?.promotionStatus != null) &&
+    (smartPromotion.draftBlockers?.length ?? 0) === 0;
+  const eosyPending = gradesFullyLocked && !eosyFinalized;
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -648,7 +672,10 @@ export default function EOSYFinalization() {
                       allTermStatus={allTermStatus}
                       epSectionName={epSection?.name ?? null}
                       adviserName={localSection?.adviser ?? null}
+                      eosyFinalized={eosyFinalized}
+                      finalizingSubject={finalizingSubject}
                       onEosyFinalize={handleEosyFinalize}
+                      onFinalizeAll={handleFinalizeAll}
                     />
                   )}
                 </TabsContent>
@@ -666,6 +693,7 @@ export default function EOSYFinalization() {
                       finalizingSubject={finalizingSubject}
                       finalizeMessage={finalizeMessage}
                       epSectionName={epSection?.name ?? null}
+                      eosyPending={eosyPending}
                       onFinalizeAll={handleFinalizeAll}
                       onUnfinalizeAll={handleUnfinalizeAll}
                     />

@@ -101,7 +101,7 @@ const TOUR_STEPS: TourStep[] = [
     icon: Calendar,
     badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
     content:
-      "Clicking this button expands the Assessment Details manager. This lets you assign descriptive titles (e.g. 'Quiz 1: Fractions') and submission dates to all Written Works, Performance Tasks, and Quarterly Exams.",
+      "Clicking this button expands the Assessment Details manager. This lets you assign descriptive titles (e.g. 'Quiz 1: Fractions') and submission dates to all Written Works, Performance Tasks, and Term Assessments.",
     devTip:
       "Setting dates and descriptions is optional, but it enriches your grade records with complete lesson documentation.",
     action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
@@ -152,7 +152,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: "period-controls",
     targetId: "tutorial-period-controls",
-    title: "Quarterly Periods & Score Safety",
+    title: "Term Periods & Score Safety",
     category: "Term Control",
     icon: Layers,
     badgeColor: "bg-rose-50 text-rose-700 border-rose-200",

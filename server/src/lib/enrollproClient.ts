@@ -436,6 +436,48 @@ export async function getEnrollProSchoolYears(): Promise<EnrollProSchoolYear[]> 
 }
 
 /**
+ * Returns full school year details including term dates from EnrollPro.
+ * GET /api/school-years/:id (admin auth)
+ *
+ * EnrollPro stores term dates as flat fields on the school year object:
+ * term1Start, term1End, term2Start, term2End, term3Start, term3End, activeTerm
+ */
+export async function getEnrollProSchoolYearWithTerms(schoolYearId: number): Promise<{
+  id: number;
+  yearLabel: string;
+  activeTerm: string | null;
+  term1Start: string | null;
+  term1End: string | null;
+  term2Start: string | null;
+  term2End: string | null;
+  term3Start: string | null;
+  term3End: string | null;
+} | null> {
+  try {
+    const token = await getAdminToken();
+    const result = await fetchJSON(`${await getEnrollProBase()}/school-years/${schoolYearId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const year = result?.year ?? result?.data?.year ?? result;
+    if (!year) return null;
+    return {
+      id: Number(year.id),
+      yearLabel: String(year.yearLabel ?? ''),
+      activeTerm: year.activeTerm ?? null,
+      term1Start: year.term1Start ?? null,
+      term1End: year.term1End ?? null,
+      term2Start: year.term2Start ?? null,
+      term2End: year.term2End ?? null,
+      term3Start: year.term3Start ?? null,
+      term3End: year.term3End ?? null,
+    };
+  } catch (err: any) {
+    logger.warn(`[EnrollProClient] Failed to fetch school year ${schoolYearId} details: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Resolve the best school year context to use for EnrollPro sync calls.
  */
 export async function resolveEnrollProSchoolYear(

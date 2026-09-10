@@ -21,6 +21,7 @@ import {
   isHomeroomGuidanceSubjectCode,
   calculateGrades,
   createGradeSnapshot,
+  getPredecessorGradeBase,
 } from "./helpers";
 import { checkGradeEditLocks, getGradeLockState } from "../../lib/gradeLocks";
 
@@ -217,7 +218,6 @@ export default function registerClasses(router: Router): void {
         const predecessorGrades = predecessorIds.length > 0
           ? await prisma.grade.findMany({
               where: { classAssignmentId: { in: predecessorIds } },
-              select: { studentId: true, term: true, quarterlyGrade: true, classAssignmentId: true },
             })
           : [];
 
@@ -252,12 +252,14 @@ export default function registerClasses(router: Router): void {
         }
 
         for (const [, pg] of candidateMap) {
+          const { classAssignmentId: _predCA, ...gradeFields } = pg as any;
           inheritedGrades.push({
             studentId: pg.studentId,
             term: pg.term,
             quarterlyGrade: pg.quarterlyGrade,
             inheritedFrom: predecessorNameMap.get(pg.classAssignmentId) ?? 'Unknown',
             classAssignmentId: pg.classAssignmentId,
+            ...gradeFields,
           });
         }
 
@@ -265,6 +267,39 @@ export default function registerClasses(router: Router): void {
           name: predecessorNameMap.get(p.id) ?? 'Unknown',
           termsCovered: [...new Set(predecessorGrades.filter(g => g.classAssignmentId === p.id).map(g => g.term))],
         }));
+
+        // Rotation siblings: other class assignments in the same section + rotation group
+        let rotationSiblings: Array<{
+          classAssignmentId: string;
+          subjectName: string;
+          term: string;
+          isMine: boolean;
+          teacherName: string;
+        }> | null = null;
+
+        const rotationGroupId = (classAssignment.subject as any).rotationTermGroupId as string | null;
+        if (rotationGroupId) {
+          const siblings = await prisma.classAssignment.findMany({
+            where: {
+              sectionId: classAssignment.sectionId,
+              schoolYear: classAssignment.schoolYear,
+              isActive: true,
+              id: { not: classAssignmentId },
+              subject: { rotationTermGroupId: rotationGroupId },
+            },
+            include: {
+              subject: { select: { name: true, rotationTermRank: true } },
+              teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
+            },
+          });
+          rotationSiblings = siblings.map(s => ({
+            classAssignmentId: s.id,
+            subjectName: s.subject.name,
+            term: `T${(s.subject as any).rotationTermRank}`,
+            isMine: s.teacherId === teacher.id,
+            teacherName: `${(s as any).teacher.user.firstName} ${(s as any).teacher.user.lastName}`,
+          }));
+        }
 
         res.json({
           classAssignment,
@@ -285,6 +320,7 @@ export default function registerClasses(router: Router): void {
           inheritedGrades,
           inheritedFromTeachers,
           successorTeacherName,
+          rotationSiblings,
         });
       } catch (error) {
         logger.error("Error fetching class record:", error);
@@ -416,29 +452,31 @@ export default function registerClasses(router: Router): void {
           return;
         }
 
+        const seedGrade = existingGrade ?? await getPredecessorGradeBase(classAssignment, studentId, term);
+
         const mergedWrittenWorkScores = (writtenWorkScores !== undefined
               ? writtenWorkScores
-              : (existingGrade?.writtenWorkScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
+              : (seedGrade?.writtenWorkScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
 
         const mergedPerfTaskScores = (perfTaskScores !== undefined
               ? perfTaskScores
-              : (existingGrade?.perfTaskScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
+              : (seedGrade?.perfTaskScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
 
         const mergedQuarterlyAssessScore = (quarterlyAssessScore !== undefined
               ? quarterlyAssessScore
-              : (existingGrade?.quarterlyAssessScore ?? 0));
+              : (seedGrade?.quarterlyAssessScore ?? 0));
 
         const mergedQuarterlyAssessMax = (quarterlyAssessMax !== undefined
               ? quarterlyAssessMax
-              : (existingGrade?.quarterlyAssessMax ?? 100));
+              : (seedGrade?.quarterlyAssessMax ?? 100));
 
         const mergedQaDescription = (qaDescription !== undefined
               ? qaDescription
-              : (existingGrade?.qaDescription ?? null));
+              : (seedGrade?.qaDescription ?? null));
 
         const mergedQaDate = (qaDate !== undefined
               ? qaDate
-              : (existingGrade?.qaDate ?? null));
+              : (seedGrade?.qaDate ?? null));
 
         const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
         const calculated = await calculateGrades(
@@ -640,6 +678,34 @@ export default function registerClasses(router: Router): void {
         const enrollmentMap = new Map(enrollments.map((e: any) => [e.studentId, e]));
         const gradeMap = new Map(existingGrades.map((g: any) => [g.studentId, g]));
 
+        // Seed from predecessor for students without own grades
+        const studentIdsNeedingSeed = studentIds.filter((sid: string) => !gradeMap.has(sid));
+        const seedMap = new Map<string, any>();
+        if (studentIdsNeedingSeed.length > 0) {
+          const predAssignments = await prisma.classAssignment.findMany({
+            where: {
+              subjectId: classAssignment.subjectId,
+              sectionId: classAssignment.sectionId,
+              schoolYear: classAssignment.schoolYear,
+              isActive: false,
+              id: { not: classAssignmentId },
+              grades: { some: {} },
+            },
+            select: { id: true, archivedAt: true },
+            orderBy: { archivedAt: 'desc' },
+          });
+          if (predAssignments.length > 0) {
+            const predIds = predAssignments.map((p: any) => p.id);
+            const predGrades = await prisma.grade.findMany({
+              where: { classAssignmentId: { in: predIds }, studentId: { in: studentIdsNeedingSeed }, term },
+              orderBy: { classAssignment: { archivedAt: 'desc' } },
+            });
+            for (const pg of predGrades) {
+              if (!seedMap.has(pg.studentId)) seedMap.set(pg.studentId, pg);
+            }
+          }
+        }
+
         // Filter out students that should be skipped
         const validUpdates = updates.filter((update: any) => {
           const enrollment = enrollmentMap.get(update.studentId);
@@ -662,7 +728,7 @@ export default function registerClasses(router: Router): void {
         // Transaction: upsert all valid updates
         await prisma.$transaction(async (tx) => {
           for (const update of validUpdates) {
-            const existing = gradeMap.get(update.studentId);
+            const existing = gradeMap.get(update.studentId) ?? seedMap.get(update.studentId);
 
             const mergedWrittenWorkScores = update.writtenWorkScores !== undefined
               ? update.writtenWorkScores

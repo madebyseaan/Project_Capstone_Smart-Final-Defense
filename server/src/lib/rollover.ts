@@ -33,6 +33,59 @@ export interface ArchiveSchoolYearResult {
   yearLabel: string;
 }
 
+export interface SnapshotGapSection {
+  sectionId: string;
+  sectionName: string;
+  finalizedCount: number;
+  snapshotCount: number;
+}
+
+/**
+ * findSnapshotGapSections — returns sections whose FINALIZED grade count exceeds
+ * their EOSY_FINALIZE snapshot count for the given year. The archive guardrail
+ * blocks these; surfaced in rollover-status so the admin can see the real blocker.
+ */
+export async function findSnapshotGapSections(yearLabel: string): Promise<SnapshotGapSection[]> {
+  const [finalizedCounts, snapshotCounts] = await Promise.all([
+    prisma.grade.groupBy({
+      by: ["classAssignmentId"],
+      where: { classAssignment: { schoolYear: yearLabel }, status: "FINALIZED" },
+      _count: { id: true },
+    }),
+    prisma.gradeSnapshot.groupBy({
+      by: ["sectionId"],
+      where: { schoolYear: yearLabel, snapshot: { path: ["source"], equals: "EOSY_FINALIZE" } },
+      _count: { id: true },
+    }),
+  ]);
+
+  const cas = await prisma.classAssignment.findMany({
+    where: { schoolYear: yearLabel },
+    select: { id: true, sectionId: true },
+  });
+  const caToSection = new Map(cas.map((ca) => [ca.id, ca.sectionId]));
+
+  const finalizedBySection = new Map<string, number>();
+  for (const fc of finalizedCounts) {
+    const sectionId = caToSection.get(fc.classAssignmentId);
+    if (sectionId) {
+      finalizedBySection.set(sectionId, (finalizedBySection.get(sectionId) ?? 0) + fc._count.id);
+    }
+  }
+
+  const snapshotsBySection = new Map(snapshotCounts.map((sc) => [sc.sectionId, sc._count.id]));
+
+  const gaps: SnapshotGapSection[] = [];
+  for (const [sectionId, finalCount] of finalizedBySection) {
+    const snapCount = snapshotsBySection.get(sectionId) ?? 0;
+    if (snapCount < finalCount) {
+      const section = await prisma.section.findUnique({ where: { id: sectionId }, select: { name: true } });
+      gaps.push({ sectionId, sectionName: section?.name ?? sectionId, finalizedCount: finalCount, snapshotCount: snapCount });
+    }
+  }
+  return gaps;
+}
+
 // ---------------------------------------------------------------------------
 // archiveYearInTx — the SINGLE archive core. Receives a Prisma transaction
 // client. Never opens its own transaction or acquires advisory locks.

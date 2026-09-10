@@ -10,6 +10,8 @@ interface RolloverStatus {
   previousYear: { id: string; label: string; status: string } | null;
   unfinalizedCount: number;
   unfinalizedSections: Array<{ sectionId: string; sectionName: string; gradeLevel: string; draftBlockerCount: number }>;
+  snapshotGapCount?: number;
+  snapshotGapSections?: Array<{ sectionId: string; sectionName: string; finalizedCount: number; snapshotCount: number }>;
   canArchive: boolean;
 }
 
@@ -94,7 +96,7 @@ export default function RolloverStatusCard() {
           </div>
 
           {status.previousYear && status.previousYear.status !== "ARCHIVED" && (
-            <div className={`p-3 rounded-lg ${status.unfinalizedCount > 0 ? "bg-amber-50 border border-amber-200" : "bg-emerald-50 border border-emerald-200"}`}>
+            <div className={`p-3 rounded-lg ${status.unfinalizedCount > 0 || status.snapshotGapCount > 0 ? "bg-amber-50 border border-amber-200" : "bg-emerald-50 border border-emerald-200"}`}>
               {status.unfinalizedCount > 0 ? (
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
@@ -103,6 +105,25 @@ export default function RolloverStatusCard() {
                     <ul className="text-xs text-amber-700 mt-1 space-y-0.5">
                       {status.unfinalizedSections.slice(0, 5).map((s) => (
                         <li key={s.sectionId}>{s.sectionName} ({s.gradeLevel}) — {s.draftBlockerCount} DRAFT blocker(s)</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : status.snapshotGapCount > 0 ? (
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">
+                      {status.snapshotGapCount} section(s) in {status.previousYear.label} are missing EOSY promotion snapshots
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Grades are locked but the EOSY finalize step was never completed. Run <strong>EOSY Finalization → Overview → Finalize EOSY</strong> for each section before archiving.
+                    </p>
+                    <ul className="text-xs text-amber-700 mt-1 space-y-0.5">
+                      {status.snapshotGapSections?.slice(0, 5).map((s) => (
+                        <li key={s.sectionId}>
+                          {s.sectionName} — {s.snapshotCount}/{s.finalizedCount} snapshots created
+                        </li>
                       ))}
                     </ul>
                   </div>

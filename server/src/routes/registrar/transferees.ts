@@ -19,7 +19,7 @@ import { getSyncTaggedTransfereeLrns } from "../../lib/enrollproSync";
 
 export default function registerTransfereeRoutes(router: Router): void {
 
-// GET /registrar/transferees — current-SY transferees with completion flags
+// GET /registrar/transferees?schoolYear= — current-SY transferees, a specific SY, or all years
 router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") {
@@ -28,24 +28,44 @@ router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Resp
   }
   try {
     const currentSchoolYear = await getActiveSchoolYearLabel();
+    const requested = (req.query.schoolYear as string) || "";
+
+    // Available years: ALL school years (newest first) with transferee counts,
+    // so the filter dropdown shows every year including ones with no transferees.
+    const [allYears, transfereeCounts] = await Promise.all([
+      prisma.schoolYear.findMany({ orderBy: { label: "desc" }, select: { label: true } }),
+      prisma.enrollment.groupBy({
+        by: ["schoolYear"],
+        where: { transferInDate: { not: null }, status: "ENROLLED" },
+        _count: true,
+      }),
+    ]);
+    const countByYear = new Map(transfereeCounts.map((g) => [g.schoolYear, g._count]));
+    const availableYears = allYears.map((y) => ({ label: y.label, count: countByYear.get(y.label) ?? 0 }));
+
+    // Scope: default = current SY (operational, exclude archived). Specific year /
+    // all = historical (schoolYear only, include archived rows per AGENTS.md).
+    const where: any =
+      requested === "all"
+        ? { transferInDate: { not: null }, status: "ENROLLED" }
+        : requested
+          ? { schoolYear: requested, transferInDate: { not: null }, status: "ENROLLED" }
+          : { schoolYear: currentSchoolYear, transferInDate: { not: null }, status: "ENROLLED", isArchived: false };
 
     const enrollments = await prisma.enrollment.findMany({
-      where: {
-        schoolYear: currentSchoolYear,
-        status: "ENROLLED",
-        transferInDate: { not: null },
-      },
+      where,
       include: {
         student: true,
         section: true,
       },
-      orderBy: { student: { lastName: "asc" } },
+      orderBy: [{ schoolYear: "desc" }, { student: { lastName: "asc" } }],
     });
 
     const syncTaggedLrns = getSyncTaggedTransfereeLrns();
 
     const transferees = enrollments.map((e) => ({
       enrollmentId: e.id,
+      schoolYear: e.schoolYear,
       lrn: e.student.lrn,
       studentName: `${e.student.lastName}, ${e.student.firstName}${e.student.middleName ? " " + e.student.middleName : ""}`.trim(),
       section: {
@@ -54,6 +74,8 @@ router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Resp
         gradeLevel: e.section.gradeLevel,
       },
       transferInDate: e.transferInDate,
+      birthDate: e.student.birthDate,
+      gender: e.student.gender,
       details: {
         previousSchool: e.student.previousSchool,
         lastGradeCompleted: e.student.lastGradeCompleted,
@@ -74,7 +96,9 @@ router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Resp
     res.json({
       transferees,
       unmatchedFromLastSync,
-      schoolYear: currentSchoolYear,
+      schoolYear: requested === "all" ? "ALL" : requested || currentSchoolYear,
+      currentSchoolYear,
+      availableYears,
     });
   } catch (err: any) {
     logger.error("[registrar/transferees]", err.message);

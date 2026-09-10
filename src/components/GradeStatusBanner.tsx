@@ -19,7 +19,7 @@ function daysBetween(a: Date, b: Date): number {
   return Math.ceil((a.getTime() - b.getTime()) / msPerDay);
 }
 
-const DEFAULT_LABELS: Record<string, string> = { T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" };
+const DEFAULT_LABELS: Record<string, string> = { T1: "Term 1", T2: "Term 2", T3: "Term 3" };
 
 function getTermLabel(term: string, labels?: { T1: string; T2: string; T3: string }): string {
   if (labels && term in labels) return labels[term as keyof typeof labels];

@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaClient, Term, GradeStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { makeTransmuter, resolveCanonicalWeights, type Weights } from "./canonicalGrade";
+import { finalizeSectionEosy } from "../src/lib/promotion";
 
 const connectionString = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({
@@ -529,6 +530,42 @@ async function main() {
   console.log(`Total grades inserted: ${totalInserted}`);
   console.log(`Remedial records (failed subjects): ${totalRemedial}`);
   console.log(`Retained records (failed subjects): ${totalRetained}`);
+
+  // EOSY consistency fix: this seed writes grades directly as FINALIZED, which
+  // skips the EOSY promotion step. Run the real finalize flow so promotion
+  // snapshots + status exist — otherwise the rollover archive guardrail
+  // (snapshot gap) blocks the year and the system silently reverts.
+  let eosyOk = 0;
+  let eosySkipped = 0;
+  for (const sectionId of Object.keys(allAssignments)) {
+    const ca = await prisma.classAssignment.findFirst({
+      where: { sectionId },
+      select: { schoolYear: true },
+    });
+    if (!ca?.schoolYear) {
+      eosySkipped++;
+      continue;
+    }
+    try {
+      const res = await finalizeSectionEosy({
+        sectionId,
+        schoolYear: ca.schoolYear,
+        actor: { id: "seed", name: "Grade Seed Script", role: "REGISTRAR" },
+      });
+      if (res.ok) {
+        eosyOk++;
+        console.log(`  EOSY finalized ${ca.schoolYear} section ${sectionId}: ${res.snapshotsCreated} snapshots`);
+      } else {
+        eosySkipped++;
+        console.warn(`  EOSY skipped for section ${sectionId}: ${res.error}`);
+      }
+    } catch (err: any) {
+      eosySkipped++;
+      console.warn(`  EOSY failed for section ${sectionId}: ${err.message}`);
+    }
+  }
+  console.log(`EOSY promotion finalize: ${eosyOk} section(s) OK, ${eosySkipped} skipped/failed`);
+
   console.log(`Duration: ${duration}s`);
 }
 

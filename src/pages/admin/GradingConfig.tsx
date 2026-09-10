@@ -79,7 +79,7 @@ export default function GradingConfig() {
   const [subjectFilter, setSubjectFilter] = useState<string>("ALL");
 
   // Term display labels
-  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Term 1", T2: "Term 2", T3: "Term 3" });
   const [termLabelsDirty, setTermLabelsDirty] = useState(false);
   const [termLabelsSaving, setTermLabelsSaving] = useState(false);
 
@@ -457,7 +457,7 @@ export default function GradingConfig() {
                         setTermLabelsDirty(true);
                       }}
                       className="h-9 text-sm border-gray-200 rounded-lg"
-                      placeholder={`e.g. Quarterly ${term.slice(1)}`}
+                      placeholder={`e.g. Term ${term.slice(1)}`}
                     />
                   </div>
                 ))}
@@ -479,7 +479,7 @@ export default function GradingConfig() {
                     variant="ghost"
                     className="text-xs text-muted-foreground"
                     onClick={() => {
-                      setTermLabels({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+                      setTermLabels({ T1: "Term 1", T2: "Term 2", T3: "Term 3" });
                       setTermLabelsDirty(false);
                     }}
                   >

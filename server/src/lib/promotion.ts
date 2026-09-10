@@ -530,6 +530,7 @@ export async function finalizeSectionEosy(opts: {
               originalGrade: row.finalRating!,
               status: "PENDING",
             })),
+            skipDuplicates: true,
           });
         }
       }

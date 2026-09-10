@@ -781,30 +781,41 @@ export default function TeacherDashboard() {
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {visibleStats.map((classStat, idx) => {
-                      const percentage = classStat.totalStudents > 0
+                      const isOffTerm = (classStat as any).rotationOffTerm;
+                      const percentage = !isOffTerm && classStat.totalStudents > 0
                         ? Math.round((classStat.gradedCount / classStat.totalStudents) * 100)
                         : 0;
                       const barColorList = [colors.primary, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
                       const barColor = barColorList[idx % barColorList.length];
                       return (
-                        <div key={classStat.id} className="p-6 rounded-3xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-all">
+                        <div key={classStat.id} className={`p-6 rounded-3xl border transition-all ${isOffTerm ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50 border-slate-100 hover:border-slate-200'}`}>
                           <div className="flex items-center justify-between mb-4">
                             <div>
                               <p className="text-sm font-bold text-foreground leading-tight">{classStat.sectionName}</p>
                               <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">{classStat.subjectName}</p>
                             </div>
-                            <span className="text-xl font-bold" style={{ color: barColor }}>{percentage}%</span>
+                            {isOffTerm ? (
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 rounded-lg px-2 py-1">OFF-TERM</span>
+                            ) : (
+                              <span className="text-xl font-bold" style={{ color: barColor }}>{percentage}%</span>
+                            )}
                           </div>
-                          <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
-                            <div
-                              className="h-full rounded-full transition-all duration-1000 ease-out"
-                              style={{ width: `${percentage}%`, backgroundColor: barColor }}
-                            />
-                          </div>
-                          <div className="flex justify-between mt-3">
-                            <p className="text-[9px] font-bold text-muted-foreground">{classStat.gradedCount} graded</p>
-                            <p className="text-[9px] font-bold text-muted-foreground">{classStat.totalStudents} total</p>
-                          </div>
+                          {isOffTerm ? (
+                            <p className="text-xs text-amber-700 font-medium">Not taught this term — covered by another class record.</p>
+                          ) : (
+                            <>
+                              <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
+                                <div
+                                  className="h-full rounded-full transition-all duration-1000 ease-out"
+                                  style={{ width: `${percentage}%`, backgroundColor: barColor }}
+                                />
+                              </div>
+                              <div className="flex justify-between mt-3">
+                                <p className="text-[9px] font-bold text-muted-foreground">{classStat.gradedCount} graded</p>
+                                <p className="text-[9px] font-bold text-muted-foreground">{classStat.totalStudents} total</p>
+                              </div>
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -841,7 +852,7 @@ export default function TeacherDashboard() {
 
       {/* ── Academic Honors ── Full Width with Safety Guard */}
       {(() => {
-        const academicClassStats = stats?.classStats?.filter((c: any) => !c.subjectCode?.toUpperCase().startsWith('HG')) ?? [];
+        const academicClassStats = stats?.classStats?.filter((c: any) => !c.subjectCode?.toUpperCase().startsWith('HG') && !c.rotationOffTerm) ?? [];
         const isGradingComplete = academicClassStats.length > 0
           ? academicClassStats.every((c: any) => c.totalStudents > 0 && c.gradedCount >= c.totalStudents) && (stats?.summary.gradeSubmissionRate ?? 0) >= 100
           : false;

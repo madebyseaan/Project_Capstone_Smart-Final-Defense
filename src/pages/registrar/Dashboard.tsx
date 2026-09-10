@@ -25,6 +25,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { toast } from "@/lib/toast";
 import { SyncProgressModal } from "@/components/common/SyncProgressModal";
+import RolloverReadinessCard from "./components/RolloverReadinessCard";
 import {
   BarChart,
   Bar,
@@ -280,6 +281,9 @@ export default function RegistrarDashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* School Year Readiness */}
+      <RolloverReadinessCard />
 
       {/* ── 6 KPI Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">

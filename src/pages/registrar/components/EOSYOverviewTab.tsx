@@ -1,4 +1,4 @@
-import { Loader2, AlertTriangle, FileCheck, Users, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Loader2, AlertTriangle, FileCheck, Users, CheckCircle, XCircle, AlertCircle, Lock, GraduationCap, Rocket } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ interface EOSYOverviewTabProps {
   allTermStatus: any[];
   epSectionName: string | null;
   adviserName: string | null;
+  eosyFinalized?: boolean;
+  finalizingSubject?: string | null;
   onEosyFinalize: () => void;
+  onFinalizeAll: () => void;
 }
 
 export default function EOSYOverviewTab({
@@ -26,7 +29,10 @@ export default function EOSYOverviewTab({
   allTermStatus,
   epSectionName,
   adviserName,
+  eosyFinalized,
+  finalizingSubject,
   onEosyFinalize,
+  onFinalizeAll,
 }: EOSYOverviewTabProps) {
   const { colors } = useTheme();
 
@@ -43,8 +49,126 @@ export default function EOSYOverviewTab({
   const draftBlockers = smartPromotion?.draftBlockers ?? [];
   const hasBlockers = draftBlockers.length > 0;
 
+  // Readiness checklist state
+  const gradesLocked = allTermStatus.length > 0 && allTermStatus.every((s: any) => s.totalDraft === 0);
+  const eosyDone = !!eosyFinalized;
+  const readyForRollover = gradesLocked && eosyDone;
+
   return (
     <div className="space-y-6">
+      {/* EOSY Readiness Checklist */}
+      <Card className="border border-border shadow-sm rounded-xl p-0 overflow-hidden">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Rocket className="w-4 h-4 text-primary" />
+              <p className="text-sm font-semibold text-foreground">EOSY Readiness — {epSectionName ?? "this section"}</p>
+            </div>
+            <Badge
+              className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                readyForRollover
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-amber-50 text-amber-700 border-amber-200"
+              }`}
+            >
+              {readyForRollover ? "Ready for rollover" : "Not ready yet"}
+            </Badge>
+          </div>
+
+          <div className="space-y-2">
+            {/* Step 1 — Lock grades */}
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3 ${
+                gradesLocked ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-muted/30"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    gradesLocked ? "bg-emerald-100 text-emerald-600" : "bg-slate-200 text-muted-foreground"
+                  }`}
+                >
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Step 1 — Lock grades</p>
+                  <p className="text-xs text-muted-foreground">
+                    {allTermStatus.length === 0
+                      ? "No subjects loaded yet."
+                      : gradesLocked
+                        ? `${totalFinalizedSubjects}/${allTermStatus.length} subjects locked — teachers can no longer edit.`
+                        : `${totalDraftSubjects} subject(s) still in draft — lock them so grades can't be edited.`}
+                  </p>
+                </div>
+              </div>
+              {!gradesLocked && (
+                <Button
+                  onClick={onFinalizeAll}
+                  disabled={finalizingSubject === "all" || allTermStatus.length === 0}
+                  size="sm"
+                  style={{ backgroundColor: colors.primary }}
+                  className="text-primary-foreground shrink-0"
+                >
+                  {finalizingSubject === "all" ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <FileCheck className="w-4 h-4 mr-2" />
+                  )}
+                  Lock Grades
+                </Button>
+              )}
+            </div>
+
+            {/* Step 2 — Finalize EOSY promotion */}
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3 ${
+                eosyDone ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-muted/30"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    eosyDone ? "bg-emerald-100 text-emerald-600" : "bg-slate-200 text-muted-foreground"
+                  }`}
+                >
+                  <GraduationCap className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Step 2 — Finalize EOSY promotion</p>
+                  <p className="text-xs text-muted-foreground">
+                    {eosyDone
+                      ? "Promotion snapshots saved and promotion status persisted for every learner."
+                      : "Snapshots all final grades and saves each learner's promotion status (needed for rollover)."}
+                  </p>
+                </div>
+              </div>
+              {!eosyDone && (
+                <Button
+                  onClick={onEosyFinalize}
+                  disabled={eosyFinalizing || hasBlockers || !gradesLocked}
+                  size="sm"
+                  variant="outline"
+                  className="text-primary border-primary/40 hover:bg-primary/5 shrink-0"
+                >
+                  {eosyFinalizing ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <GraduationCap className="w-4 h-4 mr-2" />
+                  )}
+                  {hasBlockers ? "Blocked by Draft Grades" : !gradesLocked ? "Lock Grades First" : "Finalize EOSY"}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {readyForRollover && (
+            <p className="text-xs font-medium text-emerald-700 mt-3">
+              ✓ This section is complete. Once every section is ready, the admin can archive the school year.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Section Info */}
       <div className="flex items-center gap-2 text-sm">
         <span className="text-muted-foreground">Adviser:</span>

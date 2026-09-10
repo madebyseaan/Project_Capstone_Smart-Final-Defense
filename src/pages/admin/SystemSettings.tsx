@@ -31,6 +31,7 @@ import { adminApi, SERVER_URL, getPortalToken } from "@/lib/api";
 import type { SystemSettings as SystemSettingsType } from "@/lib/api";
 import GradeLocksPanel from "./components/GradeLocksPanel";
 import RolloverStatusCard from "./components/RolloverStatusCard";
+import DeveloperToolsCard from "./components/DeveloperToolsCard";
 import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
 
@@ -623,6 +624,8 @@ export default function SystemSettings() {
           </div>
 
           <RolloverStatusCard />
+
+          <DeveloperToolsCard />
 
           {/* School Logo (read-only) */}
           <div className="mb-8">

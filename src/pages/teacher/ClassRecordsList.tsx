@@ -8,7 +8,6 @@ import {
   ChevronRight,
   ChevronUp,
   ClipboardList,
-  Filter,
   LayoutGrid,
   Link2,
   List,
@@ -82,14 +81,17 @@ function getGradeColors(gradeLevel: string) {
 function AssignmentCard({ 
   assignment, 
   archived,
+  currentTerm,
   onDelete 
 }: { 
   assignment: ClassAssignment; 
   archived: boolean;
+  currentTerm: string;
   onDelete?: (id: string, name: string) => void;
 }) {
   const navigate = useNavigate();
   const isTransferred = archived && assignment.archivedReason === 'ATLAS_REASSIGNED';
+  const isOffTerm = !archived && !!assignment.subject.rotationTermRank && `T${assignment.subject.rotationTermRank}` !== currentTerm;
   const titleHover = archived ? (isTransferred ? "group-hover:text-amber-700" : "group-hover:text-rose-600") : "group-hover:text-indigo-600";
   const colors = getGradeColors(assignment.section.gradeLevel);
   const badgeClass = archived
@@ -131,9 +133,16 @@ function AssignmentCard({
           />
           <CardHeader className={`${archived ? 'p-6 pb-3' : 'p-8 pb-4'} relative z-10`}>
             <div className={`flex items-start justify-between ${archived ? 'mb-4' : 'mb-8'}`}>
-              <Badge className={`${badgeClass} text-[10px] font-bold uppercase tracking-[0.1em] ${archived ? 'px-3 py-1' : 'px-4 py-1.5'} rounded-full`}>
-                {archived ? (isTransferred ? "TRANSFERRED" : "ARCHIVED") : gradeLevelLabels[assignment.section.gradeLevel]}
-              </Badge>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className={`${badgeClass} text-[10px] font-bold uppercase tracking-[0.1em] ${archived ? 'px-3 py-1' : 'px-4 py-1.5'} rounded-full`}>
+                  {archived ? (isTransferred ? "TRANSFERRED" : "ARCHIVED") : gradeLevelLabels[assignment.section.gradeLevel]}
+                </Badge>
+                {!archived && (assignment.subject as any).rotationTermRank && (
+                  <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full" title={`Rotating subject — taught in one term only. Other terms are separate class records for this section.`}>
+                    Rotating · {["Term 1", "Term 2", "Term 3"][(assignment.subject as any).rotationTermRank - 1] ?? `Term ${(assignment.subject as any).rotationTermRank}`}
+                  </Badge>
+                )}
+              </div>
               <div className={`${archived ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl'} ${archived ? (isTransferred ? "bg-amber-50 text-amber-500 group-hover:bg-amber-600 group-hover:text-white" : "bg-rose-50 text-rose-500 group-hover:bg-rose-600 group-hover:text-white") : colors.button} flex items-center justify-center transition-all duration-500 shadow-sm`}>
                 <ArrowUpRight className={`${archived ? 'w-4 h-4' : 'w-5 h-5'}`} />
               </div>
@@ -147,7 +156,7 @@ function AssignmentCard({
             </div>
 
             <div className={`${archived ? 'pt-3' : 'pt-4'} flex items-center gap-2`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${circleClass} animate-pulse`} />
+              <div className={`w-1.5 h-1.5 rounded-full ${circleClass} ${isOffTerm ? '' : 'animate-pulse'}`} />
               <p className={`${archived ? 'text-xs' : 'text-sm'} font-bold ${sectionText}`}>
                 Section {assignment.section.name} &bull; {assignment.schoolYear}
               </p>
@@ -188,10 +197,10 @@ function AssignmentCard({
 
             <div className={`${archived ? 'mt-3' : 'mt-4'} flex items-center justify-between`}>
               <div className="flex items-center gap-2">
-                <Badge className={`${archived ? (isTransferred ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-rose-100 text-rose-700 border-rose-200") : "bg-slate-100 text-muted-foreground border-0"} text-[10px] font-bold uppercase tracking-widest ${archived ? 'px-2' : 'px-3'}`}>
-                  {archived ? (isTransferred ? "Transferred" : "Backup") : "Active Record"}
+                <Badge className={`${archived ? (isTransferred ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-rose-100 text-rose-700 border-rose-200") : isOffTerm ? "bg-amber-50 text-amber-700 border-amber-200" : colors.badge} text-[10px] font-bold uppercase tracking-widest ${archived ? 'px-2' : 'px-3'}`}>
+                  {archived ? (isTransferred ? "Transferred" : "Backup") : isOffTerm ? (assignment.subject as any).rotationOutputLabel ?? "Rotating" : "Active Record"}
                 </Badge>
-                {!archived && !assignment.aimsCourseId && (
+                {!archived && !isOffTerm && !assignment.aimsCourseId && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -205,7 +214,7 @@ function AssignmentCard({
                     Connect AIMS
                   </button>
                 )}
-                {!archived && assignment.aimsCourseId && (
+                {!archived && !isOffTerm && assignment.aimsCourseId && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border border-[var(--ledger-aims)]/20" title="AIMS course connected">
                     <Plug className="w-3 h-3" />
                     AIMS ✓
@@ -244,12 +253,13 @@ export default function ClassRecordsList() {
   const [classes, setClasses] = useState<ClassAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [gradeDeadline, setGradeDeadline] = useState<GradeDeadlineInfo | null>(null);
-  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" });
+  const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Term 1", T2: "Term 2", T3: "Term 3" });
   const [termDatesDerived, setTermDatesDerived] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [assignmentToDelete, setAssignmentToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [termFilter, setTermFilter] = useState<"current" | "full">("current");
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -282,7 +292,7 @@ export default function ClassRecordsList() {
         const [classesRes, deadlineRes, settingsRes] = await Promise.all([
           gradesApi.getMyClasses(),
           gradesApi.getDeadlineStatus().catch(() => ({ data: { gradeDeadline: null } })),
-          adminApi.getSettings().catch(() => ({ data: { termLabels: { T1: "Quarterly 1", T2: "Quarterly 2", T3: "Quarterly 3" } } })),
+          adminApi.getSettings().catch(() => ({ data: { termLabels: { T1: "Term 1", T2: "Term 2", T3: "Term 3" } } })),
         ]);
         setClasses(classesRes.data);
         setGradeDeadline(deadlineRes.data.gradeDeadline);
@@ -338,6 +348,10 @@ export default function ClassRecordsList() {
     (assignment) => assignment.isActive !== false && !assignment.archivedAt && (assignment.section.enrollments?.length ?? 0) > 0
   );
   const archivedClasses = filteredClasses.filter((assignment) => assignment.isActive === false || !!assignment.archivedAt);
+  const currentTerm = gradeDeadline?.currentTerm ?? "T1";
+  const termFilteredClasses = termFilter === "current"
+    ? activeClasses.filter((a) => !a.subject.rotationTermRank || `T${a.subject.rotationTermRank}` === currentTerm)
+    : activeClasses;
 
   if (loading) {
     return (
@@ -384,7 +398,7 @@ export default function ClassRecordsList() {
           badge={
             <div className="flex items-center gap-3 flex-wrap">
               <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[10px] font-bold uppercase tracking-widest px-3">
-                {activeClasses.length} ACTIVE CLASSES
+                {termFilteredClasses.length} {termFilter === "current" ? "THIS TERM" : "ACTIVE CLASSES"}
               </Badge>
               {hasArchived && (
                 <Badge className="bg-rose-600 text-white border-rose-200 text-[10px] font-bold uppercase tracking-widest px-3 shadow-lg shadow-rose-100">
@@ -413,10 +427,24 @@ export default function ClassRecordsList() {
               </div>
 
               <div className="flex items-center gap-4 w-full lg:w-auto">
-                <Button variant="outline" className="h-14 px-8 rounded-2xl border-slate-200 text-muted-foreground font-bold hover:bg-slate-50 transition-all flex-1 lg:flex-none">
-                  <Filter className="w-4 h-4 mr-3 text-muted-foreground" />
-                  ADVANCED FILTERS
-                </Button>
+                <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-10 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${termFilter === "current" ? "bg-white text-indigo-600 shadow-md" : "text-muted-foreground hover:text-foreground"}`}
+                    onClick={() => setTermFilter("current")}
+                  >
+                    This Term
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-10 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${termFilter === "full" ? "bg-white text-indigo-600 shadow-md" : "text-muted-foreground hover:text-foreground"}`}
+                    onClick={() => setTermFilter("full")}
+                  >
+                    Full Year
+                  </Button>
+                </div>
 
                 <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl">
                   <Button
@@ -444,10 +472,10 @@ export default function ClassRecordsList() {
 
       {viewMode === "grid" && (
         <div className="space-y-10">
-          {activeClasses.length > 0 && (
+          {termFilteredClasses.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {activeClasses.map((assignment) => (
-                <AssignmentCard key={assignment.id} assignment={assignment} archived={false} />
+              {termFilteredClasses.map((assignment) => (
+                <AssignmentCard key={assignment.id} assignment={assignment} archived={false} currentTerm={currentTerm} />
               ))}
             </div>
           )}
@@ -496,7 +524,7 @@ export default function ClassRecordsList() {
                   <div className="flex overflow-x-auto pb-8 pt-2 gap-6 rose-scrollbar snap-x snap-mandatory">
                     {archivedClasses.map((assignment) => (
                       <div key={assignment.id} className="w-[320px] shrink-0 snap-start">
-                        <AssignmentCard assignment={assignment} archived onDelete={(id, name) => setAssignmentToDelete({ id, name })} />
+                        <AssignmentCard assignment={assignment} archived currentTerm={currentTerm} onDelete={(id, name) => setAssignmentToDelete({ id, name })} />
                       </div>
                     ))}
                   </div>
@@ -511,10 +539,12 @@ export default function ClassRecordsList() {
 
       {viewMode === "list" && (
         <div className="space-y-10">
-          {activeClasses.length > 0 && (
+          {termFilteredClasses.length > 0 && (
             <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white">
               <div className="divide-y divide-slate-50">
-                {activeClasses.map((assignment) => (
+                {termFilteredClasses.map((assignment) => {
+                  const isListOffTerm = !!assignment.subject.rotationTermRank && `T${assignment.subject.rotationTermRank}` !== currentTerm;
+                  return (
                   <Link key={assignment.id} to={`/teacher/records/${assignment.id}`} className="block group">
                     <div className="p-8 hover:bg-slate-50/50 transition-all duration-300 flex flex-col sm:flex-row sm:items-center gap-8 group">
                       <div className="w-16 h-16 rounded-[1.5rem] bg-slate-50 text-muted-foreground flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-xl group-hover:shadow-indigo-100 transition-all duration-500">
@@ -527,6 +557,11 @@ export default function ClassRecordsList() {
                           <Badge className={`${getGradeColors(assignment.section.gradeLevel).badge} border-0 text-[10px] font-bold uppercase tracking-widest px-3`}>
                             {gradeLevelLabels[assignment.section.gradeLevel]}
                           </Badge>
+                          {(assignment.subject as any).rotationTermRank && (
+                            <Badge className={`${isListOffTerm ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"} text-[10px] font-bold uppercase tracking-widest px-3`} title="Rotating subject — taught in one term only. Other terms are separate class records for this section.">
+                    Rotating · {["Term 1", "Term 2", "Term 3"][(assignment.subject as any).rotationTermRank - 1] ?? `Term ${(assignment.subject as any).rotationTermRank}`}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-muted-foreground font-bold text-sm uppercase tracking-widest">
                           Section {assignment.section.name} &bull; {assignment.schoolYear}
@@ -548,7 +583,7 @@ export default function ClassRecordsList() {
                           </div>
                         </div>
 
-                        {!assignment.aimsCourseId && (
+                        {!isListOffTerm && !assignment.aimsCourseId && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -562,7 +597,7 @@ export default function ClassRecordsList() {
                             Connect AIMS
                           </button>
                         )}
-                        {assignment.aimsCourseId && (
+                        {!isListOffTerm && assignment.aimsCourseId && (
                           <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border border-[var(--ledger-aims)]/20" title="AIMS course connected">
                             <Plug className="w-3 h-3" />
                             AIMS ✓
@@ -575,7 +610,8 @@ export default function ClassRecordsList() {
                       </div>
                     </div>
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             </Card>
           )}
@@ -700,22 +736,34 @@ export default function ClassRecordsList() {
         </div>
       )}
 
-      {activeClasses.length === 0 && archivedClasses.length === 0 && (
+      {termFilteredClasses.length === 0 && archivedClasses.length === 0 && (
         <div className="flex items-center justify-center h-[60vh] p-4">
           <div className="text-center max-w-md p-10 bg-white rounded-2xl border border-slate-100 shadow-2xl shadow-slate-200/50">
             <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-slate-50 flex items-center justify-center text-muted-foreground">
               <ClipboardList className="w-10 h-10" />
             </div>
             <h3 className="font-bold text-foreground text-2xl mb-3">
-              {searchTerm ? "No Classes Found" : "No Active Classes"}
+              {searchTerm ? "No Classes Found" : termFilter === "current" && activeClasses.length > 0 ? "No Classes This Term" : "No Active Classes"}
             </h3>
             <p className="text-muted-foreground mb-8 text-sm leading-relaxed">
               {searchTerm
                 ? "We couldn't find any classes matching your current search parameters."
-                : "You don't have any active classes with enrolled learners yet. Please contact the registrar or system administrator for assignment."}
+                : termFilter === "current" && activeClasses.length > 0
+                  ? `You have ${activeClasses.length} class${activeClasses.length > 1 ? 'es' : ''} scheduled in other terms. Switch to Full Year to see them.`
+                  : "You don't have any active classes with enrolled learners yet. Please contact the registrar or system administrator for assignment."}
             </p>
             {!searchTerm && (
               <div className="flex flex-col gap-3">
+                {termFilter === "current" && activeClasses.length > 0 && (
+                  <Button
+                    onClick={() => setTermFilter("full")}
+                    className="w-full h-12 rounded-2xl font-bold transition-all"
+                    style={{ backgroundColor: colors.primary }}
+                  >
+                    <LayoutGrid className="w-4 h-4 mr-2" />
+                    View Full Year
+                  </Button>
+                )}
                 <Button
                   onClick={handleSync}
                   disabled={syncing}
