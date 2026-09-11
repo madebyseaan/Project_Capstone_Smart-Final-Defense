@@ -94,6 +94,8 @@ Captured with: `npx tsc -b --force` (frontend).
 ### Remaining after unused cleanup
 - Total tsc errors: **92** (was 216). All remaining are **structural**:
   TS2339 (34), TS2345 (23), TS2322 (17), TS7006 (5), TS18048 (3), TS1117 (2), +5 singles.
+- **Playwright smoke test re-run after batches 3–4: 24/24 pages PASS, 0 hard failures,
+  no network errors.** (Same pre-existing non-boolean-attribute + HTML-nesting console warnings.)
 
 ### Step A — Select API alignment + React 19 JSX (commit `095f528`)
 - **Reordered ahead of the unused-var pass on purpose:** one file (`select.tsx`) caused 47 errors,
