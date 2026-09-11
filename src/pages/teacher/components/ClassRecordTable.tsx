@@ -87,7 +87,6 @@ export function ClassRecordTable({
   transmutationTable,
   aimsAssessments = [],
   aimsByStudent = {},
-  aimsAllAssessments = [],
 }: ClassRecordTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
@@ -148,8 +147,6 @@ export function ClassRecordTable({
     pt: effectiveWeights?.pt ?? classAssignment.subject.perfTaskWeight,
     qa: effectiveWeights?.qa ?? classAssignment.subject.quarterlyAssessWeight,
   };
-
-  const aimsCount = aimsAssessments.length;
 
   // Phase 7: Partition visible AIMS assessments by category
   const aimsWW = aimsAssessments.filter(a => a.category === 'WW');

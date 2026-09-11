@@ -746,7 +746,7 @@ export default function TeacherDashboard() {
                     itemStyle={{ fontWeight: 900, fontSize: '14px' }}
                   />
                   <Bar dataKey="students" radius={[12, 12, 0, 0]} maxBarSize={60}>
-                    {chartData.map((entry, index) => (
+                    {chartData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={`url(#barGradient-${index})`} />
                     ))}
                   </Bar>

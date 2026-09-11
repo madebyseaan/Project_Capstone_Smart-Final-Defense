@@ -172,7 +172,7 @@ export default function AlumniStudents() {
     setSyncError(undefined);
 
     try {
-      const result = await registrarApi.syncInactiveStudents();
+      await registrarApi.syncInactiveStudents();
       setSyncStatus("success");
       toast.success("Student data synced successfully");
 

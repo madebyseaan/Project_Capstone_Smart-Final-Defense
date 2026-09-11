@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { GraduationCap, Loader2, AlertTriangle, RefreshCw, Download } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { registrarApi } from "@/lib/api";
 
-import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 import EOSYOverviewTab from "./components/EOSYOverviewTab";
@@ -20,7 +19,6 @@ import EOSYConfirmDialog from "./components/EOSYConfirmDialog";
 // SMART's own finalize actions (grade locking, promotion snapshots) are performed here.
 
 export default function EOSYFinalization() {
-  const { colors } = useTheme();
 
   // ── Filters ──
   const [schoolYearsLoading, setSchoolYearsLoading] = useState(true);
@@ -37,11 +35,11 @@ export default function EOSYFinalization() {
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordsError, setRecordsError] = useState<string | null>(null);
   const [records, setRecords] = useState<any[]>([]);
-  const [sectionMeta, setSectionMeta] = useState<any>(null);
+  const [, setSectionMeta] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   // ── Grade Finalization ──
-  const [finalizeStatus, setFinalizeStatus] = useState<any[]>([]);
+  const [, setFinalizeStatus] = useState<any[]>([]);
   const [allTermStatus, setAllTermStatus] = useState<any[]>([]);
   const [finalizeLoading, setFinalizeLoading] = useState(false);
   const [finalizingSubject, setFinalizingSubject] = useState<string | null>(null);
@@ -52,7 +50,7 @@ export default function EOSYFinalization() {
   const [smartPromotion, setSmartPromotion] = useState<any>(null);
   const [smartLoading, setSmartLoading] = useState(false);
   const [eosyFinalizing, setEosyFinalizing] = useState(false);
-  const [eosyMessage, setEosyMessage] = useState<string | null>(null);
+  const [, setEosyMessage] = useState<string | null>(null);
 
   // ── Student Grades (inline expand) ──
   const [expandedStudentLrn, setExpandedStudentLrn] = useState<string | null>(null);

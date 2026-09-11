@@ -53,7 +53,6 @@ export default function SF1Form({ sectionId, schoolYear }: SF1Props) {
   const males = students.filter((s) => s.gender === "Male");
   const females = students.filter((s) => s.gender === "Female");
   const section = data.section;
-  const school = data.schoolSettings;
 
   const addr = (a: SF1Student["address"]) => [a.houseStreet, a.barangay, a.municipality, a.province].filter(Boolean).join(", ");
 

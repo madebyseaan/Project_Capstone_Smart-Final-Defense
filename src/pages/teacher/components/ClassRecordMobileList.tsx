@@ -32,7 +32,6 @@ export function ClassRecordMobileList({
   getDisplayFinalGrade,
   getGradeColor,
   isViewOnly = false,
-  aimsByStudent = {},
   aimsAssessments = [],
 }: ClassRecordMobileListProps) {
   return (

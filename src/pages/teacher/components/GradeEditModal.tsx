@@ -63,9 +63,7 @@ export function GradeEditModal({
   onApplyColumnMeta,
   isViewOnly = false,
   aimsScores,
-  aimsAssessmentTitles,
   aimsAllAssessments,
-  aimsByStudent,
 }: GradeEditModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

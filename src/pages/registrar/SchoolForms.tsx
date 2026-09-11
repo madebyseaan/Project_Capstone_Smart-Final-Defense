@@ -7,19 +7,14 @@ import {
   CheckCircle2,
   Printer,
   Eye,
-  Search,
   ArrowLeft,
-  ChevronRight,
   Loader2,
   AlertCircle,
-  MoreVertical,
-  PrinterIcon,
   Download,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -27,20 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import api, { registrarApi, type Section, SERVER_URL, type SF9Data, type SF10Data, type SF1Data, type SF5Data } from "@/lib/api";
 
 import { HelpTooltip } from "@/components/ui/tooltip";
@@ -149,7 +130,7 @@ type ViewMode = "list" | "sf1" | "sf2" | "sf5" | "sf6" | "sf9" | "sf10" | "bulk_
 
 export default function SchoolForms() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [schoolYear, setSchoolYear] = useState("");
   const [schoolYears, setSchoolYears] = useState<string[]>([]);
@@ -172,7 +153,7 @@ export default function SchoolForms() {
     ? sections 
     : sections.filter(s => s.gradeLevel === selectedGrade);
 
-  const { colors: themeColors, schoolName, schoolRegion, schoolDivision, logoUrl } = useTheme();
+  const { colors: themeColors, schoolName, logoUrl } = useTheme();
   const fullLogoUrl = logoUrl ? (logoUrl.startsWith("http") ? logoUrl : `${SERVER_URL}${logoUrl}`) : null;
   
   // Selection state
