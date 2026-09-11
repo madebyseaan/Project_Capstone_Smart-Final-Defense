@@ -31,6 +31,9 @@ dist-ssr
 # Playwright debug output
 .playwright-mcp/
 
+# Local E2E/smoke tests + screenshots (may contain local dev credentials)
+tests/
+
 # User uploads
 server/uploads/
 

@@ -112,3 +112,15 @@ Captured with: `npx tsc -b --force` (frontend).
 - **GAP:** the report confirmed the Status dropdown *opens* but did not confirm it
   *filters* (Step B fix). Follow-up test requested: select Active → count rows;
   select Inactive → count rows.
+
+### Status filter — UI-verified (Step B closed)
+- Driven headless (Playwright) against `/admin/users`:
+  - All → **42 rows**; Active → **42 rows**; Inactive → **0 rows** (empty state
+    "No users found. Try adjusting your search or filters.").
+- Confirms the Step B case-insensitive fix works in the real UI.
+
+### Side effects from the external smoke-test agent (to decide)
+- `package.json` + `package-lock.json`: **`playwright` was added** (unapproved).
+- `tests/smoke-test.mjs` was created and contains **hardcoded local dev credentials**.
+  `tests/` has been added to `.gitignore` so these never get committed.
+- DECISION PENDING: keep `playwright` as a devDependency, or revert it.
