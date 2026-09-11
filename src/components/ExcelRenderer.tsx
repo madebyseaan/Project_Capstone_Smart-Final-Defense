@@ -171,10 +171,10 @@ export const ExcelRenderer: React.FC<ExcelRendererProps> = ({
 
   // Render rows
   const renderRows = () => {
-    const rows: JSX.Element[] = [];
+    const rows: React.JSX.Element[] = [];
     
     for (let rowNum = 1; rowNum <= sheet.rowCount; rowNum++) {
-      const cells: JSX.Element[] = [];
+      const cells: React.JSX.Element[] = [];
       const rowHeight = sheet.rowHeights[rowNum - 1] || 20;
 
       for (let colNum = 1; colNum <= sheet.colCount; colNum++) {

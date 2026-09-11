@@ -64,14 +64,14 @@ function SelectContent({
   align = "start",
   alignOffset = 0,
   alignItemWithTrigger = false,
-  avoidCollisions = true,
-  position = "item-aligned",
   searchable,
   ...props
 }: SelectPrimitive.Popup.Props &
-  Pick<
-    SelectPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger" | "avoidCollisions" | "position"
+  Partial<
+    Pick<
+      SelectPrimitive.Positioner.Props,
+      "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
+    >
   > & {
     searchable?: boolean
   }) {
@@ -81,10 +81,11 @@ function SelectContent({
     let count = 0
     React.Children.forEach(nodes, (child) => {
       if (!React.isValidElement(child)) return
-      if (child.props && child.props["data-slot"] === "select-item") {
+      const props = (child.props ?? {}) as Record<string, any>
+      if (props["data-slot"] === "select-item") {
         count++
-      } else if (child.props && child.props.children) {
-        count += countItems(child.props.children)
+      } else if (props.children) {
+        count += countItems(props.children)
       }
     })
     return count
@@ -94,7 +95,10 @@ function SelectContent({
     if (!node) return ""
     if (typeof node === "string" || typeof node === "number") return String(node)
     if (Array.isArray(node)) return node.map(getTextContent).join(" ")
-    if (React.isValidElement(node)) return getTextContent(node.props.children)
+    if (React.isValidElement(node)) {
+      const props = (node.props ?? {}) as Record<string, any>
+      return getTextContent(props.children)
+    }
     return ""
   }
 
@@ -105,16 +109,17 @@ function SelectContent({
     return React.Children.map(nodes, (child) => {
       if (!React.isValidElement(child)) return child
 
-      if (child.props && child.props["data-slot"] === "select-item") {
-        const itemText = getTextContent(child.props.children) || String(child.props.value || "")
+      const props = (child.props ?? {}) as Record<string, any>
+      if (props["data-slot"] === "select-item") {
+        const itemText = getTextContent(props.children) || String(props.value || "")
         if (itemText.toLowerCase().includes(lowerQuery)) {
           return child
         }
         return null
       }
 
-      if (child.props && child.props.children) {
-        const filteredGroupChildren = filterChildren(child.props.children, query)
+      if (props.children) {
+        const filteredGroupChildren = filterChildren(props.children, query)
         if (React.Children.count(filteredGroupChildren) > 0) {
           return React.cloneElement(child, {}, filteredGroupChildren)
         }
@@ -136,8 +141,6 @@ function SelectContent({
         align={align}
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
-        avoidCollisions={avoidCollisions}
-        position={position}
         className="isolate z-50"
       >
         <SelectPrimitive.Popup
