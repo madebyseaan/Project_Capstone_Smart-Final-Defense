@@ -17,7 +17,7 @@ import {
   FileText,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { cn, getAcronym } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 interface UserData {
@@ -86,7 +86,7 @@ export default function AdminLayout() {
     const saved = localStorage.getItem('adminDropdownState');
     return saved ? JSON.parse(saved) : { 'Template Managers': true };
   });
-  const { colors, logoUrl, schoolName, currentSchoolYear } = useTheme();
+  const { logoUrl, schoolName, currentSchoolYear } = useTheme();
 
   useEffect(() => {
     const userData = sessionStorage.getItem("user_admin");
@@ -152,7 +152,6 @@ export default function AdminLayout() {
     );
   }
 
-  const userEmail = user.email || `${user.username}@school.edu.ph`;
   const userDisplayName = user.firstName && user.lastName 
     ? `${user.firstName} ${user.lastName}` 
     : user.username;

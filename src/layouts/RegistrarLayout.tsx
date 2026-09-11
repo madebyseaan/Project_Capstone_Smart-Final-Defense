@@ -7,16 +7,14 @@ import {
   X,
   FileText,
   Users,
-  ClipboardList,
   FolderOpen,
-  CalendarCheck,
   FlaskConical,
   Layers,
   GraduationCap,
   ArrowLeftRight,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { cn, getAcronym } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 interface UserData {
@@ -81,7 +79,7 @@ export default function RegistrarLayout() {
     const saved = localStorage.getItem('registrarSidebarCollapsed');
     return saved === 'true';
   });
-  const { colors, logoUrl, schoolName, currentSchoolYear } = useTheme();
+  const { logoUrl, schoolName, currentSchoolYear } = useTheme();
 
   useEffect(() => {
     const userData = sessionStorage.getItem("user_registrar");
@@ -128,7 +126,6 @@ export default function RegistrarLayout() {
 
   if (!user) return null;
 
-  const userEmail = user.email || `${user.username}@school.edu.ph`;
   const userDisplayName = user.firstName && user.lastName 
     ? `${user.firstName} ${user.lastName}` 
     : user.username;

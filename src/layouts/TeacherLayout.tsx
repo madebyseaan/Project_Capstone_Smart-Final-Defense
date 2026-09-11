@@ -14,7 +14,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { cn, getAcronym } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 import { useSyncStream } from "@/hooks/useSyncStream";
@@ -135,7 +135,6 @@ export default function TeacherLayout() {
 
   if (!user) return null;
 
-  const userEmail = user.email || `${user.username}@school.edu.ph`;
   const userDisplayName = user.firstName && user.lastName 
     ? `${user.firstName} ${user.lastName}` 
     : user.username;
