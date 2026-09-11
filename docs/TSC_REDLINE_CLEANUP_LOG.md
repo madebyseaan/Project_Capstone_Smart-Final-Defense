@@ -8,10 +8,10 @@
 | Anchor | Commit | Meaning |
 |---|---|---|
 | **C0 — Safe checkpoint** | `b816593` | Guardrails work, pushed. Last known-good before redline cleanup. |
-| C1 — plan+log committed | _(pending)_ | This plan + this log. |
-| C2 — Step 1 done | _(pending)_ | Unused variables fixed. |
-| C3 — Step 2 done | _(pending)_ | React 19 JSX namespace fixed. |
-| C4 — Step 3 done | _(pending)_ | Select API alignment. |
+| C1 — plan+log committed | `9e94534` | This plan + this log. |
+| C2 — Select + JSX fixed | `095f528` | Select API aligned to @base-ui v1.3; React 19 JSX namespace. tsc 216 → 157. |
+| C3 — unused vars fixed | _(pending)_ | TS6133/TS6192 pass. |
+| C4 — long-tail structural | _(pending)_ | Remaining TS2339/2345/2322 etc. |
 
 **Full rollback to last known-good:** `git reset --hard b816593`
 
@@ -65,3 +65,28 @@ Captured with: `npx tsc -b --force` (frontend).
 - Commit: none
 
 <!-- Append one block per step, in order. -->
+
+### Step A — Select API alignment + React 19 JSX (commit `095f528`)
+- **Reordered ahead of the unused-var pass on purpose:** one file (`select.tsx`) caused 47 errors,
+  so it was the smallest edit surface for the biggest win.
+- **Files:** `src/components/ui/select.tsx`, `src/components/ExcelRenderer.tsx`
+- **Changes:**
+  - Removed obsolete `avoidCollisions` + `position` props (not present in `@base-ui/react` v1.3;
+    they were already ignored at runtime). Behavior-neutral.
+  - `Pick<Positioner.Props, ...>` → `Partial<Pick<..., valid keys>>` so consumers are **not forced**
+    to pass positioner props (this was the 46-file cascade).
+  - Cast element `props` to `Record<string, any>` for React 19 types (`child.props` is `unknown`).
+  - `JSX.Element` → `React.JSX.Element`.
+- **Verification:**
+  - `npx tsc -b --force`: **216 → 157** errors. `TS2739` 46 → 0. `select.tsx` + `ExcelRenderer.tsx` clean.
+    **No new error codes introduced.**
+  - Frontend `npm run build`: OK (16.3s). Server `npm run build`: OK. Server `npm test`: **197 passed / 0 failed**.
+  - **Manual dropdown smoke test: PENDING (needs a human — see below).**
+- **Rollback:** `git revert 095f528`
+
+#### Manual smoke test still required
+Because the Select component renders dropdowns everywhere, confirm visually:
+1. Open Admin → **User Management**, click a role/status filter dropdown → opens, positions, selects, closes.
+2. Open Admin → **Class Assignments** → any dropdown.
+3. A list page with a page-size selector (10/25/50/100).
+4. If anything looks wrong, run `git revert 095f528` and tell me.
