@@ -12,6 +12,7 @@
 | C2 — Select + JSX fixed | `095f528` | Select API aligned to @base-ui v1.3; React 19 JSX namespace. tsc 216 → 157. |
 | C2b — status filter fix | `8bb9aef` | User Management Active/Inactive filter case-insensitive (pre-existing bug). |
 | C3 — unused vars (batches 1–4B) | `02cd1ee` | tsc 216 → 92. 65/68 unused removed; 3 intentional exceptions. |
+| C4 — Edit/Delete User restored | `24e76bd` | Row buttons added for unreachable dialogs. tsc 92 → 90. |
 | C4 — long-tail structural | _(pending)_ | Remaining TS2339/2345/2322 etc. |
 
 **Full rollback to last known-good:** `git reset --hard b816593`
@@ -86,10 +87,12 @@ Captured with: `npx tsc -b --force` (frontend).
   - `hasChanges`/`sectionMeta`/`finalizeStatus`/`eosyMessage`/`loading`: kept the `useState`
     setter, dropped the unused value.
   - Unused callback params → `_`.
-- Final unused count: **3 intentional exceptions**:
-  1. `DEPED_DIVISIONS` (SystemSettings) — 115-line unused array; low value, large diff.
-  2. `openEditDialog` / `openDeleteDialog` (UserManagement) — **feature gap**: the Edit/Delete
-     User dialogs have no button to open them. Kept pending a decision (restore vs drop).
+- Final unused count: **1 intentional exception**: `DEPED_DIVISIONS` (SystemSettings) —
+  115-line unused array; low value, large diff.
+- `openEditDialog`/`openDeleteDialog` (UserManagement): initially kept as a **feature gap**
+  (the Edit/Delete dialogs existed but no button opened them). **Fixed** in `24e76bd` —
+  added per-row Edit/Delete buttons; headless-verified (42 rows, both dialogs open, Cancel
+  works). tsc 92 → 90.
 
 ### Remaining after unused cleanup
 - Total tsc errors: **92** (was 216). All remaining are **structural**:
