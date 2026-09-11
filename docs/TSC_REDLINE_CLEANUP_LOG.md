@@ -10,6 +10,7 @@
 | **C0 — Safe checkpoint** | `b816593` | Guardrails work, pushed. Last known-good before redline cleanup. |
 | C1 — plan+log committed | `9e94534` | This plan + this log. |
 | C2 — Select + JSX fixed | `095f528` | Select API aligned to @base-ui v1.3; React 19 JSX namespace. tsc 216 → 157. |
+| C2b — status filter fix | `8bb9aef` | User Management Active/Inactive filter case-insensitive (pre-existing bug). |
 | C3 — unused vars fixed | _(pending)_ | TS6133/TS6192 pass. |
 | C4 — long-tail structural | _(pending)_ | Remaining TS2339/2345/2322 etc. |
 
@@ -84,9 +85,19 @@ Captured with: `npx tsc -b --force` (frontend).
   - **Manual dropdown smoke test: PENDING (needs a human — see below).**
 - **Rollback:** `git revert 095f528`
 
-#### Manual smoke test still required
-Because the Select component renders dropdowns everywhere, confirm visually:
-1. Open Admin → **User Management**, click a role/status filter dropdown → opens, positions, selects, closes.
-2. Open Admin → **Class Assignments** → any dropdown.
-3. A list page with a page-size selector (10/25/50/100).
-4. If anything looks wrong, run `git revert 095f528` and tell me.
+#### Manual smoke test — PASSED (user-confirmed)
+- Admin → **User Management** → **Role** filter: works.
+- Admin → **Class Assignments** dropdowns: work.
+- List-page **pagination page-size** selector: works.
+- Found an *unrelated* pre-existing bug: the Status filter never matched (case
+  mismatch) — fixed separately in `8bb9aef` (Step B).
+
+### Step B — User Management status filter (commit `8bb9aef`)
+- **Pre-existing bug, NOT from Step A.** DB stores `status = "ACTIVE"`, but the filter
+  options/display compared against `"Active"` / `"Inactive"`, so Active/Inactive always
+  returned an empty table and every row showed "Inactive".
+- **Files:** `src/pages/admin/UserManagement.tsx` (3 comparisons made case-insensitive).
+- **Verification:** `npx tsc -b --force` unchanged at **157** (none new); frontend build OK.
+- **Rollback:** `git revert 8bb9aef`
+- **Manual smoke test: PENDING user** — select **Active** → should show all users;
+  **Inactive** → 0 (there are currently no suspended users).
