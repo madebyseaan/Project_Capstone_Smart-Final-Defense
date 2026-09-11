@@ -30,10 +30,12 @@ import { ensureSchoolYearFromEnrollPro } from './schoolYearResolver';
 import { prisma } from './prisma';
 import { logger } from './logger';
 import bcrypt from 'bcryptjs';
-import type { GradeLevel } from '@prisma/client';
+import { type GradeLevel, AuditAction, AuditSeverity } from '@prisma/client';
 import { broadcastSyncStatus } from './sseManager';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import { snapshotForDb } from './studentSnapshot';
+import { createAuditLog } from './audit';
+import { isConfidentData, exceedsRatio, MAX_DEACTIVATION_RATIO } from './syncGuard';
 import { createHash } from 'crypto';
 
 // ---------------------------------------------------------------------------
@@ -309,19 +311,37 @@ export async function runEnrollProSync() {
         .map(t => ({ userId: t.userId, teacherId: t.id }));
 
       if (deactivatedTeacherIds.length > 0) {
-        try {
-          const userIds = deactivatedTeacherIds.map(t => t.userId);
-          const teacherIds = deactivatedTeacherIds.map(t => t.teacherId);
-          await prisma.$transaction([
-            prisma.user.updateMany({ where: { id: { in: userIds } }, data: { status: 'SUSPENDED' } }),
-            prisma.classAssignment.updateMany({
-              where: { teacherId: { in: teacherIds }, isActive: true },
-              data: { isActive: false, archivedAt: new Date(), archivedReason: 'Teacher removed from EnrollPro' },
-            }),
-          ]);
-          logger.info(`[EnrollProSync] Deactivated ${deactivatedTeacherIds.length} teachers no longer in EnrollPro`);
-        } catch (err: any) {
-          errors.push(`Batch teacher deactivation failed: ${err.message}`);
+        // Ratio circuit breaker: a partial EP faculty response must never mass-suspend.
+        if (exceedsRatio(deactivatedTeacherIds.length, localTeachers.length, MAX_DEACTIVATION_RATIO)) {
+          const ratio = deactivatedTeacherIds.length / localTeachers.length;
+          logger.warn(
+            `[EnrollProSync] Teacher deactivation aborted — ratio circuit breaker: ${deactivatedTeacherIds.length}/${localTeachers.length} ` +
+            `(${(ratio * 100).toFixed(1)}% > ${(MAX_DEACTIVATION_RATIO * 100).toFixed(0)}%)`,
+          );
+          await createAuditLog(
+            AuditAction.UPDATE,
+            { id: null, role: 'SYSTEM', firstName: 'EnrollPro', lastName: 'Sync' },
+            'Teacher',
+            'SYNC',
+            `Teacher deactivation aborted by ratio circuit breaker: ${deactivatedTeacherIds.length} of ${localTeachers.length} active teachers (${(ratio * 100).toFixed(1)}%) exceeded the ${(MAX_DEACTIVATION_RATIO * 100).toFixed(0)}% threshold. No teachers suspended.`,
+            undefined,
+            AuditSeverity.CRITICAL,
+          ).catch(() => {});
+        } else {
+          try {
+            const userIds = deactivatedTeacherIds.map(t => t.userId);
+            const teacherIds = deactivatedTeacherIds.map(t => t.teacherId);
+            await prisma.$transaction([
+              prisma.user.updateMany({ where: { id: { in: userIds } }, data: { status: 'SUSPENDED' } }),
+              prisma.classAssignment.updateMany({
+                where: { teacherId: { in: teacherIds }, isActive: true },
+                data: { isActive: false, archivedAt: new Date(), archivedReason: 'Teacher removed from EnrollPro' },
+              }),
+            ]);
+            logger.info(`[EnrollProSync] Deactivated ${deactivatedTeacherIds.length} teachers no longer in EnrollPro`);
+          } catch (err: any) {
+            errors.push(`Batch teacher deactivation failed: ${err.message}`);
+          }
         }
       }
     } // End of epEmpIds.size > 0 check
@@ -892,24 +912,39 @@ export async function runEnrollProSync() {
             } catch { /* non-fatal — stale check will use whatever IDs we have */ }
           }
 
-          // Single query: find all ENROLLED enrollments for this SY
-          const allCurrentEnrollments = await prisma.enrollment.findMany({
-            where: { schoolYear: schoolYearLabel, status: 'ENROLLED' },
-            select: { id: true, studentId: true },
-          });
-
-          // Filter to stale enrollments (student not in synced set)
-          const staleIds = allCurrentEnrollments
-            .filter(e => !allSyncedStudentIds.has(e.studentId))
-            .map(e => e.id);
-
-          if (staleIds.length > 0) {
-            await prisma.enrollment.updateMany({
-              where: { id: { in: staleIds } },
-              data: { status: 'TRANSFERRED' },
+          // Fail-closed: an empty synced set means the learners feed failed or
+          // returned nothing — never treat that as "everyone left".
+          if (!isConfidentData(allSyncedStudentIds.size)) {
+            logger.warn('[EnrollProSync] Stale-enrollment drop skipped — 0 synced student IDs (fail-closed)');
+            await createAuditLog(
+              AuditAction.UPDATE,
+              { id: null, role: 'SYSTEM', firstName: 'EnrollPro', lastName: 'Sync' },
+              'Enrollment',
+              'SYNC',
+              'Stale-enrollment drop skipped (fail-closed): EnrollPro returned 0 usable learner records for this school year. No enrollments marked TRANSFERRED.',
+              undefined,
+              AuditSeverity.WARNING,
+            ).catch(() => {});
+          } else {
+            // Single query: find all ENROLLED enrollments for this SY
+            const allCurrentEnrollments = await prisma.enrollment.findMany({
+              where: { schoolYear: schoolYearLabel, status: 'ENROLLED' },
+              select: { id: true, studentId: true },
             });
-            studentsDropped = staleIds.length;
-            logger.debug(`[EnrollProSync] Batch dropped ${staleIds.length} stale enrollment(s)`);
+
+            // Filter to stale enrollments (student not in synced set)
+            const staleIds = allCurrentEnrollments
+              .filter(e => !allSyncedStudentIds.has(e.studentId))
+              .map(e => e.id);
+
+            if (staleIds.length > 0) {
+              await prisma.enrollment.updateMany({
+                where: { id: { in: staleIds } },
+                data: { status: 'TRANSFERRED' },
+              });
+              studentsDropped = staleIds.length;
+              logger.debug(`[EnrollProSync] Batch dropped ${staleIds.length} stale enrollment(s)`);
+            }
           }
         } catch (err: any) {
           errors.push(`Stale enrollment cleanup: ${err.message}`);
@@ -927,7 +962,20 @@ export async function runEnrollProSync() {
         const orphanedSections = allSmartSections.filter((s) => !epSectionNames.has(s.name));
         const orphanedSectionIds = orphanedSections.map((s) => s.id);
 
-        if (orphanedSectionIds.length > 0) {
+        if (!isConfidentData(epSections.length) && orphanedSectionIds.length > 0) {
+          // Fail-closed: an empty EP sections feed must never make every SMART
+          // section look orphaned (would drop enrollments + delete sections).
+          logger.warn('[EnrollProSync] Orphaned-section cleanup skipped — EnrollPro returned 0 sections (fail-closed)');
+          await createAuditLog(
+            AuditAction.UPDATE,
+            { id: null, role: 'SYSTEM', firstName: 'EnrollPro', lastName: 'Sync' },
+            'Section',
+            'SYNC',
+            'Orphaned-section cleanup skipped (fail-closed): EnrollPro returned 0 sections for this school year. No enrollments dropped and no sections deleted.',
+            undefined,
+            AuditSeverity.WARNING,
+          ).catch(() => {});
+        } else if (orphanedSectionIds.length > 0) {
           const dropResult = await prisma.enrollment.updateMany({
             where: {
               sectionId: { in: orphanedSectionIds },

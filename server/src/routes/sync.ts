@@ -6,6 +6,7 @@ import {
   isUnifiedSyncRunning,
   getLastUnifiedSyncResult,
   triggerImmediateSync,
+  checkCriticalDependencies,
 } from '../lib/syncCoordinator';
 import { runAtlasSync } from '../lib/atlasSync';
 import { prisma } from '../lib/prisma';
@@ -64,6 +65,17 @@ router.get('/status', authenticateToken, requireAdmin, async (_req: AuthRequest,
 // POST /api/sync/atlas — Sync class assignments from Atlas only
 router.post('/atlas', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Fail-closed: Atlas ownership resolution depends on EnrollPro sections.
+    // Running Atlas while EnrollPro is offline caused the 2026-09-10 incident.
+    const deps = await checkCriticalDependencies();
+    if (!deps.enrollpro.online) {
+      res.status(503).json({
+        message: 'Atlas sync skipped — EnrollPro offline (fail-closed)',
+        result: null,
+        dependencies: deps,
+      });
+      return;
+    }
     const result = await runAtlasSync();
     res.json({ message: 'Atlas sync complete', result });
   } catch (error: any) {

@@ -86,6 +86,18 @@ export default function SystemHealth() {
     return [health.external.enrollpro, health.external.atlas, health.external.aims];
   }, [health]);
 
+  // Dependencies whose data is authoritative for SMART. AIMS is intentionally
+  // excluded: it is fail-soft and never feeds core roster/grading data.
+  const offlineDependencies = useMemo(() => {
+    if (!health) return [];
+    return [health.external.enrollpro, health.external.atlas].filter((service) => !service.online);
+  }, [health]);
+
+  const lastSyncLabel = useMemo(() => {
+    const iso = health?.sync.coordinator.lastSyncAt;
+    return iso ? new Date(iso).toLocaleString() : null;
+  }, [health]);
+
   const runSyncNow = async () => {
     setSyncing(true);
     try {
@@ -148,6 +160,22 @@ export default function SystemHealth() {
 
       {health && (
         <>
+          {offlineDependencies.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
+              <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+              <div className="text-sm">
+                <span className="font-semibold">Showing cached data.</span>{" "}
+                {offlineDependencies.map((service) => service.name).join(", ")}{" "}
+                {offlineDependencies.length === 1 ? "is" : "are"} offline. Destructive sync steps are
+                fail-closed and will not run until {offlineDependencies.length === 1 ? "it" : "they"}{" "}
+                {offlineDependencies.length === 1 ? "is" : "are"} reachable.{" "}
+                {lastSyncLabel
+                  ? `Last successful sync: ${lastSyncLabel}.`
+                  : "No successful sync recorded yet."}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between">

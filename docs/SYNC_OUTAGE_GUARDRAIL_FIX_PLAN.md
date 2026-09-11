@@ -1,6 +1,6 @@
 # Sync Outage Guardrail — Research & Proposed Fix Plan
 
-> Status: **PROPOSAL — NOT IMPLEMENTED**
+> Status: **PHASES 1–5 IMPLEMENTED** (guards + tests; SystemHealth banner; audit hygiene; audit cleanup; 2026-2027 reconciled) — deployed & verified
 > Author: AI research pass (for review)
 > Date: 2026-09-11
 

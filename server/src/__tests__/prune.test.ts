@@ -132,6 +132,18 @@ async function cleanup() {
   await prisma.user.deleteMany({ where: { id: { in: [teacherUserId, orphanUserId] } } }).catch(() => {});
   await prisma.user.deleteMany({ where: { username: { startsWith: 'orphan-' } } }).catch(() => {});
   await prisma.schoolYear.deleteMany({ where: { label: { in: [YEAR, HISTORY_YEAR] } } }).catch(() => {});
+  // AuditLog is write-only and not touched above — remove our fake-year prune artifacts
+  await prisma.auditLog.deleteMany({
+    where: {
+      userName: 'prune-engine',
+      OR: [
+        { target: { contains: YEAR } },
+        { target: { contains: HISTORY_YEAR } },
+        { details: { contains: YEAR } },
+        { details: { contains: HISTORY_YEAR } },
+      ],
+    },
+  }).catch(() => {});
 }
 
 describe("runPrune", () => {

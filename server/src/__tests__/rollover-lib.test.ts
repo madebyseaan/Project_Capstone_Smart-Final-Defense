@@ -151,6 +151,17 @@ async function cleanup() {
   await prisma.schoolYear.deleteMany({ where: { label: { in: [YEAR_A, YEAR_B] } } }).catch(() => {});
   // Clean up user created during seedBase (Teacher cascade does NOT delete User)
   await prisma.user.deleteMany({ where: { username: { startsWith: 'test-teacher-' } } }).catch(() => {});
+  // AuditLog is write-only and not touched above — remove our fake-year rollover artifacts
+  await prisma.auditLog.deleteMany({
+    where: {
+      OR: [
+        { target: { contains: YEAR_A } },
+        { target: { contains: YEAR_B } },
+        { details: { contains: YEAR_A } },
+        { details: { contains: YEAR_B } },
+      ],
+    },
+  }).catch(() => {});
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -232,9 +243,9 @@ describe("T2 — Concurrent archive via archiveSchoolYear", () => {
     const sy = await prisma.schoolYear.findUnique({ where: { id: schoolYearAId } });
     expect(sy?.status).toBe("ARCHIVED");
 
-    // Only one audit row for this year
+    // An archive audit row was written for this year (year lives in `target`)
     const auditCount = await prisma.auditLog.count({
-      where: { details: { contains: YEAR_A } },
+      where: { target: `School Year Archive: ${YEAR_A}` },
     });
     expect(auditCount).toBeGreaterThanOrEqual(1);
 

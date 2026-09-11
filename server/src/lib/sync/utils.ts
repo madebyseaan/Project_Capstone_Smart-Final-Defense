@@ -8,6 +8,7 @@
 import { prisma } from '../prisma';
 import type { GradeLevel } from '@prisma/client';
 import { snapshotForDb } from '../studentSnapshot';
+import { logger } from '../logger';
 
 // Re-export everything from atlasUtils (the canonical source)
 export {
@@ -137,6 +138,15 @@ export async function dropStaleEnrollments(
   schoolYear: string,
   freshLearners: any[],
 ): Promise<number> {
+  // Fail-closed: an empty fresh roster means the fetch failed or returned
+  // nothing — never treat that as "every student left".
+  if (freshLearners.length === 0) {
+    logger.debug(
+      `[sync/utils] dropStaleEnrollments skipped — empty fresh roster for section ${sectionId} (fail-closed)`,
+    );
+    return 0;
+  }
+
   const freshLRNs = new Set<string>(
     freshLearners
       .map((rec) => (rec.learner ?? rec)?.lrn)

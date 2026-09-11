@@ -237,7 +237,7 @@ export async function runPrune(inputs: PruneInputs): Promise<PruneResult> {
         { firstName: 'prune-engine', lastName: null, role: 'SYSTEM' },
         'Prune aborted — circuit breaker',
         'Prune',
-        result.abortReason,
+        `[${activeYearLabel}] ${result.abortReason}`,
         undefined,
         AuditSeverity.CRITICAL,
       );
@@ -253,7 +253,7 @@ export async function runPrune(inputs: PruneInputs): Promise<PruneResult> {
     await createAuditLog(
       AuditAction.DELETE,
       { firstName: 'prune-engine', lastName: null, role: 'SYSTEM' },
-      `Prune dry-run: ${totalPlannedDeletes} planned deletes`,
+      `Prune dry-run (${activeYearLabel}): ${totalPlannedDeletes} planned deletes`,
       'Prune',
       JSON.stringify({
         activeYearLabel,
@@ -428,25 +428,41 @@ export async function runPrune(inputs: PruneInputs): Promise<PruneResult> {
         }
       }
 
-      // Write audit log
-      const severity = result.aborted ? AuditSeverity.CRITICAL : AuditSeverity.WARNING;
-      const logResult = await tx.auditLog.create({
-        data: {
-          action: AuditAction.DELETE,
-          userId: undefined,
-          userName: 'prune-engine',
-          userRole: 'SYSTEM',
-          target: `Prune ${activeYearLabel}`,
-          targetType: 'Prune',
-          details: JSON.stringify({
-            activeYearLabel,
-            ...result.phases,
-            dryRun: false,
-          }),
-          severity,
-        },
-      });
-      result.auditLogId = logResult.id;
+      // Write audit log only when the prune actually changed something.
+      // A no-op prune fires every cycle; logging each one floods the audit
+      // trail (thousands of DELETE rows) and buries real events. The INFO
+      // logger below still records every run.
+      const totalActualChanges =
+        result.phases.teachersSuspended +
+        result.phases.teachersDeleted +
+        result.phases.orphanUsersDeleted +
+        result.phases.sectionsDeleted +
+        result.phases.studentsDeleted +
+        result.phases.enrollmentsDeleted +
+        result.phases.gradesDeleted +
+        result.phases.attendanceDeleted +
+        result.phases.snapshotsDeleted;
+
+      if (totalActualChanges > 0) {
+        const severity = result.aborted ? AuditSeverity.CRITICAL : AuditSeverity.WARNING;
+        const logResult = await tx.auditLog.create({
+          data: {
+            action: AuditAction.DELETE,
+            userId: undefined,
+            userName: 'prune-engine',
+            userRole: 'SYSTEM',
+            target: `Prune ${activeYearLabel}`,
+            targetType: 'Prune',
+            details: JSON.stringify({
+              activeYearLabel,
+              ...result.phases,
+              dryRun: false,
+            }),
+            severity,
+          },
+        });
+        result.auditLogId = logResult.id;
+      }
     });
 
     logger.info(
@@ -465,7 +481,7 @@ export async function runPrune(inputs: PruneInputs): Promise<PruneResult> {
       { firstName: 'prune-engine', lastName: null, role: 'SYSTEM' },
       'Prune transaction failed — rolled back',
       'Prune',
-      err.message,
+      `[${activeYearLabel}] ${err.message}`,
       undefined,
       AuditSeverity.CRITICAL,
     );

@@ -30,6 +30,7 @@ import {
 import { computeDisplayName } from './subjectDisplay';
 
 import { getActiveSchoolYearLabel } from './schoolYearResolver';
+import { computeResolutionConfidence, exceedsRatio, MAX_ARCHIVE_RATIO } from './syncGuard';
 
 function normalizeAtlasSubjectCode(code: string | null | undefined): string {
   return (code ?? '').trim().toUpperCase();
@@ -254,6 +255,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     // ALL Atlas-matched teacher IDs (for stale-check scope — not just those with resolved loads)
     const allAtlasMatchedTeacherIds = Array.from(atlasIdToSmartTeacherId.values());
     let effectiveLoadState: 'EMPTY' | 'POPULATED' | 'UNAVAILABLE' | 'REJECTED' = 'UNAVAILABLE';
+    let effectiveAssignmentsCount = 0;
 
     // Build ATLAS subjectId → code lookup from already-fetched atlasSubjects
     const atlasSubjectIdToCode = new Map<number, string>();
@@ -281,6 +283,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       // Cache the response for consumption by teacherSync and teacherDashboardComposer
       setCachedEffectiveTeachingLoad(ATLAS_SCHOOL_ID, atlasSchoolYearId, effectiveLoad);
       effectiveLoadState = effectiveLoad.source.state;
+      effectiveAssignmentsCount = effectiveLoad.assignments.length;
       logger.info(
         `[AtlasSync] Effective teaching load: state=${effectiveLoad.source.state}, ` +
         `assignments=${effectiveLoad.assignments.length}, version=${effectiveLoad.source.version}`,
@@ -494,6 +497,35 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
       // EMPTY-load safety guard: require two consecutive EMPTY cycles
       let proceedWithArchive = true;
+
+      // Fail-closed POPULATED guard (incident 2026-09-10): if ATLAS reported a
+      // load but we could not resolve it against EnrollPro sections, the desired
+      // set is untrustworthy — never archive based on it.
+      if (effectiveLoadState === 'POPULATED') {
+        const confidence = computeResolutionConfidence({
+          state: effectiveLoadState,
+          resolvedCount: loads.length,
+          totalAssignments: effectiveAssignmentsCount,
+          epSectionsAvailable: epSectionById.size > 0,
+        });
+        if (!confidence.confident) {
+          proceedWithArchive = false;
+          logger.warn(
+            `[AtlasSync] Archive skipped — EnrollPro sections unresolvable (fail-closed). ` +
+            `coverage=${(confidence.coverage * 100).toFixed(1)}% resolved=${loads.length}/${effectiveAssignmentsCount} epSections=${epSectionById.size}`,
+          );
+          await createAuditLog(
+            AuditAction.UPDATE,
+            { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+            'ClassAssignment',
+            'SYNC',
+            `Atlas stale-check skipped (fail-closed): ATLAS load=${effectiveAssignmentsCount} rows but only ${loads.length} resolved to EnrollPro sections (coverage ${(confidence.coverage * 100).toFixed(1)}%, EP sections=${epSectionById.size}). No assignments archived.`,
+            undefined,
+            AuditSeverity.WARNING,
+          ).catch(() => {});
+        }
+      }
+
       if (effectiveLoadState === 'EMPTY') {
         const settingsRow = await prisma.systemSettings.findUnique({
           where: { id: 'main' },
@@ -596,6 +628,32 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
             preservedMissingCount++;
           }
         }
+      }
+
+      // Ratio circuit breaker (POPULATED only): if the stale-check wants to
+      // archive a large fraction of current assignments, treat the source data
+      // as untrustworthy and abort. EMPTY is handled by its two-cycle guard.
+      if (
+        effectiveLoadState === 'POPULATED' &&
+        archiveIds.length > 0 &&
+        exceedsRatio(archiveIds.length, currentAssignments.length, MAX_ARCHIVE_RATIO)
+      ) {
+        const ratio = archiveIds.length / currentAssignments.length;
+        logger.warn(
+          `[AtlasSync] Archive aborted — ratio circuit breaker: ${archiveIds.length}/${currentAssignments.length} ` +
+          `(${(ratio * 100).toFixed(1)}% > ${(MAX_ARCHIVE_RATIO * 100).toFixed(0)}%)`,
+        );
+        await createAuditLog(
+          AuditAction.UPDATE,
+          { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+          'ClassAssignment',
+          'SYNC',
+          `Atlas stale-check aborted by ratio circuit breaker: ${archiveIds.length} of ${currentAssignments.length} assignments (${(ratio * 100).toFixed(1)}%) exceeded the ${(MAX_ARCHIVE_RATIO * 100).toFixed(0)}% threshold. No assignments archived.`,
+          undefined,
+          AuditSeverity.CRITICAL,
+        ).catch(() => {});
+        archiveIds.length = 0;
+        archiveMeta.clear();
       }
 
       // Soft-archive ALL stale assignments (no more hard deletes)
@@ -818,9 +876,13 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         }
 
         const staleIds = Array.from(existingByKey.values());
-        if (staleIds.length > 0) {
+        if (staleIds.length > 0 && epSectionById.size > 0) {
           await prisma.scheduleEntry.deleteMany({ where: { id: { in: staleIds } } });
           scheduleCleaned = staleIds.length;
+        } else if (staleIds.length > 0) {
+          logger.warn(
+            `[AtlasSync] Schedule cleanup skipped — EnrollPro sections unavailable (fail-closed, ${staleIds.length} stale entr(ies) preserved)`,
+          );
         }
 
         if (scheduleCreated > 0 || scheduleCleaned > 0) {

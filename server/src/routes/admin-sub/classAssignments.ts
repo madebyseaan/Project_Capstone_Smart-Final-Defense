@@ -6,6 +6,7 @@ import fs from "fs";
 import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
 import { getSyncStatus, runAtlasSync } from "../../lib/atlasSync";
+import { checkCriticalDependencies } from "../../lib/syncCoordinator";
 import { getEnrollProSyncStatus, runEnrollProSync } from "../../lib/enrollproSync";
 import { getActiveSchoolYearLabel, invalidateSchoolYearCache } from "../../lib/schoolYearResolver";
 import { readLiveSnapshot } from "../../lib/schoolSettingsSnapshot";
@@ -26,6 +27,16 @@ export default function (router: Router) {
   });
 
   router.post("/atlas-sync/run", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response) => {
+    // Fail-closed: Atlas ownership resolution depends on EnrollPro sections.
+    const deps = await checkCriticalDependencies();
+    if (!deps.enrollpro.online) {
+      res.status(503).json({
+        message: "Atlas sync skipped — EnrollPro offline (fail-closed)",
+        result: null,
+        dependencies: deps,
+      });
+      return;
+    }
     const result = await runAtlasSync();
     res.json({ message: "Sync complete", result });
   });
@@ -37,6 +48,16 @@ export default function (router: Router) {
   });
 
   router.post("/enrollpro-sync/run", authenticateToken, authorizeRoles("ADMIN"), async (req: AuthRequest, res: Response) => {
+    // Fail-closed: never reconcile enrollments against an unreachable EnrollPro.
+    const deps = await checkCriticalDependencies();
+    if (!deps.enrollpro.online) {
+      res.status(503).json({
+        message: "EnrollPro sync skipped — EnrollPro offline (fail-closed)",
+        result: null,
+        dependencies: deps,
+      });
+      return;
+    }
     const result = await runEnrollProSync();
     res.json({ message: "EnrollPro sync complete", result });
   });

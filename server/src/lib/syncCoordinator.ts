@@ -316,9 +316,12 @@ export async function runUnifiedSync(options?: {
     }
 
     // ── Step 2: Atlas Sync ──────────────────────────────────────────────
-    // Teaching load — depends on sections existing in SMART DB.
-    // Skipped when Atlas is offline (partial sync mode).
-    if (!atlasOffline) {
+    // Teaching load — depends on EnrollPro sections for ownership resolution.
+    // Skipped when Atlas is offline, AND when EnrollPro is offline (partial
+    // sync mode). Running Atlas alone during an EP outage is exactly what
+    // caused the 2026-09-10 mass-archive incident: ATLAS returned a load but
+    // no row could be resolved to an EP section, so the desired set was empty.
+    if (!atlasOffline && !epOffline) {
       try {
         logger.debug('[SyncCoordinator] Step 2/5: Atlas sync...');
         const atResult = await runAtlasSync();
@@ -335,8 +338,12 @@ export async function runUnifiedSync(options?: {
         logger.error('[SyncCoordinator] Atlas sync failed:', err.message);
         atlasResult = { matched: 0, created: 0, deleted: 0, teachersWithLoads: 0, errors: [err.message] };
       }
-    } else {
+    } else if (atlasOffline) {
       logger.debug('[SyncCoordinator] Step 2/5: Atlas sync skipped (offline)');
+    } else {
+      logger.warn(
+        '[SyncCoordinator] Step 2/5: Atlas sync skipped — EnrollPro offline (Atlas ownership depends on EnrollPro sections; fail-closed)',
+      );
     }
 
     // ── Step 3: Branding Sync (low frequency) ───────────────────────────
@@ -639,7 +646,7 @@ async function pingUrl(url: string, name: string, headers?: Record<string, strin
   }
 }
 
-async function checkCriticalDependencies(): Promise<DependencyHealthSnapshot> {
+export async function checkCriticalDependencies(): Promise<DependencyHealthSnapshot> {
   const epHeaders = process.env.ENROLLPRO_INTEGRATION_KEY
     ? { 'X-Integration-Key': process.env.ENROLLPRO_INTEGRATION_KEY }
     : undefined;
