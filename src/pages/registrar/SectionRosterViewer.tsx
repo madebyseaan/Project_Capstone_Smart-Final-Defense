@@ -39,7 +39,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { registrarApi } from "@/lib/api";
-import { toast } from "@/lib/toast";
 import { useTheme } from "@/contexts/ThemeContext";
 import { LoadingSkeleton, EmptyState } from "@/components/data-table";
 import { Dash } from "@/components/data-table/Dash";

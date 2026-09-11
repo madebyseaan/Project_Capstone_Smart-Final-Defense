@@ -14,7 +14,6 @@ import { forwardRef } from "react";
 import { Download, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SF5Data, SF5Student } from "@/lib/api";
-import { SERVER_URL, getPortalToken } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Helpers

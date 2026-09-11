@@ -1,5 +1,4 @@
 import { Loader2, CheckCircle, FileCheck, FileEdit, AlertTriangle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,7 +17,6 @@ interface EOSYGradeLockingTabProps {
 
 export default function EOSYGradeLockingTab({
   allTermStatus,
-  finalizeLoading,
   finalizingSubject,
   finalizeMessage,
   epSectionName,

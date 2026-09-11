@@ -12,13 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL, getPortalToken } from "@/lib/api";

@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { registrarApi, type RegistrarDashboard } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { toast } from "@/lib/toast";
 import { SyncProgressModal } from "@/components/common/SyncProgressModal";
 import RolloverReadinessCard from "./components/RolloverReadinessCard";
 import {
@@ -195,7 +194,7 @@ export default function RegistrarDashboardPage() {
     );
   }
 
-  const { stats, sections, dataCompleteness, gradePerformance } = dashboard;
+  const { stats, dataCompleteness, gradePerformance } = dashboard;
 
   const gradeBarData = Object.entries(stats.gradeStats).map(([grade, count]) => ({
     name: gradeLevelLabels[grade] || grade,
@@ -564,7 +563,6 @@ export default function RegistrarDashboardPage() {
       {/* ── Section Passing Summary ── */}
       {passingRateData.length > 0 && (() => {
         const passing = passingRateData.filter((s) => s.passingRate >= 75);
-        const failing = passingRateData.filter((s) => s.passingRate < 75);
         const getRateColor = (rate: number) =>
           rate === 100 ? "var(--color-emerald-500, #10b981)" : rate >= 75 ? "var(--color-lime-500, #84cc16)" : rate >= 50 ? "var(--color-amber-500, #f59e0b)" : "var(--color-red-500, #ef4444)";
         const getRateBg = (rate: number) =>

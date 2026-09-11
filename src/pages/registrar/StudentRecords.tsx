@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/select";
 
 import { registrarApi, type Section } from "@/lib/api";
-import { toast } from "@/lib/toast";
 
 import { Tooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -98,7 +97,7 @@ export default function StudentRecords() {
   const [sf10Data, setSf10Data] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshKey] = useState(0);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
   const [syncError, setSyncError] = useState<string | undefined>();
