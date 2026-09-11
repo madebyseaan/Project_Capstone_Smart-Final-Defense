@@ -1,7 +1,7 @@
 import React from "react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { ClassRecord, ScoreItem, AimsAssessmentInfo, AimsRowScore } from "@/lib/api";
-import { getGradeColor, transmuteGrade, type TransmutationRow } from "@/lib/gradeMath";
+import { getDescriptor, getGradeColor, transmuteGrade, computeExamPS, computeExamSubWS, EXAM_SUB_TESTS, type TransmutationRow } from "@/lib/gradeMath";
 import { LedgerScoreCell } from "./LedgerScoreCell";
 
 // ─── LedgerRow ────────────────────────────────────────────────────────────────
@@ -12,15 +12,15 @@ interface LedgerRowProps {
   rowIndex: number;
   isHps?: boolean;
   hpsStickyTop?: number;
-  hpsData?: { wwScores: ScoreItem[]; ptScores: ScoreItem[]; qaMax: number };
+  hpsData?: { wwScores: ScoreItem[]; ptScores: ScoreItem[]; qaMax: number; examMaxes: number[] };
   selectedTerm: string;
   wwCount: number;
   ptCount: number;
   weights: { ww: number; pt: number; qa: number };
-  onHpsUpdate: (cat: "WW" | "PT" | "QA", idx: number, val: number) => void;
-  onScoreCommit: (inputEl: HTMLInputElement, sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
-  onCellFocus: (cat: "WW" | "PT" | "QA", idx: number) => void;
-  isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => string | undefined;
+  onHpsUpdate: (cat: "WW" | "PT" | "QA" | "EX", idx: number, val: number) => void;
+  onScoreCommit: (inputEl: HTMLInputElement, sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => boolean;
+  onCellFocus: (cat: "WW" | "PT" | "QA" | "EX", idx: number) => void;
+  isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => string | undefined;
   transmutationTable?: TransmutationRow[];
   isViewOnly?: boolean;
   aimsAssessments?: AimsAssessmentInfo[];
@@ -95,13 +95,28 @@ export const LedgerRow = React.memo(
     const qaScore = Number(grade?.quarterlyAssessScore) || 0;
     const qaMax = isHps ? hpsData?.qaMax ?? 100 : Number(grade?.quarterlyAssessMax) || 100;
     const displayQAPS = grade?.quarterlyAssessPS ?? (qaMax > 0 ? calcPS(qaScore, qaMax) : null);
-    const displayQAWS = displayQAPS !== null ? displayQAPS * (weights.qa / 100) : null;
+
+    // ── Examinations (ST1/ST2/TE) ──
+    // The detailed breakdown takes precedence; legacy composite QA is the fallback.
+    const examScoresArr = ((grade?.examScores || []) as ScoreItem[]);
+    const hasExam = !isHps && Array.isArray(examScoresArr) && examScoresArr.length > 0;
+    const examPSFromScores = hasExam ? computeExamPS(examScoresArr) : null;
+    const effectiveQAPS = isHps ? displayQAPS : (examPSFromScores ?? displayQAPS);
+    const displayQAWS = effectiveQAPS !== null ? effectiveQAPS * (weights.qa / 100) : null;
+
+    const getExamMax = (i: number): number =>
+      isHps ? (hpsData?.examMaxes?.[i] ?? EXAM_SUB_TESTS[i].defaultMax) : (Number(examScoresArr[i]?.maxScore) || 0);
+    const examSubWS = EXAM_SUB_TESTS.map((sub, i) => {
+      const max = getExamMax(i);
+      const sc = isHps ? 0 : (Number(examScoresArr[i]?.score) || 0);
+      return computeExamSubWS(sc, max, sub.weight);
+    });
 
     const displayInitialGrade =
       displayWWWS !== null && displayPTWS !== null && displayQAWS !== null ? displayWWWS + displayPTWS + displayQAWS : null;
     const displayQuarterlyGrade = displayInitialGrade !== null ? transmuteGrade(displayInitialGrade, transmutationTable) : null;
 
-    const cellClass = "text-center text-[11px] font-bold border-r border-slate-200 p-0 h-9 w-14 min-w-[56px] max-w-[56px]";
+    const cellClass = "text-center text-[11px] font-bold border-r border-slate-200 p-0 h-9";
 
     return (
       <TableRow
@@ -142,7 +157,7 @@ export const LedgerRow = React.memo(
 
         {/* Full Name */}
         <TableCell
-          className={`border-r border-b border-slate-200 px-2 w-64 min-w-[256px] max-w-[256px] sticky left-[168px] transition-colors ${
+          className={`border-r border-b border-slate-200 px-2 min-w-[220px] sticky left-[168px] transition-colors ${
             isHps
               ? "z-[22] bg-slate-800 border-y border-slate-700 bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.35)]"
               : "z-[15] bg-white group-hover:bg-slate-50 shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]"
@@ -187,7 +202,7 @@ export const LedgerRow = React.memo(
           return (
             <TableCell
               key={`aims-ww-${a.assessmentId}`}
-              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 w-16 min-w-[64px] max-w-[64px] ${
+              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 ${
                 isHps
                   ? "bg-slate-800 border-y border-slate-700 bg-clip-padding text-[var(--ledger-aims)]"
                   : `text-[var(--ledger-aims)] ${score?.importedAt ? "bg-[var(--ledger-aims-bg)]" : ""}`
@@ -229,7 +244,7 @@ export const LedgerRow = React.memo(
           }`}
           style={rowStyle}
         >
-          {isHps ? weights.ww.toFixed(1) : formatNum(displayWWWS)}
+          {isHps ? `${weights.ww}%` : formatNum(displayWWWS)}
         </TableCell>
 
         {/* PT score cells */}
@@ -264,7 +279,7 @@ export const LedgerRow = React.memo(
           return (
             <TableCell
               key={`aims-pt-${a.assessmentId}`}
-              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 w-16 min-w-[64px] max-w-[64px] ${
+              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 ${
                 isHps
                   ? "bg-slate-800 border-y border-slate-700 bg-clip-padding text-[var(--ledger-aims)]"
                   : `text-[var(--ledger-aims)] ${score?.importedAt ? "bg-[var(--ledger-aims-bg)]" : ""}`
@@ -306,30 +321,32 @@ export const LedgerRow = React.memo(
           }`}
           style={rowStyle}
         >
-          {isHps ? weights.pt.toFixed(1) : formatNum(displayPTWS)}
+          {isHps ? `${weights.pt}%` : formatNum(displayPTWS)}
         </TableCell>
 
-        {/* QA SCORE */}
-        <TableCell
-          className={`${cellClass} border-b border-slate-200 ${isHps ? "bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
-          style={rowStyle}
-        >
-          <LedgerScoreCell
-            cat="QA"
-            index={0}
-            value={isHps ? qaMax : ((grade as any)?.qaStatus || (grade?.quarterlyAssessScore === 0 ? "" : (grade?.quarterlyAssessScore ?? "")))}
-            status={!isHps ? (grade as any)?.qaStatus : undefined}
-            isHps={!!isHps}
-            invalid={!isHps ? isCellInvalid(studentId, "QA", 0) : undefined}
-            disabled={isViewOnly && !isHps}
-            hpsColorClass="text-[var(--ledger-ta)] font-bold"
-            onCommit={(el) => onScoreCommit(el, studentId, "QA", 0)}
-            onHps={(val) => onHpsUpdate("QA", 0, val)}
-            onFocus={() => onCellFocus("QA", 0)}
-            rowIndex={rowIndex}
-            ariaLabel={`QA score for student, max ${qaMax}`}
-          />
-        </TableCell>
+        {/* EXAM ST1 / ST2 / TE (raw scores) */}
+        {EXAM_SUB_TESTS.map((sub, i) => (
+          <TableCell
+            key={`ex-${i}`}
+            className={`${cellClass} border-b border-slate-200 ${isHps ? "bg-slate-800 border-y border-slate-700 bg-clip-padding" : ""}`}
+            style={rowStyle}
+          >
+            <LedgerScoreCell
+              cat="EX"
+              index={i}
+              value={isHps ? getExamMax(i) : (Number(examScoresArr[i]?.score) === 0 ? "" : (examScoresArr[i]?.score ?? ""))}
+              isHps={!!isHps}
+              invalid={!isHps ? isCellInvalid(studentId, "EX", i) : undefined}
+              disabled={isViewOnly && !isHps}
+              hpsColorClass="text-[var(--ledger-ta)] font-bold"
+              onCommit={(el) => onScoreCommit(el, studentId, "EX", i)}
+              onHps={(val) => onHpsUpdate("EX", i, val)}
+              onFocus={() => onCellFocus("EX", i)}
+              rowIndex={rowIndex}
+              ariaLabel={`${sub.name} score, max ${getExamMax(i)}`}
+            />
+          </TableCell>
+        ))}
 
         {/* AIMS QA staging columns */}
         {aimsQA.map((a) => {
@@ -337,7 +354,7 @@ export const LedgerRow = React.memo(
           return (
             <TableCell
               key={`aims-qa-${a.assessmentId}`}
-              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 w-16 min-w-[64px] max-w-[64px] ${
+              className={`text-center text-[11px] font-bold border-r border-b border-slate-200 p-0 h-9 ${
                 isHps
                   ? "bg-slate-800 border-y border-slate-700 bg-clip-padding text-[var(--ledger-aims)]"
                   : `text-[var(--ledger-aims)] ${score?.importedAt ? "bg-[var(--ledger-aims-bg)]" : ""}`
@@ -354,37 +371,49 @@ export const LedgerRow = React.memo(
           );
         })}
 
-        {/* QA PS */}
+        {/* WS ST1 / WS ST2 / WS TE */}
+        {examSubWS.map((ws, i) => (
+          <TableCell
+            key={`exws-${i}`}
+            className={`text-center font-bold text-[11px] border-r border-b border-slate-200 ${
+              isHps ? "bg-amber-900/60 border-y border-slate-700 bg-clip-padding text-amber-300" : "bg-amber-50/10 text-amber-600"
+            }`}
+            style={rowStyle}
+          >
+            {isHps ? EXAM_SUB_TESTS[i].weight : formatNum(ws)}
+          </TableCell>
+        ))}
+        {/* EXAM PS */}
         <TableCell
           className={`text-center font-bold text-[11px] border-r border-b border-slate-200 ${
             isHps ? "bg-amber-900/60 border-y border-slate-700 bg-clip-padding text-amber-300" : "bg-amber-50/10 text-amber-600"
           }`}
           style={rowStyle}
         >
-          {isHps ? "100.0" : formatNum(displayQAPS)}
+          {isHps ? "100.0" : formatNum(effectiveQAPS)}
         </TableCell>
-        {/* QA WS */}
+        {/* EXAM WS */}
         <TableCell
           className={`text-center font-bold text-[11px] border-r border-b border-slate-200 ${
             isHps ? "bg-amber-900/80 border-y border-slate-700 bg-clip-padding text-amber-200" : "bg-amber-50/20 text-amber-700"
           }`}
           style={rowStyle}
         >
-          {isHps ? weights.qa.toFixed(1) : formatNum(displayQAWS)}
+          {isHps ? `${weights.qa}%` : formatNum(displayQAWS)}
         </TableCell>
 
         {/* INITIAL */}
         <TableCell
-          className={`text-center font-bold text-[11px] border-r border-b border-slate-200 ${
+          className={`text-center font-bold text-[11px] border-r border-b border-slate-200 w-[72px] min-w-[72px] max-w-[72px] ${
             isHps ? "bg-emerald-900/60 border-y border-slate-700 bg-clip-padding text-emerald-300" : "bg-emerald-50/10 text-emerald-600"
           }`}
           style={rowStyle}
         >
           {isHps ? "100.00" : formatInitialGrade(displayInitialGrade)}
         </TableCell>
-        {/* FINAL */}
+        {/* TERM GRADE */}
         <TableCell
-          className={`text-center font-bold text-xs border-r border-b border-slate-200 w-16 min-w-[64px] max-w-[64px] ${
+          className={`text-center font-bold text-xs border-r border-b border-slate-200 w-[72px] min-w-[72px] max-w-[72px] ${
             isHps
               ? "text-white bg-slate-900 border-y border-r border-slate-700 bg-clip-padding"
               : `bg-emerald-50/30 ${getGradeColor(displayQuarterlyGrade)}`
@@ -392,6 +421,17 @@ export const LedgerRow = React.memo(
           style={rowStyle}
         >
           {isHps ? "100" : displayQuarterlyGrade ?? <span className="text-slate-300">-</span>}
+        </TableCell>
+        {/* DESCRIPTOR */}
+        <TableCell
+          className={`text-center text-[10px] font-semibold border-r border-b border-slate-200 w-[132px] min-w-[132px] max-w-[132px] px-1 leading-tight ${
+            isHps
+              ? "text-slate-300 bg-slate-900 border-y border-slate-700 bg-clip-padding"
+              : "text-slate-600 bg-emerald-50/30"
+          }`}
+          style={rowStyle}
+        >
+          {isHps ? "-" : getDescriptor(displayQuarterlyGrade)}
         </TableCell>
       </TableRow>
     );

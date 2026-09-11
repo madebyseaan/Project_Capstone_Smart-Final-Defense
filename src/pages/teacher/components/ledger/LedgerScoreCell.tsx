@@ -3,7 +3,7 @@ import React from "react";
 // ─── LedgerScoreCell ─────────────────────────────────────────────────────────
 
 interface LedgerScoreCellProps {
-  cat: "WW" | "PT" | "QA";
+  cat: "WW" | "PT" | "QA" | "EX";
   index: number;
   value: string | number;
   status?: string;

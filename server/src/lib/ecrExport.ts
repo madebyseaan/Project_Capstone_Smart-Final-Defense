@@ -220,8 +220,21 @@ export async function exportEcrWorkbook(input: {
   wwMax.forEach((m, i) => { if (m > 0) termCells[`${WW_COLS[i]}15`] = m; });
   ptMax.forEach((m, i) => { if (m > 0) termCells[`${PT_COLS[i]}15`] = m; });
 
+  // Detailed ST1/ST2/TE breakdown (new) takes precedence over the legacy composite QA.
+  const hasExamBreakdown = grades.some((g) => Array.isArray((g as any).examScores) && (g as any).examScores.length > 0);
   const hasAnyQA = grades.some((g) => Number(g.quarterlyAssessScore) > 0);
-  if (hasAnyQA) {
+  const EXAM_DEFAULT_HPS = [10, 10, 30];
+  if (hasExamBreakdown) {
+    const examHps = [0, 0, 0];
+    grades.forEach((g) => {
+      const es = (g as any).examScores as Array<{ maxScore?: number }> | null;
+      if (!Array.isArray(es)) return;
+      for (let i = 0; i < 3; i++) examHps[i] = Math.max(examHps[i], Number(es[i]?.maxScore) || 0);
+    });
+    termCells.T15 = examHps[0] > 0 ? examHps[0] : EXAM_DEFAULT_HPS[0];
+    termCells.U15 = examHps[1] > 0 ? examHps[1] : EXAM_DEFAULT_HPS[1];
+    termCells.V15 = examHps[2] > 0 ? examHps[2] : EXAM_DEFAULT_HPS[2];
+  } else if (hasAnyQA) {
     termCells.T15 = 30;
     termCells.U15 = 30;
     termCells.V15 = 40;
@@ -238,7 +251,12 @@ export async function exportEcrWorkbook(input: {
     for (let i = 0; i < 3; i++) {
       if (ptMax[i] > 0) termCells[`${PT_COLS[i]}${row}`] = Number(gPT[i]?.score) || 0;
     }
-    if (hasAnyQA) {
+    if (hasExamBreakdown) {
+      const es = (g as any)?.examScores as Array<{ score?: number }> | null;
+      termCells[`T${row}`] = Number(es?.[0]?.score) || 0;
+      termCells[`U${row}`] = Number(es?.[1]?.score) || 0;
+      termCells[`V${row}`] = Number(es?.[2]?.score) || 0;
+    } else if (hasAnyQA) {
       const { st1, st2, te } = splitQa(Number(g?.quarterlyAssessScore) || 0);
       termCells[`T${row}`] = st1;
       termCells[`U${row}`] = st2;

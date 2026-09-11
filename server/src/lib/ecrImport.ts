@@ -10,7 +10,7 @@
  * Grades are ALWAYS recomputed with canonical math — Excel computed cells are ignored.
  */
 
-import { Term, AuditAction, AuditSeverity } from "@prisma/client";
+import { Term, AuditAction, AuditSeverity, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { createAuditLog } from "./audit";
@@ -181,6 +181,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
       studentId: true,
       writtenWorkScores: true,
       perfTaskScores: true,
+      examScores: true,
       quarterlyAssessScore: true,
       quarterlyAssessMax: true,
       qaDescription: true,
@@ -201,6 +202,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
     studentName: string;
     ww: Array<{ name: string; score: number; maxScore: number; description?: string | null; date?: string | null }>;
     pt: Array<{ name: string; score: number; maxScore: number; description?: string | null; date?: string | null }>;
+    examScores: Array<{ name: string; score: number; maxScore: number }> | null;
     qaScore: number | null;
     qaMax: number;
     qaDescription: string | null;
@@ -234,8 +236,15 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
     let qaMax = 100;
     const qaDescription: string | null = existing?.qaDescription ?? null;
     const qaDate: string | null = existing?.qaDate ?? null;
+    let examScores: Array<{ name: string; score: number; maxScore: number }> | null =
+      (existing?.examScores as Array<{ name: string; score: number; maxScore: number }> | null) ?? null;
     if (hasExamHps) {
       qaScore = computeQaScore(row.exams, parsed.hps);
+      examScores = [
+        { name: "ST1", score: row.exams.st1 ?? 0, maxScore: parsed.hps.st1 },
+        { name: "ST2", score: row.exams.st2 ?? 0, maxScore: parsed.hps.st2 },
+        { name: "TE", score: row.exams.te ?? 0, maxScore: parsed.hps.te },
+      ];
     } else if (existing && existing.quarterlyAssessScore != null) {
       qaScore = existing.quarterlyAssessScore;
       qaMax = existing.quarterlyAssessMax ?? 100;
@@ -250,7 +259,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
     const wasOverwrite = existing ? gradeHasData(existing) : false;
     if (wasOverwrite) overwrittenCount++;
 
-    prepared.push({ studentId, studentName: row.name, ww, pt, qaScore, qaMax, qaDescription, qaDate });
+    prepared.push({ studentId, studentName: row.name, ww, pt, examScores, qaScore, qaMax, qaDescription, qaDate });
   }
 
   if (truncatedWW > 0) warnings.push(`The official template supports only 5 WW columns — ${truncatedWW} learner(s) had more and the extras will be removed on import.`);
@@ -285,6 +294,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
       const payload = {
         writtenWorkScores: item.ww,
         perfTaskScores: item.pt,
+        examScores: item.examScores ?? Prisma.DbNull,
         quarterlyAssessScore: item.qaScore,
         quarterlyAssessMax: item.qaMax,
         qaDescription: item.qaDescription,
@@ -323,6 +333,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
           snapshot: {
             writtenWorkScores: grade.writtenWorkScores,
             perfTaskScores: grade.perfTaskScores,
+            examScores: grade.examScores,
             quarterlyAssessScore: grade.quarterlyAssessScore,
             quarterlyAssessMax: grade.quarterlyAssessMax,
             qaDescription: grade.qaDescription,

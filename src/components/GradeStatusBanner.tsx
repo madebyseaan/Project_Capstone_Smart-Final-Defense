@@ -12,6 +12,13 @@ interface GradeStatusBannerProps {
   onRequestEdit?: () => void;
   termLabels?: { T1: string; T2: string; T3: string };
   termDatesDerived?: boolean;
+  locks?: {
+    systemLocked: boolean;
+    yearLocked: boolean;
+    yearLockedBy?: string | null;
+    yearLockedAt?: string | null;
+    termLocks: { T1: boolean; T2: boolean; T3: boolean };
+  } | null;
 }
 
 function daysBetween(a: Date, b: Date): number {
@@ -39,6 +46,7 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
   onRequestEdit,
   termLabels,
   termDatesDerived,
+  locks,
 }: GradeStatusBannerProps) {
   const isViewingPastTerm = selectedTerm && currentTerm && TERM_ORDER[selectedTerm] < TERM_ORDER[currentTerm];
 
@@ -57,10 +65,32 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
 
   // --- Locked ---
   if (gradeLock) {
+    const termLabel = selectedTerm ? getTermLabel(selectedTerm, termLabels) : "";
+    let reason = "Grade editing is locked.";
+    let hint = "Contact the admin to unlock.";
+    if (locks?.systemLocked) {
+      reason = "Grade editing is locked system-wide by the admin.";
+      hint = "Admin → System Settings → Unlock Grades.";
+    } else if (locks?.yearLocked) {
+      reason = "Grades locked for EOSY — this school year is finalized.";
+      const by = locks.yearLockedBy;
+      const at = locks.yearLockedAt
+        ? new Date(locks.yearLockedAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })
+        : null;
+      hint = by || at
+        ? `Locked by ${by ?? "system"}${at ? ` on ${at}` : ""}. The registrar/admin can unlock the school year.`
+        : "The registrar/admin can unlock the school year.";
+    } else if (selectedTerm && locks?.termLocks?.[selectedTerm as "T1" | "T2" | "T3"]) {
+      reason = `${termLabel} grades are locked.`;
+      hint = "Request edit access, or ask the admin to unlock the term.";
+    }
     return (
       <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs mb-3">
         <Lock className="w-3.5 h-3.5 text-red-500 shrink-0" />
-        <span className="font-medium text-red-700">Grades locked for EOSY</span>
+        <span className="font-medium text-red-700">
+          {reason}
+          <span className="font-normal text-red-500"> {hint}</span>
+        </span>
       </div>
     );
   }

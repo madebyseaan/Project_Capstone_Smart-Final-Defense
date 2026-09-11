@@ -20,6 +20,8 @@ export interface LockBlock {
 export interface GradeLockState {
   systemLocked: boolean;
   yearLocked: boolean;
+  yearLockedBy: string | null;
+  yearLockedAt: string | null;
   termLocks: Record<Term, boolean>;
 }
 
@@ -40,6 +42,8 @@ export async function getGradeLockState(schoolYearLabel: string): Promise<GradeL
 
   const termLocks: Record<Term, boolean> = { T1: false, T2: false, T3: false };
   let yearLocked = false;
+  let yearLockedBy: string | null = null;
+  let yearLockedAt: string | null = null;
 
   if (year) {
     const [yearLock, termLockRows] = await Promise.all([
@@ -47,6 +51,8 @@ export async function getGradeLockState(schoolYearLabel: string): Promise<GradeL
       prisma.termGradeLock.findMany({ where: { schoolYearId: year.id } }),
     ]);
     yearLocked = yearLock?.isLocked ?? false;
+    yearLockedBy = yearLock?.lockedBy ?? null;
+    yearLockedAt = yearLock?.lockedAt ? yearLock.lockedAt.toISOString() : null;
     for (const row of termLockRows) {
       termLocks[row.term] = row.isLocked;
     }
@@ -55,6 +61,8 @@ export async function getGradeLockState(schoolYearLabel: string): Promise<GradeL
   return {
     systemLocked: settings?.gradeLock ?? false,
     yearLocked,
+    yearLockedBy,
+    yearLockedAt,
     termLocks,
   };
 }

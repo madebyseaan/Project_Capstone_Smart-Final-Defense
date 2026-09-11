@@ -248,6 +248,7 @@ export interface Grade {
   term: "T1" | "T2" | "T3";
   writtenWorkScores: ScoreItem[] | null;
   perfTaskScores: ScoreItem[] | null;
+  examScores: ScoreItem[] | null;
   quarterlyAssessScore: number | null;
   quarterlyAssessMax: number | null;
   qaDescription?: string | null;
@@ -298,6 +299,7 @@ export interface InheritedGrade {
   id?: string;
   writtenWorkScores?: ScoreItem[] | null;
   perfTaskScores?: ScoreItem[] | null;
+  examScores?: ScoreItem[] | null;
   quarterlyAssessScore?: number | null;
   quarterlyAssessMax?: number | null;
   qaDescription?: string | null;
@@ -413,6 +415,8 @@ export const gradesApi = {
       locks?: {
         systemLocked: boolean;
         yearLocked: boolean;
+        yearLockedBy?: string | null;
+        yearLockedAt?: string | null;
         termLocks: { T1: boolean; T2: boolean; T3: boolean };
       };
       inheritedGrades?: InheritedGrade[];
@@ -429,6 +433,7 @@ export const gradesApi = {
     term: string;
     writtenWorkScores?: ScoreItem[];
     perfTaskScores?: ScoreItem[];
+    examScores?: ScoreItem[];
     quarterlyAssessScore?: number;
     quarterlyAssessMax?: number;
     qaDescription?: string;
@@ -443,6 +448,7 @@ export const gradesApi = {
       studentId: string;
       writtenWorkScores?: ScoreItem[];
       perfTaskScores?: ScoreItem[];
+      examScores?: ScoreItem[];
       quarterlyAssessScore?: number;
       quarterlyAssessMax?: number;
       qaDescription?: string;

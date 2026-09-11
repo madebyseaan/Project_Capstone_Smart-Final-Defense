@@ -230,6 +230,7 @@ model Grade {
   term                  Term
   writtenWorkScores     Json?
   perfTaskScores        Json?
+  examScores            Json?
   quarterlyAssessScore  Float?
   quarterlyAssessMax    Float?          @default(100)
   qaDescription         String?

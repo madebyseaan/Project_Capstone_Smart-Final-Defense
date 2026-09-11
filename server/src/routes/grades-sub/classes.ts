@@ -24,6 +24,7 @@ import {
   getPredecessorGradeBase,
 } from "./helpers";
 import { checkGradeEditLocks, getGradeLockState } from "../../lib/gradeLocks";
+import { computeExamPS } from "../../lib/examMath";
 
 export default function registerClasses(router: Router): void {
   // Get all class assignments for the logged-in teacher
@@ -343,6 +344,7 @@ export default function registerClasses(router: Router): void {
           term,
           writtenWorkScores,
           perfTaskScores,
+          examScores,
           quarterlyAssessScore,
           quarterlyAssessMax,
           qaDescription,
@@ -462,13 +464,32 @@ export default function registerClasses(router: Router): void {
               ? perfTaskScores
               : (seedGrade?.perfTaskScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
 
-        const mergedQuarterlyAssessScore = (quarterlyAssessScore !== undefined
+        let mergedExamScores = (examScores !== undefined
+              ? examScores
+              : (seedGrade?.examScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
+
+        // A composite-only save (e.g. mobile TA tab) supersedes any stored breakdown.
+        if (quarterlyAssessScore !== undefined && examScores === undefined) {
+          mergedExamScores = null;
+        }
+
+        let mergedQuarterlyAssessScore = (quarterlyAssessScore !== undefined
               ? quarterlyAssessScore
               : (seedGrade?.quarterlyAssessScore ?? 0));
 
-        const mergedQuarterlyAssessMax = (quarterlyAssessMax !== undefined
+        let mergedQuarterlyAssessMax = (quarterlyAssessMax !== undefined
               ? quarterlyAssessMax
               : (seedGrade?.quarterlyAssessMax ?? 100));
+
+        // When the detailed ST1/ST2/TE breakdown is supplied, derive the composite
+        // Examinations PS (0–100) from it. Existing composite-only saves are unchanged.
+        if (examScores !== undefined && mergedExamScores && mergedExamScores.length > 0) {
+          const examPS = computeExamPS(mergedExamScores);
+          if (examPS !== null) {
+            mergedQuarterlyAssessScore = examPS;
+            mergedQuarterlyAssessMax = 100;
+          }
+        }
 
         const mergedQaDescription = (qaDescription !== undefined
               ? qaDescription
@@ -497,6 +518,7 @@ export default function registerClasses(router: Router): void {
         const gradePayload = {
             writtenWorkScores: mergedWrittenWorkScores,
             perfTaskScores: mergedPerfTaskScores,
+            examScores: mergedExamScores,
             quarterlyAssessScore: mergedQuarterlyAssessScore,
             quarterlyAssessMax: mergedQuarterlyAssessMax,
             qaDescription: mergedQaDescription,
@@ -736,12 +758,25 @@ export default function registerClasses(router: Router): void {
             const mergedPerfTaskScores = update.perfTaskScores !== undefined
               ? update.perfTaskScores
               : (existing?.perfTaskScores as any[] ?? null);
-            const mergedQuarterlyAssessScore = update.quarterlyAssessScore !== undefined
+            let mergedExamScores = update.examScores !== undefined
+              ? update.examScores
+              : (existing?.examScores as any[] ?? null);
+            if (update.quarterlyAssessScore !== undefined && update.examScores === undefined) {
+              mergedExamScores = null;
+            }
+            let mergedQuarterlyAssessScore = update.quarterlyAssessScore !== undefined
               ? update.quarterlyAssessScore
               : (existing?.quarterlyAssessScore ?? 0);
-            const mergedQuarterlyAssessMax = update.quarterlyAssessMax !== undefined
+            let mergedQuarterlyAssessMax = update.quarterlyAssessMax !== undefined
               ? update.quarterlyAssessMax
               : (existing?.quarterlyAssessMax ?? 100);
+            if (update.examScores !== undefined && mergedExamScores && mergedExamScores.length > 0) {
+              const examPS = computeExamPS(mergedExamScores);
+              if (examPS !== null) {
+                mergedQuarterlyAssessScore = examPS;
+                mergedQuarterlyAssessMax = 100;
+              }
+            }
             const mergedQaDescription = update.qaDescription !== undefined
               ? update.qaDescription
               : (existing?.qaDescription ?? null);
@@ -762,6 +797,7 @@ export default function registerClasses(router: Router): void {
             const gradePayload = {
               writtenWorkScores: mergedWrittenWorkScores,
               perfTaskScores: mergedPerfTaskScores,
+              examScores: mergedExamScores,
               quarterlyAssessScore: mergedQuarterlyAssessScore,
               quarterlyAssessMax: mergedQuarterlyAssessMax,
               qaDescription: mergedQaDescription,

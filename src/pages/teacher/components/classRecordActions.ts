@@ -1,7 +1,23 @@
 import { gradesApi, type ClassRecord, type ScoreItem } from "@/lib/api";
 import type React from "react";
+import { EXAM_SUB_TESTS, computeExamPS, defaultExamScores } from "@/lib/gradeMath";
 
-type ScoreCategory = "WW" | "PT" | "QA";
+type ScoreCategory = "WW" | "PT" | "QA" | "EX";
+
+/** Normalize a grade's examScores to exactly 3 items (ST1/ST2/TE) with defaults. */
+function ensureExamScores(existing: unknown): ScoreItem[] {
+  const arr = Array.isArray(existing) ? (existing as ScoreItem[]) : [];
+  return EXAM_SUB_TESTS.map((sub, i) => {
+    const item = arr[i];
+    return {
+      name: (typeof item?.name === "string" && item.name) || sub.name,
+      score: Number(item?.score) || 0,
+      maxScore: Number(item?.maxScore) || sub.defaultMax,
+    };
+  });
+}
+
+export { ensureExamScores, defaultExamScores };
 
 type ApplyMetaToScores = (
   scores: ScoreItem[],
@@ -222,6 +238,12 @@ export async function executeScoreUpdate({
         targetGrade.quarterlyAssessScore = isSpecial ? 0 : Number(newValue) || 0;
         targetGrade.qaDescription = qaMeta.description || null;
         targetGrade.qaDate = qaMeta.date || null;
+      } else if (category === "EX") {
+        const scores = ensureExamScores(targetGrade.examScores);
+        scores[index] = { ...scores[index], score: isSpecial ? 0 : Number(newValue) || 0 };
+        targetGrade.examScores = scores;
+        targetGrade.quarterlyAssessScore = computeExamPS(scores) ?? 0;
+        targetGrade.quarterlyAssessMax = 100;
       }
 
       // Null out server-derived fields so the table falls through to client-side calc
@@ -244,6 +266,10 @@ export async function executeScoreUpdate({
 
     const wwScores = [...((grade?.writtenWorkScores || []) as ScoreItem[])];
     const ptScores = [...((grade?.perfTaskScores || []) as ScoreItem[])];
+    const examScores = ensureExamScores(grade?.examScores);
+    if (category === "EX") {
+      examScores[index] = { ...examScores[index], score: isSpecial ? 0 : Number(newValue) || 0 };
+    }
 
     if (category === "WW") {
       while (wwScores.length <= index) wwScores.push({ name: `WW ${wwScores.length + 1}`, score: 0, maxScore: 10 });
@@ -270,6 +296,7 @@ export async function executeScoreUpdate({
       term: selectedTerm,
       writtenWorkScores: category === "WW" ? wwScoresWithMeta : undefined,
       perfTaskScores: category === "PT" ? ptScoresWithMeta : undefined,
+      examScores: category === "EX" ? examScores : undefined,
       quarterlyAssessScore: category === "QA" ? (isSpecial ? 0 : Number(newValue) || 0) : undefined,
       qaDescription: qaMeta.description || undefined,
       qaDate: qaMeta.date || undefined,
@@ -332,6 +359,12 @@ export async function executeHpsUpdate({
         targetGrade.quarterlyAssessMax = newMax;
         targetGrade.qaDescription = qaMeta.description || null;
         targetGrade.qaDate = qaMeta.date || null;
+      } else if (category === "EX") {
+        const scores = ensureExamScores(targetGrade.examScores);
+        scores[index] = { ...scores[index], maxScore: newMax };
+        targetGrade.examScores = scores;
+        targetGrade.quarterlyAssessScore = computeExamPS(scores) ?? 0;
+        targetGrade.quarterlyAssessMax = 100;
       }
 
       // Null out server-derived fields so the table falls through to client-side calc
@@ -362,6 +395,11 @@ export async function executeHpsUpdate({
         ptScores[index].maxScore = newMax;
       }
 
+      const examScores = ensureExamScores(grade?.examScores);
+      if (category === "EX") {
+        examScores[index] = { ...examScores[index], maxScore: newMax };
+      }
+
       const wwScoresWithMeta = applyMetaToScores(wwScores, "WW", index + 1);
       const ptScoresWithMeta = applyMetaToScores(ptScores, "PT", index + 1);
 
@@ -369,6 +407,7 @@ export async function executeHpsUpdate({
         studentId: record.student.id,
         writtenWorkScores: category === "WW" ? wwScoresWithMeta : undefined,
         perfTaskScores: category === "PT" ? ptScoresWithMeta : undefined,
+        examScores: category === "EX" ? examScores : undefined,
         quarterlyAssessMax: category === "QA" ? newMax : undefined,
         qaDescription: qaMeta.description || undefined,
         qaDate: qaMeta.date || undefined,

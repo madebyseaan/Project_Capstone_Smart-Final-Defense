@@ -1,13 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo } from "react";
-import { Plus, Minus, Trash2, Eye } from "lucide-react";
+import { Plus, Minus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -19,7 +12,6 @@ import {
 import type { ClassAssignment, ClassRecord, ScoreItem, AimsAssessmentInfo, AimsRowScore } from "@/lib/api";
 import type { TransmutationRow } from "@/lib/gradeMath";
 
-const terms = ["T1", "T2", "T3"] as const;
 import { LedgerRow } from "./ledger/LedgerRow";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -32,16 +24,6 @@ interface ClassRecordTableProps {
     qa: number;
   } | null;
   selectedTerm: string;
-  onTermChange: (term: string) => void;
-  /**
-   * When set (e.g. "T1"), this subject is a rotating subject and the teacher
-   * may only enter grades for this specific term. Other terms are disabled.
-   */
-  lockedTerm?: string | null;
-  /** The system's current active term — past terms are disabled */
-  currentTerm?: string;
-  /** Term labels from settings (e.g. "Term 1", "Term 2") */
-  termLabels?: { T1: string; T2: string; T3: string };
   /** View-only mode — past terms or locked grades */
   isViewOnly?: boolean;
   separateByGender: boolean;
@@ -54,16 +36,16 @@ interface ClassRecordTableProps {
   stickyOffset: number;
   wwCount: number;
   ptCount: number;
-  hpsData: { wwScores: ScoreItem[]; ptScores: ScoreItem[]; qaMax: number };
+  hpsData: { wwScores: ScoreItem[]; ptScores: ScoreItem[]; qaMax: number; examMaxes: number[] };
   sortedRecords: ClassRecord[];
   maleRecords: ClassRecord[];
   femaleRecords: ClassRecord[];
   onRemoveTask: (category: "WW" | "PT") => void;
   onAddTask: (category: "WW" | "PT") => void;
-  onHpsUpdate: (cat: "WW" | "PT" | "QA", idx: number, val: number) => void;
-  onScoreCommit: (inputEl: HTMLInputElement, sid: string, cat: "WW" | "PT" | "QA", idx: number) => boolean;
-  onCellFocus: (cat: "WW" | "PT" | "QA", idx: number) => void;
-  isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => string | undefined;
+  onHpsUpdate: (cat: "WW" | "PT" | "QA" | "EX", idx: number, val: number) => void;
+  onScoreCommit: (inputEl: HTMLInputElement, sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => boolean;
+  onCellFocus: (cat: "WW" | "PT" | "QA" | "EX", idx: number) => void;
+  isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => string | undefined;
   assessmentHeaderNode?: React.ReactNode;
   ledgerHeaderRef?: React.RefObject<HTMLDivElement | null>;
   onClearScores?: () => void;
@@ -79,10 +61,6 @@ export function ClassRecordTable({
   classAssignment,
   effectiveWeights,
   selectedTerm,
-  onTermChange,
-  lockedTerm,
-  currentTerm,
-  termLabels: termLabelsProp,
   isViewOnly,
   separateByGender,
   onSeparateByGenderChange,
@@ -263,41 +241,55 @@ export function ClassRecordTable({
     return rows;
   }, [sortedRecords, maleRecords, femaleRecords, separateByGender, selectedTerm, wwCount, ptCount, weights, isViewOnly, onHpsUpdate, onScoreCommit, onCellFocus, isCellInvalid, transmutationTable, aimsAssessments, aimsByStudent, aimsWW, aimsPT, aimsQA, wwColIsAims, ptColIsAims]);
 
+  // Sticky + grade columns are fixed; score columns are flexible and share the
+  // leftover card width so the table always fills the space with no blank gap.
+  const FIXED_COL_WIDTH = 40 + 128 + 220 + 72 + 72 + 132; // #, LRN, Name, Initial, Term, Descriptor
+  const SCORE_COL_WIDTH = 56;
+  const scoreColCount = wwCount + aimsWW.length + 3 + ptCount + aimsPT.length + 3 + 8 + aimsQA.length;
+  const tableMinWidth = FIXED_COL_WIDTH + scoreColCount * SCORE_COL_WIDTH;
+
   const renderColGroup = () => (
     <colgroup>
+      {/* Sticky columns — fixed widths so sticky left offsets stay correct */}
       <col style={{ width: "40px", minWidth: "40px", maxWidth: "40px" }} />
       <col style={{ width: "128px", minWidth: "128px", maxWidth: "128px" }} />
-      <col style={{ width: "256px", minWidth: "256px", maxWidth: "256px" }} />
-      {/* WW columns */}
+      <col style={{ width: "220px", minWidth: "220px", maxWidth: "220px" }} />
+      {/* WW columns (flexible) */}
       {Array.from({ length: wwCount }).map((_, i) => (
-        <col key={`col-ww-${i}`} style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+        <col key={`col-ww-${i}`} style={{ minWidth: "56px" }} />
       ))}
       {aimsWW.map((a) => (
-        <col key={`col-aims-ww-${a.assessmentId}`} style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+        <col key={`col-aims-ww-${a.assessmentId}`} style={{ minWidth: "64px" }} />
       ))}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      {/* PT columns */}
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      {/* PT columns (flexible) */}
       {Array.from({ length: ptCount }).map((_, i) => (
-        <col key={`col-pt-${i}`} style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+        <col key={`col-pt-${i}`} style={{ minWidth: "56px" }} />
       ))}
       {aimsPT.map((a) => (
-        <col key={`col-aims-pt-${a.assessmentId}`} style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+        <col key={`col-aims-pt-${a.assessmentId}`} style={{ minWidth: "64px" }} />
       ))}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      {/* TA columns */}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      {/* Examinations columns: ST1, ST2, TE, WS ST1, WS ST2, WS TE, PS, WS (flexible) */}
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
+      <col style={{ minWidth: "56px" }} />
       {aimsQA.map((a) => (
-        <col key={`col-aims-qa-${a.assessmentId}`} style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+        <col key={`col-aims-qa-${a.assessmentId}`} style={{ minWidth: "64px" }} />
       ))}
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      <col style={{ width: "56px", minWidth: "56px", maxWidth: "56px" }} />
-      {/* Grade columns */}
-      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
-      <col style={{ width: "64px", minWidth: "64px", maxWidth: "64px" }} />
+      {/* Grade columns (fixed) */}
+      <col style={{ width: "72px", minWidth: "72px", maxWidth: "72px" }} />
+      <col style={{ width: "72px", minWidth: "72px", maxWidth: "72px" }} />
+      <col style={{ width: "132px", minWidth: "132px", maxWidth: "132px" }} />
     </colgroup>
   );
 
@@ -307,18 +299,13 @@ export function ClassRecordTable({
     <div className="hidden lg:block w-full relative z-[15]">
       {/* ── Sticky Header Stack (pins Card Header + settings panels + table headers + HPS row as ONE) ── */}
       <div
-        className="sticky z-[29] bg-white border-x border-t border-slate-200/60 rounded-t-2xl shadow-sm isolate"
+        className="sticky z-[29] bg-white border-x border-slate-200/80 isolate"
         style={{ top: `${topNavHeight}px` }}
       >
-        {/* Top & corner background masks: prevents scrolled table rows from peeking through rounded-t-2xl corners */}
-        <div className="absolute -top-6 -left-3 -right-3 h-6 bg-slate-100 -z-10 pointer-events-none" />
-        <div className="absolute top-0 -left-3 w-5 h-5 bg-slate-100 -z-10 pointer-events-none" />
-        <div className="absolute top-0 -right-3 w-5 h-5 bg-slate-100 -z-10 pointer-events-none" />
-
         {/* Card Header bar */}
         <div
           ref={ledgerHeaderRef}
-          className="bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-between gap-4 rounded-t-2xl"
+          className="bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-between gap-4"
         >
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-bold text-slate-900 tracking-tight uppercase">Class Ledger</h2>
@@ -358,12 +345,7 @@ export function ClassRecordTable({
             >
               Optional Assessment Details
             </Button>
-            <div id="tutorial-period-controls" className="flex items-center gap-3">
-              {isViewOnly && (
-                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded-md px-2 py-0.5 flex items-center gap-1">
-                  <Eye className="w-3 h-3" /> View Only — Past term grades are finalized
-                </span>
-              )}
+            <div className="flex items-center gap-3">
               {onClearScores && !isViewOnly && (
                 <Button
                   variant="ghost"
@@ -379,42 +361,6 @@ export function ClassRecordTable({
                   {confirmingClear ? "Confirm Clear?" : "Clear Scores"}
                 </Button>
               )}
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Period:</span>
-                {lockedTerm ? (
-                  <span className="text-[11px] font-bold text-foreground bg-slate-100 border border-slate-200 rounded-lg px-3 py-1">
-                    {termLabelsProp?.[lockedTerm as keyof typeof termLabelsProp] ?? (lockedTerm === 'T1' ? 'Term 1' : lockedTerm === 'T2' ? 'Term 2' : 'Term 3')} — fixed schedule
-                  </span>
-                ) : (
-                <Select
-                  value={selectedTerm}
-                  onValueChange={(val) => {
-                    if (val) onTermChange(val);
-                  }}
-                >
-                  <SelectTrigger className="w-24 font-bold" size="sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="shadow-2xl">
-                    {terms.map((q) => {
-                      const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
-                      const isPastTerm = currentTerm && termOrder[q] < termOrder[currentTerm];
-                      return (
-                        <SelectItem
-                          key={q}
-                          value={q}
-                          className="text-[11px] font-bold"
-                          title={isPastTerm ? "Past term — view only" : undefined}
-                        >
-                          {q === "T1" ? "Term 1" : q === "T2" ? "Term 2" : "Term 3"}
-                          {isPastTerm ? " (View Only)" : ""}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -430,76 +376,92 @@ export function ClassRecordTable({
           className="w-full overflow-x-hidden relative z-10 bg-white border-t border-slate-200/60"
         >
           <div className="relative bg-white min-w-full">
-            <Table className="border-separate border-spacing-0 table-fixed min-w-full">
+            <Table className="border-separate border-spacing-0 table-fixed min-w-full" style={{ minWidth: `max(100%, ${tableMinWidth}px)` }}>
               {renderColGroup()}
               <TableHeader>
                 {/* ── Row 1: Category group headers ── */}
-                <TableRow id="tutorial-task-controls" ref={groupRowRef} className="hover:bg-transparent border-0 h-9 transition-none">
+                <TableRow id="tutorial-task-controls" ref={groupRowRef} className="hover:bg-transparent border-0 h-auto transition-none">
                   <TableHead
                     colSpan={3}
-                    className={`${thBase} border-l border-r border-b border-slate-200 text-slate-500 bg-slate-50 w-[424px] min-w-[424px] max-w-[424px] sticky left-0 z-[28] shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]`}
+                    className={`${thBase} border-l border-r border-b border-slate-200 text-slate-500 bg-slate-50 min-w-[388px] sticky left-0 z-[28] shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]`}
                   >
                     Learner Information
                   </TableHead>
 
                   <TableHead
                     colSpan={wwCount + aimsWW.length + 3}
-                    className={`${thBase} border-r text-[var(--ledger-ww)] bg-[var(--ledger-ww-bg)] z-20`}
+                    className={`${thBase} border-r text-[10px] tracking-wide whitespace-normal py-1 text-[var(--ledger-ww)] bg-[var(--ledger-ww-bg)] z-20`}
                   >
-                    <div className="flex items-center justify-center gap-2">
-                      Written Work ({effectiveWeights?.ww ?? classAssignment.subject.writtenWorkWeight}%)
-                      <button
-                        disabled={isViewOnly || wwCount <= 1}
-                        className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-                        onClick={() => onRemoveTask("WW")}
-                      >
-                        <Minus className="w-2.5 h-2.5" />
-                      </button>
-                      <button
-                        disabled={isViewOnly}
-                        className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-                        onClick={() => onAddTask("WW")}
-                      >
-                        <Plus className="w-2.5 h-2.5" />
-                      </button>
+                    <div className="flex flex-col items-center justify-center gap-0.5 leading-tight">
+                      <span>Written / Oral Works (WWs)</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          disabled={isViewOnly || wwCount <= 1}
+                          className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                          onClick={() => onRemoveTask("WW")}
+                        >
+                          <Minus className="w-2.5 h-2.5" />
+                        </button>
+                        <button
+                          disabled={isViewOnly}
+                          className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                          onClick={() => onAddTask("WW")}
+                        >
+                          <Plus className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
                     </div>
                   </TableHead>
 
                   <TableHead
                     colSpan={ptCount + aimsPT.length + 3}
-                    className={`${thBase} border-r text-[var(--ledger-pt)] bg-[var(--ledger-pt-bg)] z-20`}
+                    className={`${thBase} border-r text-[10px] tracking-wide whitespace-normal py-1 text-[var(--ledger-pt)] bg-[var(--ledger-pt-bg)] z-20`}
                   >
-                    <div className="flex items-center justify-center gap-2">
-                      Perf. Tasks ({effectiveWeights?.pt ?? classAssignment.subject.perfTaskWeight}%)
-                      <button
-                        disabled={isViewOnly || ptCount <= 1}
-                        className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-                        onClick={() => onRemoveTask("PT")}
-                      >
-                        <Minus className="w-2.5 h-2.5" />
-                      </button>
-                      <button
-                        disabled={isViewOnly}
-                        className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-                        onClick={() => onAddTask("PT")}
-                      >
-                        <Plus className="w-2.5 h-2.5" />
-                      </button>
+                    <div className="flex flex-col items-center justify-center gap-0.5 leading-tight">
+                      <span>Product / Performance Tasks (PTs)</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          disabled={isViewOnly || ptCount <= 1}
+                          className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                          onClick={() => onRemoveTask("PT")}
+                        >
+                          <Minus className="w-2.5 h-2.5" />
+                        </button>
+                        <button
+                          disabled={isViewOnly}
+                          className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                          onClick={() => onAddTask("PT")}
+                        >
+                          <Plus className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
                     </div>
                   </TableHead>
 
                   <TableHead
-                    colSpan={3 + aimsQA.length}
-                    className={`${thBase} border-r text-[var(--ledger-ta)] bg-[var(--ledger-ta-bg)] z-20`}
+                    colSpan={8 + aimsQA.length}
+                    className={`${thBase} border-r text-[10px] tracking-wide whitespace-normal py-1 text-[var(--ledger-ta)] bg-[var(--ledger-ta-bg)] z-20`}
                   >
-                    TA ({effectiveWeights?.qa ?? classAssignment.subject.quarterlyAssessWeight}%)
+                    Examinations (Exs)
                   </TableHead>
 
                   <TableHead
-                    colSpan={2}
-                    className={`${thBase} border-r text-[var(--ledger-grade)] bg-[var(--ledger-grade-bg)] z-20`}
+                    rowSpan={2}
+                    className={`${thBase} w-[72px] min-w-[72px] max-w-[72px] border-r text-[10px] tracking-wide whitespace-normal leading-tight py-1 text-[var(--ledger-grade)] bg-[var(--ledger-grade-bg)] z-20 align-middle`}
                   >
-                    Grade Summary
+                    Initial Grade
+                  </TableHead>
+                  <TableHead
+                    rowSpan={2}
+                    className={`${thBase} w-[72px] min-w-[72px] max-w-[72px] border-r text-[10px] tracking-wide whitespace-normal leading-tight py-1 text-[var(--ledger-grade)] bg-[var(--ledger-grade-bg)] z-20 align-middle`}
+                  >
+                    Term Grade
+                  </TableHead>
+                  <TableHead
+                    rowSpan={2}
+                    className={`${thBase} w-[132px] min-w-[132px] max-w-[132px] border-r text-[10px] tracking-wide whitespace-normal leading-tight py-1 text-[var(--ledger-grade)] bg-[var(--ledger-grade-bg)] z-20 align-middle`}
+                  >
+                    Descriptor
                   </TableHead>
                 </TableRow>
 
@@ -507,43 +469,46 @@ export function ClassRecordTable({
                 <TableRow ref={subRowRef} className="hover:bg-transparent border-0 h-9 bg-white transition-none">
                   <TableHead className="w-10 min-w-[40px] max-w-[40px] text-center text-[11px] font-bold text-slate-400 uppercase border-l border-r border-b border-slate-200 bg-white sticky left-0 z-[25] bg-clip-padding">#</TableHead>
                   <TableHead className="w-32 min-w-[128px] max-w-[128px] text-[11px] font-bold text-slate-400 uppercase border-r border-b border-slate-200 px-1 bg-white sticky left-[40px] z-[25] bg-clip-padding">LRN</TableHead>
-                  <TableHead className="w-64 min-w-[256px] max-w-[256px] text-[11px] font-bold text-slate-400 uppercase border-r border-b border-slate-200 px-2 bg-white sticky left-[168px] z-[25] bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]">Full Name</TableHead>
+                  <TableHead className="min-w-[220px] text-[11px] font-bold text-slate-400 uppercase border-r border-b border-slate-200 px-2 bg-white sticky left-[168px] z-[25] bg-clip-padding shadow-[2px_0_8px_-1px_rgba(0,0,0,0.06)]">Full Name</TableHead>
 
                   {Array.from({ length: wwCount }).map((_, i) => (
-                    <TableHead key={`h-ww-${i}`} className={`w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold uppercase border-r border-b border-slate-200 bg-clip-padding cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors ${wwColIsAims[i] ? "text-[var(--ledger-aims)] bg-[var(--ledger-aims-bg)]" : "text-slate-400 bg-white"}`} onClick={() => onCellFocus("WW", i)} title={wwColAimsTitle[i]}>{i + 1}</TableHead>
+                    <TableHead key={`h-ww-${i}`} className={` px-1 text-center text-[11px] font-bold uppercase border-r border-b border-slate-200 bg-clip-padding cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors ${wwColIsAims[i] ? "text-[var(--ledger-aims)] bg-[var(--ledger-aims-bg)]" : "text-slate-400 bg-white"}`} onClick={() => onCellFocus("WW", i)} title={wwColAimsTitle[i]}>{i + 1}</TableHead>
                   ))}
-                  {aimsWW.map((a) => (
-                    <TableHead key={`h-aims-ww-${a.assessmentId}`} className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
+                  {aimsWW.map((a, i) => (
+                    <TableHead key={`h-aims-ww-${a.assessmentId}`} id={i === 0 ? "tutorial-aims-group" : undefined} className=" px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
                       <span>{wwCount + 1}</span>
                     </TableHead>
                   ))}
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding">Total</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-indigo-600 uppercase border-r border-b border-slate-200 bg-indigo-50 bg-clip-padding">PS</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-indigo-700 uppercase border-r border-b border-slate-200 bg-indigo-100 bg-clip-padding">WS</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding">Total</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-indigo-600 uppercase border-r border-b border-slate-200 bg-indigo-50 bg-clip-padding">PS</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-indigo-700 uppercase border-r border-b border-slate-200 bg-indigo-100 bg-clip-padding">WS</TableHead>
 
                   {Array.from({ length: ptCount }).map((_, i) => (
-                    <TableHead key={`h-pt-${i}`} className={`w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold uppercase border-r border-b border-slate-200 bg-clip-padding cursor-pointer hover:bg-purple-50 hover:text-purple-600 transition-colors ${ptColIsAims[i] ? "text-[var(--ledger-aims)] bg-[var(--ledger-aims-bg)]" : "text-slate-400 bg-white"}`} onClick={() => onCellFocus("PT", i)} title={ptColAimsTitle[i]}>{i + 1}</TableHead>
+                    <TableHead key={`h-pt-${i}`} className={` px-1 text-center text-[11px] font-bold uppercase border-r border-b border-slate-200 bg-clip-padding cursor-pointer hover:bg-purple-50 hover:text-purple-600 transition-colors ${ptColIsAims[i] ? "text-[var(--ledger-aims)] bg-[var(--ledger-aims-bg)]" : "text-slate-400 bg-white"}`} onClick={() => onCellFocus("PT", i)} title={ptColAimsTitle[i]}>{i + 1}</TableHead>
                   ))}
-                  {aimsPT.map((a) => (
-                    <TableHead key={`h-aims-pt-${a.assessmentId}`} className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
+                  {aimsPT.map((a, i) => (
+                    <TableHead key={`h-aims-pt-${a.assessmentId}`} id={i === 0 && aimsWW.length === 0 ? "tutorial-aims-group" : undefined} className=" px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
                       <span>{ptCount + 1}</span>
                     </TableHead>
                   ))}
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding">Total</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-purple-600 uppercase border-r border-b border-slate-200 bg-purple-50 bg-clip-padding">PS</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-purple-700 uppercase border-r border-b border-slate-200 bg-purple-100 bg-clip-padding">WS</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-slate-500 uppercase border-r border-b border-slate-200 bg-slate-100 bg-clip-padding">Total</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-purple-600 uppercase border-r border-b border-slate-200 bg-purple-50 bg-clip-padding">PS</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-purple-700 uppercase border-r border-b border-slate-200 bg-purple-100 bg-clip-padding">WS</TableHead>
 
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => onCellFocus("QA", 0)}>Score</TableHead>
-                  {aimsQA.map((a) => (
-                    <TableHead key={`h-aims-qa-${a.assessmentId}`} className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => onCellFocus("EX", 0)} title="Summative Test 1">ST1</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => onCellFocus("EX", 1)} title="Summative Test 2">ST2</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => onCellFocus("EX", 2)} title="Term Exam">TE</TableHead>
+                  <TableHead className=" px-1 text-center text-[10px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding" title="Weighted Score ST1 (30%)">WS ST1</TableHead>
+                  <TableHead className=" px-1 text-center text-[10px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding" title="Weighted Score ST2 (30%)">WS ST2</TableHead>
+                  <TableHead className=" px-1 text-center text-[10px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding" title="Weighted Score TE (40%)">WS TE</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding">PS</TableHead>
+                  <TableHead className=" px-1 text-center text-[11px] font-bold text-amber-700 uppercase border-r border-b border-slate-200 bg-amber-100 bg-clip-padding">WS</TableHead>
+                  {aimsQA.map((a, i) => (
+                    <TableHead key={`h-aims-qa-${a.assessmentId}`} id={i === 0 && aimsWW.length === 0 && aimsPT.length === 0 ? "tutorial-aims-group" : undefined} className=" px-1 text-center text-[11px] font-bold text-[var(--ledger-aims)] uppercase border-r border-b border-slate-200 bg-[var(--ledger-aims-bg)] bg-clip-padding" title={`${a.title} — ${a.maxPoints} max`}>
                       <span>AIMS</span>
                     </TableHead>
                   ))}
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-amber-600 uppercase border-r border-b border-slate-200 bg-amber-50 bg-clip-padding">PS</TableHead>
-                  <TableHead className="w-14 min-w-[56px] max-w-[56px] px-1 text-center text-[11px] font-bold text-amber-700 uppercase border-r border-b border-slate-200 bg-amber-100 bg-clip-padding">WS</TableHead>
 
-                  <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-emerald-600 uppercase border-r border-b border-slate-200 bg-emerald-50 bg-clip-padding">Initial</TableHead>
-                  <TableHead className="w-16 min-w-[64px] max-w-[64px] px-1 text-center text-[11px] font-bold text-slate-900 uppercase bg-emerald-100 bg-clip-padding border-r border-b border-slate-200">Grade</TableHead>
                 </TableRow>
 
                 {/* ── Row 3: HPS (MAX) Row ── */}
@@ -586,7 +551,7 @@ export function ClassRecordTable({
         className="w-full overflow-x-auto overflow-y-clip relative z-10 bg-white rounded-b-2xl border-x border-b border-slate-200/60 shadow-sm scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100"
       >
         <div className="relative bg-white min-w-full">
-          <Table className="border-separate border-spacing-0 table-fixed min-w-full">
+          <Table className="border-separate border-spacing-0 table-fixed min-w-full" style={{ minWidth: `max(100%, ${tableMinWidth}px)` }}>
             {renderColGroup()}
             <TableBody>
               {tableRows}

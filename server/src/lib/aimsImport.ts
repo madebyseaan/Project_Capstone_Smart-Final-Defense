@@ -6,7 +6,7 @@
  * This lib receives pre-validated input and does the data work.
  */
 
-import { Term, AuditAction, AuditSeverity } from "@prisma/client";
+import { Term, AuditAction, AuditSeverity, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { createAuditLog } from "./audit";
@@ -372,6 +372,8 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
       const gradePayload = {
         writtenWorkScores: mergedWW,
         perfTaskScores: mergedPT,
+        // An imported AIMS QA is a composite — it supersedes any ST1/ST2/TE breakdown.
+        examScores: qaApplied ? Prisma.DbNull : undefined,
         quarterlyAssessScore: finalQAScore,
         quarterlyAssessMax: finalQAMax,
         qaDescription: finalQADesc,

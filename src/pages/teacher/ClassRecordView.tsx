@@ -8,7 +8,6 @@ import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
 import { GradeEditModal } from "./components/GradeEditModal";
 import { GradeStatusBanner } from "@/components/GradeStatusBanner";
 import { ClassRecordHero } from "./components/ClassRecordHero";
-import { ClassRecordStats } from "./components/ClassRecordStats";
 import { ClassRecordTour } from "./components/ClassRecordTour";
 import { EditRequestModal } from "./components/EditRequestModal";
 import { AssessmentHeader } from "./components/AssessmentHeader";
@@ -17,15 +16,15 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "@/lib/toast";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
 import { getDisplayFinalGrade as computeDisplayFinalGrade, getMobileDraftKey, getScoreFromGrade as computeScoreFromGrade } from "./components/classRecordMobileUtils";
-import { getGradeColor } from "@/lib/gradeMath";
+import { getGradeColor, EXAM_SUB_TESTS } from "@/lib/gradeMath";
 import { useClassRecordQuery, useTransmutationTable } from "./hooks/useClassRecord";
 import { useEditAccess } from "./hooks/useEditAccess";
 import { useAssessmentMeta } from "./hooks/useAssessmentMeta";
 import { useMobileEditor } from "./hooks/useMobileEditor";
 import { useStickyLayout } from "./hooks/useStickyLayout";
 import { useAimsData } from "./hooks/useAimsData";
-import { AimsPanel } from "./components/AimsPanel";
-import { ExcelExchangePanel } from "./components/ExcelExchangePanel";
+import { ClassRecordHeroTools } from "./components/ClassRecordHeroTools";
+import { ClassDescriptorFooter } from "./components/ClassDescriptorFooter";
 import { InheritedGradesNotice } from "./components/InheritedGradesNotice";
 import { MobileWarningDialog } from "./components/MobileWarningDialog";
 
@@ -163,30 +162,34 @@ export default function ClassRecordView() {
     const wwScores: ScoreItem[] = Array.from({ length: metaHook.wwCount }, (_, i) => ({ name: `WW ${i + 1}`, score: 0, maxScore: 0 }));
     const ptScores: ScoreItem[] = Array.from({ length: metaHook.ptCount }, (_, i) => ({ name: `PT ${i + 1}`, score: 0, maxScore: 0 }));
     let qaMax = 0;
+    const examMaxes = EXAM_SUB_TESTS.map(() => 0);
     mergedRecords.forEach((record) => {
       const grade = record.grades.find((g) => g.term === selectedTerm);
       if (!grade) return;
       (grade.writtenWorkScores || []).forEach((item: any, i: number) => { if (i < wwScores.length) wwScores[i].maxScore = Math.max(wwScores[i].maxScore || 0, Number(item.maxScore) || 0); });
       (grade.perfTaskScores || []).forEach((item: any, i: number) => { if (i < ptScores.length) ptScores[i].maxScore = Math.max(ptScores[i].maxScore || 0, Number(item.maxScore) || 0); });
+      (grade.examScores || []).forEach((item: any, i: number) => { if (i < examMaxes.length) examMaxes[i] = Math.max(examMaxes[i], Number(item.maxScore) || 0); });
       qaMax = Math.max(qaMax, Number(grade.quarterlyAssessMax) || 0);
     });
-    return { wwScores, ptScores, qaMax: qaMax || 100 };
+    const examMaxesFinal = EXAM_SUB_TESTS.map((sub, i) => examMaxes[i] > 0 ? examMaxes[i] : sub.defaultMax);
+    return { wwScores, ptScores, qaMax: qaMax || 100, examMaxes: examMaxesFinal };
   }, [mergedRecords, selectedTerm, metaHook.wwCount, metaHook.ptCount]);
 
-  const getCellKey = useCallback((sid: string, cat: "WW" | "PT" | "QA", idx: number) => `${sid}:${cat}:${idx}`, []);
-  const getMaxForCell = useCallback((cat: "WW" | "PT" | "QA", idx: number): number => {
+  const getCellKey = useCallback((sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => `${sid}:${cat}:${idx}`, []);
+  const getMaxForCell = useCallback((cat: "WW" | "PT" | "QA" | "EX", idx: number): number => {
     if (cat === "WW") return Number(hpsData.wwScores[idx]?.maxScore ?? 0);
     if (cat === "PT") return Number(hpsData.ptScores[idx]?.maxScore ?? 0);
+    if (cat === "EX") return Number(hpsData.examMaxes[idx] ?? 0);
     return Number(hpsData.qaMax ?? 0);
   }, [hpsData]);
-  const isCellInvalid = useCallback((sid: string, cat: "WW" | "PT" | "QA", idx: number) => invalidCells[getCellKey(sid, cat, idx)], [invalidCells, getCellKey]);
+  const isCellInvalid = useCallback((sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => invalidCells[getCellKey(sid, cat, idx)], [invalidCells, getCellKey]);
 
-  const handleScoreUpdate = useCallback(async (studentId: string, category: "WW" | "PT" | "QA", index: number, newValue: number) => {
+  const handleScoreUpdate = useCallback(async (studentId: string, category: "WW" | "PT" | "QA" | "EX", index: number, newValue: number) => {
     if (editAccess.isViewOnly) return;
     await executeScoreUpdate({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, studentId, category, index, newValue, qaMeta: metaHook.qaMeta, getCellKey, getMaxForCell, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setInvalidCells, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
   }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook.qaMeta, getCellKey, getMaxForCell, metaHook.applyMetaToScores, fetchClassRecord]);
 
-  const handleHpsUpdate = useCallback(async (category: "WW" | "PT" | "QA", index: number, newMax: number) => {
+  const handleHpsUpdate = useCallback(async (category: "WW" | "PT" | "QA" | "EX", index: number, newMax: number) => {
     if (editAccess.isViewOnly) return;
     await executeHpsUpdate({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, category, index, newMax, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setError, setSuccess, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
   }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook.qaMeta, metaHook.applyMetaToScores, fetchClassRecord]);
@@ -229,10 +232,14 @@ export default function ClassRecordView() {
     aimsAllAssessments,
     aimsByStudent,
     linkDialogSignal,
-    setLinkDialogSignal,
   } = useAimsData(classAssignmentId, selectedTerm);
 
-  const commitScoreInput = useCallback((inputEl: HTMLInputElement, studentId: string, category: "WW" | "PT" | "QA", index: number): boolean => {
+  const handleToolsChanged = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["class-record", classAssignmentId] });
+    aimsQuery.refetch();
+  }, [queryClient, classAssignmentId, aimsQuery.refetch]);
+
+  const commitScoreInput = useCallback((inputEl: HTMLInputElement, studentId: string, category: "WW" | "PT" | "QA" | "EX", index: number): boolean => {
     const rawValue = inputEl.value.trim().toUpperCase();
     const isSpecial = rawValue === "A" || rawValue === "E";
     const key = getCellKey(studentId, category, index);
@@ -248,7 +255,8 @@ export default function ClassRecordView() {
     if (Number.isNaN(parsed) || parsed < 0 || parsed > maxAllowed) {
       inputEl.value = inputEl.dataset.prev ?? "";
       setInvalidCells((prev) => ({ ...prev, [key]: `Score cannot exceed ${maxAllowed}.` }));
-      setError(`${category} ${category === "QA" ? "" : index + 1} score cannot exceed MAX (${maxAllowed}).`.trim());
+      const label = category === "QA" ? "QA" : category === "EX" ? (EXAM_SUB_TESTS[index]?.name ?? "EX") : `${category} ${index + 1}`;
+      setError(`${label} score cannot exceed MAX (${maxAllowed}).`.trim());
       return false;
     }
     setInvalidCells((prev) => { if (!prev[key]) return prev; const next = { ...prev }; delete next[key]; return next; });
@@ -266,7 +274,7 @@ export default function ClassRecordView() {
   if (!classAssignment) return null;
 
   return (
-    <div className="space-y-6 animate-fade-in w-full px-6 pb-12">
+    <div className="space-y-0 animate-fade-in w-full px-6 pb-12">
       {isArchivedAssignment && (
         <div className={`rounded-2xl border p-4 flex items-center gap-3 ${isTransferredAssignment ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-destructive/5 border-destructive/20 text-destructive'}`}>
           <AlertTriangle className="w-5 h-5 shrink-0" />
@@ -278,9 +286,31 @@ export default function ClassRecordView() {
         </div>
       )}
 
-      <ClassRecordHero classAssignment={classAssignment} effectiveWeightsSource={effectiveWeights?.source ?? null} onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }} aimsCourseCode={aimsData?.linked ? aimsData?.course?.code : null} aimsLastSyncedAt={aimsData?.lastSyncedAt ?? null} onOpenAimsLink={!aimsData?.linked ? () => setLinkDialogSignal(s => s + 1) : undefined} />
+      <ClassRecordHero
+        classAssignment={classAssignment}
+        effectiveWeightsSource={effectiveWeights?.source ?? null}
+        activeWeights={activeWeights}
+        stats={stats}
+        onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }}
+        selectedTerm={selectedTerm}
+        onTermChange={setSelectedTerm}
+        lockedTerm={lockedTerm}
+        termLabels={termLabels}
+        isViewOnly={editAccess.isViewOnly}
+        userName={userName}
+        toolsSlot={classAssignmentId ? (
+          <ClassRecordHeroTools
+            classAssignmentId={classAssignmentId}
+            selectedTerm={selectedTerm}
+            aimsData={aimsData ?? null}
+            isViewOnly={editAccess.isViewOnly}
+            openLinkDialogSignal={linkDialogSignal}
+            onChanged={handleToolsChanged}
+          />
+        ) : undefined}
+      />
 
-      <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={isPastTerm && !gradeLock && editAccess.editRequestStatus === "idle" ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} termDatesDerived={termDates?.derived} />
+      <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={isPastTerm && !gradeLock && editAccess.editRequestStatus === "idle" ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} termDatesDerived={termDates?.derived} locks={classRecordQuery.data?.locks ?? null} />
 
       {lockedTerm && classAssignment?.subject?.rotationTermRank && (
         <RotationBanner
@@ -289,30 +319,6 @@ export default function ClassRecordView() {
           termLabel={termLabels[lockedTerm as keyof typeof termLabels] ?? lockedTerm}
           currentTermLabel={termLabels[currentTerm as keyof typeof termLabels] ?? currentTerm}
           siblings={rotationSiblings}
-        />
-      )}
-
-      {stats && <ClassRecordStats avg={stats.avg} passed={stats.passed} total={mergedRecords.length} highest={stats.highest} lowest={stats.lowest} />}
-
-      {classAssignmentId && (
-        <AimsPanel
-          classAssignmentId={classAssignmentId}
-          selectedTerm={selectedTerm}
-          aimsData={aimsData ?? null}
-          isViewOnly={editAccess.isViewOnly}
-          openLinkDialogSignal={linkDialogSignal}
-          onImportComplete={() => {
-            queryClient.invalidateQueries({ queryKey: ["class-record", classAssignmentId] });
-            aimsQuery.refetch();
-          }}
-        />
-      )}
-
-      {classAssignmentId && (
-        <ExcelExchangePanel
-          classAssignmentId={classAssignmentId}
-          selectedTerm={selectedTerm}
-          isViewOnly={editAccess.isViewOnly}
         />
       )}
 
@@ -334,7 +340,9 @@ export default function ClassRecordView() {
         <>
           <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} aimsByStudent={aimsByStudent} aimsAssessments={aimsAssessments} />
 
-      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} lockedTerm={lockedTerm} currentTerm={currentTerm} termLabels={termLabels} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={metaHook.openMetaEditor} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsAllAssessments={aimsAllAssessments} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
+      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={(cat, idx) => { if (cat === "EX") return; metaHook.openMetaEditor(cat, idx); }} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsAllAssessments={aimsAllAssessments} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
+
+      <ClassDescriptorFooter average={stats?.avg ?? null} totalLearners={mergedRecords.length} />
 
       <GradeEditModal open={mobileEditor.mobileEditorOpen} onOpenChange={(open) => { mobileEditor.setMobileEditorOpen(open); if (!open) { mobileEditor.setMobileEditorStudentId(null); mobileEditor.setMobileScoreDraft({}); } }} selectedRecord={mobileEditor.selectedMobileRecord} selectedTerm={selectedTerm} mobileEditorTab={mobileEditor.mobileEditorTab} onTabChange={mobileEditor.setMobileEditorTab} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} mobileScoreDraft={mobileEditor.mobileScoreDraft} invalidCells={invalidCells} getCellKey={getCellKey} getMobileDraftKey={getMobileDraftKey} getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)} getMaxForCell={getMaxForCell} onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange} onMobileScoreCommit={mobileEditor.commitMobileScore} onApplyColumnMeta={metaHook.applyColumnMetaFromMobile} isViewOnly={editAccess.isViewOnly} aimsScores={mobileEditor.selectedMobileRecord ? aimsByStudent[mobileEditor.selectedMobileRecord.student.id] : undefined} aimsAssessmentTitles={Object.fromEntries(aimsAssessments.map(a => [a.assessmentId, a.title]))} aimsAllAssessments={aimsAllAssessments} aimsByStudent={aimsByStudent} />
 

@@ -8,6 +8,8 @@ interface ExcelExchangePanelProps {
   classAssignmentId: string;
   selectedTerm: string;
   isViewOnly: boolean;
+  /** When true, immediately open the OS file picker on mount (used by hero "Import filled Excel") */
+  autoStartImport?: boolean;
 }
 
 interface ApiErrorBody {
@@ -20,7 +22,7 @@ function errorMessage(err: unknown): string {
   return body?.message || body?.details?.join(" ") || "Request failed. Please try again.";
 }
 
-export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly }: ExcelExchangePanelProps) {
+export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly, autoStartImport = false }: ExcelExchangePanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<EcrImportReport | null>(null);
@@ -31,6 +33,11 @@ export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly
     setFile(null);
     setReport(null);
   }, [classAssignmentId, selectedTerm]);
+
+  // Open the OS file picker immediately when requested by the hero action
+  useEffect(() => {
+    if (autoStartImport) fileInputRef.current?.click();
+  }, [autoStartImport]);
 
   const handleDownload = async () => {
     setBusy("downloading");

@@ -6,5 +6,14 @@
       "command": ["npx", "-y", "@playwright/mcp"],
       "enabled": true
     }
+  },
+  "provider": {
+    "deepseek": {
+      "models": {
+        "deepseek-v4-flash": {
+          "name": "DeepSeek V4 Flash"
+        }
+      }
+    }
   }
 }

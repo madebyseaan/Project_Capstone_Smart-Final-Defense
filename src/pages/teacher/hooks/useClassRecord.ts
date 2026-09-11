@@ -24,6 +24,8 @@ interface ClassRecordResponse {
   locks?: {
     systemLocked: boolean;
     yearLocked: boolean;
+    yearLockedBy?: string | null;
+    yearLockedAt?: string | null;
     termLocks: { T1: boolean; T2: boolean; T3: boolean };
   };
   inheritedGrades?: InheritedGrade[];
