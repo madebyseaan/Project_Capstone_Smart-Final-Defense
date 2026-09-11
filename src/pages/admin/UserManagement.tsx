@@ -136,7 +136,7 @@ export default function UserManagement() {
       user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
     const matchesRole = selectedRole === "all" || user.role === selectedRole;
-    const matchesStatus = selectedStatus === "all" || user.status === selectedStatus;
+    const matchesStatus = selectedStatus === "all" || (user.status?.toUpperCase() === "ACTIVE" ? "Active" : "Inactive") === selectedStatus;
     return matchesSearch && matchesRole && matchesStatus;
   });
 
@@ -145,7 +145,7 @@ export default function UserManagement() {
     admin: users.filter((u) => u.role === "ADMIN").length,
     teacher: users.filter((u) => u.role === "TEACHER").length,
     registrar: users.filter((u) => u.role === "REGISTRAR").length,
-    active: users.filter((u) => u.status === "Active").length,
+    active: users.filter((u) => u.status?.toUpperCase() === "ACTIVE").length,
   };
 
   const handleCreate = async () => {
@@ -368,7 +368,7 @@ export default function UserManagement() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {user.status === "Active" ? (
+                        {user.status?.toUpperCase() === "ACTIVE" ? (
                           <Badge className="border-0 font-medium" style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}>
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             Active
