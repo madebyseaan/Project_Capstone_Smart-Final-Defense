@@ -387,15 +387,35 @@ export default function UserManagement() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 gap-1.5 px-3"
-                          onClick={() => openViewDialog(user)}
-                        >
-                          <Eye className="w-4 h-4" />
-                          View Details
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1.5 px-3"
+                            onClick={() => openViewDialog(user)}
+                          >
+                            <Eye className="w-4 h-4" />
+                            View Details
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => openEditDialog(user)}
+                            title="Edit user"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            onClick={() => openDeleteDialog(user)}
+                            title="Delete user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
