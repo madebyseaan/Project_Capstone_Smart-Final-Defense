@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { FileText, Clock, CheckCircle, XCircle, Loader2, Timer, BookOpen, GraduationCap, Layers, Ban } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, CheckCircle, XCircle, ShieldCheck, Ban, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, ShieldCheck, Ban, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

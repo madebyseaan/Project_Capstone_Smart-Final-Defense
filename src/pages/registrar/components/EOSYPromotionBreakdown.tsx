@@ -1,5 +1,4 @@
 import { CheckCircle, AlertTriangle, XCircle, Award } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
 interface EOSYPromotionBreakdownProps {
   enrollments: any[];

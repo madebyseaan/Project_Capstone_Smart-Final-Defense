@@ -40,7 +40,6 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
   selectedTerm,
   termEndDate,
   gradeLock,
-  colors,
   editRequestStatus = "idle",
   editTimeRemaining,
   onRequestEdit,

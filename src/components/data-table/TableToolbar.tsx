@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,17 +18,6 @@ interface TableToolbarProps {
   actions?: React.ReactNode;
 }
 
-function useDebouncedValue(value: string, delay = 300) {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-
-  return debounced;
-}
-
 export function TableToolbar({
   searchPlaceholder = "Search...",
   searchValue: controlledSearch,
@@ -39,8 +28,6 @@ export function TableToolbar({
   const [internalSearch, setInternalSearch] = useState("");
   const isControlled = controlledSearch !== undefined && onSearchChange !== undefined;
   const searchValue = isControlled ? controlledSearch : internalSearch;
-
-  const debouncedSearch = useDebouncedValue(searchValue);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
