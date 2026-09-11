@@ -11,7 +11,7 @@
 | C1 — plan+log committed | `9e94534` | This plan + this log. |
 | C2 — Select + JSX fixed | `095f528` | Select API aligned to @base-ui v1.3; React 19 JSX namespace. tsc 216 → 157. |
 | C2b — status filter fix | `8bb9aef` | User Management Active/Inactive filter case-insensitive (pre-existing bug). |
-| C3 — unused vars fixed | _(pending)_ | TS6133/TS6192 pass. |
+| C3 — unused vars (batches 1–3) | `8f606df` | Layouts + imports + misc. tsc 216 → 125. ~35 unused remain. |
 | C4 — long-tail structural | _(pending)_ | Remaining TS2339/2345/2322 etc. |
 
 **Full rollback to last known-good:** `git reset --hard b816593`
@@ -66,6 +66,15 @@ Captured with: `npx tsc -b --force` (frontend).
 - Commit: none
 
 <!-- Append one block per step, in order. -->
+
+### Unused-variable cleanup — batches 1–3 (commits `a2682be`, `a75d464`, `8f606df`)
+- Batch 1 (layouts): AdminLayout, RegistrarLayout, TeacherLayout. tsc 157 → 147.
+- Batch 2 (imports/helpers, 10 files): tsc 147 → 135.
+- Batch 3 (misc, 6 files): tsc 135 → 125.
+- Each batch: verified `tsc` count dropped by exactly the number removed, frontend
+  build OK, no new errors, committed separately (revertable individually).
+- Server untouched throughout (build + 197 tests unchanged).
+- Playwright smoke test of batches 1–2: **24/24 pages pass**.
 
 ### Step A — Select API alignment + React 19 JSX (commit `095f528`)
 - **Reordered ahead of the unused-var pass on purpose:** one file (`select.tsx`) caused 47 errors,
