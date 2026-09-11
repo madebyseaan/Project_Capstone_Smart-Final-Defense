@@ -198,7 +198,7 @@ export default function SystemSettings() {
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [, setHasChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [schoolYears, setSchoolYears] = useState<Array<{ id: string; label: string; status: string }>>([]);
   const [gradeLockModalOpen, setGradeLockModalOpen] = useState(false);
@@ -324,10 +324,6 @@ export default function SystemSettings() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleCancelLogo = () => {
-    // kept for compatibility — no longer used
   };
 
   const handleSyncFromEnrollPro = async () => {

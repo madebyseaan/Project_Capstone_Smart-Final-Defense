@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { adminApi } from "../../lib/api";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -51,7 +50,6 @@ interface TransmutationRow {
 }
 
 export default function TransmutationTable() {
-  const navigate = useNavigate();
   const { colors } = useTheme();
   const [rows, setRows] = useState<TransmutationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +105,6 @@ export default function TransmutationTable() {
   const updateCell = (index: number, field: keyof TransmutationRow, value: number) => {
     setRows((prev) => {
       const next = prev.map((r, i) => (i === index ? { ...r, [field]: value } : r));
-      const r = next[index];
       const round2 = (n: number) => Math.round(n * 100) / 100;
 
       if (field === "maxGrade" && index < next.length - 1) {
@@ -403,7 +400,7 @@ export default function TransmutationTable() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filtered.map((row, idx) => {
+                    filtered.map((row) => {
                       const realIndex = rows.indexOf(row);
                       return (
                         <TableRow key={realIndex}>

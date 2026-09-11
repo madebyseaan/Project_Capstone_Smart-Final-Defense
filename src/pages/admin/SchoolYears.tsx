@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { adminApi } from "../../lib/api";
-import { useTheme } from "../../contexts/ThemeContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -51,8 +49,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function SchoolYears() {
-  const navigate = useNavigate();
-  const { colors } = useTheme();
   const [years, setYears] = useState<SchoolYear[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
