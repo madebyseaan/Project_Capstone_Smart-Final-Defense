@@ -101,3 +101,14 @@ Captured with: `npx tsc -b --force` (frontend).
 - **Rollback:** `git revert 8bb9aef`
 - **Manual smoke test: PENDING user** — select **Active** → should show all users;
   **Inactive** → 0 (there are currently no suspended users).
+
+### Automated Playwright smoke test — PASSED (2026-09-11)
+- Commits under test: `a2682be`, `a75d464`.
+- **24/24 pages rendered, 0 failures, no network errors.** Sidebar nav OK on all 3 portals.
+  27 screenshots in `tests/screenshots/`.
+- Two **pre-existing** console warnings (not regressions):
+  - `/admin/grading`: React "non-boolean attribute" dev warning.
+  - `/registrar/roster`: `<div>` inside `<tr>` HTML-nesting warning.
+- **GAP:** the report confirmed the Status dropdown *opens* but did not confirm it
+  *filters* (Step B fix). Follow-up test requested: select Active → count rows;
+  select Inactive → count rows.
