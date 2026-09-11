@@ -11,7 +11,7 @@
 | C1 — plan+log committed | `9e94534` | This plan + this log. |
 | C2 — Select + JSX fixed | `095f528` | Select API aligned to @base-ui v1.3; React 19 JSX namespace. tsc 216 → 157. |
 | C2b — status filter fix | `8bb9aef` | User Management Active/Inactive filter case-insensitive (pre-existing bug). |
-| C3 — unused vars (batches 1–3) | `8f606df` | Layouts + imports + misc. tsc 216 → 125. ~35 unused remain. |
+| C3 — unused vars (batches 1–4B) | `02cd1ee` | tsc 216 → 92. 65/68 unused removed; 3 intentional exceptions. |
 | C4 — long-tail structural | _(pending)_ | Remaining TS2339/2345/2322 etc. |
 
 **Full rollback to last known-good:** `git reset --hard b816593`
@@ -75,6 +75,25 @@ Captured with: `npx tsc -b --force` (frontend).
   build OK, no new errors, committed separately (revertable individually).
 - Server untouched throughout (build + 197 tests unchanged).
 - Playwright smoke test of batches 1–2: **24/24 pages pass**.
+
+### Unused-variable cleanup — batch 4 (commits `7665b15`, `02cd1ee`)
+- Batch 4A (admin: SchoolYears, SystemSettings, TransmutationTable, UserManagement): tsc 125 → 117.
+  (Also removed newly-orphaned `useNavigate`/`useTheme` imports.)
+- Batch 4B (registrar + teacher: AlumniStudents, SF1Form, EOSYFinalization, SchoolForms,
+  ClassRecordMobileList, ClassRecordTable, GradeEditModal, teacher/Dashboard): tsc 117 → 92.
+- Special cases handled carefully (not blind-deleted):
+  - `AlumniStudents`: kept the API call, dropped only the unused binding.
+  - `hasChanges`/`sectionMeta`/`finalizeStatus`/`eosyMessage`/`loading`: kept the `useState`
+    setter, dropped the unused value.
+  - Unused callback params → `_`.
+- Final unused count: **3 intentional exceptions**:
+  1. `DEPED_DIVISIONS` (SystemSettings) — 115-line unused array; low value, large diff.
+  2. `openEditDialog` / `openDeleteDialog` (UserManagement) — **feature gap**: the Edit/Delete
+     User dialogs have no button to open them. Kept pending a decision (restore vs drop).
+
+### Remaining after unused cleanup
+- Total tsc errors: **92** (was 216). All remaining are **structural**:
+  TS2339 (34), TS2345 (23), TS2322 (17), TS7006 (5), TS18048 (3), TS1117 (2), +5 singles.
 
 ### Step A — Select API alignment + React 19 JSX (commit `095f528`)
 - **Reordered ahead of the unused-var pass on purpose:** one file (`select.tsx`) caused 47 errors,
