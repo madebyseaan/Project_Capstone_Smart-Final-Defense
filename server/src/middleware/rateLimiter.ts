@@ -8,12 +8,14 @@ export const globalLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
   skip: (req) => {
+    const path = (req.originalUrl || req.url).split('?')[0];
     // Exempt auth endpoints and SSE stream from rate limiting
-    if (req.path.startsWith('/api/auth/')) return true;
-    if (req.path.startsWith('/api/integration/sync/stream')) return true;
-    // Exempt cheap GET endpoints needed by every page
-    if (req.path.startsWith('/api/admin/settings')) return true;
-    if (req.path === '/api/health') return true;
+    if (path.startsWith('/api/auth/')) return true;
+    if (path.startsWith('/api/integration/sync/stream')) return true;
+    // Exempt the cheap read endpoints needed by every page
+    if (req.method === 'GET' && path === '/api/admin/settings/public') return true;
+    if (req.method === 'GET' && path === '/api/admin/settings') return true;
+    if (path === '/api/health') return true;
     return false;
   },
 });

@@ -1,36 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Activity,
-  Search,
-  Download,
-  Clock,
-  Plus,
-  Edit3,
-  Trash2,
-  LogIn,
-  LogOut,
-  Settings,
   AlertTriangle,
-  Info,
   Calendar,
-  User,
-  FileText,
-  Database,
-  RefreshCw,
+  Clock,
+  Download,
   Loader2,
+  LogIn,
+  Monitor,
+  RefreshCw,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -42,56 +23,39 @@ import { adminApi, getPortalToken } from "@/lib/api";
 import type { AdminAuditLog } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { SearchInput } from "@/components/layout/SearchInput";
+import { StatCard } from "@/components/layout/StatCard";
+import { DataTable, Dash, usePagination } from "@/components/data-table";
+import type { TableColumn } from "@/components/data-table";
+import { toast } from "@/lib/toast";
+import { AuditLogDetailDialog } from "./components/AuditLogDetailDialog";
+import {
+  actionIcons,
+  actionLabels,
+  defaultActionIcon,
+  deviceTypeIcon,
+  formatExactDate,
+  formatRelative,
+  NetworkBadge,
+  OutcomeBadge,
+  SeverityBadge,
+} from "./components/auditHelpers";
 
-const actionLabels: Record<string, string> = {
-  create: "Created",
-  update: "Updated",
-  delete: "Deleted",
-  login: "Login",
-  logout: "Logout",
-  config: "Configured",
-};
-
-const actionColors: Record<string, string> = {
-  create: "action-theme-15",
-  update: "action-theme-25",
-  delete: "bg-red-100 text-red-700",
-  login: "action-theme-35",
-  logout: "bg-muted text-muted-foreground",
-  config: "action-theme-45",
-};
-
-const actionIcons: Record<string, React.ReactNode> = {
-  create: <Plus className="w-3.5 h-3.5" />,
-  update: <Edit3 className="w-3.5 h-3.5" />,
-  delete: <Trash2 className="w-3.5 h-3.5" />,
-  login: <LogIn className="w-3.5 h-3.5" />,
-  logout: <LogOut className="w-3.5 h-3.5" />,
-  config: <Settings className="w-3.5 h-3.5" />,
-};
-
-const severityConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
-  info: { icon: <Info className="w-3.5 h-3.5" />, color: "bg-muted text-muted-foreground", label: "Info" },
-  warning: { icon: <AlertTriangle className="w-3.5 h-3.5" />, color: "bg-amber-100 text-amber-700", label: "Warning" },
-  critical: { icon: <AlertTriangle className="w-3.5 h-3.5" />, color: "bg-red-100 text-red-700", label: "Critical" },
-};
-
-const targetTypeIcons: Record<string, React.ReactNode> = {
-  Grades: <FileText className="w-4 h-4" />,
-  Auth: <LogIn className="w-4 h-4" />,
-  Config: <Settings className="w-4 h-4" />,
-  Student: <User className="w-4 h-4" />,
-  User: <User className="w-4 h-4" />,
-};
+function avatarInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState<AdminAuditLog[]>([]);
   const { colors } = useTheme();
   const [counts, setCounts] = useState({
     total: 0,
-    creates: 0,
-    updates: 0,
-    deletes: 0,
+    today: 0,
+    failed: 0,
+    uniqueDevices: 0,
     logins: 0,
     critical: 0,
   });
@@ -100,8 +64,13 @@ export default function AuditLogs() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAction, setSelectedAction] = useState("all");
   const [selectedSeverity, setSelectedSeverity] = useState("all");
+  const [selectedNetwork, setSelectedNetwork] = useState("all");
+  const [selectedDevice, setSelectedDevice] = useState("all");
+  const [selectedOutcome, setSelectedOutcome] = useState("all");
   const [exporting, setExporting] = useState(false);
   const [liveCount, setLiveCount] = useState(0);
+  const [selectedLog, setSelectedLog] = useState<AdminAuditLog | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchLogs = async () => {
@@ -110,11 +79,21 @@ export default function AuditLogs() {
       const response = await adminApi.getLogs({
         action: selectedAction !== "all" ? selectedAction : undefined,
         severity: selectedSeverity !== "all" ? selectedSeverity : undefined,
+        network: selectedNetwork !== "all" ? selectedNetwork : undefined,
+        deviceType: selectedDevice !== "all" ? selectedDevice : undefined,
+        outcome: selectedOutcome !== "all" ? selectedOutcome : undefined,
         search: searchQuery || undefined,
         limit: 100,
       });
       setLogs(response.data.logs);
-      setCounts(response.data.counts);
+      setCounts({
+        total: response.data.counts.total,
+        today: response.data.counts.today ?? 0,
+        failed: response.data.counts.failed ?? 0,
+        uniqueDevices: response.data.counts.uniqueDevices ?? 0,
+        logins: response.data.counts.logins,
+        critical: response.data.counts.critical,
+      });
       setError(null);
     } catch (err) {
       console.error("Failed to fetch logs:", err);
@@ -126,7 +105,7 @@ export default function AuditLogs() {
 
   useEffect(() => {
     fetchLogs();
-  }, [selectedAction, selectedSeverity]);
+  }, [selectedAction, selectedSeverity, selectedNetwork, selectedDevice, selectedOutcome]);
 
   // Debounced search
   useEffect(() => {
@@ -158,11 +137,14 @@ export default function AuditLogs() {
           // Only prepend if not filtered out by current filters
           const actionMatch = selectedAction === "all" || newLog.action === selectedAction;
           const severityMatch = selectedSeverity === "all" || newLog.severity === selectedSeverity;
-          const searchMatch = !searchQuery || 
+          const networkMatch = selectedNetwork === "all" || newLog.network === selectedNetwork;
+          const deviceMatch = selectedDevice === "all" || newLog.deviceType === selectedDevice;
+          const outcomeMatch = selectedOutcome === "all" || newLog.outcome === selectedOutcome;
+          const searchMatch = !searchQuery ||
             newLog.user?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             newLog.target?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             newLog.details?.toLowerCase().includes(searchQuery.toLowerCase());
-          if (actionMatch && severityMatch && searchMatch) {
+          if (actionMatch && severityMatch && networkMatch && deviceMatch && outcomeMatch && searchMatch) {
             return [newLog, ...prev];
           }
           return prev;
@@ -170,9 +152,8 @@ export default function AuditLogs() {
         setCounts((prev) => ({
           ...prev,
           total: prev.total + 1,
-          creates: newLog.action === "create" ? prev.creates + 1 : prev.creates,
-          updates: newLog.action === "update" ? prev.updates + 1 : prev.updates,
-          deletes: newLog.action === "delete" ? prev.deletes + 1 : prev.deletes,
+          today: prev.today + 1,
+          failed: newLog.outcome === "failure" ? prev.failed + 1 : prev.failed,
           logins: (newLog.action === "login" || newLog.action === "logout") ? prev.logins + 1 : prev.logins,
           critical: newLog.severity === "critical" ? prev.critical + 1 : prev.critical,
         }));
@@ -203,13 +184,13 @@ export default function AuditLogs() {
       es?.close();
       eventSourceRef.current = null;
     };
-  }, [selectedAction, selectedSeverity, searchQuery]);
+  }, [selectedAction, selectedSeverity, selectedNetwork, selectedDevice, selectedOutcome, searchQuery]);
 
   const handleExport = async () => {
     try {
       setExporting(true);
       const response = await adminApi.exportLogs();
-      const blob = new Blob([response.data as any], { type: "text/csv" });
+      const blob = new Blob([response.data as BlobPart], { type: "text/csv" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -220,61 +201,172 @@ export default function AuditLogs() {
       document.body.removeChild(a);
     } catch (err) {
       console.error("Failed to export logs:", err);
-      alert("Failed to export logs");
+      toast.error("Failed to export logs");
     } finally {
       setExporting(false);
     }
   };
 
-  if (loading && logs.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-          <p className="text-muted-foreground">Loading audit logs...</p>
-        </div>
-      </div>
-    );
-  }
+  const openDetail = (log: AdminAuditLog) => {
+    setSelectedLog(log);
+    setDetailOpen(true);
+  };
 
-  if (error && logs.length === 0) {
+  const pagination = usePagination({ totalRows: logs.length });
+
+  const actionBadge = (action: string) => {
+    const icon = actionIcons[action] || defaultActionIcon;
+    const label = actionLabels[action] || action;
+    if (action === "delete") {
+      return (
+        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 font-medium flex items-center gap-1 w-fit">
+          {icon}{label}
+        </Badge>
+      );
+    }
+    if (action === "logout") {
+      return (
+        <Badge variant="outline" className="bg-muted text-muted-foreground border-border font-medium flex items-center gap-1 w-fit">
+          {icon}{label}
+        </Badge>
+      );
+    }
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <AlertTriangle className="w-12 h-12 text-amber-500" />
-          <p className="text-foreground font-medium">{error}</p>
-          <Button onClick={fetchLogs} variant="outline" className="gap-2">
-            <RefreshCw className="w-4 h-4" />
-            Retry
-          </Button>
-        </div>
-      </div>
+      <Badge
+        variant="outline"
+        className="font-medium flex items-center gap-1 w-fit"
+        style={{ backgroundColor: `${colors.primary}12`, color: colors.primary, borderColor: `${colors.primary}30` }}
+      >
+        {icon}{label}
+      </Badge>
     );
-  }
+  };
+
+  const columns: TableColumn<AdminAuditLog>[] = [
+    {
+      key: "action",
+      header: "Action",
+      skeleton: "badge",
+      cell: (log) => actionBadge(log.action),
+    },
+    {
+      key: "user",
+      header: "User",
+      skeleton: "avatar",
+      cell: (log) => (
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+            style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}
+          >
+            {avatarInitials(log.user || "?")}
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-sm text-foreground truncate">{log.user}</p>
+            <p className="text-xs text-muted-foreground">{log.userRole}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "what",
+      header: "What Happened",
+      skeleton: "name",
+      cell: (log) => (
+        <div className="min-w-0">
+          <p className="text-sm text-foreground truncate max-w-[220px]" title={log.target}>{log.target}</p>
+          <p className="text-xs text-muted-foreground truncate max-w-[220px]" title={log.details}>{log.details}</p>
+        </div>
+      ),
+    },
+    {
+      key: "from",
+      header: "From",
+      cell: (log) => {
+        const hasNetwork = log.network && log.network !== "Unknown";
+        if (!hasNetwork && !log.ipAddress) return <Dash />;
+        return (
+          <div className="space-y-1">
+            {hasNetwork && <NetworkBadge network={log.network} />}
+            {log.ipAddress ? (
+              <p className="font-mono text-xs text-muted-foreground">{log.ipAddress}</p>
+            ) : (
+              <Dash />
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "device",
+      header: "Device",
+      cell: (log) => {
+        if (!log.browser && !log.os && !log.deviceType) return <Dash />;
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground shrink-0">{deviceTypeIcon(log.deviceType)}</span>
+            <div className="min-w-0">
+              <p className="text-sm text-foreground truncate max-w-[140px]">{log.browser || "—"}</p>
+              <p className="text-xs text-muted-foreground truncate max-w-[140px]">{log.os || "—"}</p>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: "severity",
+      header: "Severity",
+      skeleton: "badge",
+      cell: (log) => (
+        <div className="flex items-center gap-1.5">
+          <SeverityBadge severity={log.severity} />
+          <OutcomeBadge outcome={log.outcome} />
+        </div>
+      ),
+    },
+    {
+      key: "timestamp",
+      header: "When",
+      skeleton: "date",
+      cell: (log) => (
+        <div className="text-sm" title={formatExactDate(log.createdAt)}>
+          <div className="flex items-center gap-1 font-medium text-foreground">
+            <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+            {formatRelative(log.createdAt)}
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Calendar className="w-3 h-3" />
+            {log.timestamp}
+          </div>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
       <PageHeader
         title="Audit Logs"
-        description={`Track all system activities and changes${liveCount > 0 ? ` — ${liveCount} new live` : ""}`}
+        description={`Who did what, from where, on what device${liveCount > 0 ? ` — ${liveCount} new live` : ""}`}
         actions={
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              className="gap-2 rounded-xl"
+              size="sm"
+              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
               onClick={fetchLogs}
               disabled={loading}
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
             <Button
               onClick={handleExport}
               disabled={exporting}
-              className="gap-2 text-white font-semibold rounded-xl shadow-lg"
-              style={{ backgroundColor: colors.primary }}
+              size="sm"
+              className="font-semibold text-xs shadow-sm shadow-primary/20"
             >
-              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {exporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />}
               Export Logs
             </Button>
           </div>
@@ -282,220 +374,97 @@ export default function AuditLogs() {
       />
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Total Logs</p>
-                <p className="text-2xl font-bold text-foreground">{counts.total}</p>
-              </div>
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.primary}15` }}>
-                <Activity className="w-5 h-5" style={{ color: colors.primary }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Creates</p>
-                <p className="text-2xl font-bold" style={{ color: colors.secondary }}>{counts.creates}</p>
-              </div>
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.secondary}15` }}>
-                <Plus className="w-5 h-5" style={{ color: colors.secondary }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Updates</p>
-                <p className="text-2xl font-bold" style={{ color: colors.secondary }}>{counts.updates}</p>
-              </div>
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.secondary}15` }}>
-                <Edit3 className="w-5 h-5" style={{ color: colors.secondary }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Deletes</p>
-                <p className="text-2xl font-bold text-red-600">{counts.deletes}</p>
-              </div>
-              <div className="p-2 rounded-lg bg-red-100">
-                <Trash2 className="w-5 h-5 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Auth Events</p>
-                <p className="text-2xl font-bold" style={{ color: colors.primary }}>{counts.logins}</p>
-              </div>
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${colors.primary}15` }}>
-                <LogIn className="w-5 h-5" style={{ color: colors.primary }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-lg shadow-gray-200/50 rounded-xl bg-white p-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Critical</p>
-                <p className="text-2xl font-bold text-red-600">{counts.critical}</p>
-              </div>
-              <div className="p-2 rounded-lg bg-red-100">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatCard label="Total Logs" value={counts.total} numericValue={counts.total} icon={<Activity className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
+        <StatCard label="Today" value={counts.today} numericValue={counts.today} icon={<Calendar className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
+        <StatCard label="Failed Logins" value={counts.failed} numericValue={counts.failed} icon={<AlertTriangle className="w-5 h-5 text-destructive" />} iconClassName="bg-destructive/10" />
+        <StatCard label="Unique Devices" value={counts.uniqueDevices} numericValue={counts.uniqueDevices} icon={<Monitor className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
+        <StatCard label="Auth Events" value={counts.logins} numericValue={counts.logins} icon={<LogIn className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
+        <StatCard label="Critical" value={counts.critical} numericValue={counts.critical} icon={<AlertTriangle className="w-5 h-5 text-destructive" />} iconClassName="bg-destructive/10" />
       </div>
 
       {/* Logs Table */}
-      <Card className="border-0 shadow-xl shadow-gray-200/50 rounded-2xl bg-white p-0">
-        <CardHeader className="border-b border-gray-100">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <CardTitle className="text-lg flex items-center gap-2 text-foreground">
-                <Database className="w-5 h-5" style={{ color: colors.primary }} />
-                Activity History
-              </CardTitle>
-              <CardDescription>Complete log of all system activities</CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search logs..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-64 rounded-xl border-gray-200"
-                />
-              </div>
-              <Select value={selectedAction} onValueChange={(val) => val && setSelectedAction(val)}>
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Actions</SelectItem>
-                  <SelectItem value="create">Created</SelectItem>
-                  <SelectItem value="update">Updated</SelectItem>
-                  <SelectItem value="delete">Deleted</SelectItem>
-                  <SelectItem value="login">Login</SelectItem>
-                  <SelectItem value="logout">Logout</SelectItem>
-                  <SelectItem value="config">Configured</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={selectedSeverity} onValueChange={(val) => val && setSelectedSeverity(val)}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Severity</SelectItem>
-                  <SelectItem value="info">Info</SelectItem>
-                  <SelectItem value="warning">Warning</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <DataTable
+        columns={columns}
+        rows={logs}
+        loading={loading}
+        error={error}
+        onRetry={fetchLogs}
+        emptyTitle="No audit logs found"
+        emptyHint="Try adjusting your search or filters."
+        emptySearchTerm={searchQuery}
+        title="Activity History"
+        description="Complete log of all system activities"
+        rowKey={(log) => log.id}
+        onRowClick={openDetail}
+        pagination={pagination}
+        toolbar={
+          <div className="flex flex-wrap items-center gap-3">
+            <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search logs..." />
+            <Select value={selectedAction} onValueChange={(val) => val && setSelectedAction(val)}>
+              <SelectTrigger className="w-36 h-9 rounded-lg text-xs font-medium">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Actions</SelectItem>
+                <SelectItem value="create">Created</SelectItem>
+                <SelectItem value="update">Updated</SelectItem>
+                <SelectItem value="delete">Deleted</SelectItem>
+                <SelectItem value="login">Login</SelectItem>
+                <SelectItem value="logout">Logout</SelectItem>
+                <SelectItem value="config">Configured</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedSeverity} onValueChange={(val) => val && setSelectedSeverity(val)}>
+              <SelectTrigger className="w-32 h-9 rounded-lg text-xs font-medium">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Severity</SelectItem>
+                <SelectItem value="info">Info</SelectItem>
+                <SelectItem value="warning">Warning</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedNetwork} onValueChange={(val) => val && setSelectedNetwork(val)}>
+              <SelectTrigger className="w-36 h-9 rounded-lg text-xs font-medium">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Networks</SelectItem>
+                <SelectItem value="Tailscale">Tailscale</SelectItem>
+                <SelectItem value="School LAN">School LAN</SelectItem>
+                <SelectItem value="Localhost">Localhost</SelectItem>
+                <SelectItem value="Public Internet">Public Internet</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedDevice} onValueChange={(val) => val && setSelectedDevice(val)}>
+              <SelectTrigger className="w-32 h-9 rounded-lg text-xs font-medium">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Devices</SelectItem>
+                <SelectItem value="Desktop">Desktop</SelectItem>
+                <SelectItem value="Mobile">Mobile</SelectItem>
+                <SelectItem value="Tablet">Tablet</SelectItem>
+                <SelectItem value="Bot">Bot</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedOutcome} onValueChange={(val) => val && setSelectedOutcome(val)}>
+              <SelectTrigger className="w-32 h-9 rounded-lg text-xs font-medium">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Outcomes</SelectItem>
+                <SelectItem value="success">Success</SelectItem>
+                <SelectItem value="failure">Failure</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50/80">
-                  <TableHead className="font-bold text-foreground w-16">#</TableHead>
-                  <TableHead className="font-bold text-foreground">Action</TableHead>
-                  <TableHead className="font-bold text-foreground">User</TableHead>
-                  <TableHead className="font-bold text-foreground">Target</TableHead>
-                  <TableHead className="font-bold text-foreground">Details</TableHead>
-                  <TableHead className="font-bold text-foreground">Severity</TableHead>
-                  <TableHead className="font-bold text-foreground">Timestamp</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-32 text-center">
-                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                        <Activity className="w-8 h-8 text-muted-foreground" />
-                        <p>No audit logs found</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  logs.map((log, index) => (
-                    <TableRow key={log.id} className="hover:bg-gray-50/50">
-                      <TableCell className="text-sm font-semibold text-muted-foreground text-center">
-                        {index + 1}
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          className={`${actionColors[log.action]?.startsWith('action-theme') ? '' : (actionColors[log.action] || 'bg-muted text-foreground')} border-0 font-medium flex items-center gap-1 w-fit`}
-                          style={actionColors[log.action]?.startsWith('action-theme') ? { backgroundColor: `${colors.primary}${actionColors[log.action].split('-').pop()}`, color: colors.primary } : undefined}
-                        >
-                          {actionIcons[log.action] || <Activity className="w-3.5 h-3.5" />}
-                          {actionLabels[log.action] || log.action}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-semibold text-sm text-foreground">{log.user}</p>
-                          <p className="text-xs text-muted-foreground">{log.userRole}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
-                            {targetTypeIcons[log.targetType] || <FileText className="w-4 h-4" />}
-                          </div>
-                          <span className="text-sm text-foreground">{log.target}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-xs">
-                        <p className="text-sm text-muted-foreground truncate" title={log.details}>
-                          {log.details}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`${severityConfig[log.severity]?.color || 'bg-muted text-muted-foreground'} border-0 font-medium flex items-center gap-1 w-fit`}>
-                          {severityConfig[log.severity]?.icon || <Info className="w-3.5 h-3.5" />}
-                          {severityConfig[log.severity]?.label || log.severity}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div className="flex items-center gap-1 font-medium text-foreground">
-                            <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                            {log.timestamp}
-                          </div>
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Calendar className="w-3 h-3" />
-                            {log.date}
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+        }
+      />
+
+      <AuditLogDetailDialog log={selectedLog} open={detailOpen} onOpenChange={setDetailOpen} />
     </div>
   );
 }

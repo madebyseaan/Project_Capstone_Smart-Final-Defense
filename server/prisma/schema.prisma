@@ -321,25 +321,37 @@ model WorkloadEntry {
 }
 
 model AuditLog {
-  id         String        @id @default(cuid())
-  action     AuditAction
-  userId     String?
-  userName   String
-  userRole   String
-  target     String
-  targetType String
-  targetId   String?
-  details    String
-  ipAddress  String?
-  severity   AuditSeverity @default(INFO)
-  metadata   Json?
-  createdAt  DateTime      @default(now())
-  user       User?         @relation("AuditLogUser", fields: [userId], references: [id])
+  id            String        @id @default(cuid())
+  action        AuditAction
+  userId        String?
+  userName      String
+  userRole      String
+  target        String
+  targetType    String
+  targetId      String?
+  details       String
+  ipAddress     String?
+  severity      AuditSeverity @default(INFO)
+  metadata      Json?
+  userAgent     String?
+  browser       String?
+  os            String?
+  deviceType    String?
+  network       String?
+  outcome       String?
+  requestMethod String?
+  requestPath   String?
+  createdAt     DateTime      @default(now())
+  user          User?         @relation("AuditLogUser", fields: [userId], references: [id])
 
   @@index([createdAt])
   @@index([userId])
   @@index([action])
   @@index([targetType])
+  @@index([network])
+  @@index([deviceType])
+  @@index([outcome])
+  @@index([createdAt, action])
 }
 
 model SyncHistory {

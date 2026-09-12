@@ -42,6 +42,8 @@ interface ClassRecordHeroProps {
   userName: string;
   /** Tools cluster (AIMS / Excel actions) rendered on the right of the telemetry bar */
   toolsSlot?: ReactNode;
+  /** Rotation info strip rendered at the bottom of the hero card */
+  rotationSlot?: ReactNode;
 }
 
 export function ClassRecordHero({
@@ -57,13 +59,14 @@ export function ClassRecordHero({
   isViewOnly = false,
   userName,
   toolsSlot,
+  rotationSlot,
 }: ClassRecordHeroProps) {
   const passingRate = stats && stats.total > 0 
     ? `${Math.round((stats.passed / stats.total) * 100)}%` 
     : "0%";
 
   return (
-    <div className="rounded-t-2xl rounded-b-none overflow-hidden border border-slate-200/80 border-b-0 bg-white shadow-xs transition-all">
+    <div className="bg-white transition-all">
       {/* Top Accent Gradient Line */}
       <div className="h-1 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-800" />
 
@@ -248,6 +251,8 @@ export function ClassRecordHero({
           )}
         </div>
       )}
+
+      {rotationSlot}
     </div>
   );
 }

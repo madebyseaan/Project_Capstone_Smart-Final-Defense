@@ -17,6 +17,7 @@ import syncRoutes from "./routes/sync";
 import integrationRoutes from "./routes/integration";
 import { globalLimiter } from "./middleware/rateLimiter";
 import { csrfProtection } from "./middleware/csrf";
+import { auditContextMiddleware } from "./middleware/auditContext";
 import { logger } from "./lib/logger";
 
 const app = express();
@@ -35,6 +36,8 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+
+app.use(auditContextMiddleware);
 
 app.use("/api", globalLimiter);
 app.use(csrfProtection);

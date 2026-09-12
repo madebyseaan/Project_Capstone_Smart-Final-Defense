@@ -12,6 +12,10 @@ module.exports = {
       watch: false,
       env: {
         NODE_ENV: 'production',
+        // DEMO ONLY — set to 'true' to let SMART manage term dates locally
+        // (for presentations when EnrollPro's term config doesn't cover today).
+        // Leave 'false' for normal operation.
+        DEMO_TERM_MODE: 'false',
       },
     },
     {

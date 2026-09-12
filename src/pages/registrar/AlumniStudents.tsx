@@ -97,7 +97,7 @@ export default function AlumniStudents() {
   const [gradeFilter, setGradeFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("all");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
   const [counts, setCounts] = useState<Record<string, number>>({ all: 0, graduated: 0, TRANSFERRED: 0 });
 
   // Sync modal state

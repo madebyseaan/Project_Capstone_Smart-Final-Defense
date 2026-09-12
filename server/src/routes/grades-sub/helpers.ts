@@ -5,6 +5,7 @@ import { getTransmutationTable } from "../../lib/transmutationCache";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
 import { getIntegrationV1ActiveTerm } from "../../lib/enrollproClient";
+import { isDemoTermMode } from "../../lib/demoTermMode";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,15 @@ let cachedTerm: { term: string; fetchedAt: number } | null = null;
 // ─── Live Term Resolver ──────────────────────────────────────────────────────
 
 export async function resolveCurrentTerm(): Promise<string> {
+  // DEMO-only: when enabled, SMART owns the term schedule (no EnrollPro call).
+  if (isDemoTermMode()) {
+    const demoSettings = await prisma.systemSettings.findUnique({
+      where: { id: 'main' },
+      select: { currentTerm: true },
+    });
+    return demoSettings?.currentTerm ?? 'T1';
+  }
+
   const now = Date.now();
   if (cachedTerm && now - cachedTerm.fetchedAt < TERM_CACHE_TTL_MS) {
     return cachedTerm.term;

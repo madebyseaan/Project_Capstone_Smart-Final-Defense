@@ -829,6 +829,27 @@ export default function registerClasses(router: Router): void {
           }
         });
 
+        // One summary audit row per batch save (never one row per student).
+        if (validUpdates.length > 0) {
+          const batchUser = await prisma.user.findUnique({
+            where: { id: req.user?.id },
+            select: { id: true, firstName: true, lastName: true, role: true },
+          });
+          if (batchUser) {
+            await createAuditLog(
+              AuditAction.UPDATE,
+              { id: batchUser.id, firstName: batchUser.firstName, lastName: batchUser.lastName, role: batchUser.role },
+              `Grade batch: ${classAssignment.subject.name} (${term})`,
+              "Grades",
+              `Saved ${validUpdates.length} grade(s) for ${classAssignment.section.name} (${term})${skipped.length ? `, ${skipped.length} skipped` : ""}`,
+              (req.ip as string) || req.socket?.remoteAddress,
+              AuditSeverity.INFO,
+              undefined,
+              { savedCount: validUpdates.length, skippedCount: skipped.length, term }
+            );
+          }
+        }
+
         res.json({
           savedCount: validUpdates.length,
           skipped,

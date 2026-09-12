@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { CheckCircle, XCircle, ShieldCheck, Ban, Loader2 } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { XCircle, ShieldCheck, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { AppModal, AlertBanner, InfoCard } from "@/components/app-modal";
 import { gradesApi } from "@/lib/api";
-import { useTheme } from "@/contexts/ThemeContext";
+import { toast } from "@/lib/toast";
 
 interface EditRequest {
   id: string;
@@ -34,7 +36,6 @@ interface ApproveModalProps {
 }
 
 export function ApproveModal({ open, onOpenChange, request, onApproved }: ApproveModalProps) {
-  const { colors } = useTheme();
   const [hours, setHours] = useState("24");
   const [loading, setLoading] = useState(false);
 
@@ -47,80 +48,62 @@ export function ApproveModal({ open, onOpenChange, request, onApproved }: Approv
       await gradesApi.approveEditRequest(request.id, h);
       onOpenChange(false);
       onApproved();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "Failed to approve request");
+    } catch (err) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to approve request");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <ShieldCheck className="w-5 h-5 text-emerald-600" />
-            Approve Edit Access
-          </DialogTitle>
-          <DialogDescription>
-            Grant <strong>{request?.teacherName}</strong> temporary edit access for <strong>{termLabel(request?.term || "")}</strong> grades.
-          </DialogDescription>
-        </DialogHeader>
+    <AppModal
+      open={open}
+      onOpenChange={onOpenChange}
+      size="sm"
+      icon={<ShieldCheck className="w-6 h-6" />}
+      title="Approve Edit Access"
+      description={<>Grant <strong>{request?.teacherName}</strong> temporary edit access for <strong>{termLabel(request?.term || "")}</strong> grades.</>}
+      confirmLabel="Grant Access"
+      onConfirm={handleApprove}
+      confirmDisabled={!hours || parseInt(hours) < 1}
+      loading={loading}
+    >
+      <div className="space-y-4">
+        <InfoCard tone="primary" label="Teacher's Reason">
+          <p className="text-sm text-foreground">{request?.reason}</p>
+        </InfoCard>
 
-        <div className="space-y-4 py-2">
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-            <p className="text-sm text-blue-800 font-medium mb-1">Teacher's Reason:</p>
-            <p className="text-sm text-blue-600">{request?.reason}</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-gray-700">Duration (hours)</Label>
-            <input
-              type="number"
-              min={1}
-              max={168}
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-              placeholder="24"
-              className="w-full h-10 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-            <p className="text-xs text-gray-500">Access expires automatically after this duration. Maximum: 168 hours (1 week).</p>
-          </div>
-
-          <div className="flex gap-2">
-            {["4", "8", "24", "48", "72", "168"].map((h) => (
-              <button
-                key={h}
-                onClick={() => setHours(h)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  hours === h
-                    ? "text-white shadow-md"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-                style={hours === h ? { backgroundColor: colors.primary } : undefined}
-              >
-                {h}h
-              </button>
-            ))}
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="approveDuration" className="text-sm font-semibold">Duration (hours)</Label>
+          <Input
+            id="approveDuration"
+            type="number"
+            min={1}
+            max={168}
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+            placeholder="24"
+          />
+          <p className="text-xs text-muted-foreground">Access expires automatically after this duration. Maximum: 168 hours (1 week).</p>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleApprove}
-            disabled={loading || !hours || parseInt(hours) < 1}
-            className="text-white"
-            style={{ backgroundColor: colors.primary }}
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-            Grant Access
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="flex flex-wrap gap-2">
+          {["4", "8", "24", "48", "72", "168"].map((h) => (
+            <Button
+              key={h}
+              type="button"
+              size="xs"
+              variant={hours === h ? "default" : "outline"}
+              onClick={() => setHours(h)}
+              className="font-semibold"
+            >
+              {h}h
+            </Button>
+          ))}
+        </div>
+      </div>
+    </AppModal>
   );
 }
 
@@ -144,54 +127,44 @@ export function RejectModal({ open, onOpenChange, request, onRejected }: RejectM
       setReason("");
       onOpenChange(false);
       onRejected();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "Failed to reject request");
+    } catch (err) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to reject request");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <XCircle className="w-5 h-5 text-red-600" />
-            Reject Edit Request
-          </DialogTitle>
-          <DialogDescription>
-            Reject the edit request from <strong>{request?.teacherName}</strong> for <strong>{termLabel(request?.term || "")}</strong>.
-          </DialogDescription>
-        </DialogHeader>
+    <AppModal
+      open={open}
+      onOpenChange={onOpenChange}
+      size="sm"
+      icon={<XCircle className="w-6 h-6" />}
+      title="Reject Edit Request"
+      description={<>Reject the edit request from <strong>{request?.teacherName}</strong> for <strong>{termLabel(request?.term || "")}</strong>.</>}
+      confirmLabel="Reject Request"
+      destructive
+      onConfirm={handleReject}
+      loading={loading}
+    >
+      <div className="space-y-4">
+        <AlertBanner variant="warning" title="Teacher's Reason">
+          {request?.reason}
+        </AlertBanner>
 
-        <div className="space-y-4 py-2">
-          <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-            <p className="text-sm text-amber-800 font-medium mb-1">Teacher's Reason:</p>
-            <p className="text-sm text-amber-600">{request?.reason}</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-gray-700">Rejection Reason (optional)</Label>
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g., Grades are finalized and cannot be changed..."
-              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 min-h-[80px]"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="rejectReason" className="text-sm font-semibold">Rejection Reason (optional)</Label>
+          <Textarea
+            id="rejectReason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g., Grades are finalized and cannot be changed..."
+            className="min-h-[80px] resize-none"
+          />
         </div>
-
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleReject} disabled={loading} variant="destructive">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <XCircle className="w-4 h-4 mr-2" />}
-            Reject Request
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </AppModal>
   );
 }
 
@@ -213,65 +186,52 @@ export function RevokeModal({ open, onOpenChange, request, onRevoked }: RevokeMo
       await gradesApi.revokeEditRequest(request.id);
       onOpenChange(false);
       onRevoked();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "Failed to revoke access");
+    } catch (err) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to revoke access");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <Ban className="w-5 h-5 text-red-600" />
-            Revoke Edit Access
-          </DialogTitle>
-          <DialogDescription>
-            Immediately revoke edit access for <strong>{request?.teacherName}</strong>.
-          </DialogDescription>
-        </DialogHeader>
+    <AppModal
+      open={open}
+      onOpenChange={onOpenChange}
+      size="sm"
+      icon={<Ban className="w-6 h-6" />}
+      title="Revoke Edit Access"
+      description={<>Immediately revoke edit access for <strong>{request?.teacherName}</strong>.</>}
+      confirmLabel="Revoke Access"
+      destructive
+      onConfirm={handleRevoke}
+      loading={loading}
+    >
+      <div className="space-y-4">
+        <AlertBanner variant="danger" title="This action is immediate.">
+          The teacher will lose the ability to edit <strong>{termLabel(request?.term || "")}</strong> grades right away.
+          They can still submit a new edit request afterward.
+        </AlertBanner>
 
-        <div className="space-y-4 py-2">
-          <div className="bg-red-50 rounded-xl p-4 border border-red-100">
-            <p className="text-sm text-red-800 font-medium mb-1">This action is immediate.</p>
-            <p className="text-sm text-red-600">
-              The teacher will lose the ability to edit <strong>{termLabel(request?.term || "")}</strong> grades right away.
-              They can still submit a new edit request afterward.
-            </p>
+        <div className="bg-muted rounded-xl p-3 border border-border text-sm text-muted-foreground space-y-1">
+          <div className="flex justify-between">
+            <span>Teacher</span>
+            <span className="font-medium text-foreground">{request?.teacherName}</span>
           </div>
-
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-sm text-slate-600 space-y-1">
-            <div className="flex justify-between">
-              <span>Teacher</span>
-              <span className="font-medium text-slate-800">{request?.teacherName}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Term</span>
-              <span className="font-medium text-slate-800">{termLabel(request?.term || "")}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Approved by</span>
-              <span className="font-medium text-slate-800">{request?.approvedByName || "—"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Expires</span>
-              <span className="font-medium text-slate-800">{request?.expiresAt ? new Date(request.expiresAt).toLocaleString() : "—"}</span>
-            </div>
+          <div className="flex justify-between">
+            <span>Term</span>
+            <span className="font-medium text-foreground">{termLabel(request?.term || "")}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Approved by</span>
+            <span className="font-medium text-foreground">{request?.approvedByName || "—"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Expires</span>
+            <span className="font-medium text-foreground">{request?.expiresAt ? new Date(request.expiresAt).toLocaleString() : "—"}</span>
           </div>
         </div>
-
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleRevoke} disabled={loading} variant="destructive">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Ban className="w-4 h-4 mr-2" />}
-            Revoke Access
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </AppModal>
   );
 }

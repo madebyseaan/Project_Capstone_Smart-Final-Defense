@@ -1,9 +1,12 @@
 import { Response } from "express";
-import { AuditAction, AuditSeverity } from "@prisma/client";
+import { AuditAction, AuditSeverity, EditRequestStatus } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import { prisma } from "../../lib/prisma";
 import { getIntegrationV1ActiveSchoolYear, getIntegrationV1FacultyPage, getIntegrationV1LearnersPage } from "../../lib/enrollproClient";
 import { getActiveTermLabels } from "../../lib/schoolYearResolver";
+import { getSystemHealthSnapshot } from "../../lib/systemHealth";
+import { getUnifiedSyncStatus } from "../../lib/syncCoordinator";
+import { listUnfinalizedSections } from "../../lib/promotion";
 import { logger } from "../../lib/logger";
 import { requireAdmin } from "./helpers";
 import { Router } from "express";
@@ -13,6 +16,7 @@ export default function (router: Router) {
     try {
       const settings = await prisma.systemSettings.findUnique({
         where: { id: "main" },
+        include: { schoolYear: true },
       });
 
       const userCounts = await prisma.user.groupBy({
@@ -110,6 +114,76 @@ export default function (router: Router) {
         },
       });
 
+      // ── Real 7-day login trend (bucketed from AuditLog) ───────────────
+      const trendStart = new Date();
+      trendStart.setHours(0, 0, 0, 0);
+      trendStart.setDate(trendStart.getDate() - 6);
+      const recentLoginLogs = await prisma.auditLog.findMany({
+        where: { action: AuditAction.LOGIN, createdAt: { gte: trendStart } },
+        select: { createdAt: true },
+      });
+      const loginTrend: Array<{ date: string; count: number }> = [];
+      for (let i = 0; i < 7; i++) {
+        const day = new Date(trendStart);
+        day.setDate(trendStart.getDate() + i);
+        const next = new Date(day);
+        next.setDate(day.getDate() + 1);
+        loginTrend.push({
+          date: day.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          count: recentLoginLogs.filter((log) => log.createdAt >= day && log.createdAt < next).length,
+        });
+      }
+
+      // ── Operational signals ───────────────────────────────────────────
+      const [pendingEditRequests, activeClassAssignments] = await Promise.all([
+        prisma.gradeEditRequest.count({ where: { status: EditRequestStatus.PENDING } }),
+        configuredSchoolYear
+          ? prisma.classAssignment.count({ where: { schoolYear: configuredSchoolYear, isActive: true } })
+          : Promise.resolve(0),
+      ]);
+
+      const years = await prisma.schoolYear.findMany({ orderBy: { label: "desc" } });
+      const currentSY = settings?.schoolYear ?? null;
+      const previousYear = years.find((y) => y.id !== currentSY?.id && y.status !== "ARCHIVED") ?? null;
+
+      let unfinalizedCount = 0;
+      if (previousYear) {
+        try {
+          const unfinalized = await listUnfinalizedSections(previousYear.label);
+          unfinalizedCount = unfinalized.length;
+        } catch (e: any) {
+          logger.warn("[AdminDashboard] Failed to compute unfinalized sections.", e.message);
+        }
+      }
+
+      let offlineServices: string[] = [];
+      let integrationsChecked = false;
+      let overallStatus = "HEALTHY";
+      const syncState = getUnifiedSyncStatus();
+      const lastSyncAt: string | null = syncState.lastSyncAt ?? null;
+      let minutesSinceLastSync: number | null = null;
+      if (lastSyncAt) {
+        minutesSinceLastSync = Math.max(0, Math.floor((Date.now() - new Date(lastSyncAt).getTime()) / 60000));
+      }
+      const syncStatus = minutesSinceLastSync === null ? "never" : minutesSinceLastSync <= 60 ? "fresh" : "stale";
+
+      try {
+        // Best-effort: never let external health pings block the dashboard.
+        const health = await Promise.race([
+          getSystemHealthSnapshot(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
+        if (health) {
+          offlineServices = [health.external.enrollpro, health.external.atlas]
+            .filter((service) => !service.online)
+            .map((service) => service.name);
+          overallStatus = health.status;
+          integrationsChecked = true;
+        }
+      } catch (e: any) {
+        logger.warn("[AdminDashboard] Failed to fetch system health snapshot.", e.message);
+      }
+
       let termLabels = { T1: "Term 1", T2: "Term 2", T3: "Term 3" };
       try {
         termLabels = await getActiveTermLabels();
@@ -153,12 +227,29 @@ export default function (router: Router) {
           database: "healthy",
           lastBackup: "N/A",
           uptime: "99.9%",
+          overall: overallStatus,
+          syncStatus,
+          lastSyncAt,
+          minutesSinceLastSync,
+          integrationsChecked,
         },
+        attention: {
+          pendingEditRequests,
+          unfinalizedCount,
+          unfinalizedSections: [],
+          previousYearLabel: previousYear?.label ?? null,
+          previousYearStatus: previousYear?.status ?? null,
+          offlineServices,
+          activeClassAssignments,
+        },
+        loginTrend,
         settings: settings
           ? {
               schoolName: settings.schoolName,
               currentSchoolYear: settings.currentSchoolYear,
               currentTerm: settings.currentTerm,
+              gradeLock: settings.gradeLock ?? false,
+              transitionLock: settings.transitionLock ?? false,
             }
           : null,
         termLabels,

@@ -22,14 +22,6 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
-import {
   Sliders,
   Plus,
   Trash2,
@@ -40,6 +32,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react";
+import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 
 interface TransmutationRow {
   id?: string;
@@ -250,7 +243,7 @@ export default function TransmutationTable() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
       <PageHeader
         title="Transmutation Table"
         description="DepEd grading transmutation — initial grade to term grade"
@@ -284,23 +277,18 @@ export default function TransmutationTable() {
       {/* Success / Error Alert */}
       {message && (
         <div
-          className="flex items-center gap-3 p-4 rounded-xl border"
-          style={{
-            backgroundColor: message.type === "success" ? `${colors.primary}15` : "#fef2f2",
-            borderColor: message.type === "success" ? `${colors.primary}40` : "#fecaca",
-          }}
+          className={`flex items-center gap-3 p-4 rounded-xl border-2 ${
+            message.type === "success"
+              ? "bg-primary/5 border-primary/20 text-primary"
+              : "bg-destructive/5 border-destructive/20 text-destructive"
+          }`}
         >
           {message.type === "success" ? (
-            <CheckCircle2 className="w-5 h-5" style={{ color: colors.primary }} />
+            <CheckCircle2 className="w-5 h-5" />
           ) : (
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+            <AlertTriangle className="w-5 h-5" />
           )}
-          <p
-            className="text-sm font-medium"
-            style={{ color: message.type === "success" ? colors.primary : "#dc2626" }}
-          >
-            {message.text}
-          </p>
+          <p className="text-sm font-medium">{message.text}</p>
         </div>
       )}
 
@@ -327,7 +315,7 @@ export default function TransmutationTable() {
                   placeholder="Search grades..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 w-48 rounded-xl border-gray-200"
+                  className="pl-9 w-48 rounded-xl border-border"
                 />
               </div>
               <Select value={sourceFilter} onValueChange={setSourceFilter}>
@@ -383,13 +371,13 @@ export default function TransmutationTable() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/80">
-                    <TableHead className="w-12 font-bold text-muted-foreground">#</TableHead>
-                    <TableHead className="font-bold text-muted-foreground">Min Grade</TableHead>
-                    <TableHead className="font-bold text-muted-foreground">Max Grade</TableHead>
-                    <TableHead className="font-bold text-muted-foreground">Transmuted Grade</TableHead>
-                    <TableHead className="font-bold text-muted-foreground">Source</TableHead>
-                    <TableHead className="text-right font-bold text-muted-foreground">Actions</TableHead>
+                  <TableRow className="hover:bg-muted/50 border-b border-border bg-muted/50">
+                    <TableHead className="w-12">#</TableHead>
+                    <TableHead>Min Grade</TableHead>
+                    <TableHead>Max Grade</TableHead>
+                    <TableHead>Transmuted Grade</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -415,7 +403,7 @@ export default function TransmutationTable() {
                               onChange={(e) =>
                                 updateCell(realIndex, "minGrade", parseFloat(e.target.value) || 0)
                               }
-                              className="w-28 h-9 rounded-xl border-gray-200 text-sm font-mono"
+                              className="w-28 h-9 rounded-xl border-border text-sm font-mono"
                             />
                           </TableCell>
                           <TableCell>
@@ -426,7 +414,7 @@ export default function TransmutationTable() {
                               onChange={(e) =>
                                 updateCell(realIndex, "maxGrade", parseFloat(e.target.value) || 0)
                               }
-                              className="w-28 h-9 rounded-xl border-gray-200 text-sm font-mono"
+                              className="w-28 h-9 rounded-xl border-border text-sm font-mono"
                             />
                           </TableCell>
                           <TableCell>
@@ -440,22 +428,24 @@ export default function TransmutationTable() {
                                   parseInt(e.target.value) || 60
                                 )
                               }
-                              className="w-24 h-9 rounded-xl border-gray-200 text-sm font-mono"
+                              className="w-24 h-9 rounded-xl border-border text-sm font-mono"
                             />
                           </TableCell>
                           <TableCell>
                             {row.isDefault ? (
                               <Badge
-                                className="border-0 font-medium"
+                                variant="outline"
+                                className="font-medium"
                                 style={{
                                   backgroundColor: `${colors.primary}15`,
                                   color: colors.primary,
+                                  borderColor: `${colors.primary}30`,
                                 }}
                               >
                                 DepEd Default
                               </Badge>
                             ) : (
-                              <Badge className="bg-amber-100 text-amber-700 border-0 font-medium">
+                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 font-medium">
                                 Custom
                               </Badge>
                             )}
@@ -465,7 +455,7 @@ export default function TransmutationTable() {
                               variant="ghost"
                               size="icon"
                               onClick={() => deleteRow(realIndex)}
-                              className="w-8 h-8 rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                              className="w-8 h-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -480,7 +470,7 @@ export default function TransmutationTable() {
           )}
 
           {/* Footer */}
-          <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between bg-muted/30">
+          <div className="border-t border-border px-6 py-4 flex items-center justify-between bg-muted/30">
             <div className="flex items-center gap-4 text-sm font-semibold text-foreground">
               <span>
                 Showing {filtered.length} of {rows.length} entries
@@ -495,47 +485,16 @@ export default function TransmutationTable() {
       </Card>
 
       {/* Reset Confirmation Dialog */}
-      <Dialog open={confirmReset} onOpenChange={setConfirmReset}>
-        <DialogContent className="sm:max-w-[425px] rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div
-                className="p-2 rounded-lg"
-                style={{ backgroundColor: `${colors.primary}15` }}
-              >
-                <RotateCcw className="w-5 h-5" style={{ color: colors.primary }} />
-              </div>
-              Reset to DepEd Defaults
-            </DialogTitle>
-            <DialogDescription>
-              This will replace all current entries with the 41 official DepEd default transmutation
-              rows. Any custom entries will be lost.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => setConfirmReset(false)}
-              className="rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleReset}
-              disabled={saving}
-              className="gap-2 text-white font-semibold rounded-xl"
-              style={{ backgroundColor: "#dc2626" }}
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RotateCcw className="w-4 h-4" />
-              )}
-              {saving ? "Resetting..." : "Yes, Reset"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirmReset}
+        onOpenChange={setConfirmReset}
+        title="Reset to DepEd Defaults"
+        description="This will replace all current entries with the 41 official DepEd default transmutation rows. Any custom entries will be lost."
+        confirmLabel={saving ? "Resetting..." : "Yes, Reset"}
+        destructive
+        loading={saving}
+        onConfirm={handleReset}
+      />
     </div>
   );
 }

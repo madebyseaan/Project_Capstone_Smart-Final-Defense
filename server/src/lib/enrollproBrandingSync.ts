@@ -20,6 +20,7 @@ import { getEnrollProPublicSettings, getIntegrationV1ActiveTerm, getIntegrationV
 import { ensureSchoolYearFromEnrollPro, invalidateSchoolYearCache } from "./schoolYearResolver";
 import { broadcastSettingsUpdate } from "./sseManager";
 import { syncActiveYearSnapshot } from "./schoolSettingsSnapshot";
+import { isDemoTermMode } from "./demoTermMode";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,6 +105,10 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
   const epSettings = await getEnrollProPublicSettings();
   const resolvedUploadDir = uploadDir ?? path.join(__dirname, "../../uploads");
 
+  // DEMO-only: when on, term dates and the current term are managed locally and
+  // must NOT be overwritten by EnrollPro. Branding/identity still syncs.
+  const demoMode = isDemoTermMode();
+
   // Pick colors from palette; fall back to neutral green if palette is empty
   const colors =
     epSettings.colorScheme?.palette?.length
@@ -132,8 +137,10 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
   // Tier 1: Fetch from /api/school-years/:id (admin auth) — most reliable source
   // Tier 2: Use terms[] array from /settings/public (if available)
   // Tier 3: Derive approximate dates from classOpeningDate/classEndDate
+  // DEMO-only: skipped entirely when DEMO_TERM_MODE is on (dates managed locally).
 
   let termDatesSynced = false;
+  if (!demoMode) {
 
   // Tier 1: School-years admin endpoint (flat fields: term1Start, term1End, etc.)
   if (epSettings.activeSchoolYearId && !termDatesSynced) {
@@ -214,12 +221,13 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
       }
     }
   }
+  }
 
   // Pull active term and school year from EnrollPro's master configuration node
   // Mandate: dependent microservices must query this on every sync/session init
   let activeSY: { id: number; yearLabel: string } | null = null;
   try {
-    const activeTermData = await getIntegrationV1ActiveTerm().catch(() => null);
+    const activeTermData = demoMode ? null : await getIntegrationV1ActiveTerm().catch(() => null);
     if (activeTermData?.activeTerm) {
       const termUpper = activeTermData.activeTerm.toUpperCase();
       if (['T1', 'T2', 'T3'].includes(termUpper)) {

@@ -104,7 +104,7 @@ export default function StudentRecords() {
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(15);
   
   // Search input ref for keyboard shortcut
   const searchInputRef = useRef<HTMLInputElement>(null);

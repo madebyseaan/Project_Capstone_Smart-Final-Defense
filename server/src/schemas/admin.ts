@@ -6,6 +6,12 @@ import { z } from 'zod';
 
 const roleEnum = z.enum(['TEACHER', 'ADMIN', 'REGISTRAR']);
 
+// Settings fields that may legitimately be blank/null (never blocks a save).
+const optionalText = (max: number) => z.string().max(max).nullable().optional();
+const optionalEmail = z
+  .union([z.string().email('Invalid email format').max(255), z.literal(''), z.null()])
+  .optional();
+
 export const userCreateSchema = z.object({
   body: z.object({
     username: z.string().min(1, 'Username is required').max(50),
@@ -56,10 +62,10 @@ export const settingsUpdateSchema = z.object({
     schoolId: z.string().max(50).optional(),
     division: z.string().max(100).optional(),
     region: z.string().max(100).optional(),
-    schoolHeadName: z.string().max(100).optional(),
-    address: z.string().max(300).optional(),
-    contactNumber: z.string().max(20).optional(),
-    email: z.string().email().max(255).optional(),
+    schoolHeadName: optionalText(100),
+    address: optionalText(300),
+    contactNumber: optionalText(20),
+    email: optionalEmail,
     currentSchoolYear: z.string().max(20).optional(),
     schoolYearId: z.string().optional(),
     currentTerm: z.enum(['T1', 'T2', 'T3']).optional(),
@@ -71,6 +77,13 @@ export const settingsUpdateSchema = z.object({
     passwordMinLength: z.number().min(4).max(32).optional(),
     requireSpecialChar: z.boolean().optional(),
     autoAdvanceTerm: z.boolean().optional(),
+    t1StartDate: z.string().nullable().optional(),
+    t1EndDate: z.string().nullable().optional(),
+    t2StartDate: z.string().nullable().optional(),
+    t2EndDate: z.string().nullable().optional(),
+    t3StartDate: z.string().nullable().optional(),
+    t3EndDate: z.string().nullable().optional(),
+    termDatesDerived: z.boolean().optional(),
     auditLogRetentionDays: z.number().min(0).max(3650).optional(),
     syncHistoryRetentionDays: z.number().min(0).max(3650).optional(),
     gradeSnapshotRetentionDays: z.number().min(0).max(3650).optional(),

@@ -10,7 +10,6 @@ import {
   Shield,
   Activity,
   Sliders,
-  FileSpreadsheet,
   BookOpen,
   ChevronDown,
   Calendar,
@@ -57,7 +56,6 @@ const navigationGroups = [
     title: "MANAGEMENT",
     items: [
       { name: "User Management", href: "/admin/users", icon: Users },
-      { name: "SF Templates", href: "/admin/templates", icon: FileSpreadsheet },
     ]
   },
   {

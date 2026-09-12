@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100] as const;
-const DEFAULT_ROWS_PER_PAGE = 25;
+const DEFAULT_ROWS_PER_PAGE = 10;
 
 interface UsePaginationOptions {
   totalRows: number;

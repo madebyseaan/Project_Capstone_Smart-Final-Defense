@@ -77,7 +77,7 @@ export default function SectionRosterViewer() {
   const [rosterData, setRosterData] = useState<any[]>([]);
   const [rosterSearch, setRosterSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const limit = 25;
+  const limit = 10;
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
   const [syncError, setSyncError] = useState<string | undefined>();

@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
 import { getEnrollProTeachers } from "../../lib/enrollproClient";
+import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
 import { validate } from "../../middleware/validate";
 import {
@@ -14,6 +15,7 @@ import {
   userSuspendSchema,
 } from "../../schemas/admin";
 import { requireAdmin } from "./helpers";
+import { validatePasswordPolicy } from "../../lib/securityPolicy";
 
 export default function (router: Router) {
   // Get all users with filtering
@@ -50,6 +52,7 @@ export default function (router: Router) {
           updatedAt: true,
           teacher: {
             select: {
+              id: true,
               employeeId: true,
               specialization: true,
             },
@@ -65,11 +68,25 @@ export default function (router: Router) {
         logger.error("Failed to fetch EnrollPro teachers for user management mapping:", err);
       }
 
+      let assignmentCounts = new Map<string, number>();
+      try {
+        const activeSy = await getActiveSchoolYearLabel();
+        const grouped = await prisma.classAssignment.groupBy({
+          by: ["teacherId"],
+          where: { schoolYear: activeSy, isActive: true },
+          _count: { _all: true },
+        });
+        assignmentCounts = new Map(grouped.map((g) => [g.teacherId, g._count._all]));
+      } catch (err) {
+        logger.warn("Failed to compute active class assignment counts for users:", err);
+      }
+
       const usersWithStatus = users.map((user) => {
         let resolvedEmployeeId = user.teacher?.employeeId || user.username;
+        let matchedTeacher: any = null;
 
         if (user.role === "TEACHER" && enrollProTeachers.length > 0) {
-          const epTeacher = enrollProTeachers.find((et) => {
+          matchedTeacher = enrollProTeachers.find((et) => {
             const emailMatch = et.email && user.email && et.email.toLowerCase() === user.email.toLowerCase();
             const nameMatch = et.firstName && et.lastName && user.firstName && user.lastName &&
               et.firstName.toLowerCase().trim() === user.firstName.toLowerCase().trim() &&
@@ -77,18 +94,38 @@ export default function (router: Router) {
             const idMatch = String(et.id) === user.username || String(et.id) === user.teacher?.employeeId;
             const empIdMatch = et.employeeId && (et.employeeId === user.teacher?.employeeId || et.employeeId === user.username);
             return emailMatch || nameMatch || idMatch || empIdMatch;
-          });
+          }) ?? null;
 
-          if (epTeacher?.employeeId) {
-            resolvedEmployeeId = epTeacher.employeeId;
+          if (matchedTeacher?.employeeId) {
+            resolvedEmployeeId = matchedTeacher.employeeId;
           }
         }
+
+        const teacherId = user.role === "TEACHER" ? user.teacher?.id : undefined;
 
         return {
           ...user,
           teacher: user.teacher
             ? { ...user.teacher, employeeId: resolvedEmployeeId }
             : { employeeId: resolvedEmployeeId },
+          enrollpro: matchedTeacher
+            ? {
+                teacherId: matchedTeacher.id,
+                employeeId: matchedTeacher.employeeId ?? null,
+                firstName: matchedTeacher.firstName ?? null,
+                middleName: matchedTeacher.middleName ?? null,
+                lastName: matchedTeacher.lastName ?? null,
+                email: matchedTeacher.email ?? null,
+                contactNumber: matchedTeacher.contactNumber ?? null,
+                designationTitle: matchedTeacher.designationTitle ?? null,
+                department: matchedTeacher.department ?? null,
+                plantillaPosition: matchedTeacher.plantillaPosition ?? null,
+                specialization: matchedTeacher.specialization ?? null,
+                sex: matchedTeacher.sex ?? null,
+                isActive: matchedTeacher.isActive ?? null,
+              }
+            : null,
+          activeAssignments: teacherId ? assignmentCounts.get(teacherId) ?? 0 : 0,
           status: user.status || "Active",
           lastActive: user.updatedAt.toLocaleDateString("en-US", {
             month: "short",
@@ -109,6 +146,12 @@ export default function (router: Router) {
   router.post("/users", authenticateToken, requireAdmin, validate(userCreateSchema), async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { username, password, role, firstName, lastName, email, employeeId, specialization } = req.body;
+
+      const policyError = validatePasswordPolicy(password);
+      if (policyError) {
+        res.status(400).json({ message: policyError });
+        return;
+      }
 
       const existing = await prisma.user.findUnique({
         where: { username },
@@ -205,6 +248,11 @@ export default function (router: Router) {
       };
 
       if (password) {
+        const policyError = validatePasswordPolicy(password);
+        if (policyError) {
+          res.status(400).json({ message: policyError });
+          return;
+        }
         updateData.password = await bcrypt.hash(password, 10);
       }
 

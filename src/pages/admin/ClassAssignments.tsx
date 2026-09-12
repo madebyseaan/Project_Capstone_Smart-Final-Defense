@@ -1,16 +1,18 @@
-import { useState, useEffect } from "react";
-import { BookOpen, Plus, Trash2, RefreshCw, AlertTriangle, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useState, useEffect, useMemo } from "react";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  RefreshCw,
+  Users,
+  ClipboardList,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  ShieldCheck,
+  ArrowRight,
+  Inbox,
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -18,139 +20,336 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { StatCard } from "@/components/layout/StatCard";
+import { SearchInput } from "@/components/layout/SearchInput";
+import { PageError } from "@/components/layout/PageError";
+import { DataTable, TablePagination, usePagination } from "@/components/data-table";
+import type { TableColumn } from "@/components/data-table";
+import { Dash } from "@/components/data-table/Dash";
+import { useTheme } from "@/contexts/ThemeContext";
 import { adminApi } from "@/lib/api";
+import { toast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
+
+interface SchoolYearOption {
+  id: string;
+  label: string;
+  status: string;
+}
+
+interface TeacherOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+  employeeId: string;
+}
+
+interface SubjectOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+interface SectionOption {
+  id: string;
+  name: string;
+  gradeLevel: string;
+  program?: string;
+}
+
+interface ClassAssignmentRow {
+  id: string;
+  teacherId: string;
+  subjectId: string;
+  sectionId: string;
+  isActive: boolean;
+  teachingMinutes?: number | null;
+  archivedReason?: string | null;
+  source?: string;
+  successorTeacherName?: string | null;
+  teacher?: {
+    employeeId?: string;
+    user?: { firstName?: string; lastName?: string };
+  };
+  subject?: { code?: string; name?: string };
+  section?: { name?: string; program?: string; gradeLevel?: string };
+}
+
+interface WorkloadRow {
+  teacherId: string;
+  teacherName: string;
+  sectionId: string;
+  sectionName: string;
+  gradeLevel: string;
+  hgMinutes: number;
+  advisoryRoleMinutes: number;
+  otherSubjectMinutes: number;
+  totalMinutes: number;
+}
+
+interface AssignmentOptions {
+  teachers: TeacherOption[];
+  subjects: SubjectOption[];
+  sections: SectionOption[];
+}
+
+interface TeacherLoad {
+  teacherId: string;
+  teacherName: string;
+  employeeId?: string;
+  advisorySections: string[];
+  assignments: ClassAssignmentRow[];
+  sectionCount: number;
+  totalMinutes: number;
+}
+
+function gradeLevelLabel(gl?: string) {
+  if (!gl) return "—";
+  return gl.replace("GRADE_", "Grade ");
+}
+
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return "never";
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+  return `${Math.floor(minutes / 1440)}d ago`;
+}
 
 export default function ClassAssignments() {
+  const { colors } = useTheme();
   const [schoolYear, setSchoolYear] = useState("");
-  const [schoolYears, setSchoolYears] = useState<Array<{ id: string; label: string; status: string }>>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [workloadSummary, setWorkloadSummary] = useState<Array<{
-    teacherId: string;
-    teacherName: string;
-    sectionId: string;
-    sectionName: string;
-    gradeLevel: string;
-    hgMinutes: number;
-    advisoryRoleMinutes: number;
-    otherSubjectMinutes: number;
-    totalMinutes: number;
-  }>>([]);
-  const [options, setOptions] = useState<{ teachers: any[]; subjects: any[]; sections: any[] }>({
-    teachers: [],
-    subjects: [],
-    sections: [],
-  });
+  const [schoolYears, setSchoolYears] = useState<SchoolYearOption[]>([]);
+  const [assignments, setAssignments] = useState<ClassAssignmentRow[]>([]);
+  const [workloadSummary, setWorkloadSummary] = useState<WorkloadRow[]>([]);
+  const [options, setOptions] = useState<AssignmentOptions>({ teachers: [], subjects: [], sections: [] });
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ teacherId: "", subjectId: "", sectionId: "" });
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("active");
-  const [restoring, setRestoring] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [tab, setTab] = useState("load");
+  const [search, setSearch] = useState("");
+  const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     adminApi.getSchoolYears().then((res) => {
-      const years = res.data.schoolYears;
+      const years = res.data.schoolYears as SchoolYearOption[];
       if (Array.isArray(years) && years.length > 0) {
         setSchoolYears(years);
         const active = years.find((y) => y.status === "ACTIVE");
-        const defaultYear = active?.label || years[0].label;
-        setSchoolYear((prev) => prev || defaultYear);
+        setSchoolYear((prev) => prev || active?.label || years[0].label);
       }
     }).catch(() => {});
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
-      const [assignRes, optRes] = await Promise.all([
+      const [assignRes, optRes, historyRes] = await Promise.all([
         adminApi.getClassAssignments(schoolYear),
         adminApi.getClassAssignmentOptions(schoolYear),
+        adminApi.getSyncHistory(1).catch(() => null),
       ]);
-      setAssignments(assignRes.data?.assignments ?? []);
-      setWorkloadSummary(assignRes.data?.workloadSummary ?? []);
-      setOptions(optRes.data);
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load class assignments");
+      setAssignments((assignRes.data?.assignments ?? []) as ClassAssignmentRow[]);
+      setWorkloadSummary((assignRes.data?.workloadSummary ?? []) as WorkloadRow[]);
+      setOptions(optRes.data as AssignmentOptions);
+      const latest = historyRes?.data?.history?.[0];
+      setLastSyncAt(latest?.startedAt ?? null);
+    } catch (e) {
+      const err = e as { message?: string };
+      setError(err.message ?? "Failed to load teaching load");
+      toast.error("Failed to load teaching load");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    if (schoolYear) void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolYear]);
 
-  const handleCreate = async () => {
-    if (!form.teacherId || !form.subjectId || !form.sectionId) {
-      setError("Please fill in all fields");
-      return;
-    }
-    setCreating(true);
-    setError(null);
-    try {
-      await adminApi.createClassAssignment({ ...form, schoolYear });
-      setForm({ teacherId: "", subjectId: "", sectionId: "" });
-      setShowForm(false);
-      setSuccess("Assignment created successfully");
-      await loadData();
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e: any) {
-      setError(e.response?.data?.message ?? e.message ?? "Failed to create assignment");
-    } finally {
-      setCreating(false);
-    }
-  };
+  const activeAssignments = useMemo(() => assignments.filter((a) => a.isActive !== false), [assignments]);
+  const archivedAssignments = useMemo(() => assignments.filter((a) => a.isActive === false), [assignments]);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this class assignment?")) return;
-    try {
-      await adminApi.deleteClassAssignment(id);
-      setSuccess("Assignment deleted");
-      await loadData();
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e: any) {
-      setError(e.response?.data?.message ?? "Failed to delete");
+  const teacherLoads = useMemo<TeacherLoad[]>(() => {
+    const map = new Map<string, TeacherLoad>();
+
+    const ensure = (teacherId: string, teacherName: string, employeeId?: string): TeacherLoad => {
+      const existing = map.get(teacherId);
+      if (existing) {
+        if (!existing.employeeId && employeeId) existing.employeeId = employeeId;
+        return existing;
+      }
+      const entry: TeacherLoad = {
+        teacherId,
+        teacherName,
+        employeeId,
+        advisorySections: [],
+        assignments: [],
+        sectionCount: 0,
+        totalMinutes: 0,
+      };
+      map.set(teacherId, entry);
+      return entry;
+    };
+
+    for (const a of activeAssignments) {
+      const name = `${a.teacher?.user?.lastName ?? ""}, ${a.teacher?.user?.firstName ?? ""}`.replace(/^, |, $/, "").trim() || "Unknown teacher";
+      const entry = ensure(a.teacherId, name, a.teacher?.employeeId);
+      entry.assignments.push(a);
     }
-  };
 
-  const handleRestore = async (id: string) => {
-    setRestoring(id);
-    setError(null);
-    try {
-      await adminApi.restoreClassAssignment(id);
-      setSuccess("Assignment restored and protected from Atlas sync");
-      await loadData();
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e: any) {
-      setError(e.response?.data?.message ?? "Failed to restore");
-    } finally {
-      setRestoring(null);
+    for (const w of workloadSummary) {
+      const entry = ensure(w.teacherId, w.teacherName);
+      entry.totalMinutes += w.totalMinutes;
+      if (w.advisoryRoleMinutes > 0) entry.advisorySections.push(w.sectionName);
     }
-  };
 
-  const filteredAssignments = statusFilter === "all"
-    ? assignments
-    : statusFilter === "active"
-      ? assignments.filter((a: any) => a.isActive !== false)
-      : assignments.filter((a: any) => a.isActive === false);
+    return [...map.values()]
+      .map((entry) => {
+        entry.assignments.sort((a, b) => (a.section?.name ?? "").localeCompare(b.section?.name ?? ""));
+        entry.sectionCount = new Set(entry.assignments.map((a) => a.sectionId)).size;
+        entry.advisorySections = [...new Set(entry.advisorySections)];
+        return entry;
+      })
+      .sort((a, b) => a.teacherName.localeCompare(b.teacherName));
+  }, [activeAssignments, workloadSummary]);
 
-  const gradeLevelLabel = (gl: string) =>
-    gl?.replace("GRADE_", "Grade ") ?? gl;
+  const gapCount = useMemo(() => {
+    if (!options.sections.length) return 0;
+    const covered = new Set(activeAssignments.map((a) => a.sectionId));
+    return options.sections.filter((s) => !covered.has(s.id)).length;
+  }, [options.sections, activeAssignments]);
+
+  const transferCount = useMemo(
+    () => archivedAssignments.filter((a) => a.archivedReason === "ATLAS_REASSIGNED").length,
+    [archivedAssignments]
+  );
+
+  const filteredTeacherLoads = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return teacherLoads;
+    return teacherLoads.filter((t) => {
+      const haystack = [
+        t.teacherName,
+        t.employeeId ?? "",
+        ...t.advisorySections,
+        ...t.assignments.map((a) => `${a.subject?.code ?? ""} ${a.subject?.name ?? ""} ${a.section?.name ?? ""} ${a.section?.gradeLevel ?? ""}`),
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [teacherLoads, search]);
+
+  const filteredWorkload = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return workloadSummary;
+    return workloadSummary.filter((row) =>
+      `${row.teacherName} ${row.sectionName} ${row.gradeLevel}`.toLowerCase().includes(q)
+    );
+  }, [workloadSummary, search]);
+
+  const filteredArchived = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return archivedAssignments;
+    return archivedAssignments.filter((a) =>
+      `${a.teacher?.user?.lastName ?? ""} ${a.teacher?.user?.firstName ?? ""} ${a.subject?.name ?? ""} ${a.section?.name ?? ""}`
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [archivedAssignments, search]);
+
+  const workloadPagination = usePagination({ totalRows: filteredWorkload.length });
+  const archivedPagination = usePagination({ totalRows: filteredArchived.length });
+  const teacherPagination = usePagination({ totalRows: filteredTeacherLoads.length });
+  const paginatedTeacherLoads = teacherPagination.slice(filteredTeacherLoads);
+  const maxTotalMinutes = useMemo(
+    () => Math.max(1, ...workloadSummary.map((w) => w.totalMinutes)),
+    [workloadSummary]
+  );
+
+  const hasNoSchedule = !loading && activeAssignments.length === 0 && archivedAssignments.length === 0;
+
+  const workloadColumns: TableColumn<WorkloadRow>[] = [
+    { key: "teacher", header: "Teacher", skeleton: "name", cell: (row) => <span className="font-medium text-foreground">{row.teacherName}</span> },
+    { key: "section", header: "Section", skeleton: "name", cell: (row) => `${row.sectionName} (${gradeLevelLabel(row.gradeLevel)})` },
+    { key: "hg", header: "HG", skeleton: "number", align: "right", className: "text-right", cell: (row) => `${row.hgMinutes} min` },
+    { key: "advisory", header: "Advisory", skeleton: "number", align: "right", className: "text-right", cell: (row) => `${row.advisoryRoleMinutes} min` },
+    { key: "other", header: "Subjects", skeleton: "number", align: "right", className: "text-right", cell: (row) => `${row.otherSubjectMinutes} min` },
+    { key: "total", header: "Total Load", skeleton: "number", align: "right", className: "text-right", cell: (row) => <span className="font-semibold text-foreground">{row.totalMinutes} min</span> },
+    {
+      key: "bar",
+      header: "Distribution",
+      cell: (row) => (
+        <div className="flex h-2.5 w-32 rounded-full bg-muted overflow-hidden">
+          <div style={{ width: `${(row.hgMinutes / maxTotalMinutes) * 100}%`, backgroundColor: colors.primary }} />
+          <div style={{ width: `${(row.advisoryRoleMinutes / maxTotalMinutes) * 100}%`, backgroundColor: colors.secondary }} />
+          <div style={{ width: `${(row.otherSubjectMinutes / maxTotalMinutes) * 100}%`, backgroundColor: colors.accent }} />
+        </div>
+      ),
+    },
+  ];
+
+  const archivedColumns: TableColumn<ClassAssignmentRow>[] = [
+    {
+      key: "subject",
+      header: "Subject",
+      skeleton: "name",
+      cell: (a) => (
+        <span>
+          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded mr-1">{a.subject?.code ?? <Dash />}</span>
+          {a.subject?.name ?? <Dash />}
+        </span>
+      ),
+    },
+    { key: "section", header: "Section", skeleton: "name", cell: (a) => `${a.section?.name ?? "—"} (${gradeLevelLabel(a.section?.gradeLevel)})` },
+    {
+      key: "teacher",
+      header: "Was assigned to",
+      skeleton: "name",
+      cell: (a) => `${a.teacher?.user?.lastName ?? ""}, ${a.teacher?.user?.firstName ?? ""}`.replace(/^, |, $/, "").trim() || "—",
+    },
+    {
+      key: "reason",
+      header: "Status",
+      skeleton: "badge",
+      cell: (a) =>
+        a.archivedReason === "ATLAS_REASSIGNED" ? (
+          <div className="flex items-center gap-1.5">
+            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold">TRANSFERRED</Badge>
+            {a.successorTeacherName && (
+              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                <ArrowRight className="w-3 h-3" /> {a.successorTeacherName}
+              </span>
+            )}
+          </div>
+        ) : (
+          <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-bold">ARCHIVED</Badge>
+        ),
+    },
+  ];
+
+  if (error && !loading && assignments.length === 0) {
+    return (
+      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+        <PageError title="Unable to Load Teaching Load" message={error} onRetry={() => void loadData()} retryLabel="Retry" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
       <PageHeader
-        title="Class Assignments"
-        description="Teaching load — which teacher handles which subject in which section. Synced automatically from Atlas on teacher login."
+        title="Teaching Load"
+        description="Read-only mirror of teaching assignments synchronized from ATLAS"
         actions={
           <>
             <Select value={schoolYear} onValueChange={setSchoolYear}>
-              <SelectTrigger className="w-36">
+              <SelectTrigger className="w-36 h-9 rounded-lg text-xs font-medium">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -159,269 +358,218 @@ export default function ClassAssignments() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
-                <SelectItem value="all">All</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void loadData()}
+              disabled={loading}
+              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loading && "animate-spin")} />
               Refresh
-            </Button>
-            <Button size="sm" onClick={() => { setShowForm(!showForm); setError(null); }}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add Assignment
             </Button>
           </>
         }
       />
 
-      {/* Info banner about Atlas */}
-      <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
-        <CardContent className="pt-4 pb-3">
-          <div className="flex gap-2 text-sm text-blue-800 dark:text-blue-200">
-            <BookOpen className="h-4 w-4 mt-0.5 shrink-0" />
-            <span>
-              <strong>Automatic sync:</strong> When a teacher logs in, SMART pulls their teaching load from Atlas and
-              updates this list in real-time. If Atlas has no schedules configured yet, you can add assignments manually below.
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Trust strip */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+        <span className="text-foreground">
+          <strong>Synced from ATLAS</strong> · last sync {relativeTime(lastSyncAt)}
+        </span>
+        <span className="text-muted-foreground">Assignments are managed in ATLAS — this page is read-only.</span>
+      </div>
 
-      {/* Success / Error alerts */}
-      {success && (
-        <div className="rounded-md bg-green-50 border border-green-200 px-4 py-2 text-sm text-green-800 dark:bg-green-950 dark:text-green-200">
-          {success}
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-2 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          {error}
-        </div>
-      )}
+      {/* Load health */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Teachers with Load" value={teacherLoads.length} numericValue={teacherLoads.length} icon={<Users className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
+        <StatCard label="Active Assignments" value={activeAssignments.length} numericValue={activeAssignments.length} icon={<ClipboardList className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
+        <StatCard
+          label="Sections Without Teacher"
+          value={gapCount}
+          numericValue={gapCount}
+          icon={<AlertTriangle className={cn("w-5 h-5", gapCount > 0 ? "text-amber-500" : "text-muted-foreground")} />}
+          iconClassName={gapCount > 0 ? "bg-amber-50" : "bg-muted"}
+        />
+        <StatCard label="Recent Transfers" value={transferCount} numericValue={transferCount} icon={<ArrowRight className="w-5 h-5" style={{ color: colors.accent }} />} iconClassName="bg-accent/10" />
+      </div>
 
-      {/* Create Form */}
-      {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">New Class Assignment</CardTitle>
-            <CardDescription>Manually assign a teacher to a subject and section for {schoolYear}.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <Label className="mb-1 block">Teacher</Label>
-                <Select value={form.teacherId} onValueChange={(v) => setForm((f) => ({ ...f, teacherId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select teacher..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {options.teachers.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.lastName}, {t.firstName} ({t.employeeId})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="mb-1 block">Subject</Label>
-                <Select value={form.subjectId} onValueChange={(v) => setForm((f) => ({ ...f, subjectId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select subject..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {options.subjects.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.code} — {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="mb-1 block">Section</Label>
-                <Select value={form.sectionId} onValueChange={(v) => setForm((f) => ({ ...f, sectionId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select section..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {options.sections.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}{s.program && s.program !== 'REGULAR' ? ` (${s.program})` : ''} ({gradeLevelLabel(s.gradeLevel)})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+      {/* Empty state */}
+      {hasNoSchedule ? (
+        <Card className="border border-border shadow-sm rounded-xl bg-card p-0">
+          <CardContent className="py-14 text-center">
+            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+              <Inbox className="h-5 w-5 text-muted-foreground/60" />
             </div>
-            <div className="flex gap-2 mt-4">
-              <Button onClick={handleCreate} disabled={creating}>
-                {creating && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-                Save Assignment
-              </Button>
-              <Button variant="outline" onClick={() => { setShowForm(false); setError(null); }}>
-                Cancel
-              </Button>
-            </div>
+            <p className="text-sm font-semibold text-foreground">No ATLAS schedule configured for {schoolYear} yet</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+              Teaching load fills in automatically when teachers log in and their ATLAS schedule is available.
+            </p>
           </CardContent>
         </Card>
+      ) : (
+        <>
+          {/* Tabs + search */}
+          <Tabs value={tab} onValueChange={setTab}>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <TabsList variant="line" className="justify-start gap-1 border-b border-border pb-0">
+                <TabsTrigger value="load" className="px-4 text-xs font-semibold uppercase tracking-wider">Teaching Load</TabsTrigger>
+                <TabsTrigger value="workload" className="px-4 text-xs font-semibold uppercase tracking-wider">Workload Summary</TabsTrigger>
+              </TabsList>
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder={tab === "load" ? "Search teacher, subject, section..." : "Search workload..."}
+              />
+            </div>
+
+            <TabsContent value="load">
+              <Card className="border border-border shadow-sm rounded-xl bg-card p-0 overflow-hidden">
+                <div className="divide-y divide-border/40">
+                  {paginatedTeacherLoads.length === 0 ? (
+                    <div className="py-12 text-center text-sm text-muted-foreground">No teachers match your search</div>
+                  ) : (
+                    paginatedTeacherLoads.map((t) => {
+                      const expanded = expandedTeacher === t.teacherId;
+                      return (
+                        <div key={t.teacherId}>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedTeacher(expanded ? null : t.teacherId)}
+                            className="w-full flex items-center gap-3 px-6 py-4 hover:bg-muted/50 transition-colors text-left"
+                          >
+                            <span
+                              className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                              style={{ backgroundColor: colors.primary }}
+                              aria-hidden="true"
+                            >
+                              {t.teacherName.split(/[ ,]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-sm text-foreground truncate">{t.teacherName}</p>
+                              <p className="text-xs text-muted-foreground font-mono">
+                                {t.employeeId || "—"}
+                                {t.advisorySections.length > 0 && (
+                                  <span className="font-sans ml-2">
+                                    · Advisory: {t.advisorySections.join(", ")}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+                              <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full">
+                                {t.assignments.length} subject{t.assignments.length !== 1 ? "s" : ""}
+                              </Badge>
+                              <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full">
+                                {t.sectionCount} section{t.sectionCount !== 1 ? "s" : ""}
+                              </Badge>
+                            </div>
+                            <span className="w-24 text-right text-sm font-semibold text-foreground tabular-nums shrink-0">
+                              {t.totalMinutes} min
+                            </span>
+                            {expanded ? (
+                              <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                            )}
+                          </button>
+
+                          {expanded && (
+                            <div className="bg-muted/30 px-6 py-3 space-y-1.5">
+                              {t.assignments.length === 0 ? (
+                                <p className="text-xs text-muted-foreground py-1">Advisory role only — no subject assignments.</p>
+                              ) : (
+                                t.assignments.map((a) => (
+                                  <div key={a.id} className="flex items-center gap-3 rounded-lg bg-card border border-border/50 px-3 py-2">
+                                    <span className="font-mono text-[11px] bg-muted px-1.5 py-0.5 rounded shrink-0">
+                                      {a.subject?.code ?? "—"}
+                                    </span>
+                                    <span className="text-sm text-foreground flex-1 truncate">{a.subject?.name ?? "—"}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {a.section?.name ?? "—"} ({gradeLevelLabel(a.section?.gradeLevel)})
+                                    </span>
+                                    <span className="w-16 text-right text-xs text-muted-foreground tabular-nums">
+                                      {a.teachingMinutes ? `${a.teachingMinutes} min` : <Dash />}
+                                    </span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                {!loading && filteredTeacherLoads.length > 0 && (
+                  <TablePagination
+                    page={teacherPagination.page}
+                    totalPages={teacherPagination.totalPages}
+                    totalRows={teacherPagination.totalRows}
+                    rowsPerPage={teacherPagination.rowsPerPage}
+                    onPageChange={teacherPagination.setPage}
+                    onRowsPerPageChange={teacherPagination.setRowsPerPage}
+                  />
+                )}
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="workload">
+              <DataTable
+                columns={workloadColumns}
+                rows={filteredWorkload}
+                loading={loading}
+                title="Workload Summary (DepEd)"
+                description={`${filteredWorkload.length} record${filteredWorkload.length !== 1 ? "s" : ""} · HG + Advisory + Subjects per teacher and section`}
+                emptyTitle="No workload records"
+                emptySearchTerm={search}
+                rowKey={(row) => `${row.teacherId}-${row.sectionId}`}
+                pagination={workloadPagination}
+              />
+            </TabsContent>
+          </Tabs>
+
+          {/* Transfers / Archived */}
+          {archivedAssignments.length > 0 && (
+            <Card className="border border-border shadow-sm rounded-xl bg-card p-0 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowArchived((v) => !v)}
+                className="w-full flex items-center gap-3 px-6 py-4 hover:bg-muted/50 transition-colors text-left"
+              >
+                <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-semibold text-foreground">
+                  Transferred / Archived ({archivedAssignments.length})
+                </span>
+                <span className="text-xs text-muted-foreground hidden sm:inline">
+                  Assignments removed or reassigned in ATLAS
+                </span>
+                <span className="ml-auto">
+                  {showArchived ? (
+                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  )}
+                </span>
+              </button>
+              {showArchived && (
+                <div className="border-t border-border/40">
+                  <DataTable
+                    columns={archivedColumns}
+                    rows={filteredArchived}
+                    loading={loading}
+                    emptyTitle="No transferred or archived assignments"
+                    emptySearchTerm={search}
+                    rowKey={(a) => a.id}
+                    pagination={archivedPagination}
+                  />
+                </div>
+              )}
+            </Card>
+          )}
+        </>
       )}
-
-      {/* Assignments Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <BookOpen className="h-4 w-4" />
-            Assignments — {schoolYear}
-            <Badge variant="secondary" className="ml-1">{filteredAssignments.length}</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin mr-2" />
-              Loading assignments...
-            </div>
-          ) : assignments.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p className="font-medium">No class assignments yet for {schoolYear}</p>
-              <p className="text-sm mt-1">
-                Assignments will appear here when teachers log in (Atlas sync) or when you add them manually above.
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Teacher</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Grade Level</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-24"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAssignments.map((a: any) => (
-                  <TableRow key={a.id}>
-                    <TableCell className="font-medium">
-                      {a.teacher?.user?.lastName ?? ""}, {a.teacher?.user?.firstName ?? ""}
-                      <span className="text-xs text-muted-foreground ml-1">
-                        ({a.teacher?.employeeId ?? "—"})
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded mr-1">
-                        {a.subject?.code ?? "—"}
-                      </span>
-                      {a.subject?.name ?? "—"}
-                    </TableCell>
-                    <TableCell>{a.section?.name ?? "—"}{a.section?.program && a.section.program !== 'REGULAR' ? ` (${a.section.program})` : ''}</TableCell>
-                    <TableCell>{gradeLevelLabel(a.section?.gradeLevel ?? "")}</TableCell>
-                    <TableCell>
-                      {a.isActive === false ? (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {a.archivedReason === 'ATLAS_REASSIGNED' ? (
-                            <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] font-bold">TRANSFERRED</Badge>
-                          ) : (
-                            <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[10px] font-bold">ARCHIVED</Badge>
-                          )}
-                          {a.source === 'MANUAL' && (
-                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] font-bold">MANUAL</Badge>
-                          )}
-                          {a.successorTeacherName && (
-                            <span className="text-xs text-muted-foreground">→ {a.successorTeacherName}</span>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] font-bold">ACTIVE</Badge>
-                          {a.source === 'MANUAL' && (
-                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] font-bold flex items-center gap-1"><ShieldCheck className="w-3 h-3" />MANUAL</Badge>
-                          )}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {a.isActive === false ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-emerald-600 hover:text-emerald-700"
-                          onClick={() => handleRestore(a.id)}
-                          disabled={restoring === a.id}
-                          title="Restore assignment (protected from Atlas sync)"
-                        >
-                          {restoring === a.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(a.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Workload Summary (DepEd Compliance)</CardTitle>
-          <CardDescription>
-            Line 1: HG minutes, Line 2: Advisory role credit, Line 3: Other subject minutes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-sm text-muted-foreground">Loading workload summary...</div>
-          ) : workloadSummary.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No workload summary entries yet for {schoolYear}.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Teacher</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Line 1: HG</TableHead>
-                  <TableHead>Line 2: Advisory Role</TableHead>
-                  <TableHead>Line 3: Other Subjects</TableHead>
-                  <TableHead>Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {workloadSummary.map((row) => (
-                  <TableRow key={`${row.teacherId}-${row.sectionId}`}>
-                    <TableCell className="font-medium">{row.teacherName}</TableCell>
-                    <TableCell>{row.sectionName} ({gradeLevelLabel(row.gradeLevel)})</TableCell>
-                    <TableCell>{row.hgMinutes} min</TableCell>
-                    <TableCell>{row.advisoryRoleMinutes} min</TableCell>
-                    <TableCell>{row.otherSubjectMinutes} min</TableCell>
-                    <TableCell className="font-semibold">{row.totalMinutes} min</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

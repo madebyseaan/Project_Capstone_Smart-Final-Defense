@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import {
   Users,
-  Plus,
   Eye,
-  Edit,
   Shield,
   UserCheck,
   ClipboardList,
@@ -11,48 +11,27 @@ import {
   XCircle,
   Mail,
   Calendar,
-  Loader2,
-  AlertTriangle,
   RefreshCw,
-  Trash2,
-  Save,
+  Link2,
+  Phone,
+  Building2,
+  Briefcase,
+  BadgeCheck,
 } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { adminApi } from "@/lib/api";
 import type { AdminUser } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/layout/StatCard";
+import { PageError } from "@/components/layout/PageError";
 import { TableToolbar } from "@/components/data-table/TableToolbar";
-import { EmptyState } from "@/components/data-table/TableStates";
+import { DataTable, usePagination } from "@/components/data-table";
+import type { TableColumn } from "@/components/data-table";
+import { Dash } from "@/components/data-table/Dash";
+import { AppModal } from "@/components/app-modal";
 
 const roleLabels: Record<string, string> = {
   ADMIN: "Administrator",
@@ -60,39 +39,39 @@ const roleLabels: Record<string, string> = {
   REGISTRAR: "Registrar",
 };
 
-const roleOpacity: Record<string, string> = {
-  ADMIN: "18",
-  TEACHER: "28",
-  REGISTRAR: "38",
+const roleClasses: Record<string, string> = {
+  ADMIN: "bg-primary/20 text-primary border-0",
+  TEACHER: "bg-primary/15 text-primary border-0",
+  REGISTRAR: "bg-primary/10 text-primary border-0",
 };
 
-const roleIcons: Record<string, React.ReactNode> = {
+const roleIcons: Record<string, ReactNode> = {
   ADMIN: <Shield className="w-3.5 h-3.5" />,
   TEACHER: <UserCheck className="w-3.5 h-3.5" />,
   REGISTRAR: <ClipboardList className="w-3.5 h-3.5" />,
 };
 
-interface UserFormData {
-  username: string;
-  password: string;
-  role: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  employeeId: string;
-  specialization: string;
+function Field({ label, value }: { label: string; value?: ReactNode }) {
+  const shown = value === null || value === undefined || value === "" ? <Dash /> : value;
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium text-foreground break-words mt-0.5">{shown}</p>
+    </div>
+  );
 }
 
-const initialFormData: UserFormData = {
-  username: "",
-  password: "",
-  role: "TEACHER",
-  firstName: "",
-  lastName: "",
-  email: "",
-  employeeId: "",
-  specialization: "",
-};
+function DetailSection({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border overflow-hidden">
+      <div className="px-4 py-2.5 bg-muted/40 border-b border-border flex items-center gap-2">
+        {icon}
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+      </div>
+      <div className="p-4 grid grid-cols-2 gap-4">{children}</div>
+    </div>
+  );
+}
 
 export default function UserManagement() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -102,14 +81,8 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
-
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
-  const [formData, setFormData] = useState<UserFormData>(initialFormData);
-  const [saving, setSaving] = useState(false);
 
   const fetchUsers = async () => {
     try {
@@ -148,143 +121,171 @@ export default function UserManagement() {
     active: users.filter((u) => u.status?.toUpperCase() === "ACTIVE").length,
   };
 
-  const handleCreate = async () => {
-    try {
-      setSaving(true);
-      await adminApi.createUser({
-        username: formData.username,
-        password: formData.password,
-        role: formData.role,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email || undefined,
-        employeeId: formData.role === "TEACHER" ? formData.employeeId : undefined,
-        specialization: formData.role === "TEACHER" ? formData.specialization : undefined,
-      });
-      setIsCreateOpen(false);
-      setFormData(initialFormData);
-      fetchUsers();
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to create user");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleUpdate = async () => {
-    if (!selectedUser) return;
-    try {
-      setSaving(true);
-      await adminApi.updateUser(selectedUser.id, {
-        username: formData.username,
-        password: formData.password || undefined,
-        role: formData.role,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email || undefined,
-        employeeId: formData.role === "TEACHER" ? formData.employeeId : undefined,
-        specialization: formData.role === "TEACHER" ? formData.specialization : undefined,
-      });
-      setIsEditOpen(false);
-      setSelectedUser(null);
-      setFormData(initialFormData);
-      fetchUsers();
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to update user");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!selectedUser) return;
-    try {
-      setSaving(true);
-      await adminApi.deleteUser(selectedUser.id);
-      setIsDeleteOpen(false);
-      setSelectedUser(null);
-      fetchUsers();
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to delete user");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openEditDialog = (user: AdminUser) => {
-    setSelectedUser(user);
-    setFormData({
-      username: user.username,
-      password: "",
-      role: user.role,
-      firstName: user.firstName || "",
-      lastName: user.lastName || "",
-      email: user.email || "",
-      employeeId: user.teacher?.employeeId || "",
-      specialization: user.teacher?.specialization || "",
-    });
-    setIsEditOpen(true);
-  };
-
   const openViewDialog = (user: AdminUser) => {
     setSelectedUser(user);
     setIsViewOpen(true);
   };
 
-  const openDeleteDialog = (user: AdminUser) => {
-    setSelectedUser(user);
-    setIsDeleteOpen(true);
-  };
+  const pagination = usePagination({ totalRows: filteredUsers.length });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading users...</p>
+  const columns: TableColumn<AdminUser>[] = [
+    {
+      key: "user",
+      header: "User",
+      skeleton: "avatar",
+      cell: (user) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="h-10 w-10 ring-2 ring-offset-2 ring-border">
+            <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: colors.primary }}>
+              {(user.firstName?.[0] || "U")}{(user.lastName?.[0] || "")}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="font-semibold text-foreground">
+              {user.firstName || ""} {user.lastName || ""}
+            </p>
+            {user.email && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Mail className="w-3 h-3" />
+                {user.email}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    );
-  }
+      ),
+    },
+    {
+      key: "employeeId",
+      header: "Employee ID",
+      skeleton: "number",
+      cell: (user) => (
+        <span className="font-mono text-sm text-muted-foreground">
+          {user.enrollpro?.employeeId || user.teacher?.employeeId || user.username}
+        </span>
+      ),
+    },
+    {
+      key: "role",
+      header: "Role",
+      skeleton: "badge",
+      cell: (user) => (
+        <Badge className={`font-medium flex items-center gap-1 w-fit ${roleClasses[user.role] || "bg-primary/10 text-primary border-0"}`}>
+          {roleIcons[user.role]}
+          {roleLabels[user.role]}
+        </Badge>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      skeleton: "badge",
+      cell: (user) =>
+        user.status?.toUpperCase() === "ACTIVE" ? (
+          <Badge className="border-0 font-medium" style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}>
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Active
+          </Badge>
+        ) : (
+          <Badge className="bg-muted text-muted-foreground border-0 font-medium">
+            <XCircle className="w-3 h-3 mr-1" />
+            Inactive
+          </Badge>
+        ),
+    },
+    {
+      key: "lastActive",
+      header: "Updated",
+      skeleton: "date",
+      cell: (user) => (
+        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+          <Calendar className="w-3.5 h-3.5" />
+          {user.lastActive}
+        </div>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      className: "text-right",
+      cell: (user) => (
+        <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+          <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-3 text-xs font-medium text-muted-foreground hover:text-foreground" onClick={() => openViewDialog(user)}>
+            <Eye className="w-4 h-4" />
+            View Details
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const ep = selectedUser?.enrollpro ?? null;
+  const displayName = ep
+    ? [ep.firstName, ep.middleName, ep.lastName].filter(Boolean).join(" ")
+    : `${selectedUser?.firstName ?? ""} ${selectedUser?.lastName ?? ""}`.trim();
+  const employmentStatus =
+    ep?.isActive === true ? "Active" : ep?.isActive === false ? "Inactive" : null;
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <AlertTriangle className="w-12 h-12 text-amber-500" />
-          <p className="text-foreground font-medium">{error}</p>
-          <Button onClick={fetchUsers} variant="outline" className="gap-2">
-            <RefreshCw className="w-4 h-4" />
-            Retry
-          </Button>
-        </div>
+      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+        <PageError
+          title="Unable to Load Users"
+          message={error}
+          onRetry={fetchUsers}
+          retryLabel="Retry"
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
       <PageHeader
-        title="User Management"
-        description="Manage system users and their access permissions"
+        title="Users"
+        description="View system users and their EnrollPro personnel profiles"
         actions={
-          <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Add User
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchUsers}
+            disabled={loading}
+            className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
           </Button>
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <StatCard label="Total Users" value={userCounts.total} icon={<Users className="w-5 h-5 text-muted-foreground" />} />
-        <StatCard label="Admins" value={userCounts.admin} icon={<Shield className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
-        <StatCard label="Teachers" value={userCounts.teacher} icon={<UserCheck className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
-        <StatCard label="Registrars" value={userCounts.registrar} icon={<ClipboardList className="w-5 h-5" style={{ color: colors.accent }} />} iconClassName="bg-accent/10" />
-        <StatCard label="Active" value={userCounts.active} icon={<CheckCircle2 className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
+      {/* Trust strip */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+        <Link2 className="w-4 h-4 text-primary" />
+        <span className="text-foreground">
+          <strong>Accounts are provisioned in EnrollPro</strong> — this page is read-only.
+        </span>
       </div>
 
-      <Card className="border-0 shadow-lg shadow-muted/50 rounded-xl bg-card p-0">
-        <div className="px-6 py-4 border-b border-border">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <StatCard label="Total Users" value={userCounts.total} numericValue={userCounts.total} icon={<Users className="w-5 h-5 text-muted-foreground" />} />
+        <StatCard label="Admins" value={userCounts.admin} numericValue={userCounts.admin} icon={<Shield className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
+        <StatCard label="Teachers" value={userCounts.teacher} numericValue={userCounts.teacher} icon={<UserCheck className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
+        <StatCard label="Registrars" value={userCounts.registrar} numericValue={userCounts.registrar} icon={<ClipboardList className="w-5 h-5" style={{ color: colors.accent }} />} iconClassName="bg-accent/10" />
+        <StatCard label="Active" value={userCounts.active} numericValue={userCounts.active} icon={<CheckCircle2 className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
+      </div>
+
+      <DataTable
+        columns={columns}
+        rows={filteredUsers}
+        loading={loading}
+        title="All Users"
+        description={`${filteredUsers.length} user${filteredUsers.length !== 1 ? "s" : ""} found`}
+        emptyTitle="No users found"
+        emptyHint="Try adjusting your search or filters"
+        emptySearchTerm={searchQuery}
+        rowKey={(user) => user.id}
+        pagination={pagination}
+        toolbar={
           <TableToolbar
             searchPlaceholder="Search users..."
             searchValue={searchQuery}
@@ -313,471 +314,145 @@ export default function UserManagement() {
               },
             ]}
           />
-        </div>
-        <div className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="pl-[52px]">User</TableHead>
-                  <TableHead>Employee ID</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Active</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.length === 0 ? (
-                  <EmptyState
-                    title="No users found"
-                    hint="Try adjusting your search or filters"
-                    icon={<Users className="w-10 h-10 text-muted-foreground/50" />}
-                    columnCount={6}
-                  />
-                ) : (
-                  filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10 ring-2 ring-offset-2 ring-border">
-                            <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: colors.primary }}>
-                              {(user.firstName?.[0] || "U")}{(user.lastName?.[0] || "")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-semibold text-foreground">
-                              {user.firstName || ""} {user.lastName || ""}
-                            </p>
-                            {user.email && (
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Mail className="w-3 h-3" />
-                                {user.email}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">
-                        {user.teacher?.employeeId || user.username}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className="border-0 font-medium flex items-center gap-1 w-fit" style={{ backgroundColor: `${colors.primary}${roleOpacity[user.role] || '18'}`, color: colors.primary }}>
-                          {roleIcons[user.role]}
-                          {roleLabels[user.role]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {user.status?.toUpperCase() === "ACTIVE" ? (
-                          <Badge className="border-0 font-medium" style={{ backgroundColor: `${colors.primary}15`, color: colors.primary }}>
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
-                            Active
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-muted text-muted-foreground border-0 font-medium">
-                            <XCircle className="w-3 h-3 mr-1" />
-                            Inactive
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {user.lastActive}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1.5 px-3"
-                            onClick={() => openViewDialog(user)}
-                          >
-                            <Eye className="w-4 h-4" />
-                            View Details
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => openEditDialog(user)}
-                            title="Edit user"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                            onClick={() => openDeleteDialog(user)}
-                            title="Delete user"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </Card>
-
-      {/* Create User Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-[500px] rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Plus className="w-5 h-5 text-primary" />
-              </div>
-              Create New User
-            </DialogTitle>
-            <DialogDescription>
-              Add a new user to the system. Fill in all required fields.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name *</Label>
-                <Input
-                  id="firstName"
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  placeholder="Juan"
-                  className="rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name *</Label>
-                <Input
-                  id="lastName"
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  placeholder="Dela Cruz"
-                  className="rounded-xl"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="username">Username *</Label>
-              <Input
-                id="username"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="jdelacruz"
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password *</Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="••••••••"
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="jdelacruz@school.edu.ph"
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Role *</Label>
-              <Select value={formData.role} onValueChange={(val) => val && setFormData({ ...formData, role: val })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TEACHER">Teacher</SelectItem>
-                  <SelectItem value="REGISTRAR">Registrar</SelectItem>
-                  <SelectItem value="ADMIN">Administrator</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {formData.role === "TEACHER" && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="employeeId">Employee ID *</Label>
-                  <Input
-                    id="employeeId"
-                    value={formData.employeeId}
-                    onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                    placeholder="EMP-2025-001"
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="specialization">Specialization</Label>
-                  <Input
-                    id="specialization"
-                    value={formData.specialization}
-                    onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                    placeholder="e.g., Mathematics, English"
-                    className="rounded-xl"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)} className="rounded-xl">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreate}
-              disabled={saving || !formData.username || !formData.password || !formData.firstName || !formData.lastName || (formData.role === "TEACHER" && !formData.employeeId)}
-              className="gap-2 text-white rounded-xl"
-              style={{ backgroundColor: colors.primary }}
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Create User
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit User Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-[500px] rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Edit className="w-5 h-5 text-primary" />
-              </div>
-              Edit User
-            </DialogTitle>
-            <DialogDescription>
-              Update user information. Leave password empty to keep current password.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="editFirstName">First Name *</Label>
-                <Input
-                  id="editFirstName"
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  className="rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="editLastName">Last Name *</Label>
-                <Input
-                  id="editLastName"
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  className="rounded-xl"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editUsername">Username *</Label>
-              <Input
-                id="editUsername"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editPassword">New Password (leave empty to keep current)</Label>
-              <Input
-                id="editPassword"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="••••••••"
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editEmail">Email</Label>
-              <Input
-                id="editEmail"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editRole">Role *</Label>
-              <Select value={formData.role} onValueChange={(val) => val && setFormData({ ...formData, role: val })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TEACHER">Teacher</SelectItem>
-                  <SelectItem value="REGISTRAR">Registrar</SelectItem>
-                  <SelectItem value="ADMIN">Administrator</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {formData.role === "TEACHER" && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="editEmployeeId">Employee ID *</Label>
-                  <Input
-                    id="editEmployeeId"
-                    value={formData.employeeId}
-                    onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="editSpecialization">Specialization</Label>
-                  <Input
-                    id="editSpecialization"
-                    value={formData.specialization}
-                    onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                    className="rounded-xl"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditOpen(false)} className="rounded-xl">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleUpdate}
-              disabled={saving || !formData.username || !formData.firstName || !formData.lastName}
-              className="gap-2 text-white rounded-xl"
-              style={{ backgroundColor: colors.primary }}
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        }
+      />
 
       {/* View User Dialog */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="sm:max-w-[450px] rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-secondary/10">
-                <Eye className="w-5 h-5 text-secondary" />
-              </div>
-              User Details
-            </DialogTitle>
-          </DialogHeader>
-          {selectedUser && (
-            <div className="space-y-4 py-4">
-              <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16">
-                  <AvatarFallback className="text-white text-xl font-semibold" style={{ backgroundColor: colors.primary }}>
-                    {(selectedUser.firstName?.[0] || "U")}{(selectedUser.lastName?.[0] || "")}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="text-xl font-bold text-foreground">
-                    {selectedUser.firstName} {selectedUser.lastName}
-                  </h3>
-                  <Badge className="border-0 mt-1" style={{ backgroundColor: `${colors.primary}${roleOpacity[selectedUser.role] || '18'}`, color: colors.primary }}>
+      <AppModal
+        open={isViewOpen}
+        onOpenChange={setIsViewOpen}
+        size="lg"
+        icon={<Eye className="w-6 h-6" />}
+        title="User Details"
+        hideFooter
+      >
+        {selectedUser && (
+          <div className="space-y-4">
+            {/* Identity */}
+            <div className="flex items-start gap-4">
+              <Avatar className="h-16 w-16">
+                <AvatarFallback className="text-white text-xl font-semibold" style={{ backgroundColor: colors.primary }}>
+                  {(selectedUser.firstName?.[0] || "U")}{(selectedUser.lastName?.[0] || "")}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-xl font-bold text-foreground truncate">{displayName || selectedUser.username}</h3>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <Badge className={`font-medium ${roleClasses[selectedUser.role] || "bg-primary/10 text-primary border-0"}`}>
                     {roleIcons[selectedUser.role]}
                     <span className="ml-1">{roleLabels[selectedUser.role]}</span>
                   </Badge>
+                  {selectedUser.status?.toUpperCase() === "ACTIVE" ? (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Active</Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-muted text-muted-foreground border-border">Inactive</Badge>
+                  )}
+                  {ep && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                      <Link2 className="w-3 h-3" /> Synced from EnrollPro
+                    </span>
+                  )}
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
-                <div>
-                  <p className="text-xs text-muted-foreground">Employee ID</p>
-                  <p className="font-mono font-medium">{selectedUser.teacher?.employeeId || selectedUser.username}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Email</p>
-                  <p className="font-medium">{selectedUser.email || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <Badge className={selectedUser.status === "Active" ? "border-0" : "bg-muted text-muted-foreground border-0"} style={selectedUser.status === "Active" ? { backgroundColor: `${colors.primary}15`, color: colors.primary } : undefined}>
-                    {selectedUser.status}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Last Active</p>
-                  <p className="font-medium">{selectedUser.lastActive}</p>
-                </div>
-                {selectedUser.teacher?.specialization && (
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Specialization</p>
-                    <p className="font-medium">{selectedUser.teacher.specialization}</p>
-                  </div>
-                )}
               </div>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewOpen(false)} className="rounded-xl">
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="sm:max-w-[400px] rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <div className="p-2 rounded-lg bg-destructive/10">
-                <Trash2 className="w-5 h-5 text-destructive" />
-              </div>
-              Delete User
-            </DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this user? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          {selectedUser && (
-            <div className="py-4">
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-muted">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: colors.primary }}>
-                    {(selectedUser.firstName?.[0] || "U")}{(selectedUser.lastName?.[0] || "")}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</p>
-                  <p className="text-sm text-muted-foreground">@{selectedUser.username}</p>
-                </div>
-              </div>
+            {/* Account (SMART) */}
+            <DetailSection title="System Account" icon={<Shield className="w-4 h-4 text-muted-foreground" />}>
+              <Field label="Username" value={selectedUser.username} />
+              <Field label="Role" value={roleLabels[selectedUser.role] || selectedUser.role} />
+              <Field label="Account Status" value={selectedUser.status} />
+              <Field label="Date Created" value={new Date(selectedUser.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} />
+            </DetailSection>
+
+            {/* Personnel (EnrollPro) */}
+            <DetailSection title="Personnel Profile (EnrollPro)" icon={<BadgeCheck className="w-4 h-4 text-muted-foreground" />}>
+              <Field label="Employee ID" value={ep?.employeeId || selectedUser.teacher?.employeeId} />
+              <Field
+                label="Employment Status"
+                value={
+                  employmentStatus ? (
+                    <Badge variant="outline" className={employmentStatus === "Active" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-muted text-muted-foreground border-border"}>
+                      {employmentStatus}
+                    </Badge>
+                  ) : null
+                }
+              />
+              <Field
+                label="Email"
+                value={
+                  selectedUser.email && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-muted-foreground" />
+                      {selectedUser.email}
+                    </span>
+                  )
+                }
+              />
+              <Field
+                label="Contact Number"
+                value={ep?.contactNumber && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                    {ep.contactNumber}
+                  </span>
+                )}
+              />
+              <Field label="Sex" value={ep?.sex} />
+              <Field label="Specialization" value={ep?.specialization || selectedUser.teacher?.specialization} />
+              <Field
+                label="Designation"
+                value={
+                  ep?.designationTitle && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+                      {ep.designationTitle}
+                    </span>
+                  )
+                }
+              />
+              <Field label="Plantilla Position" value={ep?.plantillaPosition} />
+              <Field
+                label="Department"
+                value={
+                  ep?.department && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                      {ep.department}
+                    </span>
+                  )
+                }
+              />
+            </DetailSection>
+
+            {/* Teaching */}
+            {selectedUser.role === "TEACHER" && (
+              <DetailSection title="Teaching" icon={<ClipboardList className="w-4 h-4 text-muted-foreground" />}>
+                <Field label="Active Class Assignments" value={String(selectedUser.activeAssignments ?? 0)} />
+                <Field
+                  label="Teaching Load"
+                  value={
+                    <Link to="/admin/assignments" className="text-primary hover:underline text-sm font-medium">
+                      View teaching load →
+                    </Link>
+                  }
+                />
+              </DetailSection>
+            )}
+
+            {!ep && selectedUser.role === "TEACHER" && (
+              <p className="text-xs text-muted-foreground">
+                No linked EnrollPro personnel record found for this teacher. The profile may not be synced yet.
+              </p>
+            )}
+
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-border">
+              <Button variant="outline" className="rounded-xl" onClick={() => setIsViewOpen(false)}>
+                Close
+              </Button>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} className="rounded-xl">
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={saving}
-              className="gap-2 rounded-xl"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              Delete User
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        )}
+      </AppModal>
     </div>
   );
 }

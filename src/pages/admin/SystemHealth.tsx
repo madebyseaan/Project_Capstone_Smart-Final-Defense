@@ -2,6 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi, type AdminSystemHealth, type ExternalServiceHealth, type SyncHistoryItem } from "@/lib/api";
 import { Activity, AlertCircle, CheckCircle2, Clock3, Database, RefreshCw, Server, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Dash } from "@/components/data-table/Dash";
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -28,9 +39,9 @@ function formatUptime(seconds: number): string {
 }
 
 function serviceBadgeColor(service: ExternalServiceHealth): string {
-  if (service.status === "HEALTHY") return "bg-emerald-100 text-emerald-700 border-emerald-300";
-  if (service.status === "DEGRADED") return "bg-amber-100 text-amber-700 border-amber-300";
-  return "bg-rose-100 text-rose-700 border-rose-300";
+  if (service.status === "HEALTHY") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (service.status === "DEGRADED") return "bg-amber-50 text-amber-700 border-amber-200";
+  return "bg-rose-50 text-rose-700 border-rose-200";
 }
 
 function serviceDotColor(service: ExternalServiceHealth): string {
@@ -62,8 +73,9 @@ export default function SystemHealth() {
       setHealth(healthRes.data);
       setHistory(historyRes.data.history || []);
       setError(null);
-    } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || "Failed to fetch diagnostics";
+    } catch (err) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      const message = e?.response?.data?.message || e?.message || "Failed to fetch diagnostics";
       setError(message);
     } finally {
       setLoading(false);
@@ -103,8 +115,9 @@ export default function SystemHealth() {
     try {
       await adminApi.runSystemSync();
       await fetchAll(true);
-    } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || "Failed to trigger sync";
+    } catch (err) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      const message = e?.response?.data?.message || e?.message || "Failed to trigger sync";
       setError(message);
     } finally {
       setSyncing(false);
@@ -113,11 +126,11 @@ export default function SystemHealth() {
 
   if (loading && !health) {
     return (
-      <div className="p-6 space-y-4">
-        <div className="h-10 w-72 bg-slate-200 rounded animate-pulse" />
+      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+        <div className="h-10 w-72 rounded-lg bg-muted/30 animate-pulse" />
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((n) => (
-            <div key={n} className="h-28 bg-slate-200 rounded-xl animate-pulse" />
+            <div key={n} className="h-28 rounded-xl bg-muted/30 animate-pulse" />
           ))}
         </div>
       </div>
@@ -125,34 +138,37 @@ export default function SystemHealth() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
       <PageHeader
         title="System Health"
         description="Live pulse of SMART, EnrollPro, Atlas, and AIMS."
         actions={
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => void fetchAll(true)}
               disabled={refreshing || syncing}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-white text-foreground hover:bg-accent disabled:opacity-60"
+              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
             >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
               Refresh
-            </button>
-            <button
+            </Button>
+            <Button
+              size="sm"
               onClick={runSyncNow}
               disabled={refreshing || syncing}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+              className="font-semibold text-xs shadow-sm shadow-primary/20"
             >
-              <Activity className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+              <Activity className={`w-4 h-4 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
               Run Sync Now
-            </button>
+            </Button>
           </div>
         }
       />
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
+        <div className="flex items-center gap-2 rounded-xl border-2 border-destructive/20 bg-destructive/5 px-4 py-3 text-destructive">
           <AlertCircle className="w-4 h-4" />
           <span className="text-sm">{error}</span>
         </div>
@@ -161,7 +177,7 @@ export default function SystemHealth() {
       {health && (
         <>
           {offlineDependencies.length > 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
+            <div className="flex items-start gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
               <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
               <div className="text-sm">
                 <span className="font-semibold">Showing cached data.</span>{" "}
@@ -177,144 +193,158 @@ export default function SystemHealth() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Overall</p>
-                {health.status === "HEALTHY" ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                ) : (
-                  <ShieldAlert className="w-5 h-5 text-amber-600" />
-                )}
-              </div>
-              <p className="mt-2 text-xl font-bold text-foreground">{health.status}</p>
-              <p className="text-xs text-muted-foreground mt-1">Response: {formatDuration(health.responseTimeMs)}</p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Node Uptime</p>
-                <Server className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <p className="mt-2 text-xl font-bold text-foreground">{formatUptime(health.local.uptimeSeconds)}</p>
-              <p className="text-xs text-muted-foreground mt-1">Last check: {new Date(health.timestamp).toLocaleString()}</p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Database</p>
-                <Database className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <p className="mt-2 text-xl font-bold text-foreground">{health.local.database.online ? "ONLINE" : "OFFLINE"}</p>
-              <p className="text-xs text-muted-foreground mt-1">Latency: {health.local.database.latencyMs} ms</p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Heap Used</p>
-                <Clock3 className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <p className="mt-2 text-xl font-bold text-foreground">{formatBytes(health.local.memory.heapUsed)}</p>
-              <p className="text-xs text-muted-foreground mt-1">RSS: {formatBytes(health.local.memory.rss)}</p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-foreground mb-3">External Services</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {externalServices.map((service) => (
-                <div key={service.name} className="rounded-lg border border-slate-200 p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${serviceDotColor(service)}`} />
-                      <span className="font-semibold text-foreground text-sm">{service.name}</span>
-                    </div>
-                    <span className={`text-xs font-semibold border rounded-full px-2 py-0.5 ${serviceBadgeColor(service)}`}>
-                      {service.status}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2 break-all">{service.url}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    HTTP: {service.httpStatus ?? "N/A"} • Latency: {service.latencyMs} ms
-                  </p>
-                  {service.error && <p className="text-xs text-rose-600 mt-1">{service.error}</p>}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-foreground mb-2">Sync Circuit Breaker</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
-              <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-muted-foreground uppercase">State</p>
-                <p className={`mt-1 font-bold ${health.sync.circuitBreaker.open ? "text-rose-700" : "text-emerald-700"}`}>
-                  {health.sync.circuitBreaker.open ? "OPEN" : "CLOSED"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-muted-foreground uppercase">Consecutive Failures</p>
-                <p className="mt-1 font-bold text-foreground">{health.sync.circuitBreaker.consecutiveCriticalFailures}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-muted-foreground uppercase">Threshold</p>
-                <p className="mt-1 font-bold text-foreground">{health.sync.circuitBreaker.failureThreshold}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-muted-foreground uppercase">Cooldown</p>
-                <p className="mt-1 font-bold text-foreground">{Math.round(health.sync.circuitBreaker.cooldownMs / 1000)} s</p>
-              </div>
-            </div>
-            {health.sync.circuitBreaker.reason && (
-              <p className="text-xs text-amber-700 mt-3">Reason: {health.sync.circuitBreaker.reason}</p>
-            )}
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-foreground mb-3">Recent Sync History</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-slate-200">
-                    <th className="py-2 pr-4">Started</th>
-                    <th className="py-2 pr-4">Source</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4">Duration</th>
-                    <th className="py-2 pr-4">Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.length === 0 ? (
-                    <tr>
-                      <td className="py-4 text-muted-foreground" colSpan={5}>No sync history yet.</td>
-                    </tr>
+            <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Overall</p>
+                  {health.status === "HEALTHY" ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                   ) : (
-                    history.map((item) => {
-                      const statusClass =
-                        item.status === "SUCCESS"
-                          ? "text-emerald-700 bg-emerald-100"
-                          : item.status === "SKIPPED"
-                            ? "text-amber-700 bg-amber-100"
-                            : "text-rose-700 bg-rose-100";
-
-                      return (
-                        <tr key={item.id} className="border-b border-slate-100">
-                          <td className="py-2 pr-4 text-foreground">{new Date(item.startedAt).toLocaleString()}</td>
-                          <td className="py-2 pr-4 text-foreground">{item.source}</td>
-                          <td className="py-2 pr-4">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusClass}`}>{item.status}</span>
-                          </td>
-                          <td className="py-2 pr-4 text-foreground">{formatDuration(item.durationMs)}</td>
-                          <td className="py-2 pr-4 text-muted-foreground max-w-[380px] truncate" title={item.error || ""}>
-                            {item.error || "-"}
-                          </td>
-                        </tr>
-                      );
-                    })
+                    <ShieldAlert className="w-5 h-5 text-amber-600" />
                   )}
-                </tbody>
-              </table>
-            </div>
+                </div>
+                <p className="mt-2 text-xl font-bold text-foreground">{health.status}</p>
+                <p className="text-xs text-muted-foreground mt-1">Response: {formatDuration(health.responseTimeMs)}</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Node Uptime</p>
+                  <Server className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <p className="mt-2 text-xl font-bold text-foreground">{formatUptime(health.local.uptimeSeconds)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Last check: {new Date(health.timestamp).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Database</p>
+                  <Database className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <p className="mt-2 text-xl font-bold text-foreground">{health.local.database.online ? "ONLINE" : "OFFLINE"}</p>
+                <p className="text-xs text-muted-foreground mt-1">Latency: {health.local.database.latencyMs} ms</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Heap Used</p>
+                  <Clock3 className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <p className="mt-2 text-xl font-bold text-foreground">{formatBytes(health.local.memory.heapUsed)}</p>
+                <p className="text-xs text-muted-foreground mt-1">RSS: {formatBytes(health.local.memory.rss)}</p>
+              </CardContent>
+            </Card>
           </div>
+
+          <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
+            <CardContent className="p-4">
+              <h2 className="text-sm font-semibold text-foreground mb-3">External Services</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {externalServices.map((service) => (
+                  <div key={service.name} className="rounded-lg border border-border p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${serviceDotColor(service)}`} />
+                        <span className="font-semibold text-foreground text-sm">{service.name}</span>
+                      </div>
+                      <span className={`text-xs font-semibold border rounded-full px-2 py-0.5 ${serviceBadgeColor(service)}`}>
+                        {service.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2 break-all">{service.url}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      HTTP: {service.httpStatus ?? "N/A"} • Latency: {service.latencyMs} ms
+                    </p>
+                    {service.error && <p className="text-xs text-destructive mt-1">{service.error}</p>}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
+            <CardContent className="p-4">
+              <h2 className="text-sm font-semibold text-foreground mb-2">Sync Circuit Breaker</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground uppercase">State</p>
+                  <p className={`mt-1 font-bold ${health.sync.circuitBreaker.open ? "text-destructive" : "text-emerald-700"}`}>
+                    {health.sync.circuitBreaker.open ? "OPEN" : "CLOSED"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground uppercase">Consecutive Failures</p>
+                  <p className="mt-1 font-bold text-foreground">{health.sync.circuitBreaker.consecutiveCriticalFailures}</p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground uppercase">Threshold</p>
+                  <p className="mt-1 font-bold text-foreground">{health.sync.circuitBreaker.failureThreshold}</p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground uppercase">Cooldown</p>
+                  <p className="mt-1 font-bold text-foreground">{Math.round(health.sync.circuitBreaker.cooldownMs / 1000)} s</p>
+                </div>
+              </div>
+              {health.sync.circuitBreaker.reason && (
+                <p className="text-xs text-amber-700 mt-3">Reason: {health.sync.circuitBreaker.reason}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
+            <CardContent className="p-4">
+              <h2 className="text-sm font-semibold text-foreground mb-3">Recent Sync History</h2>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-muted/50 border-b border-border bg-muted/50">
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3 px-4">Started</TableHead>
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3 px-4">Source</TableHead>
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3 px-4">Status</TableHead>
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3 px-4">Duration</TableHead>
+                      <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3 px-4">Error</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {history.length === 0 ? (
+                      <TableRow>
+                        <TableCell className="py-4 text-muted-foreground" colSpan={5}>No sync history yet.</TableCell>
+                      </TableRow>
+                    ) : (
+                      history.map((item) => {
+                        const statusClass =
+                          item.status === "SUCCESS"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : item.status === "SKIPPED"
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-rose-50 text-rose-700 border-rose-200";
+
+                        return (
+                          <TableRow key={item.id} className="border-b border-border/20">
+                            <TableCell className="py-3 px-4 text-sm text-foreground">{new Date(item.startedAt).toLocaleString()}</TableCell>
+                            <TableCell className="py-3 px-4 text-sm text-foreground">{item.source}</TableCell>
+                            <TableCell className="py-3 px-4">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${statusClass}`}>{item.status}</span>
+                            </TableCell>
+                            <TableCell className="py-3 px-4 text-sm text-foreground">{formatDuration(item.durationMs)}</TableCell>
+                            <TableCell className="py-3 px-4 text-sm text-muted-foreground max-w-[380px] truncate">
+                              {item.error || <Dash />}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

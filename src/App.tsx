@@ -42,7 +42,6 @@ const GradingConfig = lazy(() => import('./pages/admin/GradingConfig'))
 const TransmutationTable = lazy(() => import('./pages/admin/TransmutationTable'))
 const SchoolYears = lazy(() => import('./pages/admin/SchoolYears'))
 const SystemSettings = lazy(() => import('./pages/admin/SystemSettings'))
-const TemplateManager = lazy(() => import('./pages/admin/TemplateManager'))
 const ClassAssignments = lazy(() => import('./pages/admin/ClassAssignments'))
 const EditRequests = lazy(() => import('./pages/admin/EditRequests'))
 const SystemHealth = lazy(() => import('./pages/admin/SystemHealth'))
@@ -102,7 +101,6 @@ function App() {
         <Route path="school-years" element={<SchoolYears />} />
         <Route path="settings" element={<SystemSettings />} />
         <Route path="health" element={<SystemHealth />} />
-        <Route path="templates" element={<TemplateManager />} />
         <Route path="assignments" element={<ClassAssignments />} />
         <Route path="edit-requests" element={<EditRequests />} />
       </Route>

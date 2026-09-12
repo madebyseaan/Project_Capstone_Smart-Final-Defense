@@ -35,7 +35,7 @@ export function ClassRecordMobileList({
   aimsAssessments = [],
 }: ClassRecordMobileListProps) {
   return (
-    <Card className="lg:hidden border-0 shadow-lg shadow-slate-200/40 rounded-[2rem] overflow-hidden bg-white">
+    <Card className="lg:hidden border-0 shadow-none rounded-none bg-white">
       <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
         <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight">
           Class Ledger

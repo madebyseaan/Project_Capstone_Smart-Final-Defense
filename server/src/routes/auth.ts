@@ -11,6 +11,7 @@ import { triggerImmediateSync } from "../lib/syncCoordinator";
 import { logger } from "../lib/logger";
 import { validate } from "../middleware/validate";
 import { loginSchema } from "../schemas/auth";
+import { getSecurityPolicy } from "../lib/securityPolicy";
 import {
   signAccessToken,
   generateRefreshTokenPair,
@@ -24,7 +25,7 @@ const router = Router();
 // Rate limiter for login endpoint — prevents brute-force attacks
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window per key
+  limit: () => getSecurityPolicy().maxLoginAttempts, // configurable in System Settings
   skipSuccessfulRequests: true, // only count failed attempts
   keyGenerator: (req) => {
     const identifier = req.body?.email || req.body?.username || "unknown";
@@ -92,6 +93,9 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
             `Login attempt blocked — teacher not enrolled in EnrollPro for current school year`,
             ipAddress,
             AuditSeverity.WARNING,
+            undefined,
+            undefined,
+            "failure"
           );
           res.status(401).json({ message: 'Account is not enrolled in EnrollPro for the current school year' });
           return;
@@ -215,7 +219,10 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
         "Auth",
         `Failed login attempt for: ${email} — invalid credentials`,
         ipAddress,
-        AuditSeverity.WARNING
+        AuditSeverity.WARNING,
+        undefined,
+        undefined,
+        "failure"
       );
       res.status(401).json({ message: "Invalid username or password" });
       return;
@@ -233,7 +240,10 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
         "Auth",
         `Login attempt blocked — account is ${user.status.toLowerCase()}`,
         ipAddress,
-        AuditSeverity.WARNING
+        AuditSeverity.WARNING,
+        undefined,
+        undefined,
+        "failure"
       );
       res.status(403).json({ message: statusMessage });
       return;
@@ -249,7 +259,10 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
           "Auth",
           `Login attempt blocked — school year transition in progress`,
           ipAddress,
-          AuditSeverity.WARNING
+          AuditSeverity.WARNING,
+          undefined,
+          undefined,
+          "failure"
         );
         res.status(403).json({
           code: "TRANSITION_LOCKED",

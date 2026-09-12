@@ -274,7 +274,7 @@ Defined in `src/index.css` with light/dark variants.
 ### DataTable System
 - Components: `DataTable`, `TableToolbar`, `TablePagination`, `TableStates`
 - Hook: `usePagination` (always 1-based externally)
-- Rows per page: `[10, 25, 50, 100]`, default: **25**
+- Rows per page: `[10, 25, 50, 100]`, default: **10**
 - All table views must use semantic tokens, never hardcoded grays
 
 ### Shared Components

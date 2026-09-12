@@ -12,7 +12,7 @@ export function ClassDescriptorFooter({ average, totalLearners }: ClassDescripto
   const active = getDescriptorInfo(average);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+    <div className="border-t border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-start gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-[var(--ledger-grade-bg)] text-[var(--ledger-grade)]">

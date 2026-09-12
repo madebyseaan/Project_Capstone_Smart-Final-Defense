@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import type { TableColumn } from "./types";
 import { LoadingSkeleton, EmptyState, ErrorState } from "./TableStates";
 import { TablePagination } from "./TablePagination";
@@ -18,6 +19,8 @@ interface DataTableProps<T> {
   rows: T[];
   loading?: boolean;
   error?: string | null;
+  title?: string;
+  description?: string;
   emptyTitle?: string;
   emptyHint?: string;
   emptySearchTerm?: string;
@@ -28,11 +31,18 @@ interface DataTableProps<T> {
   onRetry?: () => void;
 }
 
+const HEAD_CLASS =
+  "text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4";
+const CELL_CLASS =
+  "py-3.5 px-4 text-sm text-foreground align-middle whitespace-nowrap";
+
 export function DataTable<T>({
   columns,
   rows,
   loading,
   error,
+  title,
+  description,
   emptyTitle,
   emptyHint,
   emptySearchTerm,
@@ -46,19 +56,32 @@ export function DataTable<T>({
     pagination;
 
   const displayRows = slice(rows);
+  const hasHeader = Boolean(title || description || toolbar);
 
   return (
-    <Card className="border-0 shadow-lg shadow-muted/50 rounded-xl bg-card p-0">
-      {toolbar && (
-        <div className="px-6 py-4 border-b border-border">{toolbar}</div>
+    <Card className="border border-border shadow-sm bg-card overflow-hidden rounded-xl p-0">
+      {hasHeader && (
+        <div className="px-6 py-4 border-b border-border flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          {(title || description) && (
+            <div>
+              {title && (
+                <h2 className="text-base font-semibold text-foreground">{title}</h2>
+              )}
+              {description && (
+                <p className="text-sm text-muted-foreground">{description}</p>
+              )}
+            </div>
+          )}
+          {toolbar && <div className="min-w-0">{toolbar}</div>}
+        </div>
       )}
       <CardContent className="p-0">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
+              <TableRow className="hover:bg-muted/50 border-b border-border bg-muted/50">
                 {columns.map((col) => (
-                  <TableHead key={col.key} className={col.className}>
+                  <TableHead key={col.key} className={cn(HEAD_CLASS, col.className)}>
                     {col.header}
                   </TableHead>
                 ))}
@@ -89,12 +112,15 @@ export function DataTable<T>({
                   <TableRow
                     key={rowKey(row)}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    className={onRowClick ? "cursor-pointer" : undefined}
+                    className={cn(
+                      "border-b border-border/20 hover:bg-muted/50 transition-colors",
+                      onRowClick && "cursor-pointer"
+                    )}
                   >
                     {columns.map((col) => (
                       <TableCell
                         key={col.key}
-                        className={col.className}
+                        className={cn(CELL_CLASS, col.className)}
                         style={
                           col.align === "right"
                             ? { textAlign: "right" }

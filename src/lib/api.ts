@@ -1398,10 +1398,20 @@ export interface AdminAuditLog {
   action: "create" | "update" | "delete" | "login" | "logout" | "config";
   user: string;
   userRole: string;
+  userId?: string | null;
   target: string;
   targetType: string;
   details: string;
   ipAddress?: string;
+  browser?: string;
+  os?: string;
+  deviceType?: string;
+  network?: string;
+  outcome?: string;
+  requestMethod?: string;
+  requestPath?: string;
+  userAgent?: string;
+  metadata?: unknown;
   severity: "info" | "warning" | "critical";
   timestamp: string;
   date: string;
@@ -1415,11 +1425,28 @@ export interface AdminDashboard {
     database: string;
     lastBackup: string;
     uptime: string;
+    overall?: string;
+    syncStatus?: "fresh" | "stale" | "never";
+    lastSyncAt?: string | null;
+    minutesSinceLastSync?: number | null;
+    integrationsChecked?: boolean;
   };
+  attention?: {
+    pendingEditRequests: number;
+    unfinalizedCount: number;
+    unfinalizedSections: Array<{ sectionId: string; sectionName: string; gradeLevel: string; draftBlockerCount: number }>;
+    previousYearLabel: string | null;
+    previousYearStatus: string | null;
+    offlineServices: string[];
+    activeClassAssignments: number;
+  };
+  loginTrend?: Array<{ date: string; count: number }>;
   settings?: {
     schoolName: string;
     currentSchoolYear: string;
     currentTerm: string;
+    gradeLock?: boolean;
+    transitionLock?: boolean;
   };
   termLabels: TermLabels;
 }
@@ -1435,9 +1462,26 @@ export interface AdminUser {
   lastActive: string;
   createdAt: string;
   teacher?: {
+    id?: string;
     employeeId: string;
     specialization?: string;
   };
+  enrollpro?: {
+    teacherId: number | null;
+    employeeId: string | null;
+    firstName: string | null;
+    middleName: string | null;
+    lastName: string | null;
+    email: string | null;
+    contactNumber: string | null;
+    designationTitle: string | null;
+    department: string | null;
+    plantillaPosition: string | null;
+    specialization: string | null;
+    sex: string | null;
+    isActive: boolean | null;
+  } | null;
+  activeAssignments?: number;
 }
 
 export interface AuditLogResponse {
@@ -1450,6 +1494,9 @@ export interface AuditLogResponse {
     deletes: number;
     logins: number;
     critical: number;
+    today?: number;
+    failed?: number;
+    uniqueDevices?: number;
   };
 }
 
@@ -1459,10 +1506,10 @@ export interface SystemSettings {
   schoolId: string;
   division: string;
   region: string;
-  schoolHeadName?: string;
-  address?: string;
-  contactNumber?: string;
-  email?: string;
+  schoolHeadName?: string | null;
+  address?: string | null;
+  contactNumber?: string | null;
+  email?: string | null;
   currentSchoolYear: string;
   currentTerm: string;
   // Academic calendar dates
@@ -1490,6 +1537,8 @@ export interface SystemSettings {
   auditLogRetentionDays?: number;
   syncHistoryRetentionDays?: number;
   gradeSnapshotRetentionDays?: number;
+  /** Computed by the server: true only when DEMO_TERM_MODE is enabled. */
+  demoTermMode?: boolean;
 }
 
 export interface GradingConfig {
@@ -1620,7 +1669,7 @@ export const adminApi = {
   deleteUser: (id: string) => api.delete<{ message: string }>(`/admin/users/${id}`),
 
   // Audit Logs
-  getLogs: (params?: { action?: string; severity?: string; search?: string; limit?: number; offset?: number }) =>
+  getLogs: (params?: { action?: string; severity?: string; network?: string; deviceType?: string; outcome?: string; from?: string; to?: string; search?: string; limit?: number; offset?: number }) =>
     api.get<AuditLogResponse>("/admin/logs", { params }),
 
   exportLogs: () => api.get("/admin/logs/export", { responseType: "blob" }),

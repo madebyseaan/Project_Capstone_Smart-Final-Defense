@@ -296,7 +296,7 @@ export function ClassRecordTable({
     <div className="hidden lg:block w-full relative z-[15]">
       {/* ── Sticky Header Stack (pins Card Header + settings panels + table headers + HPS row as ONE) ── */}
       <div
-        className="sticky z-[29] bg-white border-x border-slate-200/80 isolate"
+        className="sticky z-[29] bg-white isolate"
         style={{ top: `${topNavHeight}px` }}
       >
         {/* Card Header bar */}

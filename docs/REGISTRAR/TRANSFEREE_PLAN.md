@@ -2,14 +2,19 @@
 
 > **Status:** PLANNING — Do not implement until approved.
 > **Audience:** Implementation agent. Read this file top-to-bottom before writing code.
-> **Source API doc:** `C:\Users\Sean\Downloads\SMART-TRANSFEREE-API.md`
+> **Source API doc:** `C:\Users\Sean\Downloads\SMART-TRANSFEREE-API (1).md` — *SMART Transferee
+> Enrollment Handoff*, last code verification **2026-09-11**. This supersedes the earlier
+> `SMART-TRANSFEREE-API.md`.
+> **Contract update (2026-09-11):** endpoint path, auth header, pagination limits, and status
+> inclusion changed — see §5. The implementation in `enrollproClient.ts` already uses the correct
+> `/v1` path and `X-Integration-Key`; the sync validation rules in §6.2 are still pending.
 > All file:line references below were verified against the codebase on 2026-09-04.
 
 ---
 
 ## 1. Executive Summary
 
-SMART needs to recognize students who transferred INTO the school (transferees). EnrollPro now exposes a dedicated transferee feed (`GET /api/integration/default/smart/transferees`) that tells us who the transferees are and when they enrolled (`enrolledAt`).
+SMART needs to recognize students who transferred INTO the school (transferees). EnrollPro now exposes a dedicated transferee feed (`GET /api/integration/v1/default/smart/transferees`) that tells us who the transferees are and when they enrolled (`enrolledAt`). The feed is the **publish boundary**: a transferee appears only after EnrollPro has both an application status of `OFFICIALLY_ENROLLED` and an `EnrollmentRecord` (official section assignment).
 
 **Revised architecture (three pillars):**
 
@@ -34,7 +39,7 @@ SMART needs to recognize students who transferred INTO the school (transferees).
 | Feature | Status | Evidence |
 |---------|--------|----------|
 | Transfer-OUT handling | ✅ Works | `EnrollmentStatus.TRANSFERRED`, `transferOutDate` (schema.prisma:201), alumni page, dashboard stat |
-| Transferee API endpoint | ✅ Documented | EnrollPro `GET /api/integration/default/smart/transferees` (see §5) |
+| Transferee API endpoint | ✅ Documented | EnrollPro `GET /api/integration/v1/default/smart/transferees` (see §5) |
 | Main sync creates transferee records | ✅ Already happens | Transferees are enrolled learners; `runEnrollProSync` (enrollproSync.ts:143) creates their Student+Enrollment with status ENROLLED |
 | `TRANSFERRED_IN` → ENROLLED mapping | ⚠️ Strips transfer context | `mapEpEnrollmentStatus` (enrollproSync.ts:66-76) AND duplicated `classifyEpStatus` (routes/registrar/main.ts:629-639) — two places to keep in sync |
 | SF1 T/O + T/I remark codes | ❌ **Dead code** | `mapRemarksCodes` (routes/registrar/helpers.ts:78-89) checks strings `"TRANSFERRED_OUT"` / `"TRANSFERRED_IN"` but `enrollment.status` is the enum (`TRANSFERRED`, not `TRANSFERRED_OUT`) — T/O never renders either. Callers pass DB records: routes/registrar/forms.ts:416, exports.ts:454 |
@@ -132,18 +137,31 @@ All new fields are nullable — no data migration needed, no default backfill.
 
 ## 5. EnrollPro Transferee API — Data Mapping (from API doc)
 
-### Endpoint
+### Endpoint (updated 2026-09-11)
 
 ```
-GET /api/integration/default/smart/transferees
-Header: x-api-key (same integration key as smart/students)
-Query: page (default 1), limit (default 100, max 500)
+GET /api/integration/v1/default/smart/transferees
+Header: X-Integration-Key: <SMART_INTEGRATION_API_KEY>   (or Authorization: Bearer <key>)
+Query: schoolYearId (optional; omit = authoritative active year), page (default 1), limit (default 50, max 200)
 ```
 
-- Returns learners with `learnerType: "TRANSFEREE"` for the **active** school year.
-- Includes all enrollment statuses (ENROLLED, DROPPED, TRANSFERRED_OUT…) so status changes flow through.
-- Archived SYs return `[]` with a meta message — not an error; treat as empty.
-- Data minimization: **no birthDate, no gender, no credentials**.
+> **The `/v1` segment is required.** The former `/api/integration/default/smart/transferees` path is
+> incorrect and must not be used. The current code already calls the correct path
+> (`enrollproClient.ts:694-711`) and already sends `X-Integration-Key`
+> (`enrollproClient.ts:539-545`). The older `x-api-key` wording is obsolete.
+
+- Returns learners with `learnerType: "TRANSFEREE"` for the resolved school year.
+- **Only `enrollmentStatus === "OFFICIALLY_ENROLLED"` rows that have an `EnrollmentRecord` are
+  returned.** `READY_FOR_SECTIONING`, `PENDING_VERIFICATION`, `FOR_REVISION`, `WITHDRAWN`,
+  `TRANSFERRED_OUT`, `DROPPED`, and every other status are excluded. A missing row does **not**
+  mean deleted — the learner may be awaiting official section placement or changed status.
+- Archived-year requests return `[]` with a meta message (`Archived transferees not yet supported in
+  integration feed`) — not an error. SMART must preserve its own previously synced roster as
+  read-only history and must not treat emptiness as a delete signal.
+- The key must live only on the SMART backend — never in browser JS, URLs, learner records, or logs.
+- Data minimization: **no birthDate, no gender, no previous school/originating school ID/transfer
+  certificate/previous average, no SF9/PSA flags, no `sf9EligibilityStatus`, no conditional-promotion
+  back subjects, no credentials**.
 
 ### Field mapping
 
@@ -154,31 +172,45 @@ Query: page (default 1), limit (default 100, max 500)
 | `gradeLevel.name` | — | Cross-check only (section lookup already done by main sync) |
 | `section.id` / `section.name` | — | Same — main sync already created Section + Enrollment |
 | `enrolledAt` | `Enrollment.transferInDate` | **The transfer-in date** |
-| `enrollmentStatus` | `Enrollment.status` | Only mirror DROPPED/TRANSFERRED_OUT changes if main feed hasn't already |
-| `schoolYear.yearLabel` | scope check vs `getActiveSchoolYearLabel()` | Skip records from other years |
-| `dropOutDate` / `dropOutReason` / `transferOutDate` | `Enrollment.*` | Same lifecycle pass as main feed (enrollproSync.ts:958-971) — main sync already handles; syncTransferees should NOT duplicate these writes |
+| `enrollmentStatus` | — | Always `OFFICIALLY_ENROLLED` in this feed. Lifecycle (drop/transfer-out) is owned by the main feed; do **not** mirror status from here. |
+| `schoolYear.yearLabel` / `schoolYear.id` | scope check vs resolved SY | Skip records from other years; validate response + meta SY IDs agree with the requested year |
+| `dropOutDate` / `dropOutReason` / `transferOutDate` | `Enrollment.*` | Not present for excluded rows; main feed lifecycle pass (enrollproSync.ts:958-971) owns these — syncTransferees must NOT duplicate these writes |
 | `eosyStatus` | — | Ignore in tagging pass (EOSY is computed locally by promotion.ts) |
-| `enrollmentApplicationId` | — | Not stored; log-only correlation |
+| `enrollmentApplicationId` | new `Enrollment.enrollproApplicationId` (nullable) | Retain as the EnrollPro application reference; never a SMART primary key |
 | `isPendingLrn` | — | If true and LRN looks placeholder, log a warning, skip tagging |
 
-### Explicitly NOT provided (registrar must complete in SMART)
+### Explicitly NOT provided (registrar must complete / capture in SMART)
 
-`previousSchool`, `lastGradeCompleted`, `transferCertNo`, `birthDate`, `gender` — the last two may already exist on the Student from the main learners feed; the registrar completion UI flags whichever are still null.
+Confirmed by the 2026-09-11 handoff. SMART must not infer, fabricate, or scrape these from another
+endpoint — a separate versioned contract is required before EnrollPro exposes them:
+
+- `birthDate`, `gender` — may already exist on the Student from the main learners feed; the registrar
+  completion UI flags whichever are still null.
+- `previousSchool`, `originatingSchoolId`, `transferCertNo`, `previousGenAve` — registrar enters.
+- `hasSf9`, `hasPsa` document flags, `isTemporarilyEnrolled`, `isRemedialRequired`.
+- `sf9EligibilityStatus` (`PROMOTED` | `CONDITIONALLY_PROMOTED` | `RETAINED`).
+- `conditionalSubjectCodes` (1–2 ATLAS back subjects for conditionally promoted transferees).
+
+SF9 eligibility and back subjects are legitimate future academic inputs (see
+`docs/REGISTRAR/SF10_SF9_IMPORT_PLAN.md`), but they are **not** in the current feed.
 
 ---
 
 ## 6. Phase 2 — Backend: Client + Sync
 
-### 6.1 `server/src/lib/enrollproClient.ts` — new fetcher
+### 6.1 `server/src/lib/enrollproClient.ts` — fetcher (IMPLEMENTED; 2 upgrades pending)
 
-Add `getSmartTransferees()` directly below `getSmartStudentsFeed()` (line 627-644) and mirror it exactly — same pagination loop (limit 200, walk `meta.totalPages`), same `getIntegrationHeaders()`, same base URL resolution via `getEnrollProBase()`:
+`getSmartTransferees()` already exists at `enrollproClient.ts:694-711` and correctly calls
+`${base}/integration/v1/default/smart/transferees` with `getIntegrationHeaders()`. Remaining upgrades
+per the 2026-09-11 handoff:
 
-```typescript
-export async function getSmartTransferees(): Promise<any[]> {
-  // Identical pagination loop to getSmartStudentsFeed, endpoint:
-  // ${await getEnrollProBase()}/integration/v1/default/smart/transferees
-}
-```
+1. Accept an optional `schoolYearId` and pass it as a query param (scope explicitly instead of
+   relying on the active-year default).
+2. Validate that each page's `meta.scopeSchoolYearId` / `scopeSchoolYearLabel` agrees with the
+   requested year, and surface `meta.generatedAt` for staleness tracking.
+
+Also verify pages are followed to completion (`page >= meta.totalPages`) before treating the pull as
+successful, and cap pagination at the handoff's limit ceilings (default 50, max 200).
 
 ### 6.2 `server/src/lib/enrollproSync.ts` — new enrichment pass
 
@@ -186,10 +218,14 @@ Add `syncTransferees()` (new export; do not touch `runEnrollProSync` internals):
 
 ```
 syncTransferees()
-├── resolve current SY via getActiveSchoolYearLabel()  (schoolYearResolver.ts:80)
-├── records = await getSmartTransferees()
+├── resolve current SY (id + label) via getActiveSchoolYearLabel()  (schoolYearResolver.ts:80)
+├── records = await getSmartTransferees(schoolYearId?)      // explicit SY scope, all pages
 ├── for each record where schoolYear.yearLabel === currentSY:
-│   ├── lrn = record.lrn.trim(); skip if empty or isPendingLrn
+│   ├── lrn = String(record.lrn).trim()
+│   │   ├── skip if empty or isPendingLrn
+│   │   └── validate ^\d{12}$  → invalid ⇒ quarantine into unmatched[] (never match on bad LRN)
+│   ├── require enrollmentStatus === "OFFICIALLY_ENROLLED"
+│   ├── require section present and gradeLevel in GRADE_7..GRADE_10
 │   ├── student = prisma.student.findUnique({ where: { lrn } })
 │   │   └── if null → collect into unmatched[] (registrar visibility), continue
 │   ├── enrollment = prisma.enrollment.findFirst({
@@ -197,17 +233,29 @@ syncTransferees()
 │   │     orderBy: { updatedAt: "desc" },   // handles mid-year section moves
 │   │   })
 │   │   └── if null → unmatched[], continue
+│   ├── persist record.enrollmentApplicationId on Enrollment (reference only) — PENDING
 │   └── if enrollment.transferInDate == null && record.enrolledAt:
 │         prisma.enrollment.update({ data: { transferInDate: new Date(record.enrolledAt) } })
 │         (NEVER overwrite an existing transferInDate — registrar may have corrected it)
+├── record meta.generatedAt (source generation time) separately from local sync time
 ├── return { transfereesTagged, unmatched: [{lrn, reason}] }
 └── fail-soft: catch + log via logger, never throw into the sync cycle
 ```
 
 Notes:
-- Matching `status: "ENROLLED"` only is correct: DROPPED/TRANSFERRED_OUT transferees have already left; the T/I remark should not apply to their final record, and their lifecycle is owned by the existing drop/transfer logic.
-- **Do not** also write dropOutDate/transferOutDate here — the main feed lifecycle pass (enrollproSync.ts:958-971) owns those.
-- Section moves mid-year: main sync's cross-section dedup (enrollproSync.ts:740-769) deletes the old enrollment and the new one is created; this pass re-tags by (studentId, schoolYear) so `transferInDate` follows the student naturally.
+- Matching local `status: "ENROLLED"` is still correct: the feed only returns officially enrolled
+  rows, and lifecycle (DROPPED / TRANSFERRED_OUT) is owned by the main feed. The T/I remark should
+  not apply to a learner who already left.
+- **Do not** write dropOutDate/transferOutDate here — the main feed lifecycle pass
+  (enrollproSync.ts:958-971) owns those.
+- Section moves mid-year: main sync's cross-section dedup (enrollproSync.ts:740-769) deletes the old
+  enrollment and the new one is created; this pass re-tags by (studentId, schoolYear) so
+  `transferInDate` follows the student naturally.
+- **Retain last-known roster on failure.** The feed is fail-soft today (catch + warn). The handoff
+  requires stronger semantics: on an error or incomplete page set, keep the previous roster and mark
+  it stale — never replace it with an empty set. Empty archived responses must not delete history.
+- **No back subjects / SF9 eligibility from the feed** — see §5. Those are registrar-captured in the
+  SF10/SF9 import plan.
 
 ### 6.3 `server/src/lib/syncCoordinator.ts` — wire into the cycle
 
@@ -330,6 +378,10 @@ Keep the function signature `(enrollment, student)` — callers are routes/regis
 
 Do not silently attempt (b).
 
+> **Update:** previous-school grades are now planned as a separate feature — see
+> `docs/REGISTRAR/SF10_SF9_IMPORT_PLAN.md` (manual entry + optional photo scan of SF10/SF9,
+> mid-year transfers included, Grade 7–10 scope). This doc remains scoped to detection/tagging.
+
 ### 8.4 Status-classification duplication — leave alone
 
 Do not "fix" `classifyEpStatus` (routes/registrar/main.ts:629-639) / `mapEpEnrollmentStatus` (enrollproSync.ts:66-76) mapping TRANSFERRED_IN→ENROLLED — that behavior is now CORRECT under D1 (status stays ENROLLED; the tagging pass records transfer-ness). Optionally add a comment noting the mapping is intentional.
@@ -382,6 +434,9 @@ Add types + API functions for the three endpoints, following existing axios clie
 4. **Mid-year section move of a transferee:** handled by main sync dedup + re-tagging (§6.2). `Enrollment` has `@@unique([studentId, sectionId, schoolYear])` (schema.prisma:210) — a second enrollment for a new section in the same year is only possible after the old one is dropped by dedup; never upsert blindly, always findFirst + conditional create.
 5. **`isPendingLrn` records:** skip tagging, surface in unmatched list.
 6. **Feed returns archived-SY empty array:** normal — log at debug, not warn.
+7. **Non-12-digit LRN:** validate `^\d{12}$` and quarantine into `unmatched[]` — never create or match an unsafe local identity.
+8. **Learner absent from the feed:** could mean `READY_FOR_SECTIONING` (not yet sectioned), a status change, or an archived year — never infer deletion, and never make a promotion/enrollment decision from a missing row.
+9. **EnrollPro outage / partial page set (401/404/409/500):** retain the last known roster, mark it stale, retry with bounded backoff; `409` needs an EnrollPro admin fix (active-year inconsistency).
 
 ---
 
@@ -400,8 +455,8 @@ Add types + API functions for the three endpoints, following existing axios clie
 
 | File | Action |
 |------|--------|
-| `server/prisma/schema.prisma` | +3 Student fields (String?), +1 Enrollment field (`transferInDate DateTime?`) |
-| `server/src/lib/enrollproClient.ts` | + `getSmartTransferees()` (mirror `getSmartStudentsFeed`, line 627) |
+| `server/prisma/schema.prisma` | +3 Student fields (String?), +2 Enrollment fields (`transferInDate DateTime?`, `enrollproApplicationId String?`) |
+| `server/src/lib/enrollproClient.ts` | `getSmartTransferees()` (IMPLEMENTED, line 694) — add optional `schoolYearId` + meta SY validation |
 | `server/src/lib/enrollproSync.ts` | + exported `syncTransferees()` enrichment pass (no changes to existing functions) |
 | `server/src/lib/syncCoordinator.ts` | wire `syncTransferees()` post-EnrollPro step, fail-soft; + result field in `UnifiedSyncResult` |
 | `server/src/lib/studentSnapshot.ts` | include 3 new Student fields in snapshot output |
@@ -423,6 +478,9 @@ Not touched: `promotion.ts`, `rollover.ts`, `enrollproSync.ts` existing function
 ## 13. Guardrails for the Implementer (from AGENTS.md — binding)
 
 - **Read-only EnrollPro.** Never write to EnrollPro/ATLAS. `syncTransferees` only reads the feed and writes to smart_db.
+- **Never call EnrollPro staff JWT endpoints with the machine integration key.** Only `/api/integration/v1/*` server-to-server endpoints are in scope.
+- **Integration key handling:** backend-only (env/secret manager); never sent to browser JS, placed in a URL, persisted on learner records, or logged. Never log the auth header or full response body; log time, status, page, school-year ID, item count, correlation ID.
+- **Identity:** validate `^\d{12}$` LRNs; preserve EnrollPro identifiers exactly; never use a learner name as an identity key; never infer deletion from a missing row.
 - **Do not refactor unrelated code** (incl. the duplicated `classifyEpStatus` — leave it, comment only if anything).
 - **Query rule:** operational views may filter `schoolYear` + status; historical/SF-form queries filter by `schoolYear` string ONLY — never `isActive`/`isArchived`.
 - **Zod schemas:** wrapped `{ body, params }` objects, validated via the `validate` middleware.
@@ -438,7 +496,7 @@ Not touched: `promotion.ts`, `rollover.ts`, `enrollproSync.ts` existing function
 ## 14. Open Questions (owner decision required)
 
 1. **Zero-grade late transferee policy** — see §10.1. Default: leave RETAINED, add EOSY review banner.
-2. **Previous-school grades on SF10** — see §8.3. Default: out of scope (paper-based DepEd consolidation; `transferCertNo` provides the paper trail). Manual entry of previous-school grades is a separate future feature.
+2. **Previous-school grades on SF10** — see §8.3. Now planned separately in `docs/REGISTRAR/SF10_SF9_IMPORT_PLAN.md` (manual entry + optional SF10/SF9 photo scan; mid-year transfers supported; Grade 7–10 scope). This doc does not implement it.
 3. **Should the transferee list page also show DROPPED/TRANSFERRED_OUT transferees** (they left after transferring in)? Default: no — current ENROLLED only; alumni page covers leavers.
 4. **Sync cadence for the transferee feed** — every cycle (default) vs cycle-gated. Decide after seeing real feed size.
 5. **Dashboard stat placement** — which existing card group the transferee counts join (registrar Dashboard layout owner's call).
@@ -447,3 +505,4 @@ Not touched: `promotion.ts`, `rollover.ts`, `enrollproSync.ts` existing function
 ---
 
 *Revised 2026-09-04 — codebase-verified; superseded earlier draft (which contained the errors listed in §1). SF10 coverage + snapshot-staleness correction added after SF10 path audit (sf10.ts, forms.ts:633, SchoolForms.tsx, AlumniStudents.tsx).*
+*Revised 2026-09-12 — aligned to the EnrollPro "SMART Transferee Enrollment Handoff" (2026-09-11): `/v1` path, `X-Integration-Key` auth, page limits 50/200, `OFFICIALLY_ENROLLED`-only inclusion, publish-boundary flow, LRN/status/grade validation, last-known-roster staleness, and the expanded "not exposed" field list.*

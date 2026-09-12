@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { AuditAction, AuditSeverity, Term } from "@prisma/client";
+import type { SystemSettings as SystemSettingsModel } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import path from "path";
 import fs from "fs";
@@ -14,6 +15,8 @@ import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
 import { getActiveTermLabels, invalidateSchoolYearCache, getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { syncActiveYearSnapshot } from "../../lib/schoolSettingsSnapshot";
+import { setSecurityPolicy } from "../../lib/securityPolicy";
+import { isDemoTermMode } from "../../lib/demoTermMode";
 import { logger } from "../../lib/logger";
 import { validate } from "../../middleware/validate";
 import { setYearLock, setTermLock } from "../../lib/gradeLocks";
@@ -28,6 +31,21 @@ import {
   termLockToggleSchema,
 } from "../../schemas/admin";
 import { requireAdmin, upload } from "./helpers";
+
+// Strip EnrollPro secrets before the settings row ever leaves the server
+// (JSON responses and SSE broadcasts).
+function sanitizeSettings<T>(settings: T): T {
+  const safe = { ...(settings as unknown as Record<string, unknown>) };
+  delete safe.enrollproPassword;
+  delete safe.enrollproIntegrationKey;
+  // Computed (not persisted): tells the UI whether the demo term controls exist.
+  safe.demoTermMode = isDemoTermMode();
+  return safe as unknown as T;
+}
+
+function broadcastSanitizedSettings(settings: SystemSettingsModel): void {
+  broadcastSettingsUpdate(sanitizeSettings(settings));
+}
 
 export default function (router: Router) {
   // ── System Health & Sync Diagnostics ─────────────────────────────────────
@@ -88,7 +106,36 @@ export default function (router: Router) {
 
   // ── System Settings ──────────────────────────────────────────────────────
 
-  router.get("/settings", async (req: Request, res: Response): Promise<void> => {
+  // Sanitized public subset — consumed by the theme (also on login pages).
+  // Never exposes EnrollPro credentials.
+  router.get("/settings/public", async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+      res.json({
+        settings: settings
+          ? {
+              schoolName: settings.schoolName,
+              schoolId: settings.schoolId,
+              division: settings.division,
+              region: settings.region,
+              schoolHeadName: settings.schoolHeadName,
+              address: settings.address,
+              primaryColor: settings.primaryColor,
+              secondaryColor: settings.secondaryColor,
+              accentColor: settings.accentColor,
+              logoUrl: settings.logoUrl,
+              currentSchoolYear: settings.currentSchoolYear,
+              currentTerm: settings.currentTerm,
+            }
+          : {},
+      });
+    } catch (error) {
+      logger.error("Error fetching public settings:", error);
+      res.status(500).json({ message: "Failed to fetch settings" });
+    }
+  });
+
+  router.get("/settings", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
     try {
       let settings = await prisma.systemSettings.findUnique({
         where: { id: "main" },
@@ -107,7 +154,7 @@ export default function (router: Router) {
         // Non-fatal: use defaults if school year not linked yet
       }
 
-      res.json({ settings, termLabels });
+      res.json({ settings: sanitizeSettings(settings), termLabels });
     } catch (error) {
       logger.error("Error fetching settings:", error);
       res.status(500).json({ message: "Failed to fetch settings" });
@@ -147,6 +194,21 @@ export default function (router: Router) {
         gradeSnapshotRetentionDays,
       } = req.body;
 
+      // DEMO-only: term dates are only writable when DEMO_TERM_MODE is on.
+      // In normal mode they are stripped from the payload upstream, so this is
+      // an empty object and behaviour is unchanged.
+      const demoTermDates = isDemoTermMode()
+        ? {
+            t1StartDate: t1StartDate === undefined ? undefined : (t1StartDate ? new Date(t1StartDate) : null),
+            t1EndDate: t1EndDate === undefined ? undefined : (t1EndDate ? new Date(t1EndDate) : null),
+            t2StartDate: t2StartDate === undefined ? undefined : (t2StartDate ? new Date(t2StartDate) : null),
+            t2EndDate: t2EndDate === undefined ? undefined : (t2EndDate ? new Date(t2EndDate) : null),
+            t3StartDate: t3StartDate === undefined ? undefined : (t3StartDate ? new Date(t3StartDate) : null),
+            t3EndDate: t3EndDate === undefined ? undefined : (t3EndDate ? new Date(t3EndDate) : null),
+            termDatesDerived: false,
+          }
+        : {};
+
       const settings = await prisma.systemSettings.upsert({
         where: { id: "main" },
         update: {
@@ -154,10 +216,10 @@ export default function (router: Router) {
           schoolId,
           division,
           region,
-          schoolHeadName: schoolHeadName || null,
-          address,
-          contactNumber,
-          email,
+          schoolHeadName: schoolHeadName === undefined ? undefined : (schoolHeadName || null),
+          address: address === undefined ? undefined : (address || null),
+          contactNumber: contactNumber === undefined ? undefined : (contactNumber || null),
+          email: email === undefined ? undefined : (email || null),
           currentSchoolYear,
           schoolYearId: schoolYearId || null,
           currentTerm: currentTerm as Term,
@@ -168,12 +230,7 @@ export default function (router: Router) {
           maxLoginAttempts,
           passwordMinLength,
           requireSpecialChar,
-          t1StartDate: t1StartDate ? new Date(t1StartDate) : undefined,
-          t1EndDate: t1EndDate ? new Date(t1EndDate) : undefined,
-          t2StartDate: t2StartDate ? new Date(t2StartDate) : undefined,
-          t2EndDate: t2EndDate ? new Date(t2EndDate) : undefined,
-          t3StartDate: t3StartDate ? new Date(t3StartDate) : undefined,
-          t3EndDate: t3EndDate ? new Date(t3EndDate) : undefined,
+          ...demoTermDates,
           autoAdvanceTerm,
           auditLogRetentionDays,
           syncHistoryRetentionDays,
@@ -185,10 +242,10 @@ export default function (router: Router) {
           schoolId,
           division,
           region,
-          schoolHeadName: schoolHeadName || null,
-          address,
-          contactNumber,
-          email,
+          schoolHeadName: schoolHeadName === undefined ? undefined : (schoolHeadName || null),
+          address: address === undefined ? undefined : (address || null),
+          contactNumber: contactNumber === undefined ? undefined : (contactNumber || null),
+          email: email === undefined ? undefined : (email || null),
           currentSchoolYear,
           schoolYearId: schoolYearId || null,
           currentTerm: currentTerm as Term,
@@ -199,12 +256,7 @@ export default function (router: Router) {
           maxLoginAttempts,
           passwordMinLength,
           requireSpecialChar,
-          t1StartDate: t1StartDate ? new Date(t1StartDate) : undefined,
-          t1EndDate: t1EndDate ? new Date(t1EndDate) : undefined,
-          t2StartDate: t2StartDate ? new Date(t2StartDate) : undefined,
-          t2EndDate: t2EndDate ? new Date(t2EndDate) : undefined,
-          t3StartDate: t3StartDate ? new Date(t3StartDate) : undefined,
-          t3EndDate: t3EndDate ? new Date(t3EndDate) : undefined,
+          ...demoTermDates,
           autoAdvanceTerm,
           auditLogRetentionDays,
           syncHistoryRetentionDays,
@@ -214,6 +266,13 @@ export default function (router: Router) {
 
       // Keep active year's snapshot in step with admin edits (W2)
       await syncActiveYearSnapshot();
+
+      // Refresh the enforced security policy cache
+      setSecurityPolicy({
+        maxLoginAttempts: settings.maxLoginAttempts,
+        passwordMinLength: settings.passwordMinLength,
+        requireSpecialChar: settings.requireSpecialChar,
+      });
 
       // Active school year may have changed — drop the 5-min resolver cache
       invalidateSchoolYearCache();
@@ -228,9 +287,9 @@ export default function (router: Router) {
         AuditSeverity.CRITICAL
       );
 
-      broadcastSettingsUpdate(settings);
+      broadcastSanitizedSettings(settings);
 
-      res.json({ message: "Settings updated successfully", settings });
+      res.json({ message: "Settings updated successfully", settings: sanitizeSettings(settings) });
     } catch (error) {
       logger.error("Error updating settings:", error);
       res.status(500).json({ message: "Failed to update settings" });
@@ -281,7 +340,7 @@ export default function (router: Router) {
           AuditSeverity.INFO
         );
 
-        broadcastSettingsUpdate(settings);
+        broadcastSanitizedSettings(settings);
 
         res.json({ message: "Logo uploaded successfully", logoUrl });
       } catch (error) {
@@ -314,7 +373,7 @@ export default function (router: Router) {
         AuditSeverity.INFO
       );
 
-      broadcastSettingsUpdate(settings);
+      broadcastSanitizedSettings(settings);
 
       res.json({
         message: "Color scheme updated successfully",
@@ -346,7 +405,7 @@ export default function (router: Router) {
         req.ip,
         AuditSeverity.WARNING
       );
-      broadcastSettingsUpdate(settings);
+      broadcastSanitizedSettings(settings);
       res.json({ message: `Grade editing ${locked ? 'locked' : 'unlocked'}`, gradeLock: settings.gradeLock });
     } catch (error) {
       logger.error("Error toggling grade lock:", error);
@@ -370,7 +429,7 @@ export default function (router: Router) {
         req.ip as string | undefined,
         AuditSeverity.WARNING
       );
-      broadcastSettingsUpdate(settings);
+      broadcastSanitizedSettings(settings);
       res.json({ message: `Teacher login ${locked ? 'locked' : 'unlocked'}`, transitionLock: settings.transitionLock });
     } catch (error) {
       logger.error("Error toggling transition lock:", error);
@@ -689,7 +748,7 @@ export default function (router: Router) {
           AuditSeverity.INFO
         );
 
-        res.json({ message: "Successfully synced from EnrollPro", settings });
+        res.json({ message: "Successfully synced from EnrollPro", settings: sanitizeSettings(settings) });
       } catch (error) {
         logger.error("Error syncing from EnrollPro:", error instanceof Error ? error.message : error);
         res.status(500).json({
@@ -731,7 +790,7 @@ export default function (router: Router) {
         // Trigger an immediate branding sync to repopulate from EnrollPro
         const settings = await syncEnrollProBranding(path.join(__dirname, "../../uploads"));
 
-        res.json({ message: "Term dates reset and repopulated from EnrollPro", settings });
+        res.json({ message: "Term dates reset and repopulated from EnrollPro", settings: sanitizeSettings(settings) });
       } catch (error) {
         logger.error("Error resetting term dates:", error);
         res.status(500).json({ message: "Failed to reset term dates" });

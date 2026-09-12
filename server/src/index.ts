@@ -37,6 +37,8 @@ import { startUnifiedSyncScheduler, stopUnifiedSyncScheduler } from "./lib/syncC
 import { prisma } from "./lib/prisma";
 import { globalLimiter } from "./middleware/rateLimiter";
 import { csrfProtection } from "./middleware/csrf";
+import { auditContextMiddleware } from "./middleware/auditContext";
+import { loadSecurityPolicy } from "./lib/securityPolicy";
 
 const app = express();
 const PORT = process.env.PORT || 5003;
@@ -58,6 +60,9 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+
+// Attach request audit context (IP / network / device) for all routes
+app.use(auditContextMiddleware);
 
 // Global rate limiter
 app.use("/api", globalLimiter);
@@ -206,6 +211,8 @@ const server = app.listen(PORT, async () => {
   await reclassifySpecialProgramSubjects();
   // Auto-seed transmutation table if empty (safe to run on every start)
   await autoSeedTransmutationTable();
+  // Load enforced security policy (login attempts / password rules)
+  await loadSecurityPolicy();
   // Start unified sync scheduler to periodically sync EnrollPro and ATLAS
   startUnifiedSyncScheduler();
   // Start auto-term advancement scheduler
@@ -286,20 +293,24 @@ function startAutoTermScheduler() {
         const { setTermLock, setYearLock } = await import("./lib/gradeLocks");
         const { getIntegrationV1ActiveTerm } = await import("./lib/enrollproClient");
         const { createAuditLog } = await import("./lib/audit");
+        const { isDemoTermMode } = await import("./lib/demoTermMode");
         const { AuditAction, AuditSeverity } = await import("@prisma/client");
         const activeYear = await getActiveSchoolYear();
         const actor = { id: "scheduler", name: "Auto-Term Scheduler" };
         const auditActor = { id: "scheduler", firstName: "Auto-Term", lastName: "Scheduler", role: "ADMIN" };
 
         // Fetch live active term from EnrollPro — this is the source of truth
+        // DEMO-only: skipped when DEMO_TERM_MODE is on (date-based locking).
         let enrollProActiveTerm: string | null = null;
-        try {
-          const epTerm = await getIntegrationV1ActiveTerm();
-          if (epTerm?.activeTerm && ['T1', 'T2', 'T3'].includes(epTerm.activeTerm.toUpperCase())) {
-            enrollProActiveTerm = epTerm.activeTerm.toUpperCase();
+        if (!isDemoTermMode()) {
+          try {
+            const epTerm = await getIntegrationV1ActiveTerm();
+            if (epTerm?.activeTerm && ['T1', 'T2', 'T3'].includes(epTerm.activeTerm.toUpperCase())) {
+              enrollProActiveTerm = epTerm.activeTerm.toUpperCase();
+            }
+          } catch {
+            // EnrollPro unreachable — fall back to date-based locking
           }
-        } catch {
-          // EnrollPro unreachable — fall back to date-based locking
         }
 
         const termEndDates: Record<string, Date | null> = {

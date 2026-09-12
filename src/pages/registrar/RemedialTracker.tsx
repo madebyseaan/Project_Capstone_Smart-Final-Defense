@@ -55,7 +55,7 @@ export default function RemedialTracker() {
   const [items, setItems] = useState<RemedialStudent[]>([]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(25);
+  const [limit, setLimit] = useState(10);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Edit state for expanded row

@@ -146,7 +146,7 @@ export default function ClassRecordView() {
   }, [settingsQuery.data]);
 
   // Edit access hook — archived assignments are always read-only
-  const editAccessRaw = useEditAccess({ isPastTerm: !!isPastTerm, gradeLock, selectedTerm });
+  const editAccessRaw = useEditAccess({ isPastTerm: !!isPastTerm, locks: classRecordQuery.data?.locks ?? null, selectedTerm });
   const editAccess = isArchivedAssignment
     ? { ...editAccessRaw, isViewOnly: true }
     : editAccessRaw;
@@ -286,6 +286,7 @@ export default function ClassRecordView() {
         </div>
       )}
 
+      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-clip">
       <ClassRecordHero
         classAssignment={classAssignment}
         effectiveWeightsSource={effectiveWeights?.source ?? null}
@@ -308,19 +309,18 @@ export default function ClassRecordView() {
             onChanged={handleToolsChanged}
           />
         ) : undefined}
+        rotationSlot={lockedTerm && classAssignment?.subject?.rotationTermRank ? (
+          <RotationBanner
+            subjectName={classAssignment.subject.name}
+            rotationTermRank={classAssignment.subject.rotationTermRank}
+            termLabel={termLabels[lockedTerm as keyof typeof termLabels] ?? lockedTerm}
+            currentTermLabel={termLabels[currentTerm as keyof typeof termLabels] ?? currentTerm}
+            siblings={rotationSiblings}
+          />
+        ) : undefined}
       />
 
-      <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={isPastTerm && !gradeLock && editAccess.editRequestStatus === "idle" ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} termDatesDerived={termDates?.derived} locks={classRecordQuery.data?.locks ?? null} />
-
-      {lockedTerm && classAssignment?.subject?.rotationTermRank && (
-        <RotationBanner
-          subjectName={classAssignment.subject.name}
-          rotationTermRank={classAssignment.subject.rotationTermRank}
-          termLabel={termLabels[lockedTerm as keyof typeof termLabels] ?? lockedTerm}
-          currentTermLabel={termLabels[currentTerm as keyof typeof termLabels] ?? currentTerm}
-          siblings={rotationSiblings}
-        />
-      )}
+      <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={!isArchivedAssignment && editAccess.canRequestEdit ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} termDatesDerived={termDates?.derived} locks={classRecordQuery.data?.locks ?? null} variant="flush" />
 
       {/* Inherited Grades Notice */}
       {inheritedFromTeachers.length > 0 && (
@@ -333,7 +333,7 @@ export default function ClassRecordView() {
       )}
 
       {mergedRecords.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+        <div className="border-t border-dashed border-slate-300 p-12 text-center">
           <p className="text-slate-500 font-medium">No learners enrolled in this class for this school year.</p>
         </div>
       ) : (
@@ -353,6 +353,7 @@ export default function ClassRecordView() {
       <EditRequestModal open={editAccess.editRequestModalOpen} onOpenChange={editAccess.setEditRequestModalOpen} onSuccess={editAccess.onEditRequestSuccess} selectedTerm={selectedTerm} classAssignment={classAssignment} userName={userName} />
         </>
       )}
+      </div>
     </div>
   );
 }

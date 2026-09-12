@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 import axios from "axios";
 import { getPortalToken } from "@/lib/api";
 
-const SETTINGS_URL = "/api/admin/settings";
+const SETTINGS_URL = "/api/admin/settings/public";
 
 interface ThemeColors {
   primary: string;
