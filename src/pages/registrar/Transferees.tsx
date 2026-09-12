@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ArrowLeftRight,
   AlertTriangle,
@@ -62,6 +63,7 @@ const formatDate = (iso?: string | null): string => {
 };
 
 export default function Transferees() {
+  const navigate = useNavigate();
   const { colors } = useTheme();
   const { syncVersion } = useSyncStream();
   const [data, setData] = useState<TransfereesResponse | null>(null);
@@ -182,7 +184,7 @@ export default function Transferees() {
         title="Transferees"
         description="Learners who transferred into the school this school year (T/I)"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Badge variant="outline" className="px-3 py-1 text-xs font-medium bg-primary/5 text-primary border-primary/20">
               {allYears ? "All Years (History)" : `S.Y. ${data?.schoolYear || "—"}`}
             </Badge>
@@ -281,7 +283,115 @@ export default function Transferees() {
             </div>
         </div>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          {/* Mobile card list */}
+          <div className="block md:hidden p-4 space-y-3">
+            {loading ? (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm py-8 justify-center">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-12">
+                <ArrowLeftRight className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+                <p className="text-sm font-medium text-foreground">
+                  {search ? "No transferees match your search" : "No transferees this school year"}
+                </p>
+              </div>
+            ) : (
+              filtered.map((row) => {
+                const missing = [
+                  row.completeness.missingBirthDate ? "Birth date" : null,
+                  row.completeness.missingGender ? "Sex" : null,
+                  row.completeness.missingPreviousSchool ? "Prev. school" : null,
+                  row.completeness.missingTransferCertNo ? "TC no." : null,
+                ].filter(Boolean) as string[];
+                const isPastRow = !!row.schoolYear && row.schoolYear !== currentSchoolYear;
+                return (
+                  <div key={row.enrollmentId} className="bg-card rounded-xl p-4 shadow-sm border border-border/30 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-primary-foreground font-semibold text-xs shrink-0"
+                        style={{ backgroundColor: colors.primary }}
+                        aria-hidden="true"
+                      >
+                        {(row.studentName || "?").charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-foreground text-sm truncate">{row.studentName}</p>
+                        <p className="font-mono text-[12px] text-muted-foreground">{row.lrn || "—"}</p>
+                      </div>
+                      {missing.length === 0 ? (
+                        <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap">
+                          Complete
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap">
+                          {missing.length} missing
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Section</p>
+                        <p className="text-foreground font-medium">
+                          {row.section.name} · {gradeLevelLabels[row.section.gradeLevel] || row.section.gradeLevel}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Transferred in</p>
+                        <p className="text-foreground font-medium">{row.transferInDate ? formatDate(row.transferInDate) : "—"}</p>
+                      </div>
+                      {allYears && (
+                        <div>
+                          <p className="text-muted-foreground">School year</p>
+                          <p className="text-foreground font-medium">{row.schoolYear ?? "—"}</p>
+                        </div>
+                      )}
+                    </div>
+                    {row.priorRecords?.expectedGradeLevels?.length > 0 && (
+                      row.priorRecords.missingGradeLevels.length > 0 ? (
+                        <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border-amber-200">
+                          {row.priorRecords.missingGradeLevels.length} prior year{row.priorRecords.missingGradeLevels.length !== 1 ? "s" : ""} missing
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200">
+                          Prior records complete
+                        </Badge>
+                      )
+                    )}
+                    {isPastRow ? (
+                      <p className="text-[11px] text-muted-foreground">View only</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDialog(row)}
+                          className="h-8 text-xs border-border/70"
+                        >
+                          <ClipboardCheck className="h-3.5 w-3.5 mr-1.5" /> Complete details
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            navigate(`/registrar/transferees/${row.studentId}/sf10-records`, {
+                              state: { studentName: row.studentName },
+                            })
+                          }
+                          className="h-8 text-xs border-border/70"
+                        >
+                          <History className="h-3.5 w-3.5 mr-1.5" /> Prior SF10
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <Table className="w-full table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-muted/50 border-b border-border/30 bg-muted/50">
@@ -360,29 +470,57 @@ export default function Transferees() {
                           {row.transferInDate ? formatDate(row.transferInDate) : <Dash />}
                         </TableCell>
                         <TableCell className="py-3.5 px-4 text-left align-middle">
-                          {missing.length === 0 ? (
-                            <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap">
-                              Complete
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap">
-                              {missing.length} missing
-                            </Badge>
-                          )}
+                          <div className="flex flex-col gap-1 items-start">
+                            {missing.length === 0 ? (
+                              <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap">
+                                Complete
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap">
+                                {missing.length} missing
+                              </Badge>
+                            )}
+                            {row.priorRecords?.expectedGradeLevels?.length > 0 && (
+                              row.priorRecords.missingGradeLevels.length > 0 ? (
+                                <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap">
+                                  {row.priorRecords.missingGradeLevels.length} prior yr{row.priorRecords.missingGradeLevels.length !== 1 ? "s" : ""} missing
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap">
+                                  Prior records ✓
+                                </Badge>
+                              )
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="py-3.5 px-4 text-left align-middle">
                           {isPastRow ? (
                             <span className="text-[11px] text-muted-foreground whitespace-nowrap">View only</span>
                           ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openDialog(row)}
-                              className="h-8 px-3 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap -ml-2.5"
-                            >
-                              <ClipboardCheck className="h-3.5 w-3.5 mr-1.5" />
-                              Complete details
-                            </Button>
+                            <div className="flex items-center gap-1 -ml-2.5">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openDialog(row)}
+                                className="h-8 px-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap"
+                              >
+                                <ClipboardCheck className="h-3.5 w-3.5 mr-1.5" />
+                                Complete details
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  navigate(`/registrar/transferees/${row.studentId}/sf10-records`, {
+                                    state: { studentName: row.studentName },
+                                  })
+                                }
+                                className="h-8 px-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap"
+                              >
+                                <History className="h-3.5 w-3.5 mr-1.5" />
+                                Prior SF10
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>

@@ -685,29 +685,72 @@ export async function getSmartStudentsFeed(): Promise<any[]> {
   return all;
 }
 
+export interface SmartTransfereeFeedResult {
+  data: any[];
+  pageCount: number;
+  total: number;
+  generatedAt: string | null;
+  scopeSchoolYearId: number | null;
+  scopeSchoolYearLabel: string | null;
+}
+
 /**
  * Returns SMART-specific transferee feed.
  * GET /api/integration/v1/default/smart/transferees
- * Returns learners with learnerType: "TRANSFEREE" for the active school year.
- * Paginated — fetches all pages automatically.
+ * Returns learners with learnerType: "TRANSFEREE" whose application is OFFICIALLY_ENROLLED
+ * for the resolved school year. Paginated — fetches all pages automatically.
+ *
+ * When `schoolYearId` / `schoolYearLabel` are supplied, the response + metadata scope must
+ * agree or the call throws (caller treats this as stale data and retains its last roster).
  */
-export async function getSmartTransferees(): Promise<any[]> {
+export async function getSmartTransferees(opts?: {
+  schoolYearId?: number;
+  schoolYearLabel?: string;
+}): Promise<SmartTransfereeFeedResult> {
   const all: any[] = [];
   let page = 1;
-  const limit = 200;
+  const limit = 200; // handoff: default 50, max 200
+  let generatedAt: string | null = null;
+  let scopeSchoolYearId: number | null = null;
+  let scopeSchoolYearLabel: string | null = null;
+  let total = 0;
+
   while (true) {
     const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (opts?.schoolYearId != null) query.set("schoolYearId", String(opts.schoolYearId));
+
     const result = await fetchJSON(
       `${await getEnrollProBase()}/integration/v1/default/smart/transferees?${query.toString()}`,
       { headers: await getIntegrationHeaders() }
     );
     const data = result?.data ?? [];
     const meta = result?.meta ?? { totalPages: 1 };
+
+    const metaSyId = meta.scopeSchoolYearId != null ? Number(meta.scopeSchoolYearId) : null;
+    const metaSyLabel = meta.scopeSchoolYearLabel != null ? String(meta.scopeSchoolYearLabel) : null;
+    if (metaSyId != null) scopeSchoolYearId = metaSyId;
+    if (metaSyLabel != null) scopeSchoolYearLabel = metaSyLabel;
+    if (meta.generatedAt) generatedAt = String(meta.generatedAt);
+    if (typeof meta.total === "number") total = meta.total;
+
+    if (opts?.schoolYearId != null && metaSyId != null && metaSyId !== opts.schoolYearId) {
+      throw new Error(
+        `Transferee feed school-year mismatch: requested schoolYearId=${opts.schoolYearId}, got ${metaSyId}`
+      );
+    }
+    if (opts?.schoolYearLabel && metaSyLabel && metaSyLabel !== opts.schoolYearLabel) {
+      throw new Error(
+        `Transferee feed school-year mismatch: requested schoolYear=${opts.schoolYearLabel}, got ${metaSyLabel}`
+      );
+    }
+
     all.push(...data);
-    if (page >= meta.totalPages || data.length === 0) break;
+    const totalPages = Number(meta.totalPages) || 1;
+    if (page >= totalPages || data.length === 0) break;
     page++;
   }
-  return all;
+
+  return { data: all, pageCount: page, total, generatedAt, scopeSchoolYearId, scopeSchoolYearLabel };
 }
 
 /**

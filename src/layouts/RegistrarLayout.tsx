@@ -326,7 +326,7 @@ export default function RegistrarLayout() {
         sidebarCollapsed ? "lg:pl-[70px]" : "lg:pl-[280px]"
       )}>
         {/* Top navbar */}
-        <header className="sticky top-0 z-30 h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 lg:px-6">
+        <header className="sticky top-0 z-30 h-16 bg-white border-b border-slate-200 px-4 lg:px-6">
           <div className="h-full flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button

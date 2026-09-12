@@ -36,6 +36,7 @@ import { syncAdvisoryWorkloadEntry } from './workload';
 import { snapshotForDb } from './studentSnapshot';
 import { createAuditLog } from './audit';
 import { isConfidentData, exceedsRatio, MAX_DEACTIVATION_RATIO } from './syncGuard';
+import { isValidLrn, normalizeLrn, isOfficiallyEnrolled, mapGradeLevelToEnum } from './transfereeValidation';
 import { createHash } from 'crypto';
 
 // ---------------------------------------------------------------------------
@@ -1141,42 +1142,107 @@ export async function runEnrollProSync() {
 export interface TransfereeSyncResult {
   transfereesTagged: number;
   unmatched: Array<{ lrn: string; reason: string }>;
+  applicationRefsPersisted: number;
+  generatedAt: string | null;
+  status: "success" | "stale";
+}
+
+export interface TransfereeSyncStatus {
+  at: string | null;
+  generatedAt: string | null;
+  status: "success" | "stale" | "never";
+  tagged: number;
+  unmatched: number;
 }
 
 let lastSyncTaggedLrns = new Set<string>();
+let lastTransfereeSyncStatus: TransfereeSyncStatus = {
+  at: null,
+  generatedAt: null,
+  status: "never",
+  tagged: 0,
+  unmatched: 0,
+};
 
 /** LRNs tagged as transferees by the most recent sync pass (module state). */
 export function getSyncTaggedTransfereeLrns(): Set<string> {
   return lastSyncTaggedLrns;
 }
 
+/** Last transferee-feed outcome — retained across failures for staleness display. */
+export function getTransfereeSyncStatus(): TransfereeSyncStatus {
+  return lastTransfereeSyncStatus;
+}
+
 /**
- * Enrichment pass that tags transferee enrollments with transferInDate.
- * Runs AFTER the main EnrollPro sync. Never creates Students or Enrollments.
- * Only sets transferInDate on existing ENROLLED enrollments where it is currently null.
+ * Enrichment pass that tags transferee enrollments with transferInDate and retains the
+ * EnrollPro application reference. Runs AFTER the main EnrollPro sync. Never creates
+ * Students or Enrollments, and never deletes anything.
+ *
+ * Validation follows the 2026-09-11 "SMART Transferee Enrollment Handoff":
+ *  - the feed must be scoped to the resolved school year (id + label must agree);
+ *  - only OFFICIALLY_ENROLLED rows with a section and a Grade 7-10 level are activated;
+ *  - the LRN must be exactly 12 digits (otherwise quarantined into `unmatched`);
+ *  - transferInDate is set only when currently null (registrar corrections win).
+ * On any failure the last known state is retained and marked `stale`.
  */
 export async function syncTransferees(): Promise<TransfereeSyncResult> {
-  const result: TransfereeSyncResult = { transfereesTagged: 0, unmatched: [] };
+  const result: TransfereeSyncResult = {
+    transfereesTagged: 0,
+    unmatched: [],
+    applicationRefsPersisted: 0,
+    generatedAt: null,
+    status: "success",
+  };
   lastSyncTaggedLrns = new Set();
 
   try {
     const { getSmartTransferees } = await import('./enrollproClient');
-    const { getActiveSchoolYearLabel } = await import('./schoolYearResolver');
+    const { getActiveSchoolYear } = await import('./schoolYearResolver');
 
-    const currentSY = await getActiveSchoolYearLabel();
-    const records = await getSmartTransferees();
+    const activeYear = await getActiveSchoolYear();
+    const currentSY = activeYear.label;
+    const enrollproSchoolYearId = activeYear.externalId ?? undefined;
 
-    logger.info(`[syncTransferees] Fetched ${records.length} transferee records from EnrollPro`);
+    const feed = await getSmartTransferees({
+      schoolYearId: enrollproSchoolYearId,
+      schoolYearLabel: currentSY,
+    });
+    result.generatedAt = feed.generatedAt;
 
-    for (const record of records) {
+    logger.info(
+      `[syncTransferees] Fetched ${feed.data.length} transferee records from EnrollPro ` +
+      `(SY ${currentSY}${enrollproSchoolYearId ? `, EP id ${enrollproSchoolYearId}` : ''}, ` +
+      `generatedAt=${feed.generatedAt ?? 'n/a'})`,
+    );
+
+    for (const record of feed.data) {
       try {
         const schoolYearLabel = record.schoolYear?.yearLabel;
-        if (schoolYearLabel !== currentSY) continue;
+        if (schoolYearLabel && schoolYearLabel !== currentSY) continue;
 
-        const lrn = String(record.lrn ?? '').trim();
+        // The feed is expected to publish only OFFICIALLY_ENROLLED rows — skip defensively.
+        if (!isOfficiallyEnrolled(record.enrollmentStatus)) continue;
+
+        const lrn = normalizeLrn(record.lrn);
         if (!lrn) continue;
+
+        if (!isValidLrn(lrn)) {
+          result.unmatched.push({ lrn, reason: "Invalid LRN — must be exactly 12 digits" });
+          continue;
+        }
         if (record.isPendingLrn) {
-          result.unmatched.push({ lrn, reason: 'Pending LRN — skipped' });
+          result.unmatched.push({ lrn, reason: "Pending LRN — skipped" });
+          continue;
+        }
+
+        if (!mapGradeLevelToEnum(record.gradeLevel)) {
+          result.unmatched.push({ lrn, reason: "Grade level outside Grade 7-10" });
+          continue;
+        }
+
+        if (record.section?.id == null && !record.section?.name) {
+          result.unmatched.push({ lrn, reason: "No official section assigned" });
           continue;
         }
 
@@ -1185,7 +1251,7 @@ export async function syncTransferees(): Promise<TransfereeSyncResult> {
           select: { id: true },
         });
         if (!student) {
-          result.unmatched.push({ lrn, reason: 'Student not found in SMART DB' });
+          result.unmatched.push({ lrn, reason: "Student not found in SMART DB" });
           continue;
         }
 
@@ -1198,26 +1264,59 @@ export async function syncTransferees(): Promise<TransfereeSyncResult> {
           orderBy: { updatedAt: 'desc' },
         });
         if (!enrollment) {
-          result.unmatched.push({ lrn, reason: 'No ENROLLED enrollment for current SY' });
+          result.unmatched.push({ lrn, reason: "No ENROLLED enrollment for current SY" });
           continue;
         }
 
+        const applicationId =
+          record.enrollmentApplicationId != null ? String(record.enrollmentApplicationId) : null;
+
+        const data: { transferInDate?: Date; enrollproApplicationId?: string } = {};
         if (enrollment.transferInDate == null && record.enrolledAt) {
-          await prisma.enrollment.update({
-            where: { id: enrollment.id },
-            data: { transferInDate: new Date(record.enrolledAt) },
-          });
-          result.transfereesTagged++;
-          lastSyncTaggedLrns.add(lrn);
+          data.transferInDate = new Date(record.enrolledAt);
+        }
+        if (applicationId && enrollment.enrollproApplicationId !== applicationId) {
+          data.enrollproApplicationId = applicationId;
+        }
+
+        if (Object.keys(data).length > 0) {
+          await prisma.enrollment.update({ where: { id: enrollment.id }, data });
+          if (data.transferInDate) {
+            result.transfereesTagged++;
+            lastSyncTaggedLrns.add(lrn);
+          }
+          if (data.enrollproApplicationId) result.applicationRefsPersisted++;
         }
       } catch (itemErr: any) {
         logger.warn(`[syncTransferees] Error processing LRN ${record.lrn}: ${itemErr.message}`);
       }
     }
 
-    logger.info(`[syncTransferees] Done: ${result.transfereesTagged} tagged, ${result.unmatched.length} unmatched`);
+    lastTransfereeSyncStatus = {
+      at: new Date().toISOString(),
+      generatedAt: result.generatedAt,
+      status: "success",
+      tagged: result.transfereesTagged,
+      unmatched: result.unmatched.length,
+    };
+
+    logger.info(
+      `[syncTransferees] Done: ${result.transfereesTagged} tagged, ` +
+      `${result.applicationRefsPersisted} app refs, ${result.unmatched.length} unmatched`,
+    );
   } catch (err: any) {
-    logger.warn(`[syncTransferees] Failed (non-fatal): ${err.message}`);
+    const previous = lastTransfereeSyncStatus;
+    result.status = "stale";
+    lastTransfereeSyncStatus = {
+      at: new Date().toISOString(),
+      generatedAt: previous.generatedAt,
+      status: "stale",
+      tagged: previous.tagged,
+      unmatched: previous.unmatched,
+    };
+    logger.warn(
+      `[syncTransferees] Failed (non-fatal) — retained last known roster as stale: ${err.message}`,
+    );
   }
 
   return result;

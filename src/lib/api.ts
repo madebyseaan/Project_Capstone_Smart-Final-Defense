@@ -897,6 +897,7 @@ export interface RegistrarSyncStatus {
 // Transferee types
 export interface TransfereeRow {
   enrollmentId: string;
+  studentId: string;
   schoolYear?: string;
   lrn: string;
   studentName: string;
@@ -914,6 +915,11 @@ export interface TransfereeRow {
     missingGender: boolean;
     missingPreviousSchool: boolean;
     missingTransferCertNo: boolean;
+  };
+  priorRecords: {
+    expectedGradeLevels: string[];
+    savedGradeLevels: string[];
+    missingGradeLevels: string[];
   };
   matchedBySync: boolean;
 }
@@ -933,6 +939,107 @@ export interface TransfereeUpdatePayload {
   birthDate?: string;
   gender?: "MALE" | "FEMALE";
   transferInDate?: string;
+}
+
+// Prior-school (SF10/SF9) record types — registrar manual entry.
+// Display-only; never feeds Grade/promotion/EOSY.
+export interface ExternalSubjectTerm {
+  label: string;
+  value: number;
+}
+
+export interface ExternalSubjectInput {
+  subjectCode?: string;
+  subjectName: string;
+  terms?: ExternalSubjectTerm[];
+  finalRating?: number;
+  remarks?: string;
+  isNonPromotional?: boolean;
+}
+
+export interface ExternalSchoolRecordPayload {
+  schoolYear: string;
+  gradeLevel: "GRADE_7" | "GRADE_8" | "GRADE_9" | "GRADE_10";
+  schoolName: string;
+  schoolId?: string;
+  sectionName?: string;
+  adviserName?: string;
+  generalAverage?: number;
+  promotionStatus?: string;
+  formType?: "SF10" | "SF9";
+  isPartialYear?: boolean;
+  ocrRawText?: string;
+  source?: "MANUAL" | "SF10_SCAN" | "SF9_SCAN" | "SF10_XLSX";
+  subjects: ExternalSubjectInput[];
+}
+
+export interface ExternalSubjectRecord {
+  id: string;
+  recordId: string;
+  subjectCode: string | null;
+  subjectName: string;
+  terms: ExternalSubjectTerm[] | null;
+  finalRating: number | null;
+  remarks: string | null;
+  isNonPromotional: boolean;
+  confidence: number | null;
+  needsReview: boolean;
+}
+
+export interface ExternalSchoolRecord {
+  id: string;
+  studentId: string;
+  schoolYear: string;
+  gradeLevel: string;
+  schoolName: string;
+  schoolId: string | null;
+  sectionName: string | null;
+  adviserName: string | null;
+  generalAverage: number | null;
+  promotionStatus: string | null;
+  formType: string;
+  isPartialYear: boolean;
+  source: string;
+  ocrRawText: string | null;
+  confidence: number | null;
+  verifiedById: string | null;
+  verifiedAt: string | null;
+  subjects: ExternalSubjectRecord[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExternalRecordsResponse {
+  lrn: string;
+  records: ExternalSchoolRecord[];
+}
+
+// OCR scan of a prior SF10/SF9 photo (nothing persisted server-side).
+export interface Sf10ScanSubject {
+  subjectName: string;
+  terms: Array<{ label: string; value: number }>;
+  finalRating: number | null;
+  confidence: number;
+}
+
+export interface Sf10ScanDraft {
+  documentType: "SF10" | "SF9" | "UNKNOWN";
+  schoolName: string | null;
+  schoolId: string | null;
+  schoolYear: string | null;
+  gradeLevel: string | null;
+  sectionName: string | null;
+  adviserName: string | null;
+  subjects: Sf10ScanSubject[];
+  confidence: number;
+  warnings: string[];
+}
+
+export interface Sf10ScanResponse {
+  draft: Sf10ScanDraft;
+  rawText: string;
+  confidence: number;
+  reason?: string;
 }
 
 export interface SF8Data {
@@ -1022,6 +1129,13 @@ export interface SF10Data {
     transferCertNo?: string | null;
     isTransferee?: boolean;
     transferInDate?: string | null;
+    elementarySchoolCompleter?: boolean | null;
+    elementarySchoolName?: string | null;
+    elementaryGeneralAverage?: number | null;
+    peptPasser?: boolean | null;
+    peptRating?: number | null;
+    peptExamDate?: string | null;
+    alsAePasser?: boolean | null;
   };
   schoolRecords: {
     schoolYear: string;
@@ -1063,6 +1177,22 @@ export interface SF10Data {
     region?: string;
     schoolHeadName?: string;
   };
+}
+
+export interface Sf10ProfileUpdatePayload {
+  birthDate?: string | null;
+  gender?: "MALE" | "FEMALE" | null;
+  previousSchool?: string | null;
+  lastGradeCompleted?: string | null;
+  transferCertNo?: string | null;
+  transferInDate?: string | null;
+  elementarySchoolCompleter?: boolean;
+  elementarySchoolName?: string | null;
+  elementaryGeneralAverage?: number | null;
+  peptPasser?: boolean;
+  peptRating?: number | null;
+  peptExamDate?: string | null;
+  alsAePasser?: boolean;
 }
 
 export interface SF5SubjectDetail {
@@ -1239,6 +1369,9 @@ export const registrarApi = {
   getSF10: (studentId: string) =>
     api.get<SF10Data>(`/registrar/forms/sf10/${studentId}`),
 
+  updateSf10Profile: (studentId: string, data: Sf10ProfileUpdatePayload) =>
+    api.patch<{ message: string }>(`/registrar/students/${studentId}/sf10-profile`, data),
+
   getSF5: (sectionId: string, schoolYear?: string) =>
     api.get<SF5Data>(`/registrar/forms/sf5/${sectionId}`, { params: { schoolYear } }),
 
@@ -1368,6 +1501,28 @@ export const registrarApi = {
 
   tagTransferee: (enrollmentId: string, data: { transferInDate?: string; reason?: string }) =>
     api.post<{ message: string; enrollment: any }>(`/registrar/transferees/${enrollmentId}/tag`, data),
+
+  // Prior-school (SF10/SF9) records — manual entry
+  getExternalRecords: (studentId: string) =>
+    api.get<ExternalRecordsResponse>(`/registrar/students/${studentId}/external-records`),
+
+  createExternalRecord: (studentId: string, data: ExternalSchoolRecordPayload) =>
+    api.post<{ message: string; record: ExternalSchoolRecord }>(
+      `/registrar/students/${studentId}/external-records`,
+      data
+    ),
+
+  updateExternalRecord: (id: string, data: Partial<ExternalSchoolRecordPayload>) =>
+    api.patch<{ message: string }>(`/registrar/external-records/${id}`, data),
+
+  deleteExternalRecord: (id: string) =>
+    api.delete<{ message: string }>(`/registrar/external-records/${id}`),
+
+  scanSf10: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<Sf10ScanResponse>("/registrar/external-records/scan", form);
+  },
 };
 
 // ============================================

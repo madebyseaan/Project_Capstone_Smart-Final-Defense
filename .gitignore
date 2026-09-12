@@ -54,3 +54,7 @@ skills-lock.json
 # Server debug scripts at root
 server/check-*.ts
 server/check-*.js
+
+# Tesseract.js language data (downloaded at runtime)
+*.traineddata
+*.traineddata.gz

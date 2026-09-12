@@ -16,6 +16,7 @@ import { AuditAction, AuditSeverity } from "@prisma/client";
 import { logger } from "../../lib/logger";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { getSyncTaggedTransfereeLrns } from "../../lib/enrollproSync";
+import { expectedPriorGradeLevels } from "../../lib/externalRecordValidation";
 
 export default function registerTransfereeRoutes(router: Router): void {
 
@@ -61,10 +62,28 @@ router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Resp
       orderBy: [{ schoolYear: "desc" }, { student: { lastName: "asc" } }],
     });
 
+    // Prior-school records: which expected prior grade levels already have data.
+    const studentIds = enrollments.map((e) => e.studentId);
+    const externalRecords = studentIds.length > 0
+      ? await prisma.externalSchoolRecord.findMany({
+          where: { studentId: { in: studentIds } },
+          select: { studentId: true, gradeLevel: true },
+        })
+      : [];
+    const savedLevelsByStudent = new Map<string, Set<string>>();
+    for (const r of externalRecords) {
+      if (!savedLevelsByStudent.has(r.studentId)) savedLevelsByStudent.set(r.studentId, new Set());
+      savedLevelsByStudent.get(r.studentId)!.add(r.gradeLevel);
+    }
+
     const syncTaggedLrns = getSyncTaggedTransfereeLrns();
 
-    const transferees = enrollments.map((e) => ({
+    const transferees = enrollments.map((e) => {
+      const expectedLevels = expectedPriorGradeLevels(e.section.gradeLevel);
+      const savedLevels = savedLevelsByStudent.get(e.studentId) ?? new Set<string>();
+      return {
       enrollmentId: e.id,
+      studentId: e.studentId,
       schoolYear: e.schoolYear,
       lrn: e.student.lrn,
       studentName: `${e.student.lastName}, ${e.student.firstName}${e.student.middleName ? " " + e.student.middleName : ""}`.trim(),
@@ -87,8 +106,14 @@ router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Resp
         missingPreviousSchool: !e.student.previousSchool,
         missingTransferCertNo: !e.student.transferCertNo,
       },
+      priorRecords: {
+        expectedGradeLevels: expectedLevels,
+        savedGradeLevels: expectedLevels.filter((g) => savedLevels.has(g)),
+        missingGradeLevels: expectedLevels.filter((g) => !savedLevels.has(g)),
+      },
       matchedBySync: syncTaggedLrns.has(e.student.lrn),
-    }));
+      };
+    });
 
     const syncStatus = (await import("../../lib/syncCoordinator")).getUnifiedSyncStatus();
     const unmatchedFromLastSync = syncStatus.lastResult?.transferees?.unmatched ?? [];

@@ -33,6 +33,7 @@ const SectionRosterViewer = lazy(() => import('./pages/registrar/SectionRosterVi
 const EOSYFinalization = lazy(() => import('./pages/registrar/EOSYFinalization'))
 const AlumniStudents = lazy(() => import('./pages/registrar/AlumniStudents'))
 const Transferees = lazy(() => import('./pages/registrar/Transferees'))
+const Sf10RecordsPage = lazy(() => import('./pages/registrar/Sf10RecordsPage'))
 
 // Admin pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'))
@@ -89,6 +90,7 @@ function App() {
         <Route path="eosy" element={<EOSYFinalization />} />
         <Route path="alumni" element={<AlumniStudents />} />
         <Route path="transferees" element={<Transferees />} />
+        <Route path="transferees/:studentId/sf10-records" element={<Sf10RecordsPage />} />
       </Route>
 
       {/* Admin routes */}

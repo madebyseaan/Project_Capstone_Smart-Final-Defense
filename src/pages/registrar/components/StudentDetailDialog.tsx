@@ -367,12 +367,22 @@ function StudentDetailDialogBase({
                           S.Y. {record.schoolYear} - Grade{" "}
                           {record.gradeLevel.replace("GRADE_", "")}
                         </h4>
-                        <Badge
-                          variant="outline"
-                          className="bg-card text-sm sm:text-base py-1 px-3 sm:py-2 sm:px-4 w-fit"
-                        >
-                          {record.section}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="bg-card text-sm sm:text-base py-1 px-3 sm:py-2 sm:px-4 w-fit"
+                          >
+                            {record.section}
+                          </Badge>
+                          {record.external && (
+                            <Badge
+                              variant="outline"
+                              className="bg-primary/10 text-primary border-primary/20 text-xs sm:text-sm w-fit"
+                            >
+                              From previous school
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 sm:gap-5">
                         <span className="font-semibold text-foreground text-sm sm:text-base">

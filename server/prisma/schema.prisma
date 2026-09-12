@@ -91,12 +91,21 @@ model Student {
   previousSchool  String?       // Name of school transferred from
   lastGradeCompleted String?    // Free text — e.g. "Grade 6"
   transferCertNo  String?       // Transfer Certificate / SF10 reference no.
+  // SF10 "Eligibility for JHS Enrolment" block — registrar-entered (EnrollPro does not provide these)
+  elementarySchoolCompleter Boolean? @default(false)
+  elementarySchoolName      String?
+  elementaryGeneralAverage  Float?
+  peptPasser                Boolean? @default(false)
+  peptRating                Float?
+  peptExamDate              DateTime?
+  alsAePasser               Boolean? @default(false)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   attendance      Attendance[]
   enrollments     Enrollment[]
   grades          Grade[]
   aimsScores      AimsScore[]
+  externalSchoolRecords ExternalSchoolRecord[]
 
   @@index([lastName, firstName])
 }
@@ -210,6 +219,7 @@ model Enrollment {
   transferOutDate DateTime?
   dropOutReason  String?
   transferInDate DateTime?       // Set by transferee sync or registrar. Null = not a transferee.
+  enrollproApplicationId String? // EnrollPro EnrollmentApplication reference (opaque; not a SMART PK)
   profileSnapshot Json?            // Student profile snapshot at enrollment time (immutable)
   promotionStatus      PromotionStatus?
   promotedToGradeLevel GradeLevel?
@@ -221,6 +231,62 @@ model Enrollment {
   @@index([schoolYear, status])
   @@index([sectionId, schoolYear, status])
   @@index([studentId, schoolYear])
+}
+
+// Prior-school academic records captured by the registrar (manual entry).
+// Display-only: never merged into Grade / promotion / EOSY math.
+// See docs/REGISTRAR/SF10_SF9_IMPORT_PLAN.md.
+enum ExternalRecordSource {
+  MANUAL
+  SF10_SCAN
+  SF9_SCAN
+  SF10_XLSX
+}
+
+model ExternalSchoolRecord {
+  id               String               @id @default(cuid())
+  studentId        String
+  schoolYear       String
+  gradeLevel       GradeLevel
+  schoolName       String
+  schoolId         String?
+  sectionName      String?
+  adviserName      String?
+  generalAverage   Float?
+  promotionStatus  String?              // free text — prior-school wording varies
+  formType         String               @default("SF10") // "SF10" | "SF9"
+  isPartialYear    Boolean              @default(false) // true for a mid-year transfer-in year
+  source           ExternalRecordSource @default(MANUAL)
+  ocrRawText       String?              // retained for re-parsing; no image is stored (D9)
+  ocrParserVersion String?
+  confidence       Float?
+  verifiedById     String?
+  verifiedAt       DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  student          Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjects         ExternalSubjectRecord[]
+
+  // schoolName in the key lets the previous school's partial year coexist with
+  // another record for the same year/grade (mid-year + re-transfer cases).
+  @@unique([studentId, schoolYear, gradeLevel, schoolName])
+  @@index([studentId])
+}
+
+model ExternalSubjectRecord {
+  id               String               @id @default(cuid())
+  recordId         String
+  subjectCode      String?
+  subjectName      String
+  terms            Json?                // [{ "label": "Q1", "value": 88 }, ...] — any term structure
+  finalRating     Float?
+  remarks          String?              // Passed / Failed
+  isNonPromotional Boolean              @default(false)
+  confidence       Float?
+  needsReview      Boolean              @default(false)
+  record           ExternalSchoolRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
 }
 
 model Grade {

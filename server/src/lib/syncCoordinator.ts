@@ -78,6 +78,9 @@ export interface UnifiedSyncResult {
   transferees?: {
     tagged: number;
     unmatched: Array<{ lrn: string; reason: string }>;
+    applicationRefsPersisted?: number;
+    generatedAt?: string | null;
+    status?: "success" | "stale";
   } | null;
   branding: boolean;
   aims?: AimsSyncResult | null;
@@ -302,6 +305,9 @@ export async function runUnifiedSync(options?: {
         transfereeResult = {
           tagged: transfereeResultData.transfereesTagged,
           unmatched: transfereeResultData.unmatched,
+          applicationRefsPersisted: transfereeResultData.applicationRefsPersisted,
+          generatedAt: transfereeResultData.generatedAt,
+          status: transfereeResultData.status,
         };
         if (transfereeResultData.transfereesTagged > 0) {
           logger.info(

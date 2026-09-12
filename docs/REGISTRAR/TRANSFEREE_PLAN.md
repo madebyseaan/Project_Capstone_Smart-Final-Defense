@@ -6,8 +6,11 @@
 > Enrollment Handoff*, last code verification **2026-09-11**. This supersedes the earlier
 > `SMART-TRANSFEREE-API.md`.
 > **Contract update (2026-09-11):** endpoint path, auth header, pagination limits, and status
-> inclusion changed — see §5. The implementation in `enrollproClient.ts` already uses the correct
-> `/v1` path and `X-Integration-Key`; the sync validation rules in §6.2 are still pending.
+> inclusion changed — see §5. **Implemented 2026-09-12** in `enrollproClient.ts` /
+> `enrollproSync.ts` (migration `20260912120000_add_enrollpro_application_id` applied). See §6.
+>
+> **Test rule (binding):** no phase/step is "done" until its test gate passes — see §11. Never
+> conclude work on an unrun, skipped, or failing test.
 > All file:line references below were verified against the codebase on 2026-09-04.
 
 ---
@@ -198,23 +201,21 @@ SF9 eligibility and back subjects are legitimate future academic inputs (see
 
 ## 6. Phase 2 — Backend: Client + Sync
 
-### 6.1 `server/src/lib/enrollproClient.ts` — fetcher (IMPLEMENTED; 2 upgrades pending)
+### 6.1 `server/src/lib/enrollproClient.ts` — fetcher (IMPLEMENTED)
 
-`getSmartTransferees()` already exists at `enrollproClient.ts:694-711` and correctly calls
-`${base}/integration/v1/default/smart/transferees` with `getIntegrationHeaders()`. Remaining upgrades
-per the 2026-09-11 handoff:
+`getSmartTransferees(opts?)` (`enrollproClient.ts:694`) calls
+`${base}/integration/v1/default/smart/transferees` with `getIntegrationHeaders()` and now:
 
-1. Accept an optional `schoolYearId` and pass it as a query param (scope explicitly instead of
-   relying on the active-year default).
-2. Validate that each page's `meta.scopeSchoolYearId` / `scopeSchoolYearLabel` agrees with the
-   requested year, and surface `meta.generatedAt` for staleness tracking.
+1. accepts an optional `schoolYearId`, sent as a query param (explicit scope);
+2. validates `meta.scopeSchoolYearId` / `meta.scopeSchoolYearLabel` against the requested scope and
+   throws on mismatch (caller treats this as stale);
+3. returns `SmartTransfereeFeedResult { data, pageCount, total, generatedAt, scopeSchoolYearId,
+   scopeSchoolYearLabel }`;
+4. follows every page (`page >= meta.totalPages`) with `limit=200` (within the handoff's max).
 
-Also verify pages are followed to completion (`page >= meta.totalPages`) before treating the pull as
-successful, and cap pagination at the handoff's limit ceilings (default 50, max 200).
+### 6.2 `server/src/lib/enrollproSync.ts` — enrichment pass (IMPLEMENTED)
 
-### 6.2 `server/src/lib/enrollproSync.ts` — new enrichment pass
-
-Add `syncTransferees()` (new export; do not touch `runEnrollProSync` internals):
+`syncTransferees()` (do not touch `runEnrollProSync` internals):
 
 ```
 syncTransferees()
@@ -233,16 +234,22 @@ syncTransferees()
 │   │     orderBy: { updatedAt: "desc" },   // handles mid-year section moves
 │   │   })
 │   │   └── if null → unmatched[], continue
-│   ├── persist record.enrollmentApplicationId on Enrollment (reference only) — PENDING
+│   ├── persist record.enrollmentApplicationId → Enrollment.enrollproApplicationId (reference only)
 │   └── if enrollment.transferInDate == null && record.enrolledAt:
 │         prisma.enrollment.update({ data: { transferInDate: new Date(record.enrolledAt) } })
 │         (NEVER overwrite an existing transferInDate — registrar may have corrected it)
-├── record meta.generatedAt (source generation time) separately from local sync time
-├── return { transfereesTagged, unmatched: [{lrn, reason}] }
-└── fail-soft: catch + log via logger, never throw into the sync cycle
+├── record meta.generatedAt + module-level TransfereeSyncStatus (at, generatedAt, status, counts)
+├── return { transfereesTagged, applicationRefsPersisted, generatedAt, status, unmatched }
+└── fail-soft: catch → mark status "stale", retain last known state, never throw into the cycle
 ```
 
 Notes:
+
+- **Implemented 2026-09-12.** Validators live in `server/src/lib/transfereeValidation.ts`
+  (`isValidLrn`, `normalizeLrn`, `isOfficiallyEnrolled`, `mapGradeLevelToEnum`), unit-tested in
+  `server/src/__tests__/transferee-validation.test.ts`. `getTransfereeSyncStatus()` exposes the last
+  feed outcome for staleness display; the DB reference column is
+  `Enrollment.enrollproApplicationId` (nullable).
 - Matching local `status: "ENROLLED"` is still correct: the feed only returns officially enrolled
   rows, and lifecycle (DROPPED / TRANSFERRED_OUT) is owned by the main feed. The T/I remark should
   not apply to a learner who already left.
@@ -262,6 +269,9 @@ Notes:
 Call `syncTransferees()` inside the unified cycle immediately after the EnrollPro step, fail-soft (wrap in try/catch like the branding/profile steps). Consider gating it every N cycles using the existing `STUDENT_PROFILE_SYNC_EVERY_N_CYCLES` pattern (syncCoordinator.ts:38) if the feed turns out to be heavy — default: run every cycle, it's a small feed.
 
 Also include the result in `UnifiedSyncResult` (syncCoordinator.ts:58-79) as a new optional `transferees` field so the admin health dashboard can show it.
+
+**Implemented 2026-09-12:** the result now carries `applicationRefsPersisted`, `generatedAt`, and
+`status: "success" | "stale"` in addition to `tagged` / `unmatched`.
 
 **Acceptance:** with a real or mocked feed, a student enrolled in EnrollPro as TRANSFEREE gets `transferInDate` set after one sync cycle; nothing else changes; sync never fails when the endpoint 404s/times out (fail-soft verified).
 
@@ -440,14 +450,47 @@ Add types + API functions for the three endpoints, following existing axios clie
 
 ---
 
-## 11. Implementation Order
+## 11. Implementation Order (test gate per phase)
 
-1. Phase 1 schema + migration (server) → build
-2. Phase 2 client + `syncTransferees` + coordinator wiring → build, manual sync test
-3. Phase 3 registrar API (new router file, zod, audit) → build, REST test
-4. Phase 4 SF1 remarks fix + SF10 transfer info (§8) → verify SF1 export shows T/I for tagged transferee; verify SF10 (single + bulk + alumni path) renders transfer fields
-5. Phase 5 frontend page + dashboard + badges → root `npm run build` + `npm run lint`
-6. Full flow smoke test: mark a test student as TRANSFEREE in EnrollPro (or mock) → sync → appears in Transferees page with missing-data badges → registrar completes details → SF1 shows T/I → SF10 shows previous school + transfer-in date → EOSY runs → partial grades promote correctly.
+> **Rule:** run the test gate and record the result BEFORE starting the next phase. If a gate
+> cannot be automated, run it manually and paste the evidence (command output / screenshot) into
+> the PR. A phase with an unrun, skipped, or failing gate is NOT complete.
+
+1. **Phase 1 — schema + migration** *(done 2026-09-12)*
+   - Build: `npm run build` (server) + `npx prisma validate`.
+   - Test gate: `npx prisma migrate status` shows the migration applied; the generated client
+     exposes `Enrollment.enrollproApplicationId`; `pm2 restart server` starts clean with no
+     `Unknown argument` errors.
+2. **Phase 2 — client + `syncTransferees` + coordinator wiring** *(done 2026-09-12)*
+   - Automated: `npx vitest run transferee-validation` (pure validators) passes.
+   - Test gate: manual sync logs `[syncTransferees] Done: … app refs …` with zero Prisma errors.
+   - Negative test: force a mismatched `schoolYearId` / label and confirm the pass throws, marks
+     `status: "stale"`, and retains the last known state (no empty wipe).
+3. **Phase 3 — registrar API (new router, zod, audit)**
+   - Test gate (supertest, existing pattern): 401 (no token), 403 (wrong role), 400 (bad body),
+     200 (success), and an `AuditLog` row is created for each write.
+4. **Phase 4 — SF1 remarks fix + SF10 transfer info (§8)**
+   - Test gate: SF1 export shows `T/I` for a tagged transferee; SF10 (single + bulk + alumni path)
+     renders transfer fields; a test asserts prior records do NOT change promotion output.
+5. **Phase 5 — frontend page + dashboard + badges**
+   - Test gate: root `npm run build` + `npm run lint`; manual mobile (375px) check of the
+     Transferees page (cards, header actions, filters).
+6. **Full flow smoke test (final gate — required before closing the feature):** mark a test student
+   as TRANSFEREE in EnrollPro (or mock) → sync → appears in Transferees page with missing-data
+   badges → registrar completes details → SF1 shows T/I → SF10 shows previous school + transfer-in
+   date → EOSY runs → partial grades promote correctly.
+
+### 11.1 Test files (proposed)
+
+| Layer | Test file | Covers |
+|---|---|---|
+| Validators | `server/src/__tests__/transferee-validation.test.ts` *(exists — 10 tests)* | LRN 12-digit; `OFFICIALLY_ENROLLED`; Grade 7–10 mapping |
+| Sync | `server/src/__tests__/transferee-sync.test.ts` | scope mismatch → `stale`; invalid LRN quarantined; registrar `transferInDate` never overwritten; `enrollproApplicationId` persisted |
+| Registrar API | `server/src/__tests__/transferee-api.test.ts` (supertest) | auth (401/403), validation (400), success, audit row |
+| SF1 / SF10 | `server/src/__tests__/sf10-sf1-transfer-fields.test.ts` | SF1 `T/I` remark; SF10 transfer fields; promotion output unchanged |
+
+**Concluding rule:** a phase is not complete until its gate + applicable test files above are green.
+Paste the command output (e.g. `npx vitest run <file>`) into the PR/commit notes.
 
 ---
 
@@ -455,9 +498,12 @@ Add types + API functions for the three endpoints, following existing axios clie
 
 | File | Action |
 |------|--------|
-| `server/prisma/schema.prisma` | +3 Student fields (String?), +2 Enrollment fields (`transferInDate DateTime?`, `enrollproApplicationId String?`) |
-| `server/src/lib/enrollproClient.ts` | `getSmartTransferees()` (IMPLEMENTED, line 694) — add optional `schoolYearId` + meta SY validation |
-| `server/src/lib/enrollproSync.ts` | + exported `syncTransferees()` enrichment pass (no changes to existing functions) |
+| `server/prisma/schema.prisma` | +3 Student fields (String?), +2 Enrollment fields (`transferInDate DateTime?`, `enrollproApplicationId String?`) — **applied 2026-09-12** |
+| `server/prisma/migrations/20260912120000_add_enrollpro_application_id/` | **NEW** — applied |
+| `server/src/lib/transfereeValidation.ts` | **NEW** — pure validators (`isValidLrn`, `normalizeLrn`, `isOfficiallyEnrolled`, `mapGradeLevelToEnum`) |
+| `server/src/lib/enrollproClient.ts` | `getSmartTransferees()` — `schoolYearId` scope + meta SY validation + `generatedAt` (**done**) |
+| `server/src/lib/enrollproSync.ts` | `syncTransferees()` hardened (LRN/status/grade/section checks, app-id persist, staleness) (**done**) |
+| `server/src/__tests__/transferee-validation.test.ts` | **NEW** — 10 unit tests (passing) |
 | `server/src/lib/syncCoordinator.ts` | wire `syncTransferees()` post-EnrollPro step, fail-soft; + result field in `UnifiedSyncResult` |
 | `server/src/lib/studentSnapshot.ts` | include 3 new Student fields in snapshot output |
 | `server/src/routes/registrar/transferees.ts` | **NEW** router: GET list, PATCH details, POST tag |

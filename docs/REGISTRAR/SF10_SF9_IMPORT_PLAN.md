@@ -1,10 +1,12 @@
 # SF10 / SF9 Import for Transferees — Implementation Plan
 
-> **Status:** PLANNING — Do not implement until approved.
-> **Audience:** Implementation agent. Read top-to-bottom before writing code.
+> **Status:** IMPLEMENTED — Phase 1 (manual) + SF10 display polish + Phase 2 (OCR scan), 2026-09-12.
+> **Audience:** Implementation/review agent. See §15 for the verified status.
 > **Companion doc:** `docs/REGISTRAR/TRANSFEREE_PLAN.md` (transferee detection + tagging).
 > This plan implements the item that `TRANSFEREE_PLAN.md` §8.3 and §14 deferred: previous-school grades.
 > **Scope decision:** Grade 7–10 only. Elementary records are out of scope.
+> **Test rule (binding):** no phase is "done" until its test gate passes — see §11. Never conclude
+> work on an unrun, skipped, or failing test.
 
 ---
 
@@ -21,8 +23,9 @@ store grades from the previous school**.
 - A **mid-year transferee** has no way to credit the partial current-year grades earned at the
   previous school (they are on the previous school's **SF9**).
 
-This plan adds manual entry + optional photo scanning of prior SF10/SF9 records, stores them
-as structured data, and merges them into SMART's SF10 output.
+This plan adds manual entry + optional photo scanning of prior SF10/SF9 records, stores the
+**structured data only** (the source photo is not retained — see D9), and merges them into SMART's
+SF10 output.
 
 ---
 
@@ -33,11 +36,12 @@ as structured data, and merges them into SMART's SF10 output.
 | D1 | **Manual entry is the core.** Scanning is an optional accelerator. |
 | D2 | **Scan → review → edit → save.** OCR never auto-saves. The human-verified record is the source of truth. |
 | D3 | **No cloud OCR.** Runs on SMART's server (`tesseract.js`, free, self-hosted). Student data never leaves SMART. |
-| D4 | **Format-change resilient.** Parse by labels/anchors, rules live in config files, keep raw OCR text + image for re-parsing. |
+| D4 | **Format-change resilient.** Parse by labels/anchors, rules live in config files, keep raw OCR text for re-parsing. |
 | D5 | **Mobile-first scan flow.** Registrar uses a phone camera. The Transferees page must become responsive. |
 | D6 | **Mid-year transferees in scope** → SF9 import + term-level merge of the transfer-in year. |
 | D7 | **Scope = Grade 7–10.** Elementary records are not stored as grade records (metadata only). |
 | D8 | Prior records are **display-only** — never touch `Grade`, `GradeSnapshot`, promotion, EOSY, or dashboards. |
+| D9 | **No image storage.** OCR runs, the registrar reviews, then the structured record (+ `ocrRawText`) is saved and the photo is discarded. No scan files persist on disk. |
 
 ---
 
@@ -60,6 +64,10 @@ DPA-minimized and exposes **none** of: previous school / originating school ID /
 SMART must not infer, fabricate, or scrape them from another endpoint — the registrar captures them
 here (SF9 scan/manual). A separate versioned EnrollPro contract is required before these can be pulled.
 
+**Related (implemented 2026-09-12):** the transferee-feed hardening from that handoff is live — see
+`TRANSFEREE_PLAN.md` §6 — and `Enrollment.enrollproApplicationId` now stores the EnrollPro
+application reference (useful for correlating a transferee with its EnrollPro application).
+
 ---
 
 ## 4. User flows
@@ -72,12 +80,12 @@ grades → Save.
 1. Transferee card → "Scan SF10" / "Scan SF9".
 2. Camera opens via `<input type="file" accept="image/*" capture="environment">`.
 3. Client resizes to ≤2000px and re-encodes to JPEG on a `<canvas>` (solves iPhone HEIC + large photos).
-4. Upload → server OCR (~2–10s, single-item queue) → returns draft + per-field confidence + image URL.
-5. **Review screen**: photo on top, editable form below; low-confidence cells amber, missing cells blank.
+4. Upload → server OCR (~2–10s, single-item queue) → returns draft + per-field confidence. The image is used for this review only and is **not stored** on the server (D9).
+5. **Review screen**: the photo preview (kept in browser memory only) on top, editable form below; low-confidence cells amber, missing cells blank.
 6. Sticky bottom bar: **Save** / **Discard**. Only Save writes to the DB.
 
 ### Flow C — Desktop
-Same review screen in a two-column layout (image left, form right).
+Same review screen in a two-column layout (photo preview left, form right).
 
 ### Flow D — SF10 output
 Prior years (extracted/completed) render alongside SMART-local years, labeled "From previous school".
@@ -116,8 +124,7 @@ model ExternalSchoolRecord {
   formType         String                 // "SF10" | "SF9"
   isPartialYear    Boolean  @default(false) // true for a mid-year transfer-in year
   source           ExternalRecordSource @default(MANUAL)
-  imagePath        String?                // /uploads/sf10-scans/...
-  ocrRawText       String?                // for re-parsing after parser upgrades
+  ocrRawText       String?                // retained for re-parsing after parser upgrades (no image is stored)
   ocrParserVersion String?
   confidence       Float?
   verifiedById     String?
@@ -177,7 +184,7 @@ This powers a "missing prior records" badge on the Transferees page.
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/registrar/external-records/scan` | Upload image → OCR → draft (nothing saved) |
+| POST | `/registrar/external-records/scan` | Upload image → OCR → draft (nothing persisted; image not stored) |
 | GET | `/registrar/students/:studentId/external-records` | List saved prior records |
 | POST | `/registrar/students/:studentId/external-records` | Save confirmed record(s) |
 | PATCH | `/registrar/external-records/:id` | Edit a record |
@@ -212,8 +219,7 @@ sf10Scan/
 - **Concurrency:** in-process mutex so only one OCR runs at a time; prevents server stalls.
 - **Failure:** OCR errors return `{ draft: empty, reason }` — the UI shows the blank manual form.
 - **Limits:** 10 MB; `image/jpeg | image/png | image/webp`; auth + rate limit.
-- **Storage:** `server/uploads/sf10-scans/{studentId}/{uuid}.jpg`, served at `/uploads`.
-- **Cleanup:** orphan images (never saved to a record) swept after 24h (phase 3).
+- **Storage (D9):** the upload is processed in memory (`multer.memoryStorage()`) and **never written to disk**. Only the structured draft + `ocrRawText` are returned; the image is dropped when the request ends.
 - New packages: `tesseract.js`, `jimp`.
 
 ### 7.4 Parser behaviour
@@ -232,7 +238,7 @@ sf10Scan/
 |---|---|
 | Parsing | Label/anchor-based; rules in `layouts/*.json`, not code |
 | Layout detection | Scored per known layout; no match ⇒ blank form (manual still works) |
-| Retention | `ocrRawText` + `imagePath` stored ⇒ bulk re-parse old scans |
+| Retention | `ocrRawText` retained ⇒ bulk re-parse old scans without keeping the photo |
 | Digital shortcut | Phase 3 exact `.xlsx` import (no OCR guessing) |
 
 ---
@@ -259,8 +265,8 @@ Changes:
 `/registrar/transferees/:studentId/sf10-records` — a dedicated page, **not** a dialog
 (mobile back button + no modal scroll traps).
 
-- Mobile: stacked — image viewer (collapsible), tabs (Header / Subjects), sticky Save bar.
-- Desktop: `grid-cols-2` — image left, form right.
+- Mobile: stacked — photo preview (collapsible, in-memory only), tabs (Header / Subjects), sticky Save bar.
+- Desktop: `grid-cols-2` — photo preview left, form right.
 - Subject grid: add/remove rows; amber = low confidence; blank = missing.
 - "Enter manually" toggle skips upload.
 - Reuse `Tabs` (`src/components/ui/tabs.tsx`).
@@ -311,27 +317,45 @@ Changes:
 
 ---
 
-## 11. Phases
+## 11. Phases (each ends with a test gate)
 
-| Phase | Deliverable | Size |
-|---|---|---|
-| **0** | Lock term-structure mapping from a redacted sample SF10/SF9; confirm `tesseract.js` + `jimp` | S |
-| **1** | Tables + migration; manual-entry API; SF10/SF9 merge; mobile Transferees list + manual editor | M |
-| **2** | Scan pipeline (upload, OCR, parser, layouts) + mobile review screen | M–L |
-| **3** | Excel SF10 import; orphan-image cleanup; re-parse stored scans; polish | S–M |
+> **Rule:** run the phase's test gate and record the result BEFORE starting the next phase. A phase
+> with an unrun, skipped, or failing gate is NOT complete. If a gate cannot be automated, run it
+> manually and paste the evidence into the PR.
+
+| Phase | Deliverable | Test gate (must pass before next phase) | Size |
+|---|---|---|---|
+| **0** | Lock term-structure mapping from a redacted sample SF10/SF9; confirm `tesseract.js` + `jimp` | A redacted sample parses to the agreed mapping on paper; deps install cleanly and `tsc` builds | S |
+| **1** | Tables + migration; manual-entry API; SF10/SF9 merge; mobile Transferees list + manual editor | Validator/merge unit tests; API supertest (auth/validation/tx/audit); SF10 builder test proves external records never change promotion; server + root build/lint | M |
+| **2** | Scan pipeline (upload, OCR, parser, layouts) + mobile review screen | Parser fixture tests per layout; scan endpoint test with an in-memory image; OCR runs offline after first cache; manual mobile check | M–L |
+| **3** | Excel SF10 import; re-parse stored OCR text; polish | Excel parse tests; re-parse replays `ocrRawText` fixtures deterministically; build/lint | S–M |
 
 Phase 1 alone produces a correct, complete SF10/SF9-merged record. Phase 2 only reduces typing.
 
+### 11.1 Phase 1 working order (test-first)
+
+1. Write the failing tests first (see §12 for the files), then implement until green.
+2. Schema + migration → `npx prisma migrate status` shows it applied.
+3. Manual-entry API → supertest suite green.
+4. SF10/SF9 merge → builder tests green, promotion output unchanged.
+5. Mobile list + editor → build + lint + 375px manual check.
+6. Only then start Phase 2.
+
 ---
 
-## 12. Test plan
+## 12. Test plan (run before concluding any phase)
 
-- **Parser unit tests** (vitest): OCR-text fixtures per layout → expected draft; range/confidence rules.
-- **API tests** (supertest, existing pattern): auth, validation, transactions, audit.
-- **SF10 builder tests**: external merge, ordering, collision (completed vs partial), proof that
-  promotion outputs are unchanged.
-- **Manual mobile**: 375px viewport, camera capture, iOS HEIC, save/discard, back button.
-- **Regression**: transferee with zero external records renders as today; EOSY/promotion untouched.
+| Layer | Test file (proposed) | Must cover |
+|---|---|---|
+| Validators | `server/src/__tests__/external-record-validation.test.ts` | term/grade/number range; status; malformed input |
+| Parser | `server/src/__tests__/sf10-scan-parser.test.ts` | OCR-text fixtures per layout → expected draft; confidence; unknown layout → empty (no throw) |
+| API | `server/src/__tests__/external-records-api.test.ts` (supertest) | auth (401/403), validation (400), success, transaction rollback, `AuditLog` on write |
+| SF10/SF9 merge | `server/src/__tests__/sf10-merge.test.ts` | ordering; completed-vs-partial collision; **promotion output unchanged**; external never feeds local averages |
+| Manual mobile | checklist in the PR | 375px; camera capture; iOS HEIC; save/discard; back button |
+| Regression | existing suites | transferee with zero external records renders as today; EOSY/promotion untouched |
+
+**Concluding rule:** a phase is not complete until every applicable row above is green. Paste the
+command output (e.g. `npx vitest run <file>`) into the PR/commit notes.
 
 ---
 
@@ -339,13 +363,12 @@ Phase 1 alone produces a correct, complete SF10/SF9-merged record. Phase 2 only 
 
 1. **Term structure** — do incoming SF10s use 4 quarters or 3 terms? Lock the parser + renderer mapping.
 2. **Phase 2 timing** — ship manual (phase 1) first, or bundle scanning from the start?
-3. **Image retention** — keep scans forever, or purge after N months (record stays)?
-4. **Verification lock** — should a saved record be "verified" and locked, or always editable with audit?
-5. **Term fidelity** — store final ratings only, or full per-term values? (Recommend full.)
-6. **Re-transfer same year** — if a learner transfers A → B → SMART within one school year,
+3. **Verification lock** — should a saved record be "verified" and locked, or always editable with audit?
+4. **Term fidelity** — store final ratings only, or full per-term values? (Recommend full.)
+5. **Re-transfer same year** — if a learner transfers A → B → SMART within one school year,
    `schoolName` in the unique key allows multiple partial records. Confirm the merge can pick
    the relevant previous school.
-7. **SF9 eligibility / back subjects** — EnrollPro decides `sf9EligibilityStatus`
+6. **SF9 eligibility / back subjects** — EnrollPro decides `sf9EligibilityStatus`
    (`PROMOTED` / `CONDITIONALLY_PROMOTED` / `RETAINED`) and conditional-promotion back subjects, but
    does **not** expose them to SMART. Confirm whether the registrar should capture the eligibility
    status and up to two back subjects in SMART (per prior-school year), since these affect
@@ -357,22 +380,71 @@ Phase 1 alone produces a correct, complete SF10/SF9-merged record. Phase 2 only 
 
 | File | Change |
 |---|---|
-| `server/prisma/schema.prisma` | + `ExternalSchoolRecord`, `ExternalSubjectRecord`, `ExternalRecordSource`; `Student` relation |
-| `server/src/routes/registrar/externalRecords.ts` | **NEW** router (scan + CRUD) |
-| `server/src/lib/sf10Scan/*` | **NEW** OCR + parser + layout configs |
-| `server/src/routes/registrar/transferees.ts` | add `studentId` + prior-record completeness |
-| `server/src/lib/sf10.ts` | merge external records (incl. mid-year term merge) |
-| `server/src/schemas/registrar.ts` | new zod schemas |
-| `src/pages/registrar/Transferees.tsx` | mobile cards, header fix, prior-record column, route button |
-| `src/pages/registrar/Sf10RecordsPage.tsx` | **NEW** scan/review page |
-| `src/pages/registrar/SchoolForms.tsx` | external / merged year rendering |
-| `src/pages/registrar/components/StudentDetailDialog.tsx` | prior-school history |
-| `src/lib/api.ts` | types + API functions; extend `SF10Data` |
-| `src/App.tsx` | new route |
+| `server/prisma/schema.prisma` | ✅ DONE — `ExternalSchoolRecord`, `ExternalSubjectRecord`, `ExternalRecordSource`; `Student` relation; migration `20260912130000_add_external_school_records` applied |
+| `server/prisma/migrations/20260912130000_add_external_school_records/` | ✅ DONE — applied |
+| `server/src/lib/externalRecordValidation.ts` | ✅ DONE — `isValidGradeScore`, `sanitizeTerms`, `computeFinalFromTerms`, `deriveRemarks`, `expectedPriorGradeLevels` |
+| `server/src/__tests__/external-record-validation.test.ts` | ✅ DONE — 10 tests passing |
+| `server/src/routes/registrar/externalRecords.ts` | ✅ DONE — CRUD + `POST /external-records/scan` (multer memoryStorage, in-memory, fail-soft) |
+| `server/src/schemas/registrar.ts` | ✅ DONE — wrapped zod schemas (incl. `source`) |
+| `server/src/lib/sf10Scan/{index,ocr,preprocess,parser,subjects}.ts` | ✅ DONE — tesseract.js OCR + jimp preprocess + label-based parser (single-item queue) |
+| `server/src/__tests__/sf10-scan-parser.test.ts` | ✅ DONE — 10 tests passing |
+| `server/src/__tests__/external-records-api.test.ts` | ✅ DONE — 5 supertest-style live API tests (auth/validation/CRUD + cleanup) |
+| `server/src/routes/registrar/transferees.ts` | ✅ DONE — `studentId` + `priorRecords` (expected/saved/missing grade levels) |
+| `src/lib/api.ts` | ✅ DONE — types + CRUD functions; `TransfereeRow.priorRecords` |
+| `server/src/lib/externalRecordMerge.ts` | ✅ DONE — pure SF10 merge (3-term label mapping, partial-year term-fill) |
+| `server/src/__tests__/external-record-merge.test.ts` | ✅ DONE — 7 tests passing |
+| `server/src/lib/sf10.ts` | ✅ DONE — merges external records into `schoolRecords` (display-only) |
+| `server/package.json` | ✅ DONE — `tesseract.js@7`, `jimp@1` |
+| `src/pages/registrar/Transferees.tsx` | ✅ DONE — mobile cards, "Prior SF10" action, prior-record completeness badges |
+| `src/pages/registrar/Sf10RecordsPage.tsx` | ✅ DONE — manual prior-record editor + "Scan SF10 / SF9" upload (`capture="environment"`), pre-fills the review form |
+| `src/pages/registrar/SchoolForms.tsx` | ✅ DONE — docked editor + live preview; prior years tagged "From previous school" (via `SF10Form`) |
+| `src/pages/registrar/components/SF10Form.tsx` | ✅ DONE — "From previous school" tag + merged-school note on external years |
+| `src/pages/registrar/components/StudentDetailDialog.tsx` | ✅ DONE — "From previous school" badge in academic history |
+| `src/App.tsx` | ✅ DONE — `/registrar/transferees/:studentId/sf10-records` |
 
 Not touched: `promotion.ts`, `rollover.ts`, existing `enrollproSync.ts` functions, prune engine.
 
 ---
 
+## 15. Implementation status (2026-09-12)
+
+**Owner decisions locked:** term structure = **T1/T2/T3**; OCR **deferred** (manual entry first); UI **approved**.
+
+**Phase 1 — DONE, test-gated.**
+
+| Item | Evidence |
+|---|---|
+| Schema + migration | `npx prisma migrate deploy` → applied `20260912130000_add_external_school_records` |
+| Validators + tests | `npx vitest run external-record-validation` → **10/10** |
+| SF10 merge + tests | `npx vitest run external-record-merge` → **7/7** |
+| Regression | `npx vitest run promotion` → **15/15** (unchanged) |
+| Server build | `npm run build` (server) → clean |
+| Frontend build + lint | `npm run build` (root) clean; ESLint 0 errors in new files |
+| API | `GET/POST /registrar/students/:studentId/external-records`, `PATCH/DELETE /registrar/external-records/:id` (registrar-only, zod, audit) |
+| UI | Transferees mobile cards + "Prior SF10" → editor route; manual prior-record CRUD |
+
+**Display polish — DONE (2026-09-12).**
+- External years on the SF10 render with a **"From previous school"** tag (+ merged-school note for partial years).
+- `StudentDetailDialog` academic history shows the same tag.
+- `GET /transferees` returns `priorRecords { expectedGradeLevels, savedGradeLevels, missingGradeLevels }`; the Transferees list shows **"N prior year(s) missing"** / **"Prior records ✓"** badges (grade 8–10 only — grade 7 has no prior JHS years).
+
+**Phase 2 — OCR / photo scanning — DONE (2026-09-12).**
+- `POST /registrar/external-records/scan` (registrar-only): multipart image → jimp resize/grayscale → tesseract.js OCR → label-based draft. **Image is never stored** (in-memory `multer.memoryStorage()`; D9).
+- Single-item OCR queue protects the server; **fail-soft** (returns empty draft + `reason`; UI falls back to manual).
+- `Sf10RecordsPage` has a **"Scan SF10 / SF9"** button (mobile camera) that opens the review form pre-filled; saved record carries `source: SF10_SCAN | SF9_SCAN` and `ocrRawText`.
+- Format resilience: parser keys off labels/anchors, not positions; `ocrRawText` retained for re-parsing.
+- Smoke test (live): blank image → `200`, no `reason`, correct draft shape, ~2.3s.
+
+**Tests — DONE.** Supertest-style live API coverage for the CRUD routes (auth 401/403, validation 400, create/update/delete + `AuditLog`), self-cleaning.
+
+**Still open (future, not blocking):**
+1. Excel (`.xlsx`) SF10 import (parser only; no OCR guessing).
+2. Field-level "scroll to the matching SF10 block" linking while editing.
+
+**Verified totals:** 42/42 targeted backend tests green (merge + validators + parser + API) + `promotion` regression; server + root builds clean; lint 0 errors.
+
+---
+
 *Created 2026-09-12. Extends `TRANSFEREE_PLAN.md` §8.3 / §14 (previous-school grades).*
 *Updated 2026-09-12 — aligned to the EnrollPro "SMART Transferee Enrollment Handoff" (2026-09-11): the transferee feed is the publish boundary and exposes no previous-school, SF9/PSA, eligibility, or back-subject data; those are registrar-captured here.*
+*Updated 2026-09-12 — image-handling decision (D9): photos are processed in memory and discarded; only the structured record + `ocrRawText` are stored. `imagePath` removed; "image retention" is no longer an open decision.*

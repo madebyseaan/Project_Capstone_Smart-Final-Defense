@@ -18,6 +18,7 @@ import {
   subjectCanonicalKey,
 } from '../routes/registrar/helpers';
 import { computeDisplayName } from './subjectDisplay';
+import { mergeExternalRecords } from './externalRecordMerge';
 
 export interface Sf10Response {
   student: {
@@ -38,6 +39,13 @@ export interface Sf10Response {
     transferCertNo: string | null;
     isTransferee: boolean;
     transferInDate: Date | null;
+    elementarySchoolCompleter: boolean | null;
+    elementarySchoolName: string | null;
+    elementaryGeneralAverage: number | null;
+    peptPasser: boolean | null;
+    peptRating: number | null;
+    peptExamDate: Date | null;
+    alsAePasser: boolean | null;
   };
   schoolRecords: any[];
   schoolSettings: {
@@ -306,7 +314,7 @@ export async function buildSf10Records(studentId: string): Promise<Sf10Response 
   const identityByYear = await getSchoolIdentityByYears(yearLabels);
 
   // Calculate final grades for each school year — merge rotational subjects first
-  const schoolRecords = Object.values(academicHistory).map((year: any) => {
+  const localSchoolRecords = Object.values(academicHistory).map((year: any) => {
     // Build SubjectTermInput[] from the raw subjects map for rotation merging
     const rotationInputs: SubjectTermInput[] = Object.values(year.subjects).map((subject: any) => ({
       subjectCode: subject.subjectCode,
@@ -390,6 +398,40 @@ export async function buildSf10Records(studentId: string): Promise<Sf10Response 
     };
   });
 
+  // Merge registrar-entered prior-school records (display-only; never feeds
+  // local averages/promotion). Future school years are excluded.
+  const externalRecordsRaw = await prisma.externalSchoolRecord.findMany({
+    where: { studentId },
+    include: { subjects: true },
+    orderBy: [{ schoolYear: 'asc' }, { gradeLevel: 'asc' }],
+  });
+  const externalRecordsForSf10 = externalRecordsRaw
+    .filter((r) => {
+      const syStart = parseInt(r.schoolYear.split('-')[0]);
+      const currentStart = parseInt(currentSchoolYear.split('-')[0]);
+      return Number.isFinite(syStart) && Number.isFinite(currentStart) && currentStart - syStart >= 0;
+    })
+    .map((r) => ({
+      schoolYear: r.schoolYear,
+      gradeLevel: r.gradeLevel,
+      schoolName: r.schoolName,
+      schoolId: r.schoolId,
+      sectionName: r.sectionName,
+      adviserName: r.adviserName,
+      generalAverage: r.generalAverage,
+      promotionStatus: r.promotionStatus,
+      isPartialYear: r.isPartialYear,
+      subjects: r.subjects.map((s) => ({
+        subjectCode: s.subjectCode,
+        subjectName: s.subjectName,
+        terms: Array.isArray(s.terms) ? (s.terms as Array<{ label: string; value: number }>) : null,
+        finalRating: s.finalRating,
+        remarks: s.remarks,
+      })),
+    }));
+
+  const schoolRecords = mergeExternalRecords(localSchoolRecords, externalRecordsForSf10);
+
   // Certification block: use snapshot of student's most recent year in the record
   const sortedLabels = schoolRecords.map((r: any) => r.schoolYear).sort();
   const mostRecentLabel = sortedLabels[sortedLabels.length - 1];
@@ -425,6 +467,13 @@ export async function buildSf10Records(studentId: string): Promise<Sf10Response 
       transferCertNo: student.transferCertNo,
       isTransferee,
       transferInDate,
+      elementarySchoolCompleter: student.elementarySchoolCompleter ?? false,
+      elementarySchoolName: student.elementarySchoolName,
+      elementaryGeneralAverage: student.elementaryGeneralAverage,
+      peptPasser: student.peptPasser ?? false,
+      peptRating: student.peptRating,
+      peptExamDate: student.peptExamDate,
+      alsAePasser: student.alsAePasser ?? false,
     },
     schoolRecords: schoolRecords.sort((a, b) => a.schoolYear.localeCompare(b.schoolYear)),
     schoolSettings: {
