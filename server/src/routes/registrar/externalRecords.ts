@@ -16,6 +16,7 @@ import {
   externalRecordUpdateSchema,
   externalRecordIdSchema,
   externalRecordStudentSchema,
+  externalRecordLockSchema,
 } from "../../schemas/registrar";
 import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
@@ -232,6 +233,10 @@ export default function registerExternalRecordRoutes(router: Router): void {
           res.status(404).json({ message: "Prior-school record not found" });
           return;
         }
+        if (existing.locked) {
+          res.status(409).json({ message: "Record is locked. Unlock it to make changes." });
+          return;
+        }
         const student = await prisma.student.findUnique({
           where: { id: existing.studentId },
           select: { lrn: true },
@@ -301,6 +306,10 @@ export default function registerExternalRecordRoutes(router: Router): void {
           res.status(404).json({ message: "Prior-school record not found" });
           return;
         }
+        if (existing.locked) {
+          res.status(409).json({ message: "Record is locked. Unlock it to make changes." });
+          return;
+        }
         const student = await prisma.student.findUnique({
           where: { id: existing.studentId },
           select: { lrn: true },
@@ -324,6 +333,53 @@ export default function registerExternalRecordRoutes(router: Router): void {
       } catch (err: any) {
         logger.error("[registrar/external-records DELETE]", err.message);
         res.status(500).json({ message: "Failed to delete prior-school record" });
+      }
+    }
+  );
+
+  // PATCH /registrar/external-records/:id/lock — lock/unlock a reviewed record
+  router.patch(
+    "/external-records/:id/lock",
+    authenticateToken,
+    validate(externalRecordLockSchema),
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      const user = req.user;
+      if (!user || user.role !== "REGISTRAR") {
+        res.status(403).json({ message: "Access denied. Registrar only." });
+        return;
+      }
+      try {
+        const id = String(req.params.id);
+        const locked = Boolean(req.body.locked);
+
+        const existing = await prisma.externalSchoolRecord.findUnique({ where: { id } });
+        if (!existing) {
+          res.status(404).json({ message: "Prior-school record not found" });
+          return;
+        }
+        const student = await prisma.student.findUnique({
+          where: { id: existing.studentId },
+          select: { lrn: true },
+        });
+
+        await prisma.externalSchoolRecord.update({ where: { id }, data: { locked } });
+
+        await createAuditLog(
+          AuditAction.UPDATE,
+          user,
+          `Prior-school record ${locked ? "locked" : "unlocked"}: LRN ${student?.lrn ?? existing.studentId} ${existing.schoolYear} ${existing.gradeLevel}`,
+          "ExternalSchoolRecord",
+          `${locked ? "Locked (verified)" : "Unlocked"} prior-school record`,
+          req.ip,
+          AuditSeverity.INFO,
+          id,
+          { studentId: existing.studentId },
+        );
+
+        res.json({ message: locked ? "Record locked" : "Record unlocked" });
+      } catch (err: any) {
+        logger.error("[registrar/external-records/lock]", err.message);
+        res.status(500).json({ message: "Failed to update lock" });
       }
     }
   );

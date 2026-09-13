@@ -262,6 +262,7 @@ model ExternalSchoolRecord {
   confidence       Float?
   verifiedById     String?
   verifiedAt       DateTime?
+  locked           Boolean              @default(false) // verified/reviewed — edits blocked until unlocked
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
   student          Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)

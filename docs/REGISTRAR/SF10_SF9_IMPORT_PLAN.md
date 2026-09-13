@@ -363,7 +363,7 @@ command output (e.g. `npx vitest run <file>`) into the PR/commit notes.
 
 1. **Term structure** — do incoming SF10s use 4 quarters or 3 terms? Lock the parser + renderer mapping.
 2. **Phase 2 timing** — ship manual (phase 1) first, or bundle scanning from the start?
-3. **Verification lock** — should a saved record be "verified" and locked, or always editable with audit?
+3. **Verification lock — RESOLVED.** Added `ExternalSchoolRecord.locked`; while locked, `PATCH`/`DELETE` return `409`, and `PATCH /registrar/external-records/:id/lock` locks/unlocks (audited). Records start unlocked.
 4. **Term fidelity** — store final ratings only, or full per-term values? (Recommend full.)
 5. **Re-transfer same year** — if a learner transfers A → B → SMART within one school year,
    `schoolName` in the unique key allows multiple partial records. Confirm the merge can pick
@@ -451,11 +451,13 @@ Not touched: `promotion.ts`, `rollover.ts`, existing `enrollproSync.ts` function
 - Client-side HEIC/large-photo resize before upload; Print SF10 from the prior-records page; "unmatched from sync" callout.
 - CSRF self-heal (re-issue cookie + retry) in the API client.
 
-**Still open (future, not blocking):**
-1. Field-level "scroll to the matching SF10 block" linking while editing.
-2. Verification lock (lock a reviewed prior record vs always editable).
+**Also DONE (2026-09-13):**
+- **Field-level highlight** — editing a field rings the matching SF10 block (Playwright-verified).
+- **Verification lock** — `ExternalSchoolRecord.locked`; `PATCH`/`DELETE` blocked (409) while locked, with audited lock/unlock; records start unlocked.
 
-**Verified totals:** 67 targeted backend tests green (validators + merge + parser + OCR rows + workbook + API) + `promotion` regression; server + root builds clean; lint 0 errors.
+**Still open:** nothing blocking. Optional future: OCR for handwritten grades, broader E2E coverage.
+
+**Verified totals:** 278 backend tests green (0 failed; 57 env-gated skipped); server + root builds clean; lint 0 errors.
 
 ---
 

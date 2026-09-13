@@ -128,6 +128,11 @@ export const externalRecordIdSchema = z.object({
   params: z.object({ id: z.string().min(1, 'id is required') }),
 });
 
+export const externalRecordLockSchema = z.object({
+  params: z.object({ id: z.string().min(1, 'id is required') }),
+  body: z.object({ locked: z.boolean() }),
+});
+
 export const externalRecordStudentSchema = z.object({
   params: z.object({ studentId: z.string().min(1, 'studentId is required') }),
 });

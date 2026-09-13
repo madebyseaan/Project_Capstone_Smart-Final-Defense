@@ -1017,6 +1017,7 @@ export interface ExternalSchoolRecord {
   confidence: number | null;
   verifiedById: string | null;
   verifiedAt: string | null;
+  locked: boolean;
   subjects: ExternalSubjectRecord[];
   createdAt: string;
   updatedAt: string;
@@ -1530,6 +1531,9 @@ export const registrarApi = {
 
   deleteExternalRecord: (id: string) =>
     api.delete<{ message: string }>(`/registrar/external-records/${id}`),
+
+  setExternalRecordLock: (id: string, locked: boolean) =>
+    api.patch<{ message: string }>(`/registrar/external-records/${id}/lock`, { locked }),
 
   scanSf10: (file: File) => {
     const form = new FormData();

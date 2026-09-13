@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, Trash2, Loader2, X, ScanLine, FileSpreadsheet, History, Printer } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Loader2, X, ScanLine, FileSpreadsheet, History, Printer, Lock, Unlock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -353,6 +353,17 @@ export default function Sf10RecordsPage() {
     }
   };
 
+  const handleToggleLock = async (record: ExternalSchoolRecord) => {
+    try {
+      await registrarApi.setExternalRecordLock(record.id, !record.locked);
+      toast.success(record.locked ? "Record unlocked" : "Record locked");
+      void loadData();
+    } catch (err) {
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+      toast.error(data?.message || data?.error || "Failed to update lock");
+    }
+  };
+
   const handlePrint = () => {
     const node = sf10Ref.current;
     if (!node) return;
@@ -543,6 +554,11 @@ export default function Sf10RecordsPage() {
                           Conditionally Promoted
                         </Badge>
                       )}
+                      {record.locked && (
+                        <Badge variant="outline" className="text-[11px] font-medium bg-primary/10 text-primary border-primary/20">
+                          Locked
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-0.5">
                       {gradeLevelLabels[record.gradeLevel] || record.gradeLevel} · S.Y. {record.schoolYear}
@@ -553,11 +569,21 @@ export default function Sf10RecordsPage() {
                       <p className="text-xs text-muted-foreground mt-0.5">General average: {record.generalAverage}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleToggleLock(record)}
+                      className="h-8 text-xs border-border/70"
+                    >
+                      {record.locked ? <Unlock className="w-3.5 h-3.5 mr-1.5" /> : <Lock className="w-3.5 h-3.5 mr-1.5" />}
+                      {record.locked ? "Unlock" : "Lock"}
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => openEdit(record)}
+                      disabled={record.locked}
                       className="h-8 text-xs border-border/70"
                     >
                       <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
@@ -566,6 +592,7 @@ export default function Sf10RecordsPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => void handleDelete(record)}
+                      disabled={record.locked}
                       className="h-8 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Delete
