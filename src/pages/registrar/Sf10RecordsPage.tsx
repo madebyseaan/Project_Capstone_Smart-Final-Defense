@@ -538,6 +538,11 @@ export default function Sf10RecordsPage() {
                           Partial year
                         </Badge>
                       )}
+                      {/conditionally/i.test(record.promotionStatus ?? "") && (
+                        <Badge variant="outline" className="text-[11px] font-medium bg-amber-50 text-amber-700 border-amber-200">
+                          Conditionally Promoted
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-0.5">
                       {gradeLevelLabels[record.gradeLevel] || record.gradeLevel} · S.Y. {record.schoolYear}
@@ -595,6 +600,22 @@ export default function Sf10RecordsPage() {
                     </tbody>
                   </table>
                 </div>
+
+                {(() => {
+                  const back = record.subjects.filter((s) => s.finalRating != null && s.finalRating < 75);
+                  if (back.length === 0) return null;
+                  return (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                      <p className="text-[11px] font-semibold text-amber-800">Back subjects (from previous school)</p>
+                      <p className="text-[11px] text-amber-700 mt-0.5">
+                        {back.map((s) => `${s.subjectName} (${s.finalRating})`).join(", ")}
+                      </p>
+                      <p className="text-[10px] text-amber-700 mt-1">
+                        Failed subject(s) — remedial is handled through EnrollPro. Display-only in SMART.
+                      </p>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           ))}

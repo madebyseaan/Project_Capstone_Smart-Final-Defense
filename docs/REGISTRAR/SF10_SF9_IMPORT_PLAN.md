@@ -368,11 +368,16 @@ command output (e.g. `npx vitest run <file>`) into the PR/commit notes.
 5. **Re-transfer same year** — if a learner transfers A → B → SMART within one school year,
    `schoolName` in the unique key allows multiple partial records. Confirm the merge can pick
    the relevant previous school.
-6. **SF9 eligibility / back subjects** — EnrollPro decides `sf9EligibilityStatus`
-   (`PROMOTED` / `CONDITIONALLY_PROMOTED` / `RETAINED`) and conditional-promotion back subjects, but
-   does **not** expose them to SMART. Confirm whether the registrar should capture the eligibility
-   status and up to two back subjects in SMART (per prior-school year), since these affect
-   remediation/EOSY handling.
+6. **SF9 eligibility / back subjects — RESOLVED (no import needed).** SMART is the source of grades
+   and computes conditional promotion at its **own EOSY**; it sends SF9/back-subject data **to**
+   EnrollPro (`/api/integration/smart/back-subjects`) and already stores the `RemedialClass` rows and
+   the `CONDITIONALLY_PROMOTED` tag. So there is nothing to import back from EnrollPro for SMART's own
+   learners.
+   **Transferee edge case:** a learner conditionally promoted at a *previous* school was never in
+   SMART's EOSY, so SMART has no back-subject row for them; EnrollPro captured it at walk-in but does
+   not expose it. Decision: **do not sync/import** — EnrollPro owns the transferee's remedial hold.
+   SMART only shows a **read-only indicator** derived from the imported record's failed subjects
+   (final < 75) on the prior-record card, so the registrar can see them.
 
 ---
 
@@ -437,11 +442,20 @@ Not touched: `promotion.ts`, `rollover.ts`, existing `enrollproSync.ts` function
 
 **Tests — DONE.** Supertest-style live API coverage for the CRUD routes (auth 401/403, validation 400, create/update/delete + `AuditLog`), self-cleaning.
 
-**Still open (future, not blocking):**
-1. Excel (`.xlsx`) SF10 import (parser only; no OCR guessing).
-2. Field-level "scroll to the matching SF10 block" linking while editing.
+**Back-subjects — RESOLVED (2026-09-12).** SMART owns back-subjects for its own learners (computed at EOSY, sent to EnrollPro); nothing is imported back. For transferees, EnrollPro owns the remedial hold and SMART shows a **read-only "Back subjects (from previous school)"** indicator on the prior-record card, derived from imported failed subjects (final < 75). See §13.6.
 
-**Verified totals:** 42/42 targeted backend tests green (merge + validators + parser + API) + `promotion` regression; server + root builds clean; lint 0 errors.
+**Also DONE (2026-09-12):**
+- Excel `.xlsx` prior-SF10 import (exact parse, no OCR guessing).
+- Whole-number ratings/averages (SF10 has no decimals).
+- Per-grade-level **"Name of Adviser/Teacher + Signature"** line; principal certification kept once at the bottom.
+- Client-side HEIC/large-photo resize before upload; Print SF10 from the prior-records page; "unmatched from sync" callout.
+- CSRF self-heal (re-issue cookie + retry) in the API client.
+
+**Still open (future, not blocking):**
+1. Field-level "scroll to the matching SF10 block" linking while editing.
+2. Verification lock (lock a reviewed prior record vs always editable).
+
+**Verified totals:** 67 targeted backend tests green (validators + merge + parser + OCR rows + workbook + API) + `promotion` regression; server + root builds clean; lint 0 errors.
 
 ---
 
