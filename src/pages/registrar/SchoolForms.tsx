@@ -110,6 +110,7 @@ export default function SchoolForms() {
   const [sf10EditMode, setSf10EditMode] = useState(false);
   const [sf10InspectOpen, setSf10InspectOpen] = useState(false);
   const [sf10Preview, setSf10Preview] = useState<Record<string, unknown> | null>(null);
+  const [sf10FocusSection, setSf10FocusSection] = useState<"learner" | "eligibility" | "transferee" | null>(null);
 
 
   // Load school years on mount
@@ -700,6 +701,7 @@ export default function SchoolForms() {
     const handleSf10Saved = async () => {
       setSf10EditMode(false);
       setSf10Preview(null);
+      setSf10FocusSection(null);
       try {
         const res = await registrarApi.getSF10(sf10Data.student.id);
         setSf10Data(res.data);
@@ -714,6 +716,7 @@ export default function SchoolForms() {
     const closeEdit = () => {
       setSf10EditMode(false);
       setSf10Preview(null);
+      setSf10FocusSection(null);
     };
 
     return (
@@ -754,7 +757,12 @@ export default function SchoolForms() {
           {/* Form — live-previews edits while the editor is open */}
           <div className="mx-auto w-full max-w-[900px]">
             <div ref={sf10PrintRef}>
-              <SF10Form data={sf10ViewData} schoolName={schoolName} highlightArea={sf10InspectOpen ? sf10Highlight : null} />
+              <SF10Form
+                data={sf10ViewData}
+                schoolName={schoolName}
+                highlightArea={sf10InspectOpen ? sf10Highlight : null}
+                highlightSection={sf10EditMode ? sf10FocusSection : null}
+              />
             </div>
           </div>
         </div>
@@ -765,6 +773,7 @@ export default function SchoolForms() {
             <SF10Editor
               data={sf10Data}
               onPreview={setSf10Preview}
+              onFocusSection={setSf10FocusSection}
               onCancel={closeEdit}
               onSaved={handleSf10Saved}
             />

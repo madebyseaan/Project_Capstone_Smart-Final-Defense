@@ -10,17 +10,24 @@ function ChecklistMark({ checked }: { checked?: boolean | null }) {
   );
 }
 
+export type Sf10FormSection = "learner" | "eligibility" | "transferee";
+
 interface SF10FormProps {
   data: SF10Data;
   schoolName?: string;
   highlightArea?: { recordIndex: number; name: string } | null;
+  /** Highlights a top block while the registrar edits the matching field. */
+  highlightSection?: Sf10FormSection | null;
 }
 
-export default function SF10Form({ data, schoolName, highlightArea }: SF10FormProps) {
+export default function SF10Form({ data, schoolName, highlightArea, highlightSection }: SF10FormProps) {
   const studentFirstName = data.student.firstName || data.student.name.split(',')[1]?.trim().split(' ')[0] || '';
   const studentLastName = data.student.lastName || data.student.name.split(',')[0]?.trim() || '';
   const studentMiddleName = data.student.middleName || data.student.name.split(',')[1]?.trim().split(' ').slice(1).join(' ') || '';
   const studentNameExtension = data.student.nameExtension || '';
+
+  const boxClass = (section: Sf10FormSection) =>
+    `mb-3 border border-black transition-shadow ${highlightSection === section ? "ring-2 ring-primary ring-offset-2 print:ring-0" : ""}`;
 
   return (
     <div className="bg-white border-2 border-gray-400 shadow-xl print-form p-6 mb-8 text-[11px] leading-tight">
@@ -42,7 +49,7 @@ export default function SF10Form({ data, schoolName, highlightArea }: SF10FormPr
       </div>
 
       {/* LEARNER'S INFORMATION */}
-      <div className="mb-3 border border-black">
+      <div className={boxClass("learner")}>
         <div className="bg-gray-200 px-2 py-0.5 border-b border-black">
           <span className="font-bold text-[11px] text-gray-900">LEARNER&apos;S INFORMATION</span>
         </div>
@@ -84,7 +91,7 @@ export default function SF10Form({ data, schoolName, highlightArea }: SF10FormPr
       </div>
 
       {/* ELIGIBILITY FOR JHS ENROLMENT */}
-      <div className="mb-3 border border-black">
+      <div className={boxClass("eligibility")}>
         <div className="bg-gray-200 px-2 py-0.5 border-b border-black">
           <span className="font-bold text-[11px] text-gray-900">ELIGIBILITY FOR JHS ENROLMENT</span>
         </div>
@@ -130,7 +137,7 @@ export default function SF10Form({ data, schoolName, highlightArea }: SF10FormPr
 
       {/* TRANSFEREE INFORMATION — shown only for transfer-in learners */}
       {data.student.isTransferee && (
-        <div className="mb-3 border border-black">
+        <div className={boxClass("transferee")}>
           <div className="bg-gray-200 px-2 py-0.5 border-b border-black">
             <span className="font-bold text-[11px] text-gray-900">TRANSFEREE INFORMATION</span>
           </div>

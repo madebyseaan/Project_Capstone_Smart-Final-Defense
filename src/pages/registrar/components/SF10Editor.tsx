@@ -23,6 +23,8 @@ interface SF10EditorProps {
   onSaved: () => void | Promise<void>;
   /** Emits a live preview patch (SF10 student fields) as the registrar types. */
   onPreview?: (patch: Record<string, unknown>) => void;
+  /** Emits which SF10 block the registrar is editing, for on-form highlighting. */
+  onFocusSection?: (section: "learner" | "eligibility" | "transferee") => void;
 }
 
 const toDateOnly = (value?: string | null): string => {
@@ -101,7 +103,7 @@ function toPreviewPatch(form: EditorForm): Record<string, unknown> {
   };
 }
 
-export default function SF10Editor({ data, onCancel, onSaved, onPreview }: SF10EditorProps) {
+export default function SF10Editor({ data, onCancel, onSaved, onPreview, onFocusSection }: SF10EditorProps) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     birthDate: toDateOnly(data.student.birthDate),
@@ -165,7 +167,7 @@ export default function SF10Editor({ data, onCancel, onSaved, onPreview }: SF10E
         </Button>
       </div>
       <CardContent className="p-4 space-y-5 flex-1 min-h-0 overflow-y-auto">
-        <div className="space-y-3">
+        <div className="space-y-3" onFocusCapture={() => onFocusSection?.("learner")}>
           <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Learner</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Birthdate">
@@ -186,7 +188,7 @@ export default function SF10Editor({ data, onCancel, onSaved, onPreview }: SF10E
           <p className="text-[11px] text-muted-foreground">Name and LRN are managed in EnrollPro and cannot be edited here.</p>
         </div>
 
-        <div className="space-y-3 pt-3 border-t border-border">
+        <div className="space-y-3 pt-3 border-t border-border" onFocusCapture={() => onFocusSection?.("transferee")}>
           <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Transferee</p>
           <Field label="Previous School">
             <Input value={form.previousSchool} onChange={(e) => set({ previousSchool: e.target.value })} placeholder="Name of previous school" />
@@ -204,7 +206,7 @@ export default function SF10Editor({ data, onCancel, onSaved, onPreview }: SF10E
           </Field>
         </div>
 
-        <div className="space-y-3 pt-3 border-t border-border">
+        <div className="space-y-3 pt-3 border-t border-border" onFocusCapture={() => onFocusSection?.("eligibility")}>
           <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Eligibility for JHS Enrolment</p>
           <ToggleRow label="Elementary School Completer" checked={form.elementarySchoolCompleter} onChange={(v) => set({ elementarySchoolCompleter: v })} />
           <div className="grid grid-cols-2 gap-3">
