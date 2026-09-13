@@ -6,12 +6,14 @@ import { describe, it, expect } from "vitest";
 import {
   isValidGradeScore,
   normalizeGradeScore,
+  roundGradeScore,
   sanitizeTerms,
   computeFinalFromTerms,
   deriveRemarks,
   expectedPriorGradeLevels,
   PRIOR_PASSING_GRADE,
 } from "../lib/externalRecordValidation";
+import { externalRecordCreateSchema } from "../schemas/registrar";
 
 describe("externalRecordValidation", () => {
   describe("isValidGradeScore", () => {
@@ -38,6 +40,16 @@ describe("externalRecordValidation", () => {
     });
   });
 
+  describe("roundGradeScore", () => {
+    it("rounds to the nearest whole number (SF10 has no decimals)", () => {
+      expect(roundGradeScore(86.4)).toBe(86);
+      expect(roundGradeScore(86.5)).toBe(87);
+      expect(roundGradeScore("88.6")).toBe(89);
+      expect(roundGradeScore(150)).toBeNull();
+      expect(roundGradeScore(null)).toBeNull();
+    });
+  });
+
   describe("sanitizeTerms", () => {
     it("keeps valid entries and trims labels", () => {
       expect(sanitizeTerms([{ label: " Q1 ", value: 88 }, { label: "Q2", value: 92 }])).toEqual([
@@ -51,11 +63,15 @@ describe("externalRecordValidation", () => {
       expect(sanitizeTerms("nope")).toEqual([]);
       expect(sanitizeTerms(undefined)).toEqual([]);
     });
+
+    it("rounds decimals to whole numbers", () => {
+      expect(sanitizeTerms([{ label: "Q1", value: 88.6 }])).toEqual([{ label: "Q1", value: 89 }]);
+    });
   });
 
   describe("computeFinalFromTerms", () => {
-    it("rounds the average of term values to one decimal", () => {
-      expect(computeFinalFromTerms([{ label: "Q1", value: 88 }, { label: "Q2", value: 91 }])).toBe(89.5);
+    it("rounds the average of term values to a whole number", () => {
+      expect(computeFinalFromTerms([{ label: "Q1", value: 88 }, { label: "Q2", value: 91 }])).toBe(90);
       expect(computeFinalFromTerms([{ label: "Q1", value: 90 }, { label: "Q2", value: 90 }])).toBe(90);
     });
 
@@ -83,6 +99,30 @@ describe("externalRecordValidation", () => {
     it("returns empty for Grade 7 (elementary prior record out of scope)", () => {
       expect(expectedPriorGradeLevels("GRADE_7")).toEqual([]);
       expect(expectedPriorGradeLevels(null)).toEqual([]);
+    });
+  });
+
+  describe("externalRecordCreateSchema (whole-number coercion)", () => {
+    it("rounds decimal ratings/averages to integers", () => {
+      const parsed = externalRecordCreateSchema.parse({
+        params: { studentId: "s1" },
+        body: {
+          schoolYear: "2029-2030",
+          gradeLevel: "GRADE_7",
+          schoolName: "Previous School",
+          generalAverage: 88.6,
+          subjects: [
+            {
+              subjectName: "Mathematics",
+              terms: [{ label: "T1", value: 88.6 }],
+              finalRating: 88.5,
+            },
+          ],
+        },
+      });
+      expect(parsed.body.generalAverage).toBe(89);
+      expect(parsed.body.subjects[0].terms?.[0].value).toBe(89);
+      expect(parsed.body.subjects[0].finalRating).toBe(89);
     });
   });
 });

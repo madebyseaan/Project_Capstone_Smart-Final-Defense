@@ -95,6 +95,19 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // CSRF token expired/missing: a GET re-issues the readable cookie, then retry once.
+    // Must be handled before the 401/403 refresh branch below (refresh does not renew CSRF).
+    const errText = `${error.response?.data?.error ?? ""} ${error.response?.data?.message ?? ""}`;
+    if (error.response?.status === 403 && /csrf/i.test(errText) && !originalRequest._csrfRetry) {
+      originalRequest._csrfRetry = true;
+      try {
+        await api.get("/health");
+      } catch {
+        /* ignore — retry will surface the error if it persists */
+      }
+      return api(originalRequest);
+    }
+
     // Skip refresh for login/refresh endpoints to avoid loops
     const skipRefreshPaths = ["/auth/login", "/auth/refresh"];
     const isSkipPath = skipRefreshPaths.some((path) => originalRequest.url?.includes(path));

@@ -59,17 +59,39 @@ export function extractSchoolId(text: string): string | null {
   return m ? m[1] : null;
 }
 
+/** Strips a following label that OCR merged onto the same row (e.g. "Rizal Transferred In:"). */
+const TRAILING_LABEL =
+  /\s+(?:transferred in|last grade completed|transfer certificate|date transferred in|school year|school id|classified as grade|section|name of elementary school|general average|birthdate|lrn)\s*:.*$/i;
+
+export function cleanLabeledValue(value: string): string {
+  return String(value ?? "").replace(TRAILING_LABEL, "").trim();
+}
+
 /** Finds the value after a label on the same line, else the next non-empty line. */
 export function extractLabeledValue(lines: string[], label: RegExp): string | null {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const m = line.match(label);
     if (!m) continue;
-    const after = line.slice((m.index ?? 0) + m[0].length).replace(/^[:\s]+/, "").trim();
+    const after = cleanLabeledValue(line.slice((m.index ?? 0) + m[0].length).replace(/^[:\s]+/, ""));
     if (after) return after;
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim();
-      if (next) return next;
+      if (next) return cleanLabeledValue(next);
+    }
+  }
+  return null;
+}
+
+/** Prefers "School Name:", else a line starting with "School:" (avoids "School ID"/"School Year"). */
+export function extractSchoolName(lines: string[]): string | null {
+  const named = extractLabeledValue(lines, /school\s*name/i);
+  if (named) return named;
+  for (const line of lines) {
+    const m = line.match(/^\s*school\s*:\s*(.+)/i);
+    if (m) {
+      const value = cleanLabeledValue(m[1]);
+      if (value) return value;
     }
   }
   return null;
@@ -132,7 +154,7 @@ export function parseSf10Text(raw: string): Sf10ScanDraft {
 
   return {
     documentType: detectDocumentType(text),
-    schoolName: extractLabeledValue(lines, /school\s*name/i),
+    schoolName: extractSchoolName(lines),
     schoolId: extractSchoolId(text),
     schoolYear: extractSchoolYear(text),
     gradeLevel: extractGradeLevel(text),

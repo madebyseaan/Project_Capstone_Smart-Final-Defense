@@ -71,16 +71,19 @@ export const transfereeTagSchema = z.object({
 const externalGradeLevelEnum = z.enum(['GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']);
 const schoolYearLabel = z.string().regex(/^\d{4}-\d{4}$/, 'schoolYear must look like YYYY-YYYY');
 
+// DepEd SF10 ratings/averages are whole numbers — coerce any decimals to integers.
+const wholeScore = z.number().min(0).max(100).transform((n) => Math.round(n));
+
 export const externalTermSchema = z.object({
   label: z.string().min(1).max(30),
-  value: z.number().min(0).max(100),
+  value: wholeScore,
 });
 
 export const externalSubjectSchema = z.object({
   subjectCode: z.string().max(50).optional(),
   subjectName: z.string().min(1).max(200),
   terms: z.array(externalTermSchema).max(8).optional(),
-  finalRating: z.number().min(0).max(100).optional(),
+  finalRating: wholeScore.optional(),
   remarks: z.string().max(50).optional(),
   isNonPromotional: z.boolean().optional(),
 });
@@ -94,7 +97,7 @@ export const externalRecordCreateSchema = z.object({
     schoolId: z.string().max(50).optional(),
     sectionName: z.string().max(100).optional(),
     adviserName: z.string().max(150).optional(),
-    generalAverage: z.number().min(0).max(100).optional(),
+    generalAverage: wholeScore.optional(),
     promotionStatus: z.string().max(50).optional(),
     formType: z.enum(['SF10', 'SF9']).optional(),
     isPartialYear: z.boolean().optional(),
@@ -113,7 +116,7 @@ export const externalRecordUpdateSchema = z.object({
     schoolId: z.string().max(50).optional(),
     sectionName: z.string().max(100).optional(),
     adviserName: z.string().max(150).optional(),
-    generalAverage: z.number().min(0).max(100).optional(),
+    generalAverage: wholeScore.optional(),
     promotionStatus: z.string().max(50).optional(),
     formType: z.enum(['SF10', 'SF9']).optional(),
     isPartialYear: z.boolean().optional(),

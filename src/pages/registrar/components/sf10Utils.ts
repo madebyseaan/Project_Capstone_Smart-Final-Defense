@@ -35,19 +35,28 @@ export const SF10_GROUP_MAP: Record<string, string> = {
     MUSIC: 'MAPEH', ARTS: 'MAPEH', PE: 'MAPEH', HEALTH: 'MAPEH', MAPEH: 'MAPEH',
   };
 
-  // Extract the base SF10 code from a subject code (strip grade number)
-export const sf10Code = (subjectCode: string): string =>
-    subjectCode.toUpperCase().replace(/\d+$/, '').replace(/[^A-Z_]/g, '');
+  // Extract the base SF10 code from a subject code (strip grade number).
+  // Null-safe: prior-school records may have no subject code.
+  export const sf10Code = (subjectCode: string | null | undefined): string =>
+    String(subjectCode ?? '').toUpperCase().replace(/\d+$/, '').replace(/[^A-Z_]/g, '');
+
+  // Stable grouping key for a subject row: use its code, else fall back to its name
+  // (so scanned/prior-school rows without a code don't all collapse into one area).
+  export const subjectAreaKey = (sg: any): string => {
+    const code = sf10Code(sg?.subjectCode);
+    if (code) return code;
+    return String(sg?.subjectName ?? '').toUpperCase().replace(/[^A-Z]/g, '');
+  };
 
   // Map a raw SF10 code to its grouped code (if applicable)
-export const sf10GroupCode = (code: string): string => SF10_GROUP_MAP[code] ?? code;
+  export const sf10GroupCode = (code: string): string => SF10_GROUP_MAP[code] ?? code;
 
   // Build the SF10 learning area list from ATLAS subjectGrades (dynamic, per record)
   // Groups SCI_* into one "Science" row and TLE_* into one "TLE" row
 export const buildSF10Areas = (subjectGrades: any[]) => {
     const seen = new Map<string, { code: string; name: string; order: number; subCodes: string[] }>();
     for (const sg of subjectGrades) {
-      const rawCode = sf10Code(sg.subjectCode);
+      const rawCode = subjectAreaKey(sg);
       const groupCode = sf10GroupCode(rawCode);
       if (!seen.has(groupCode)) {
         seen.set(groupCode, {
@@ -67,11 +76,11 @@ export const buildSF10Areas = (subjectGrades: any[]) => {
 export const getAreaDisplayValues = (area: { code: string; subCodes: string[] }, subjectGrades: any[]) => {
     // For non-grouped subjects (single subCode), match by subCode list
     if (area.subCodes.length <= 1) {
-      const matched = subjectGrades.find((sg: any) => area.subCodes.includes(sf10Code(sg.subjectCode)));
+      const matched = subjectGrades.find((sg: any) => area.subCodes.includes(subjectAreaKey(sg)));
       return { t1: matched?.T1 ?? null, t2: matched?.T2 ?? null, t3: matched?.T3 ?? null, final: matched?.final ?? null };
     }
     // For grouped subjects, average all matching sub-grades
-    const subs = subjectGrades.filter((sg: any) => area.subCodes.includes(sf10Code(sg.subjectCode)));
+    const subs = subjectGrades.filter((sg: any) => area.subCodes.includes(subjectAreaKey(sg)));
     if (subs.length === 0) return { t1: null, t2: null, t3: null, final: null };
     const avg = (field: string) => {
       const vals = subs.map((s: any) => s[field]).filter((v: any) => v != null);

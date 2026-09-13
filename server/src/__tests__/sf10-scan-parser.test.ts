@@ -9,6 +9,8 @@ import {
   extractGradeLevel,
   extractSchoolId,
   extractLabeledValue,
+  extractSchoolName,
+  cleanLabeledValue,
   parseGradeNumbers,
 } from "../lib/sf10Scan/parser";
 import { matchSubject } from "../lib/sf10Scan/subjects";
@@ -64,6 +66,20 @@ describe("sf10Scan parser", () => {
       const lines = ["School Name:", "Montevista NHS", "Section: Sampaguita"];
       expect(extractLabeledValue(lines, /school\s*name/i)).toBe("Montevista NHS");
       expect(extractLabeledValue(lines, /section/i)).toBe("Sampaguita");
+    });
+
+    it("strips a label OCR merged onto the same row", () => {
+      expect(cleanLabeledValue("Rizal Transferred In: 06/03/2026")).toBe("Rizal");
+      expect(cleanLabeledValue("MABINI NATIONAL HIGH SCHOOL School ID: 112233")).toBe(
+        "MABINI NATIONAL HIGH SCHOOL"
+      );
+    });
+
+    it("extracts school name without matching School ID/Year/Elementary", () => {
+      expect(
+        extractSchoolName(["School: MABINI NATIONAL HIGH SCHOOL School ID: 112233 School Year: 2027-2028"])
+      ).toBe("MABINI NATIONAL HIGH SCHOOL");
+      expect(extractSchoolName(["Name of Elementary School: MONTEVISTA ES"])).toBeNull();
     });
   });
 

@@ -333,19 +333,13 @@ export default function SF10Form({ data, schoolName, highlightArea }: SF10FormPr
             </table>
           </div>
 
-          {/* Adviser / Principal Signatures */}
-          <div className="grid grid-cols-2 gap-4 p-2 border-t border-black text-[10px]">
-            <div className="text-center">
-              <div className="border-b border-gray-600 mt-6 mx-4"></div>
-              <p className="mt-0.5 text-gray-900">{record.adviserName || ""}</p>
-              <p className="text-gray-900">Signature of Adviser</p>
-              <p className="text-gray-700 italic">(over Printed Name)</p>
-            </div>
-            <div className="text-center">
-              <div className="border-b border-gray-600 mt-6 mx-4"></div>
-              <p className="mt-0.5 text-gray-900">{data.schoolSettings?.schoolHeadName || ""}</p>
-              <p className="text-gray-900">Signature of Principal/School Head</p>
-              <p className="text-gray-700 italic">(over Printed Name)</p>
+          {/* Name of Adviser/Teacher + Signature — per grade level (DepEd continuation) */}
+          <div className="p-2 border-t border-black text-[10px]">
+            <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+              <span className="font-bold text-gray-900">Name of Adviser/Teacher:</span>
+              <span className="border-b border-gray-600 inline-block min-w-[180px] text-gray-900">{record.adviserName || ""}</span>
+              <span className="font-bold text-gray-900 ml-4">Signature:</span>
+              <span className="border-b border-gray-600 inline-block min-w-[150px]">&nbsp;</span>
             </div>
           </div>
         </div>
@@ -354,9 +348,12 @@ export default function SF10Form({ data, schoolName, highlightArea }: SF10FormPr
       {/* CERTIFICATION */}
       <div className="mt-3 border border-black p-3">
         <p className="font-bold text-gray-900 text-center mb-2">CERTIFICATION</p>
-        <p className="text-gray-900 text-center leading-relaxed mb-3">
+        <p className="text-gray-900 text-center leading-relaxed mb-1">
           I CERTIFY that this is a true record of {studentFirstName} {studentLastName}
           {' '}with LRN {data.student.lrn} and that he/she is eligible for admission to Grade ______.
+        </p>
+        <p className="text-[9px] text-gray-700 italic text-center mb-3">
+          (For a transferred-in learner, the originating school is named below; add another certification box if the learner transfers again.)
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>

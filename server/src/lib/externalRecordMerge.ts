@@ -97,13 +97,13 @@ export function externalRecordToSchoolRecord(rec: ExternalRecordLike): Mergeable
     for (const t of s.terms ?? []) {
       const slot = termLabelToSlot(t.label);
       if (slot && typeof t.value === "number" && Number.isFinite(t.value)) {
-        slots[slot] = t.value;
+        slots[slot] = Math.round(t.value);
       }
     }
     const present = [slots.T1, slots.T2, slots.T3].filter((v): v is number => v !== null);
     const final =
       s.finalRating != null && Number.isFinite(s.finalRating)
-        ? s.finalRating
+        ? Math.round(s.finalRating)
         : present.length > 0
           ? Math.round(present.reduce((a, b) => a + b, 0) / present.length)
           : null;
@@ -123,7 +123,7 @@ export function externalRecordToSchoolRecord(rec: ExternalRecordLike): Mergeable
     .filter((v): v is number => v != null);
   const generalAverage =
     rec.generalAverage != null && Number.isFinite(rec.generalAverage)
-      ? rec.generalAverage
+      ? Math.round(rec.generalAverage)
       : average(finals);
 
   return {

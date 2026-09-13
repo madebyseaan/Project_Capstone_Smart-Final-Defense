@@ -8,8 +8,9 @@ import { Jimp } from "jimp";
 export async function preprocessImage(buffer: Buffer): Promise<Buffer> {
   try {
     const image = await Jimp.read(buffer);
-    if (image.bitmap.width > 1800) {
-      image.resize({ w: 1800 });
+    // Keep detail for dense forms; only downscale very large phone photos.
+    if (image.bitmap.width > 2400) {
+      image.resize({ w: 2400 });
     }
     image.greyscale();
     return await image.getBuffer("image/jpeg");

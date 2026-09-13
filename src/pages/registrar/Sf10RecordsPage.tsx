@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, Trash2, Loader2, X, ScanLine, FileSpreadsheet } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Loader2, X, ScanLine, FileSpreadsheet, History, Printer } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,10 @@ import {
   type ExternalSchoolRecord,
   type ExternalSchoolRecordPayload,
   type ExternalSubjectInput,
+  type SF10Data,
 } from "@/lib/api";
-import { PageHeader } from "@/components/layout/PageHeader";
+import SF10Form from "./components/SF10Form";
+import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "@/lib/toast";
 
 const gradeLevelLabels: Record<string, string> = {
@@ -55,15 +57,64 @@ const emptySubject = (): SubjectForm => ({
   finalRating: "",
 });
 
+const MAX_IMAGE_DIM = 2200;
+
+function loadImageEl(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("decode failed"));
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * Mobile photos may be HEIC or very large. Re-encode to a resized JPEG so OCR
+ * and upload are reliable. Non-images (e.g. .xlsx) pass through unchanged.
+ * Fail-soft: returns the original file if conversion isn't possible.
+ */
+async function prepareImageForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  try {
+    const img = await loadImageEl(file);
+    const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+    if (!blob) return file;
+    const base = file.name.replace(/\.[^.]+$/, "");
+    return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 export default function Sf10RecordsPage() {
   const { studentId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const studentName = (location.state as { studentName?: string } | null)?.studentName;
 
+  const { colors } = useTheme();
   const [records, setRecords] = useState<ExternalSchoolRecord[]>([]);
   const [lrn, setLrn] = useState("");
   const [loading, setLoading] = useState(true);
+  const [sf10Data, setSf10Data] = useState<SF10Data | null>(null);
+  const [sf10Loading, setSf10Loading] = useState(true);
+  const [recordsOpen, setRecordsOpen] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -73,6 +124,7 @@ export default function Sf10RecordsPage() {
   const [scanSource, setScanSource] = useState<"MANUAL" | "SF10_SCAN" | "SF9_SCAN" | "SF10_XLSX">("MANUAL");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
+  const sf10Ref = useRef<HTMLDivElement>(null);
 
   const [schoolYear, setSchoolYear] = useState("");
   const [gradeLevel, setGradeLevel] = useState("GRADE_8");
@@ -88,6 +140,7 @@ export default function Sf10RecordsPage() {
   const loadData = useCallback(async () => {
     if (!studentId) return;
     setLoading(true);
+    setSf10Loading(true);
     try {
       const res = await registrarApi.getExternalRecords(studentId);
       setRecords(res.data.records || []);
@@ -98,6 +151,14 @@ export default function Sf10RecordsPage() {
       setRecords([]);
     } finally {
       setLoading(false);
+    }
+    try {
+      const sf = await registrarApi.getSF10(studentId);
+      setSf10Data(sf.data);
+    } catch {
+      setSf10Data(null);
+    } finally {
+      setSf10Loading(false);
     }
   }, [studentId]);
 
@@ -165,15 +226,15 @@ export default function Sf10RecordsPage() {
       .filter((s) => s.subjectName.trim())
       .map<ExternalSubjectInput>((s) => {
         const terms = [
-          s.t1 ? { label: "T1", value: Number(s.t1) } : null,
-          s.t2 ? { label: "T2", value: Number(s.t2) } : null,
-          s.t3 ? { label: "T3", value: Number(s.t3) } : null,
+          s.t1 ? { label: "T1", value: Math.round(Number(s.t1)) } : null,
+          s.t2 ? { label: "T2", value: Math.round(Number(s.t2)) } : null,
+          s.t3 ? { label: "T3", value: Math.round(Number(s.t3)) } : null,
         ].filter(Boolean) as Array<{ label: string; value: number }>;
         return {
           subjectCode: s.subjectCode.trim() || undefined,
           subjectName: s.subjectName.trim(),
           terms: terms.length > 0 ? terms : undefined,
-          finalRating: s.finalRating ? Number(s.finalRating) : undefined,
+          finalRating: s.finalRating ? Math.round(Number(s.finalRating)) : undefined,
         };
       });
 
@@ -218,8 +279,8 @@ export default function Sf10RecordsPage() {
       resetForm();
       void loadData();
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(message || "Failed to save prior-school record");
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+      toast.error(data?.message || data?.error || "Failed to save prior-school record");
     } finally {
       setSaving(false);
     }
@@ -232,7 +293,8 @@ export default function Sf10RecordsPage() {
     const isSheet = /\.xlsx?$/i.test(file.name) || /spreadsheetml|ms-excel/.test(file.type);
     setScanning(true);
     try {
-      const res = await registrarApi.scanSf10(file);
+      const uploadFile = await prepareImageForUpload(file);
+      const res = await registrarApi.scanSf10(uploadFile);
       const { draft, rawText, confidence, reason } = res.data;
       if (reason) {
         toast.error(reason);
@@ -270,8 +332,8 @@ export default function Sf10RecordsPage() {
       setDialogOpen(true);
       toast.success(`Scanned (${Math.round((confidence || 0) * 100)}% confidence) — review and correct before saving`);
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(message || "Scan failed — enter manually instead");
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+      toast.error(data?.message || data?.error || "Scan failed — enter manually instead");
     } finally {
       setScanning(false);
     }
@@ -286,71 +348,159 @@ export default function Sf10RecordsPage() {
       toast.success("Prior-school record deleted");
       void loadData();
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(message || "Failed to delete prior-school record");
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+      toast.error(data?.message || data?.error || "Failed to delete prior-school record");
     }
   };
 
-  const headerTitle = studentName ? `Prior SF10 / SF9 — ${studentName}` : "Prior SF10 / SF9 Records";
-  const subtitle = lrn ? `LRN ${lrn}` : "Registrar-entered previous-school records";
+  const handlePrint = () => {
+    const node = sf10Ref.current;
+    if (!node) return;
+    const container = document.createElement("div");
+    container.className = "sf10-records-print-root";
+    container.appendChild(node.cloneNode(true));
+    document.body.appendChild(container);
+
+    const style = document.createElement("style");
+    style.id = "sf10-records-print-style";
+    style.textContent = `
+      @media print {
+        @page { size: A4 portrait; margin: 10mm 8mm; }
+        body > *:not(.sf10-records-print-root) { display: none !important; }
+        .sf10-records-print-root { display: block !important; width: 100% !important; }
+        .sf10-records-print-root .print-form { box-shadow: none !important; margin: 0 !important; padding: 4mm !important; border: none !important; width: 100% !important; max-width: none !important; }
+        .sf10-records-print-root * { font-size: 9pt !important; line-height: 1.3 !important; }
+        .sf10-records-print-root table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed; }
+        .sf10-records-print-root th, .sf10-records-print-root td { border: 1px solid #000 !important; padding: 1.5px 3px !important; }
+        .sf10-records-print-root .bg-gray-200, .sf10-records-print-root .bg-gray-100 { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }`;
+    document.head.appendChild(style);
+
+    const cleanup = () => {
+      container.remove();
+      style.remove();
+    };
+    window.addEventListener("afterprint", cleanup, { once: true });
+    window.setTimeout(cleanup, 60000);
+    window.print();
+  };
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1000px] mx-auto w-full">
-      <PageHeader
-        title={headerTitle}
-        description={subtitle}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate("/registrar/transferees")}
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Back
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={scanning}
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-            >
-              {scanning ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <ScanLine className="w-4 h-4 mr-1.5" />}
-              Scan SF10 / SF9
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => void handleScanFile(e)}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => excelInputRef.current?.click()}
-              disabled={scanning}
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-            >
-              <FileSpreadsheet className="w-4 h-4 mr-1.5" /> Import Excel
-            </Button>
-            <input
-              ref={excelInputRef}
-              type="file"
-              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              className="hidden"
-              onChange={(e) => void handleScanFile(e)}
-            />
-            <Button onClick={openAdd} size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
-              <Plus className="w-4 h-4 mr-1.5" /> Add record
-            </Button>
-          </div>
-        }
-      />
+    <>
+      <div className={`space-y-6 animate-fade-in transition-[padding] duration-200 ${recordsOpen ? "lg:pr-[460px]" : ""}`}>
+        {/* Header */}
+        <div className="space-y-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/registrar/transferees")}
+            className="h-8 -ml-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Back to Transferees
+          </Button>
 
-      {loading ? (
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center text-primary-foreground font-bold text-lg shrink-0"
+                style={{ backgroundColor: colors.primary }}
+                aria-hidden="true"
+              >
+                {(studentName || "?").charAt(0)}
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground truncate">
+                  SF10 - Learner&apos;s Permanent Academic Record
+                </h1>
+                <p className="text-sm text-muted-foreground truncate mt-0.5">
+                  {studentName || "Learner"}
+                  {lrn ? ` · LRN ${lrn}` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={() => setRecordsOpen(true)}
+                variant="outline"
+                size="sm"
+                className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+              >
+                <History className="w-4 h-4 mr-1.5" /> Prior records{records.length > 0 ? ` (${records.length})` : ""}
+              </Button>
+              <Button onClick={handlePrint} variant="default" size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
+                <Printer className="w-4 h-4 mr-1.5" /> Print SF10
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* SF10 preview (main) */}
+        {sf10Loading ? (
+          <Card className="border-0 shadow-sm bg-card rounded-xl p-6">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading SF10...
+            </div>
+          </Card>
+        ) : sf10Data ? (
+          <div className="mx-auto w-full max-w-[900px]">
+            <div ref={sf10Ref}>
+              <SF10Form data={sf10Data} />
+            </div>
+          </div>
+        ) : (
+          <Card className="border-0 shadow-sm bg-card rounded-xl">
+            <CardContent className="py-16 text-center">
+              <p className="text-sm font-medium text-foreground">No SF10 data available</p>
+              <p className="text-sm text-muted-foreground mt-1">This learner has no academic records yet.</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Docked prior-records panel (non-modal — SF10 stays visible) */}
+      <aside className={`fixed top-16 bottom-0 right-0 z-20 w-full sm:w-[440px] bg-background border-l border-border shadow-xl flex flex-col print-hide transition-transform duration-200 ${recordsOpen ? "translate-x-0" : "translate-x-full"}`}>
+        <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-2 shrink-0">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-foreground">Prior-school records</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {records.length} saved · {studentName || "Learner"}
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setRecordsOpen(false)}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <div className="px-4 py-3 border-b border-border flex flex-wrap gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={scanning}
+            className="h-8 text-xs border-border/70"
+          >
+            {scanning ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <ScanLine className="w-3.5 h-3.5 mr-1.5" />}
+            Scan
+          </Button>
+          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => void handleScanFile(e)} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => excelInputRef.current?.click()}
+            disabled={scanning}
+            className="h-8 text-xs border-border/70"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" /> Excel
+          </Button>
+          <input ref={excelInputRef} type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => void handleScanFile(e)} />
+          <Button onClick={openAdd} size="sm" className="h-8 text-xs font-semibold shadow-sm shadow-primary/20">
+            <Plus className="w-3.5 h-3.5 mr-1.5" /> Add record
+          </Button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+          {loading ? (
         <Card className="border-0 shadow-sm bg-card rounded-xl p-6">
           <div className="flex items-center gap-2 text-muted-foreground text-sm">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading records...
@@ -450,6 +600,8 @@ export default function Sf10RecordsPage() {
           ))}
         </div>
       )}
+        </div>
+      </aside>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && !saving && setDialogOpen(false)}>
         <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
@@ -495,6 +647,12 @@ export default function Sf10RecordsPage() {
               <Input value={sectionName} onChange={(e) => setSectionName(e.target.value)} placeholder="Section" disabled={saving} />
             </div>
             <div className="space-y-2">
+              <Label className="text-xs font-medium text-foreground">
+                Adviser / Teacher <span className="text-muted-foreground font-normal">(previous school)</span>
+              </Label>
+              <Input value={adviserName} onChange={(e) => setAdviserName(e.target.value)} placeholder="Name of adviser" disabled={saving} />
+            </div>
+            <div className="space-y-2">
               <Label className="text-xs font-medium text-foreground">Form type</Label>
               <Select value={formType} onValueChange={(v) => setFormType(v === "SF9" ? "SF9" : "SF10")} disabled={saving}>
                 <SelectTrigger className="h-9 rounded-lg text-xs font-medium">
@@ -526,7 +684,9 @@ export default function Sf10RecordsPage() {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium text-foreground">Subjects</Label>
+              <Label className="text-xs font-medium text-foreground">
+                Subjects <span className="text-muted-foreground font-normal">(whole numbers 60–100)</span>
+              </Label>
               <Button
                 type="button"
                 variant="outline"
@@ -588,6 +748,6 @@ export default function Sf10RecordsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

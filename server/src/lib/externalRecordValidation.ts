@@ -29,6 +29,12 @@ export function normalizeGradeScore(value: unknown): number | null {
   return isValidGradeScore(value) ? Number(value) : null;
 }
 
+/** DepEd SF10 ratings/averages are whole numbers — round to the nearest integer. */
+export function roundGradeScore(value: unknown): number | null {
+  const n = normalizeGradeScore(value);
+  return n === null ? null : Math.round(n);
+}
+
 /**
  * Normalizes a term entry. Accepts `{ label, value }` and keeps only valid
  * entries. Labels are trimmed and capped at 30 chars; invalid values are dropped.
@@ -39,7 +45,7 @@ export function sanitizeTerms(input: unknown): ExternalTerm[] {
   for (const raw of input) {
     if (!raw || typeof raw !== "object") continue;
     const label = String((raw as { label?: unknown }).label ?? "").trim().slice(0, 30);
-    const value = normalizeGradeScore((raw as { value?: unknown }).value);
+    const value = roundGradeScore((raw as { value?: unknown }).value);
     if (!label || value === null) continue;
     out.push({ label, value });
   }
@@ -57,7 +63,7 @@ export function computeFinalFromTerms(terms: ExternalTerm[] | null | undefined):
     .filter((v): v is number => v !== null);
   if (values.length === 0) return null;
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  return Math.round(avg * 10) / 10;
+  return Math.round(avg);
 }
 
 /** Passing mark for prior-school subjects (DepEd JHS). */

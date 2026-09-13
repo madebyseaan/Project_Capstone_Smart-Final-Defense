@@ -234,6 +234,28 @@ export default function Transferees() {
         />
       </div>
 
+      {data?.unmatchedFromLastSync && data.unmatchedFromLastSync.length > 0 && (
+        <Card className="border border-amber-200 bg-amber-50 rounded-xl">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-amber-800">
+                  {data.unmatchedFromLastSync.length} learner{data.unmatchedFromLastSync.length !== 1 ? "s" : ""} from EnrollPro couldn&apos;t be matched
+                </p>
+                <p className="text-xs text-amber-700 mt-1 break-words">
+                  {data.unmatchedFromLastSync.slice(0, 12).map((u) => u.lrn).join(", ")}
+                  {data.unmatchedFromLastSync.length > 12 ? " …" : ""}
+                </p>
+                <p className="text-xs text-amber-700 mt-1">
+                  They may be awaiting official sectioning or missing in SMART. Trigger a sync or verify the enrollment.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Main Table Card */}
       <Card className="border-0 shadow-sm bg-card overflow-hidden rounded-xl p-0">
         <div className="px-6 py-4 border-b border-border/30">
