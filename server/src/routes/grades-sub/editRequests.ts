@@ -75,6 +75,17 @@ export default function registerEditRequests(router: Router): void {
           },
         });
 
+        await createAuditLog(
+          AuditAction.CREATE,
+          { id: user.id, firstName: user.username, lastName: "", role: user.role },
+          `Grade Edit Request: ${term} (${schoolYearLabel})`,
+          "GradeEditRequest",
+          `${(teacher.user?.firstName ?? "")} ${(teacher.user?.lastName ?? "")}`.trim() + ` requested edit access for ${term} of ${schoolYearLabel}: ${reason}`,
+          (req.ip as string) || req.socket?.remoteAddress,
+          AuditSeverity.INFO,
+          request.id,
+        );
+
         // Broadcast to admin SSE
         const { broadcastSettingsUpdate } = await import("../../lib/sseManager");
         const updatedSettings = await prisma.systemSettings.findUnique({ where: { id: "main" } });

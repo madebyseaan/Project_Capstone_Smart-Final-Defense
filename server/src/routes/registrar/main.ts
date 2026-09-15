@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { GradeLevel, Term } from "@prisma/client";
+import { AuditAction, AuditSeverity, GradeLevel, Term } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import { prisma } from "../../lib/prisma";
 import { triggerImmediateSync, getUnifiedSyncStatus } from "../../lib/syncCoordinator";
@@ -11,6 +11,7 @@ import {
 } from "../../lib/enrollproClient";
 import { getActiveSchoolYearLabel, getActiveSchoolYear } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
+import { createAuditLog } from "../../lib/audit";
 import { maskId } from "../../lib/redact";
 import { withSectionLock } from "../../lib/sectionLock";
 import { validate } from "../../middleware/validate";
@@ -1283,6 +1284,16 @@ router.post("/finalize-grades", authenticateToken, validate(finalizeGradesSchema
 
       logger.info(`[Registrar] ${user.username} finalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
 
+      await createAuditLog(
+        AuditAction.UPDATE,
+        { id: user.id, firstName: user.username, lastName: "", role: user.role },
+        `Grades finalized: section ${sectionId} ${term} subject ${subjectId}`,
+        "Grade",
+        `${user.username} finalized ${result.count} grade(s) for section ${sectionId}, ${term}, subject ${subjectId} (SY ${schoolYearLabel}).`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.WARNING,
+      );
+
       // Auto-create EOSY promotion snapshots once the section is fully locked.
       // Safety net: prevents the "grades finalized but no promotion snapshots" state
       // that silently blocked rollover (snapshot-gap guardrail).
@@ -1372,6 +1383,16 @@ router.post("/unfinalize-grades", authenticateToken, validate(finalizeGradesSche
       });
 
       logger.info(`[Registrar] ${user.username} unfinalized ${result.count} grades for section ${sectionId}, ${term}, subject ${subjectId}`);
+
+      await createAuditLog(
+        AuditAction.UPDATE,
+        { id: user.id, firstName: user.username, lastName: "", role: user.role },
+        `Grades unfinalized: section ${sectionId} ${term} subject ${subjectId}`,
+        "Grade",
+        `${user.username} unfinalized ${result.count} grade(s) for section ${sectionId}, ${term}, subject ${subjectId} (SY ${schoolYearLabel}).`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.WARNING,
+      );
 
       return {
         status: 200 as const,

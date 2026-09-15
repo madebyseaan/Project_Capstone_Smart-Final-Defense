@@ -2,9 +2,11 @@ import { Router, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../middleware/auth";
 import type { Attendance, Student, Section, Enrollment } from "@prisma/client";
+import { AuditAction, AuditSeverity } from "@prisma/client";
 import ExcelJS from "exceljs";
 import templateService from "../services/templateService";
 import { logger } from "../lib/logger";
+import { createAuditLog } from "../lib/audit";
 import { validate } from "../middleware/validate";
 import { attendanceBulkSchema, attendanceClearSchema } from "../schemas/attendance";
 import { getActiveSchoolYearLabel } from "../lib/schoolYearResolver";
@@ -146,6 +148,16 @@ router.post(
         },
       });
 
+      await createAuditLog(
+        AuditAction.DELETE,
+        req.user!,
+        `Attendance cleared: section ${sectionId} on ${date}`,
+        "Attendance",
+        `Deleted ${result.count} attendance record(s) for section ${sectionId} on ${date}.`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.WARNING,
+      );
+
       res.json({
         success: true,
         message: `Deleted ${result.count} attendance record(s)`,
@@ -214,6 +226,16 @@ router.post(
       );
 
       await prisma.$transaction(operations);
+
+      await createAuditLog(
+        AuditAction.UPDATE,
+        req.user!,
+        `Attendance saved: section ${sectionId} on ${date}`,
+        "Attendance",
+        `Saved ${attendance.length} attendance record(s) for section ${sectionId} on ${date}.`,
+        (req.ip as string) || req.socket?.remoteAddress,
+        AuditSeverity.INFO,
+      );
 
       res.json({
         success: true,
