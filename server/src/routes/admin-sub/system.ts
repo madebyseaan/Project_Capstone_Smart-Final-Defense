@@ -112,6 +112,16 @@ export default function (router: Router) {
   router.get("/settings/public", async (_req: Request, res: Response): Promise<void> => {
     try {
       const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+
+      // RL-4a: term labels are calendar metadata required by teacher/registrar
+      // pages that must NOT call the admin-only endpoint.
+      let termLabels = { T1: "Term 1", T2: "Term 2", T3: "Term 3" };
+      try {
+        termLabels = await getActiveTermLabels();
+      } catch {
+        // Non-fatal: active school year may not be linked yet.
+      }
+
       res.json({
         settings: settings
           ? {
@@ -127,8 +137,10 @@ export default function (router: Router) {
               logoUrl: settings.logoUrl,
               currentSchoolYear: settings.currentSchoolYear,
               currentTerm: settings.currentTerm,
+              termDatesDerived: settings.termDatesDerived,
             }
           : {},
+        termLabels,
       });
     } catch (error) {
       logger.error("Error fetching public settings:", error);

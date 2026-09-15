@@ -44,7 +44,7 @@ export default function EOSYFinalization() {
   const [finalizeLoading, setFinalizeLoading] = useState(false);
   const [finalizingSubject, setFinalizingSubject] = useState<string | null>(null);
   const [finalizeMessage, setFinalizeMessage] = useState<string | null>(null);
-  const [currentTerm, setCurrentTerm] = useState<string>("T3");
+  const [currentTerm, setCurrentTerm] = useState<string>("");
 
   // ── SMART Promotion ──
   const [smartPromotion, setSmartPromotion] = useState<any>(null);
@@ -158,6 +158,10 @@ export default function EOSYFinalization() {
   };
 
   const loadFinalizeStatus = async (sectionId: string) => {
+    if (!currentTerm) {
+      setFinalizeStatus([]);
+      return;
+    }
     setFinalizeLoading(true);
     try {
       const token = localStorage.getItem("token_registrar") || sessionStorage.getItem("token_registrar") || "";
@@ -190,10 +194,7 @@ export default function EOSYFinalization() {
 
   const loadLocalSections = async () => {
     try {
-      const token = sessionStorage.getItem("token_registrar") || "";
-      const settingsRes = await fetch("/api/admin/settings", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const settingsRes = await fetch("/api/admin/settings/public");
       const settingsData = await settingsRes.json();
       const currentSY = settingsData?.settings?.currentSchoolYear;
       if (!currentSY) {
@@ -210,12 +211,10 @@ export default function EOSYFinalization() {
 
   const fetchCurrentTerm = async () => {
     try {
-      const token = sessionStorage.getItem("token_registrar") || "";
-      const res = await fetch("/api/admin/settings", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch("/api/admin/settings/public");
       const data = await res.json();
-      setCurrentTerm(data.settings?.currentTerm ?? "T3");
+      const term = data.settings?.currentTerm;
+      setCurrentTerm(typeof term === "string" ? term : "");
     } catch (err) {
       console.error("Failed to fetch current term", err);
     }

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Loader2, AlertTriangle } from "lucide-react";
-import { gradesApi, adminApi, type ClassRecord, type ScoreItem, type TermLabels } from "@/lib/api";
+import { gradesApi, publicSettingsApi, type ClassRecord, type ScoreItem, type TermLabels } from "@/lib/api";
 import { ClassRecordTable } from "./components/ClassRecordTable";
 import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
 import { GradeEditModal } from "./components/GradeEditModal";
@@ -136,7 +136,7 @@ export default function ClassRecordView() {
   const settingsQuery = useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
-      const res = await adminApi.getSettings();
+      const res = await publicSettingsApi.getSettings();
       return res.data;
     },
     staleTime: 5 * 60_000,

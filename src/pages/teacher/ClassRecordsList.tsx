@@ -29,7 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { gradesApi, advisoryApi, adminApi, type ClassAssignment, type GradeDeadlineInfo, type TermLabels } from "@/lib/api";
+import { gradesApi, advisoryApi, publicSettingsApi, type ClassAssignment, type GradeDeadlineInfo, type PublicSettingsData, type TermLabels } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { GradeStatusBanner } from "@/components/GradeStatusBanner";
 import { useSyncStream } from "@/hooks/useSyncStream";
@@ -292,7 +292,11 @@ export default function ClassRecordsList() {
         const [classesRes, deadlineRes, settingsRes] = await Promise.all([
           gradesApi.getMyClasses(),
           gradesApi.getDeadlineStatus().catch(() => ({ data: { gradeDeadline: null } })),
-          adminApi.getSettings().catch(() => ({ data: { termLabels: { T1: "Term 1", T2: "Term 2", T3: "Term 3" } } })),
+          publicSettingsApi.getSettings().catch(
+            (): { data: PublicSettingsData } => ({
+              data: { settings: {}, termLabels: { T1: "Term 1", T2: "Term 2", T3: "Term 3" } },
+            }),
+          ),
         ]);
         setClasses(classesRes.data);
         setGradeDeadline(deadlineRes.data.gradeDeadline);

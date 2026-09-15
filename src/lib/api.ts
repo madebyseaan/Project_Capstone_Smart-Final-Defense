@@ -1796,6 +1796,18 @@ export interface AdminSystemHealth {
   };
 }
 
+// RL-4a: role-agnostic public settings (term labels + active year/term only).
+// Used by teacher/registrar pages; the admin-only /admin/settings endpoint is
+// reserved for admins.
+export interface PublicSettingsData {
+  settings: { currentSchoolYear?: string; currentTerm?: string; termDatesDerived?: boolean };
+  termLabels: TermLabels;
+}
+
+export const publicSettingsApi = {
+  getSettings: () => api.get<PublicSettingsData>("/admin/settings/public"),
+};
+
 export const adminApi = {
   // Dashboard
   getDashboard: () => api.get<AdminDashboard>("/admin/dashboard"),
