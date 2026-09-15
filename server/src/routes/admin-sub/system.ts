@@ -29,6 +29,7 @@ import {
   transitionLockSchema,
   yearLockToggleSchema,
   termLockToggleSchema,
+  archiveYearIdSchema,
 } from "../../schemas/admin";
 import { requireAdmin, upload } from "./helpers";
 
@@ -574,7 +575,7 @@ export default function (router: Router) {
     }
   });
 
-  router.post("/archive-year", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  router.post("/archive-year", authenticateToken, requireAdmin, validate(archiveYearIdSchema), async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { schoolYearId } = req.body as { schoolYearId?: string };
       const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });

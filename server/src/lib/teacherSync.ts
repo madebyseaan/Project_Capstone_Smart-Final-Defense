@@ -65,6 +65,18 @@ export interface TeacherSyncResult {
 }
 
 /**
+ * RL-10a: a resolved school-year label is a real, non-placeholder string.
+ * Per-teacher sync must fail closed instead of writing rows under a placeholder.
+ */
+export function isResolvedSchoolYearLabel(label: string | null | undefined): label is string {
+  if (!label) return false;
+  const trimmed = label.trim();
+  if (!trimmed) return false;
+  const lowered = trimmed.toLowerCase();
+  return lowered !== 'loading...' && lowered !== 'loading' && lowered !== 'unknown' && lowered !== '(unknown)';
+}
+
+/**
  * Syncs a single teacher's data from EnrollPro + Atlas.
  * Call this after teacher login — does not block the response.
  *
@@ -104,6 +116,16 @@ export async function syncTeacherOnLogin(
     );
   } catch {
     logger.warn('[TeacherSync] Could not resolve school year from EnrollPro, using defaults');
+  }
+
+  // RL-10a: never write sections/enrollments/assignments under a placeholder
+  // label. If the year could not be resolved, abort this sync instead.
+  if (!isResolvedSchoolYearLabel(schoolYearLabel)) {
+    result.errors.push('School year could not be resolved — teacher sync aborted (fail-closed)');
+    logger.error(
+      '[TeacherSync] School year unresolved — aborting sync instead of writing under a placeholder label',
+    );
+    return result;
   }
 
   // Resolve Atlas school year dynamically (runtime/context → env fallback)

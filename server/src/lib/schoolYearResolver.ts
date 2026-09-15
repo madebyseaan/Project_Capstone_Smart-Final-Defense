@@ -145,7 +145,7 @@ export async function ensureSchoolYearFromEnrollPro(
   // Link FK in SystemSettings
   const prevSettings = await prisma.systemSettings.findUnique({
     where: { id: 'main' },
-    select: { schoolYearId: true },
+    select: { schoolYearId: true, currentSchoolYear: true },
   });
 
   await prisma.systemSettings.upsert({
@@ -180,17 +180,33 @@ export async function ensureSchoolYearFromEnrollPro(
       } catch (auditErr: any) {
         logger.error(`[SchoolYearResolver] Failed to write rollover-failure audit log: ${auditErr.message}`);
       }
-      // Revert FK so next sync retries the rollover (self-healing)
+      // R0a: revert BOTH the FK and the label so SMART stays fully on the previous
+      // year until the blocker is fixed. Prefer the previous SchoolYear's own label
+      // (authoritative); an earlier branding upsert may have already overwritten the
+      // settings string.
+      const revertLabel =
+        prevYearLabel ??
+        (prevSettings.currentSchoolYear && prevSettings.currentSchoolYear !== yearLabel
+          ? prevSettings.currentSchoolYear
+          : null);
       try {
         await prisma.systemSettings.updateMany({
           where: { id: 'main', schoolYearId: year.id },
-          data: { schoolYearId: prevSettings.schoolYearId },
+          data: {
+            schoolYearId: prevSettings.schoolYearId,
+            ...(revertLabel ? { currentSchoolYear: revertLabel } : {}),
+          },
         });
         invalidateSchoolYearCache();
-        logger.warn(`[SchoolYearResolver] Reverted schoolYearId to ${prevSettings.schoolYearId} for retry on next sync`);
+        logger.warn(
+          `[SchoolYearResolver] Reverted active year (FK + label) to ${revertLabel ?? prevSettings.schoolYearId} for retry on next sync`,
+        );
       } catch (revertErr: any) {
-        logger.error(`[SchoolYearResolver] FK revert also failed: ${revertErr.message}`);
+        logger.error(`[SchoolYearResolver] Active-year revert also failed: ${revertErr.message}`);
       }
+      // R0a: abort the calling sync cycle. Dependent steps (Atlas, branding,
+      // prune) must not run while SMART and EnrollPro disagree on the active year.
+      throw err instanceof Error ? err : new Error(String(err));
     }
   }
 

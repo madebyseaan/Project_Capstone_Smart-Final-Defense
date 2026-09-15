@@ -34,7 +34,22 @@ import {
   getAllIntegrationV1Sections,
   resolveEnrollProSchoolYear,
 } from './enrollproClient';
-import { getActiveSchoolYearLabel } from './schoolYearResolver';
+import { getActiveSchoolYear } from './schoolYearResolver';
+
+/**
+ * R0a guard: SMART's active year and EnrollPro's active year must agree before
+ * prune may delete anything. Prefer the EnrollPro externalId link; fall back to
+ * label equality when no externalId is linked.
+ */
+export function isPruneYearAligned(
+  smartExternalId: number | null | undefined,
+  smartLabel: string | null | undefined,
+  epExternalId: number,
+  epLabel: string | null | undefined,
+): boolean {
+  if (smartExternalId != null) return smartExternalId === epExternalId;
+  return Boolean(smartLabel) && Boolean(epLabel) && smartLabel === epLabel;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -517,10 +532,13 @@ export async function runPruneFromLiveSources(
     };
   }
 
-  // Resolve active year
+  // Resolve active year (label + EnrollPro external id for the alignment guard)
   let activeYearLabel: string;
+  let activeYearExternalId: number | null = null;
   try {
-    activeYearLabel = await getActiveSchoolYearLabel();
+    const activeYear = await getActiveSchoolYear();
+    activeYearLabel = activeYear.label;
+    activeYearExternalId = activeYear.externalId ?? null;
   } catch {
     return {
       activeYearLabel: '(unknown)',
@@ -546,6 +564,27 @@ export async function runPruneFromLiveSources(
   try {
     const resolved = await resolveEnrollProSchoolYear();
     epSchoolYearId = resolved.id;
+    // R0a: never prune when SMART and EnrollPro disagree on the active year —
+    // a blocked/partial rollover must not be read as "everyone left".
+    if (!isPruneYearAligned(activeYearExternalId, activeYearLabel, resolved.id, resolved.yearLabel)) {
+      return {
+        activeYearLabel,
+        dryRun: opts?.dryRun ?? false,
+        aborted: true,
+        abortReason: `SMART_EP_YEAR_MISMATCH: SMART active "${activeYearLabel}" (EP id ${activeYearExternalId ?? 'none'}) vs EnrollPro active "${resolved.yearLabel}" (id ${resolved.id}) — refusing to prune`,
+        phases: {
+          teachersSuspended: 0,
+          teachersDeleted: 0,
+          orphanUsersDeleted: 0,
+          sectionsDeleted: 0,
+          studentsDeleted: 0,
+          enrollmentsDeleted: 0,
+          gradesDeleted: 0,
+          attendanceDeleted: 0,
+          snapshotsDeleted: 0,
+        },
+      };
+    }
   } catch {
     return {
       activeYearLabel,

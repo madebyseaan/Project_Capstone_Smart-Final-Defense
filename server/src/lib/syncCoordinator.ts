@@ -67,6 +67,8 @@ export interface UnifiedSyncResult {
     studentsDropped: number;
     teachersMatched: number;
     errors: string[];
+    /** R0a: true when the school-year rollover was blocked this cycle. */
+    rolloverBlocked?: boolean;
   } | null;
   atlas: {
     matched: number;
@@ -260,6 +262,7 @@ export async function runUnifiedSync(options?: {
             studentsDropped: epResult.studentsDropped,
             teachersMatched: epResult.teachersMatched,
             errors: epResult.errors,
+            rolloverBlocked: epResult.rolloverBlocked,
           };
         }
       } catch (err: any) {
@@ -278,9 +281,18 @@ export async function runUnifiedSync(options?: {
       logger.debug('[SyncCoordinator] Step 1/5: EnrollPro sync skipped (offline)');
     }
 
+    // R0a: when the school-year rollover is blocked, SMART and EnrollPro disagree
+    // on the active year. Fail closed: skip every dependent step for this cycle.
+    const rolloverBlocked = Boolean(enrollproResult?.rolloverBlocked);
+    if (rolloverBlocked) {
+      logger.warn(
+        '[SyncCoordinator] School-year rollover blocked — skipping prune, transferees, Atlas, branding and student-profile sync this cycle',
+      );
+    }
+
     // ── Step 1b: Auto-prune (SSOT enforcement) ──────────────────────────
     // Runs after successful EnrollPro sync. Fire-and-forget with error logging.
-    if (!epOffline && enrollproResult && enrollproResult.errors.length === 0) {
+    if (!epOffline && enrollproResult && !rolloverBlocked && enrollproResult.errors.length === 0) {
       try {
         const pruneResult = await runPruneFromLiveSources();
         if (!pruneResult.aborted) {
@@ -299,7 +311,7 @@ export async function runUnifiedSync(options?: {
 
     // ── Step 1c: Transferee enrichment pass ─────────────────────────────
     // Runs after EnrollPro sync. Fail-soft — never breaks the cycle.
-    if (!epOffline) {
+    if (!epOffline && !rolloverBlocked) {
       try {
         const transfereeResultData = await syncTransferees();
         transfereeResult = {
@@ -317,6 +329,8 @@ export async function runUnifiedSync(options?: {
       } catch (err: any) {
         logger.error('[SyncCoordinator] Transferee sync failed (non-fatal):', err.message);
       }
+    } else if (rolloverBlocked) {
+      logger.debug('[SyncCoordinator] Step 1c: Transferee sync skipped (rollover blocked)');
     } else {
       logger.debug('[SyncCoordinator] Step 1c: Transferee sync skipped (EnrollPro offline)');
     }
@@ -327,7 +341,9 @@ export async function runUnifiedSync(options?: {
     // sync mode). Running Atlas alone during an EP outage is exactly what
     // caused the 2026-09-10 mass-archive incident: ATLAS returned a load but
     // no row could be resolved to an EP section, so the desired set was empty.
-    if (!atlasOffline && !epOffline) {
+    if (rolloverBlocked) {
+      logger.warn('[SyncCoordinator] Step 2/5: Atlas sync skipped — school-year rollover blocked (fail-closed)');
+    } else if (!atlasOffline && !epOffline) {
       try {
         logger.debug('[SyncCoordinator] Step 2/5: Atlas sync...');
         const atResult = await runAtlasSync();
@@ -354,7 +370,7 @@ export async function runUnifiedSync(options?: {
 
     // ── Step 3: Branding Sync (low frequency) ───────────────────────────
     // Only runs every Nth cycle unless forced. Depends on EnrollPro.
-    if (!epOffline) {
+    if (!epOffline && !rolloverBlocked) {
       const shouldSyncBranding = options?.forceBranding || (syncCycleCount % BRANDING_SYNC_EVERY_N_CYCLES === 0);
       if (shouldSyncBranding) {
         try {
@@ -367,13 +383,15 @@ export async function runUnifiedSync(options?: {
       } else {
         logger.debug(`[SyncCoordinator] Step 3/5: Branding sync skipped (next at cycle #${Math.ceil(syncCycleCount / BRANDING_SYNC_EVERY_N_CYCLES) * BRANDING_SYNC_EVERY_N_CYCLES})`);
       }
+    } else if (rolloverBlocked) {
+      logger.debug('[SyncCoordinator] Step 3/5: Branding sync skipped (rollover blocked)');
     } else {
       logger.debug('[SyncCoordinator] Step 3/5: Branding sync skipped (EnrollPro offline)');
     }
 
     // ── Step 4: Student Profile Sync (hourly) ──────────────────────────
     // Enriches student profile fields from EnrollPro. Runs every Nth cycle.
-    if (!epOffline) {
+    if (!epOffline && !rolloverBlocked) {
       const shouldSyncStudentProfiles = syncCycleCount % STUDENT_PROFILE_SYNC_EVERY_N_CYCLES === 0;
       if (shouldSyncStudentProfiles) {
         try {
@@ -388,6 +406,8 @@ export async function runUnifiedSync(options?: {
       } else {
         logger.debug(`[SyncCoordinator] Step 4/5: Student profile sync skipped (next at cycle #${Math.ceil(syncCycleCount / STUDENT_PROFILE_SYNC_EVERY_N_CYCLES) * STUDENT_PROFILE_SYNC_EVERY_N_CYCLES})`);
       }
+    } else if (rolloverBlocked) {
+      logger.debug('[SyncCoordinator] Step 4/5: Student profile sync skipped (rollover blocked)');
     } else {
       logger.debug('[SyncCoordinator] Step 4/5: Student profile sync skipped (EnrollPro offline)');
     }

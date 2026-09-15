@@ -15,7 +15,6 @@ import { logger } from "../../lib/logger";
 import { validate } from "../../middleware/validate";
 import {
   classAssignmentCreateSchema,
-  archiveYearSchema,
 } from "../../schemas/admin";
 import { requireAdmin, SF_FORM_LABELS, detectSfSheetMappings } from "./helpers";
 
@@ -589,106 +588,6 @@ export default function (router: Router) {
     } catch (err: any) {
       logger.error("Error deleting school year:", err);
       res.status(500).json({ message: "Failed to delete school year" });
-    }
-  });
-
-  // ── Archive School Year ─────────────────────────────────────────────────
-
-  router.post("/archive-year", authenticateToken, requireAdmin, validate(archiveYearSchema), async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-      const { schoolYear } = req.body;
-      if (!schoolYear) {
-        res.status(400).json({ message: "schoolYear is required" });
-        return;
-      }
-
-      const sectionCount = await prisma.section.count({ where: { schoolYear } });
-      if (sectionCount === 0) {
-        res.status(404).json({ message: `No sections found for school year ${schoolYear}` });
-        return;
-      }
-
-      const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
-      if (settings?.currentSchoolYear === schoolYear) {
-        res.status(400).json({ message: `Cannot archive the current active school year (${schoolYear}). Roll over to a new year first.` });
-        return;
-      }
-
-      const archiveTime = new Date();
-      const archiveReason = `Year ${schoolYear} archived`;
-
-      const results = await prisma.$transaction(async (tx) => {
-        const gradesResult = await tx.grade.updateMany({
-          where: {
-            classAssignment: { schoolYear }
-          },
-          data: {
-            isArchived: true,
-            archivedAt: archiveTime,
-            archivedReason: archiveReason
-          }
-        });
-
-        const enrollmentsResult = await tx.enrollment.updateMany({
-          where: { schoolYear },
-          data: {
-            isArchived: true,
-            archivedAt: archiveTime,
-            archivedReason: archiveReason
-          }
-        });
-
-        const sectionsResult = await tx.section.updateMany({
-          where: { schoolYear },
-          data: {
-            status: "COMPLETED",
-            archivedAt: archiveTime
-          }
-        });
-
-        const assignmentsResult = await tx.classAssignment.updateMany({
-          where: { schoolYear },
-          data: {
-            isActive: false,
-            archivedAt: archiveTime,
-            archivedReason: archiveReason
-          }
-        });
-
-        return {
-          grades: gradesResult.count,
-          enrollments: enrollmentsResult.count,
-          sections: sectionsResult.count,
-          assignments: assignmentsResult.count
-        };
-      });
-
-      const user = req.user;
-      if (user) {
-        await createAuditLog(
-          AuditAction.UPDATE,
-          user,
-          `Archive School Year ${schoolYear}`,
-          "System Settings",
-          `Archived year ${schoolYear}: ${results.grades} grades, ${results.enrollments} enrollments, ${results.sections} sections, ${results.assignments} assignments frozen`,
-          (req.ip as string) || req.socket?.remoteAddress,
-          AuditSeverity.WARNING
-        );
-      }
-
-      await prisma.systemSettings.update({
-        where: { id: "main" },
-        data: { gradeLock: true },
-      });
-
-      res.json({
-        message: `School year ${schoolYear} archived successfully`,
-        schoolYear,
-        archived: results
-      });
-    } catch (err: any) {
-      logger.error("Error archiving school year:", err);
-      res.status(500).json({ message: "Failed to archive school year" });
     }
   });
 }

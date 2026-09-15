@@ -280,7 +280,12 @@ export async function handleYearChangeRollover(
   }
 
   if (result.outcome === "error") {
-    // Rethrow so schoolYearResolver's catch fires → FK revert → self-healing retry
+    // R0a/RL-6a: the archive failed, so schoolYearResolver will revert the active
+    // year back to the previous one. It must not stay locked — it is still the
+    // active year. Unlock BEFORE rethrowing so the self-healing retry leaves a
+    // usable year.
+    await setYearLock(previousSchoolYearId, false, actor);
+    // Rethrow so schoolYearResolver's catch fires → active-year revert → retry
     throw new Error(`Rollover archive failed: ${result.error}`);
   }
 

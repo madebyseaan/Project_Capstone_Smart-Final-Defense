@@ -3,6 +3,22 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Refuse to run against the live database: the suite includes destructive
+// tests (wipe/rollover/prune) and must only ever touch an isolated *_test DB.
+const guardDbName = (() => {
+  try {
+    return new URL(process.env.DATABASE_URL ?? "").pathname.replace(/^\//, "");
+  } catch {
+    return "";
+  }
+})();
+if (!/(^|_)test(_|$)/i.test(guardDbName)) {
+  throw new Error(
+    `[vitest] Refusing to run: DATABASE_URL must target a *_test database (got "${guardDbName || "unparseable"}"). ` +
+      `Example: $env:DATABASE_URL="postgresql://user:pass@localhost:5432/smart_test_db"; npm test`,
+  );
+}
+
 export default defineConfig({
   test: {
     globals: true,

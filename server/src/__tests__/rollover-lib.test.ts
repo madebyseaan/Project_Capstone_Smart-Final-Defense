@@ -321,21 +321,23 @@ describe("T5 — Failure injection + FK revert + retry", () => {
     await cleanup();
   });
 
-  it("FK reverts on rollover failure, then retry succeeds", async () => {
+  it("R0a: failure reverts BOTH settings and aborts, then retry succeeds", async () => {
     // 1. Mock handleYearChangeRollover to throw (simulates archive failure)
     const rolloverMod = await import("../lib/rollover");
     const spy = vi.spyOn(rolloverMod, "handleYearChangeRollover")
       .mockRejectedValueOnce(new Error("Injected archive failure"));
 
-    // 2. Call resolver — it will: upsert FK to B → call mocked handleYearChangeRollover → throws → catch reverts FK to A
+    // 2. Call resolver — R0a: it must REJECT instead of swallowing the failure,
+    // so the calling sync cycle aborts before writing new-year data.
     const yearB = await prisma.schoolYear.findUnique({ where: { id: schoolYearBId } });
-    const result = await ensureSchoolYearFromEnrollPro(yearB!.externalId!, YEAR_B);
+    await expect(
+      ensureSchoolYearFromEnrollPro(yearB!.externalId!, YEAR_B),
+    ).rejects.toThrow(/Injected archive failure/);
 
-    expect(result.label).toBe(YEAR_B);
-
-    // 3. Assert FK reverted to Year A (the self-healing revert)
-    const settingsAfterFail = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+    // 3. Assert BOTH FK and label reverted to Year A (no split-brain)
+    const settingsAfterFail = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
     expect(settingsAfterFail?.schoolYearId).toBe(schoolYearAId);
+    expect(settingsAfterFail?.currentSchoolYear).toBe(YEAR_A);
 
     // 4. Restore mock and retry — should succeed
     spy.mockRestore();
@@ -343,12 +345,72 @@ describe("T5 — Failure injection + FK revert + retry", () => {
     expect(retry.label).toBe(YEAR_B);
 
     // 5. Assert FK now points to Year B
-    const settingsAfterRetry = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+    const settingsAfterRetry = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
     expect(settingsAfterRetry?.schoolYearId).toBe(schoolYearBId);
 
     // 6. Assert Year A is now ARCHIVED
     const syA = await prisma.schoolYear.findUnique({ where: { id: schoolYearAId } });
     expect(syA?.status).toBe("ARCHIVED");
+  });
+});
+
+// ── T8: R0a / RL-6a — real archive failure must not leave a stuck active year ─
+
+describe("T8 — R0a/RL-6a: blocked rollover reverts both settings and leaves the still-active year unlocked", () => {
+  let origSchoolYearId: string | null = null;
+  let origCurrentSchoolYear: string | null = null;
+
+  beforeAll(async () => {
+    await cleanup();
+    await seedBase();
+    await seedFinalizedGrades();
+    // No snapshots → the REAL handler fails on snapshot gap
+
+    const settings = await prisma.systemSettings.findUnique({
+      where: { id: "main" },
+      select: { schoolYearId: true, currentSchoolYear: true },
+    });
+    origSchoolYearId = settings?.schoolYearId ?? null;
+    origCurrentSchoolYear = settings?.currentSchoolYear ?? null;
+    await prisma.systemSettings.update({
+      where: { id: "main" },
+      data: { schoolYearId: schoolYearAId, currentSchoolYear: YEAR_A },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.yearGradeLock.deleteMany({
+      where: { schoolYearId: { in: [schoolYearAId, schoolYearBId] } },
+    }).catch(() => {});
+    await prisma.systemSettings.update({
+      where: { id: "main" },
+      data: {
+        schoolYearId: origSchoolYearId ?? undefined,
+        currentSchoolYear: origCurrentSchoolYear ?? undefined,
+      },
+    });
+    await cleanup();
+  });
+
+  it("reverts FK + label and leaves Year A unlocked and unarchived", async () => {
+    const yearB = await prisma.schoolYear.findUnique({ where: { id: schoolYearBId } });
+
+    await expect(
+      ensureSchoolYearFromEnrollPro(yearB!.externalId!, YEAR_B),
+    ).rejects.toThrow(/Snapshot gap/);
+
+    // R0a: no split-brain — both settings stay on the previous year
+    const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+    expect(settings?.schoolYearId).toBe(schoolYearAId);
+    expect(settings?.currentSchoolYear).toBe(YEAR_A);
+
+    // RL-6a: the previous year is still ACTIVE, so it must not remain locked
+    const lock = await prisma.yearGradeLock.findUnique({ where: { schoolYearId: schoolYearAId } });
+    expect(lock?.isLocked ?? false).toBe(false);
+
+    // And it must not be archived
+    const syA = await prisma.schoolYear.findUnique({ where: { id: schoolYearAId } });
+    expect(syA?.status).not.toBe("ARCHIVED");
   });
 });
 

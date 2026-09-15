@@ -18,7 +18,7 @@
     "grades:realign": "ts-node scripts/realign-seeded-grades.ts",
     "grades:check-alignment": "ts-node prisma/check-grade-alignment.ts",
     "prisma:studio": "prisma studio",
-    "test": "vitest run",
+    "test": "node scripts/require-test-db.js && ts-node --transpile-only scripts/seed-test-base.ts && vitest run",
     "test:watch": "vitest",
     "db:wipe": "ts-node scripts/wipe.ts"
   },

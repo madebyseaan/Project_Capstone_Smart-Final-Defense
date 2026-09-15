@@ -155,3 +155,13 @@ export const archiveYearSchema = z.object({
     schoolYear: z.string().min(1, 'schoolYear is required'),
   }),
 });
+
+/**
+ * RL-9a: the live POST /archive-year handler (admin-sub/system.ts) takes an
+ * optional schoolYearId; the active year itself is rejected at runtime.
+ */
+export const archiveYearIdSchema = z.object({
+  body: z.object({
+    schoolYearId: z.string().min(1, 'schoolYearId must be a non-empty string').optional(),
+  }),
+});

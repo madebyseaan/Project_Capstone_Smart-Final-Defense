@@ -120,6 +120,7 @@ let lastSyncResult: {
   studentsDropped: number;
   teachersMatched: number;
   errors: string[];
+  rolloverBlocked: boolean;
 } | null = null;
 
 const DELTA_SYNC_ENABLED = process.env.ENROLLPRO_DELTA_SYNC_ENABLED === 'true';
@@ -154,6 +155,9 @@ export async function runEnrollProSync() {
   broadcastSyncStatus({ type: 'ENROLLPRO_SYNC_STARTED', timestamp: new Date() });
 
   const errors: string[] = [];
+  // R0a: set when the school-year rollover is blocked; the sync coordinator uses
+  // it to skip dependent steps (Atlas, branding, profiles, prune) for this cycle.
+  let rolloverBlocked = false;
   let advisoriesSynced = 0;
   let studentsFetched = 0;
   let studentsEnrolled = 0;
@@ -175,8 +179,15 @@ export async function runEnrollProSync() {
       `[EnrollProSync] Using school year ${schoolYearLabel} (id=${schoolYearId}) from ${resolvedSY.source}`,
     );
 
-    // Align SMART SchoolYear record to EnrollPro (source of truth)
-    await ensureSchoolYearFromEnrollPro(schoolYearId, schoolYearLabel);
+    // Align SMART SchoolYear record to EnrollPro (source of truth).
+    // R0a: a blocked rollover throws — abort this cycle so no new-year
+    // sections/enrollments are written while SMART is still on the old year.
+    try {
+      await ensureSchoolYearFromEnrollPro(schoolYearId, schoolYearLabel);
+    } catch (rolloverErr: any) {
+      rolloverBlocked = true;
+      throw rolloverErr;
+    }
 
     // 2. Fetch EnrollPro teachers + integration sections.
     const epTeachers = await getEnrollProTeachers();
@@ -1079,6 +1090,7 @@ export async function runEnrollProSync() {
       studentsDropped,
       teachersMatched,
       errors,
+      rolloverBlocked,
     };
     lastSyncAt = new Date();
     
@@ -1121,6 +1133,7 @@ export async function runEnrollProSync() {
       studentsDropped: 0,
       teachersMatched,
       errors,
+      rolloverBlocked,
     };
     
     broadcastSyncStatus({
