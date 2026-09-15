@@ -38,6 +38,7 @@ import { prisma } from "./lib/prisma";
 import { globalLimiter } from "./middleware/rateLimiter";
 import { csrfProtection } from "./middleware/csrf";
 import { auditContextMiddleware } from "./middleware/auditContext";
+import { globalErrorHandler, apiNotFoundHandler } from "./middleware/errorHandler";
 import { loadSecurityPolicy } from "./lib/securityPolicy";
 
 const app = express();
@@ -92,9 +93,16 @@ app.get("/api/health", (_req, res) => {
 // Serve React frontend (production build)
 const distPath = path.join(__dirname, "../../dist");
 app.use(express.static(distPath));
+
+// Unknown API routes → JSON 404 (never the SPA HTML fallback)
+app.use("/api", apiNotFoundHandler);
+
 app.get("*splat", (_req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
+
+// P1-5: global error handler — generic JSON, full detail logged server-side
+app.use(globalErrorHandler);
 
 /**
  * Fix existing SPA/SPS subjects that were incorrectly typed as CORE during earlier syncs.
