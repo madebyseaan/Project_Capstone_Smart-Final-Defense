@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import { advisoryApi, type AdvisoryData } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { sanitizeCssColor } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 
@@ -263,9 +264,9 @@ export default function MyAdvisory() {
               <span className="group-hover/sync:text-foreground">{syncing ? 'SYNCING...' : 'SYNC FROM ENROLLPRO'}</span>
               <style dangerouslySetInnerHTML={{ __html: `
                 .group\\/sync:hover {
-                  background-color: ${colors.primary}10 !important;
-                  border-color: ${colors.primary}30 !important;
-                  color: ${colors.primary} !important;
+                  background-color: ${sanitizeCssColor(colors.primary)}10 !important;
+                  border-color: ${sanitizeCssColor(colors.primary)}30 !important;
+                  color: ${sanitizeCssColor(colors.primary)} !important;
                 }
               `}} />
             </Button>
@@ -337,7 +338,7 @@ export default function MyAdvisory() {
               <Search className="w-3.5 h-3.5" />
               <style dangerouslySetInnerHTML={{ __html: `
                 .group:focus-within .absolute.left-4 {
-                  background-color: ${colors.primary} !important;
+                  background-color: ${sanitizeCssColor(colors.primary)} !important;
                 }
               `}} />
             </div>
@@ -414,8 +415,8 @@ export default function MyAdvisory() {
                             <ChevronRight className="w-4 h-4 ml-2 group-hover/profile:translate-x-1 transition-transform" />
                             <style dangerouslySetInnerHTML={{ __html: `
                               .group\\/profile:hover {
-                                background-color: ${colors.primary}10 !important;
-                                color: ${colors.primary} !important;
+                                background-color: ${sanitizeCssColor(colors.primary)}10 !important;
+                                color: ${sanitizeCssColor(colors.primary)} !important;
                               }
                             `}} />
                           </Button>

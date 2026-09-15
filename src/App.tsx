@@ -109,7 +109,18 @@ function App() {
 
       {/* Default redirect */}
       <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route
+        path="*"
+        element={
+          <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6 text-center">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Page not found</h1>
+            <p className="text-sm text-muted-foreground">The page you are looking for does not exist.</p>
+            <a className="text-sm font-medium text-primary underline" href="/login">
+              Go to sign in
+            </a>
+          </div>
+        }
+      />
     </Routes>
       </Suspense>
     </ThemeProvider>
