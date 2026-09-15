@@ -23,6 +23,7 @@ import { triggerImmediateSync } from '../lib/syncCoordinator';
 import { addSyncSseClient, removeSyncSseClient } from '../lib/sseManager';
 import { getActiveSchoolYearLabel } from '../lib/schoolYearResolver';
 import { serviceAuth } from '../middleware/serviceAuth';
+import { maskId } from '../lib/redact';
 import { buildSf10Records } from '../lib/sf10';
 
 const router = Router();
@@ -251,7 +252,7 @@ const handleStudentSf10Grades = async (req: any, res: any) => {
   try {
     const studentRef = req.params.studentId as string;
     const { schoolYear } = req.query;
-    logger.info(`[SmartIntegration] SF10 grades requested for student ref #${studentRef}`);
+    logger.info(`[SmartIntegration] SF10 grades requested for student ref #${maskId(studentRef)}`);
 
     // EnrollPro passes the LRN — resolve to the SMART student ID (fallback: internal UUID)
     const byLrn = await prisma.student.findUnique({
@@ -295,7 +296,7 @@ const handleStudentSf10Grades = async (req: any, res: any) => {
       },
     });
   } catch (err: any) {
-    logger.error(`[SmartIntegration] Error fetching SF10 grades for student ${req.params.studentId}:`, err.message);
+    logger.error(`[SmartIntegration] Error fetching SF10 grades for student ${maskId(String(req.params.studentId))}:`, err.message);
     res.status(500).json({ success: false, error: 'Failed to fetch SF10 grades' });
   }
 };

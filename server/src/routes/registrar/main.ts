@@ -11,6 +11,7 @@ import {
 } from "../../lib/enrollproClient";
 import { getActiveSchoolYearLabel, getActiveSchoolYear } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
+import { maskId } from "../../lib/redact";
 import { withSectionLock } from "../../lib/sectionLock";
 import { validate } from "../../middleware/validate";
 import { enrollmentStatusSchema, finalizeGradesSchema } from "../../schemas/registrar";
@@ -932,7 +933,7 @@ router.post("/sync-inactive-students", authenticateToken, async (req: AuthReques
           });
           upserted++;
         } else {
-          logger.warn(`[Registrar] Inactive sync: no section found for ${entry.lrn}, skipping enrollment creation`);
+          logger.warn(`[Registrar] Inactive sync: no section found for ${maskId(entry.lrn)}, skipping enrollment creation`);
         }
       }
     }

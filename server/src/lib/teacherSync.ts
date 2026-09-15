@@ -45,6 +45,7 @@ import {
 } from './sync/utils';
 
 import { getActiveSchoolYearLabel } from './schoolYearResolver';
+import { maskId, maskEmail } from './redact';
 import { getEnrollProSchoolYearId } from '../config/schoolEnv';
 const DEFAULT_ENROLLPRO_SCHOOL_YEAR_ID = getEnrollProSchoolYearId();
 
@@ -271,11 +272,11 @@ export async function syncTeacherOnLogin(
             result.errors.push(`Could not determine grade level for "${epFaculty.advisorySectionName}"`);
           }
         } else {
-          logger.debug(`[TeacherSync] No advisory for employeeId=${employeeId}`);
+          logger.debug(`[TeacherSync] No advisory for employeeId=${maskId(employeeId)}`);
           result.errors.push('EnrollPro faculty record has no advisory assignment for current school year');
         }
       } else {
-        logger.debug(`[TeacherSync] Teacher not found in EnrollPro faculty feed for employeeId=${employeeId}`);
+        logger.debug(`[TeacherSync] Teacher not found in EnrollPro faculty feed for employeeId=${maskId(employeeId)}`);
         result.errors.push('Teacher not found in EnrollPro integration faculty feed for current school year');
       }
     }
@@ -348,7 +349,7 @@ export async function syncTeacherOnLogin(
           result.errors.push('EnrollPro sections feed has no advisory section mapped to this teacher for current school year');
         }
       } else {
-        logger.debug(`[TeacherSync] Advisory fallback: no EnrollPro teacher record for employeeId=${employeeId}`);
+        logger.debug(`[TeacherSync] Advisory fallback: no EnrollPro teacher record for employeeId=${maskId(employeeId)}`);
         result.errors.push('Teacher not found in EnrollPro teachers endpoint by employee ID');
       }
     }
@@ -379,7 +380,7 @@ export async function syncTeacherOnLogin(
       // have failed due to a format mismatch. The global runAtlasSync() is the
       // authoritative cleanup mechanism for stale advisory links.
       console.log(
-        `[TeacherSync] Advisory not found in EnrollPro for employeeId=${employeeId}. ` +
+        `[TeacherSync] Advisory not found in EnrollPro for employeeId=${maskId(employeeId)}. ` +
         `Preserving any existing advisory links set by AtlasSync.`,
       );
     }
@@ -421,7 +422,7 @@ export async function syncTeacherOnLogin(
     const atlasMember = atlasByEmpId ?? atlasByEmail ?? atlasByExternalId;
 
     if (atlasByEmpId) {
-      logger.debug(`[TeacherSync] Atlas: matched via employeeId=${employeeId} -> atlas.id=${atlasByEmpId.id}`);
+      logger.debug(`[TeacherSync] Atlas: matched via employeeId=${maskId(employeeId)} -> atlas.id=${atlasByEmpId.id}`);
     } else if (atlasByEmail) {
       logger.debug(`[TeacherSync] Atlas: matched via email id=${atlasByEmail.id}`);
     } else if (atlasByExternalId) {
@@ -429,7 +430,7 @@ export async function syncTeacherOnLogin(
     }
 
     if (!atlasMember) {
-      logger.debug(`[TeacherSync] Atlas: no faculty match for employeeId=${employeeId} email=${email}`);
+      logger.debug(`[TeacherSync] Atlas: no faculty match for employeeId=${maskId(employeeId)} email=${maskEmail(email)}`);
     } else {
       logger.debug(`[TeacherSync] Atlas: matched faculty id=${atlasMember.id}`);
 

@@ -9,6 +9,7 @@ import { validateEnrollProTeacherCredentials } from "../lib/enrollproClient";
 import { getCachedEnrollProTeachers } from "../lib/syncCache";
 import { triggerImmediateSync } from "../lib/syncCoordinator";
 import { logger } from "../lib/logger";
+import { maskId, maskEmail } from "../lib/redact";
 import { validate } from "../middleware/validate";
 import { loginSchema } from "../schemas/auth";
 import { getSecurityPolicy } from "../lib/securityPolicy";
@@ -75,7 +76,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
       if (localMatch) {
         user = localUser;
         isValidPassword = true;
-        logger.info(`[Auth] Authenticated local user "${user.username}".`);
+        logger.info(`[Auth] Authenticated local user "${maskId(user.username)}".`);
       }
     }
 
@@ -112,7 +113,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
         epAuthResult = await validateEnrollProTeacherCredentials(email, password);
         isEpServiceReachable = epAuthResult.isReachable;
       } catch (epErr: any) {
-        logger.warn(`[Auth] EnrollPro auth service unreachable for "${email}":`, epErr.message);
+        logger.warn(`[Auth] EnrollPro auth service unreachable for "${maskEmail(email)}":`, epErr.message);
         isEpServiceReachable = false;
       }
 
@@ -191,7 +192,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
         }
 
         isValidPassword = true;
-        logger.info(`[Auth] Authenticated & synced user "${empId}" (${assignedRole}) via EnrollPro live SSOT.`);
+        logger.info(`[Auth] Authenticated & synced user "${maskId(empId)}" (${assignedRole}) via EnrollPro live SSOT.`);
       }
     }
 
