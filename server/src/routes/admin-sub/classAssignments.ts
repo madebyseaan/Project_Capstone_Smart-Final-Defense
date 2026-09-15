@@ -12,6 +12,7 @@ import { getActiveSchoolYearLabel, invalidateSchoolYearCache } from "../../lib/s
 import { readLiveSnapshot } from "../../lib/schoolSettingsSnapshot";
 import { Prisma } from "@prisma/client";
 import { logger } from "../../lib/logger";
+import { archiveSchoolYear } from "../../lib/rollover";
 import { validate } from "../../middleware/validate";
 import {
   classAssignmentCreateSchema,
@@ -525,6 +526,32 @@ export default function (router: Router) {
       }
 
       const updateData: any = {};
+
+      // RL-7a: "Archive"/"Complete" must perform the REAL archive (snapshot-gap
+      // check, year lock, grade/enrollment/section/assignment archiving) — not a
+      // bare status flip that leaves the data looking active.
+      if (status === "ARCHIVED" || status === "COMPLETED") {
+        const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
+        if (settings?.schoolYearId === id) {
+          res.status(400).json({ message: `Cannot archive the currently active school year (${year.label}).` });
+          return;
+        }
+        const archiveResult = await archiveSchoolYear({
+          schoolYearId: id,
+          yearLabel: year.label,
+          actor: { id: req.user!.id, name: req.user!.username },
+          reason: `Manual archive via School Years (${req.user!.username})`,
+        });
+        if (!archiveResult.ok) {
+          res.status(400).json({ message: archiveResult.error || "Failed to archive school year" });
+          return;
+        }
+        invalidateSchoolYearCache();
+        const refreshed = await prisma.schoolYear.findUnique({ where: { id } });
+        res.json(refreshed);
+        return;
+      }
+
       if (status) updateData.status = status;
       if (startDate) updateData.startDate = new Date(startDate);
       if (endDate) updateData.endDate = new Date(endDate);

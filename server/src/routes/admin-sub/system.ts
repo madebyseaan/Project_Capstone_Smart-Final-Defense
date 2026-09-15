@@ -222,6 +222,52 @@ export default function (router: Router) {
           }
         : {};
 
+      // RL-7a: changing the active school year through settings must run the same
+      // safe rollover as the sync path. If the outgoing year cannot be closed,
+      // abort without touching settings.
+      if (schoolYearId) {
+        const before = await prisma.systemSettings.findUnique({
+          where: { id: "main" },
+          select: { schoolYearId: true, currentSchoolYear: true },
+        });
+        if (before?.schoolYearId && before.schoolYearId !== schoolYearId) {
+          const targetYear = await prisma.schoolYear.findUnique({ where: { id: schoolYearId } });
+          if (!targetYear) {
+            res.status(400).json({ message: "School year not found" });
+            return;
+          }
+          const prevYear = await prisma.schoolYear.findUnique({ where: { id: before.schoolYearId } });
+          try {
+            const rollover = await handleYearChangeRollover(
+              before.schoolYearId,
+              prevYear?.label ?? before.currentSchoolYear ?? before.schoolYearId,
+              targetYear.id,
+              targetYear.label,
+            );
+            logger.info(
+              `[Settings] Year change ${prevYear?.label ?? before.schoolYearId} → ${targetYear.label}: ${rollover.action}`,
+            );
+
+            // RL-7a: a MANUAL switch must be strict — if the outgoing year cannot
+            // be fully archived (unfinalized sections), refuse and leave the old
+            // year usable (unlock; it was locked by the rollover fail-safe).
+            if (rollover.action === "locked_not_archived") {
+              await setYearLock(before.schoolYearId, false, { id: "system", name: "Settings Year Switch" });
+              res.status(400).json({
+                message: `Cannot switch the active school year: ${rollover.unfinalizedCount ?? 0} unfinalized section(s) in ${prevYear?.label ?? before.currentSchoolYear}. Finalize EOSY before switching.`,
+              });
+              return;
+            }
+          } catch (rolloverErr: any) {
+            logger.warn(`[Settings] Year change blocked: ${rolloverErr.message}`);
+            res.status(400).json({
+              message: `Cannot switch the active school year: ${rolloverErr.message}. Finalize the outgoing year (EOSY) before switching.`,
+            });
+            return;
+          }
+        }
+      }
+
       const settings = await prisma.systemSettings.upsert({
         where: { id: "main" },
         update: {
