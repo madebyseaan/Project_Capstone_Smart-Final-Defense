@@ -1231,10 +1231,12 @@ router.post("/finalize-grades", authenticateToken, validate(finalizeGradesSchema
       return;
     }
 
-    const { sectionId, term, subjectId } = req.body;
+    const { sectionId, term, subjectId, schoolYear } = req.body;
 
     const lockResult = await withSectionLock(`finalize-grades:${sectionId}:${term}:${subjectId}`, async () => {
-      const schoolYearLabel = await getActiveSchoolYearLabel();
+      // RL-1a: explicit schoolYear lets the registrar finalize an outgoing year
+      // even after the active year has moved on (rollover recovery).
+      const schoolYearLabel = schoolYear ?? await getActiveSchoolYearLabel();
 
       // Find ALL class assignments for this section/subject/year (handles teacher changes)
       const classAssignments = await prisma.classAssignment.findMany({
@@ -1335,10 +1337,11 @@ router.post("/unfinalize-grades", authenticateToken, validate(finalizeGradesSche
       return;
     }
 
-    const { sectionId, term, subjectId } = req.body;
+    const { sectionId, term, subjectId, schoolYear } = req.body;
 
     const lockResult = await withSectionLock(`unfinalize-grades:${sectionId}:${term}:${subjectId}`, async () => {
-      const schoolYearLabel = await getActiveSchoolYearLabel();
+      // RL-1a: see finalize-grades — explicit year for rollover recovery.
+      const schoolYearLabel = schoolYear ?? await getActiveSchoolYearLabel();
 
       const classAssignments = await prisma.classAssignment.findMany({
         where: {

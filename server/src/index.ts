@@ -323,47 +323,49 @@ function startAutoTermScheduler() {
         const { getGradeLockState } = await import("./lib/gradeLocks");
         const lockState = await getGradeLockState(activeYear.label);
 
+        // RL-3a: stale term dates right after rollover must not lock the new
+        // year's future terms. The policy only locks terms strictly before
+        // EnrollPro's active term (falling back to dates when EP is unknown).
+        const { shouldLockTerm, shouldBeUnlockedTerm, shouldLockYear } = await import("./lib/termLockPolicy");
+
         for (const term of ["T1", "T2", "T3"] as const) {
           const endDate = termEndDates[term];
-          if (endDate && now > endDate) {
-            // Only lock if EnrollPro does NOT consider this term active
-            if (enrollProActiveTerm !== term) {
-              const wasLocked = lockState.termLocks[term];
-              await setTermLock(activeYear.id, term, true, actor);
-              if (!wasLocked) {
-                await createAuditLog(
-                  AuditAction.CONFIG, auditActor,
-                  `Term Grade Lock: ${activeYear.label} ${term}`,
-                  "Config",
-                  `Auto-locked ${term} — its end date ${endDate.toISOString()} has passed and EnrollPro active term is ${enrollProActiveTerm ?? "unknown"}.`,
-                  undefined, AuditSeverity.WARNING,
-                );
-              }
-            } else {
-              console.log(`[Scheduler] Skipping lock for ${term} — EnrollPro still reports it as active (local endDate=${endDate.toISOString()}, EnrollPro activeTerm=${enrollProActiveTerm})`);
-              // Auto-unlock: if prematurely locked, unlock to mirror EnrollPro
-              if (lockState.termLocks[term]) {
-                await setTermLock(activeYear.id, term, false, actor);
-                await createAuditLog(
-                  AuditAction.CONFIG, auditActor,
-                  `Term Grade Lock: ${activeYear.label} ${term}`,
-                  "Config",
-                  `Auto-unlocked ${term} — it was locked but EnrollPro still reports it as active.`,
-                  undefined, AuditSeverity.WARNING,
-                );
-                console.log(`[Scheduler] Auto-unlocked ${term} — was locked but EnrollPro still considers it active`);
-              }
+          if (shouldLockTerm(term, endDate, now, enrollProActiveTerm)) {
+            const wasLocked = lockState.termLocks[term];
+            await setTermLock(activeYear.id, term, true, actor);
+            if (!wasLocked) {
+              await createAuditLog(
+                AuditAction.CONFIG, auditActor,
+                `Term Grade Lock: ${activeYear.label} ${term}`,
+                "Config",
+                `Auto-locked ${term} — end date ${endDate!.toISOString()} passed and EnrollPro active term is ${enrollProActiveTerm ?? "unknown"}.`,
+                undefined, AuditSeverity.WARNING,
+              );
+            }
+          } else if (endDate && now > endDate) {
+            console.log(`[Scheduler] Skipping lock for ${term} — not before EnrollPro active term ${enrollProActiveTerm ?? "unknown"} (local endDate=${endDate.toISOString()})`);
+            // Auto-unlock terms that must not be locked (active or future terms)
+            if (shouldBeUnlockedTerm(term, enrollProActiveTerm) && lockState.termLocks[term]) {
+              await setTermLock(activeYear.id, term, false, actor);
+              await createAuditLog(
+                AuditAction.CONFIG, auditActor,
+                `Term Grade Lock: ${activeYear.label} ${term}`,
+                "Config",
+                `Auto-unlocked ${term} — it was locked but EnrollPro reports it as ${enrollProActiveTerm} (active/future term must stay open).`,
+                undefined, AuditSeverity.WARNING,
+              );
+              console.log(`[Scheduler] Auto-unlocked ${term} — was locked but must stay open (EnrollPro activeTerm=${enrollProActiveTerm})`);
             }
           }
         }
-        if (t3EndDate && now > t3EndDate && enrollProActiveTerm !== 'T3') {
+        if (shouldLockYear(t3EndDate, now, enrollProActiveTerm)) {
           await setYearLock(activeYear.id, true, actor);
           if (!lockState.yearLocked) {
             await createAuditLog(
               AuditAction.CONFIG, auditActor,
               `Year Grade Lock: ${activeYear.label}`,
               "Config",
-              `Auto-locked school year ${activeYear.label} — T3 end date ${t3EndDate.toISOString()} has passed and EnrollPro active term is ${enrollProActiveTerm ?? "unknown"}.`,
+              `Auto-locked school year ${activeYear.label} — T3 end date ${t3EndDate!.toISOString()} passed and EnrollPro active term is ${enrollProActiveTerm ?? "unknown"}.`,
               undefined, AuditSeverity.WARNING,
             );
           }

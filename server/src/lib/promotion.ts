@@ -347,9 +347,12 @@ export async function getSectionEosyStatus(sectionId: string, schoolYear: string
     withStoredStatus,
     draftBlockerCount: promotions.draftBlockers.length,
     finalized:
-      promotions.enrollments.length > 0 &&
-      withStoredStatus === promotions.enrollments.length &&
-      promotions.draftBlockers.length === 0,
+      // RL-2a: a section with zero ENROLLED learners has nothing left to
+      // finalize. Treating it as unfinalized permanently blocked rollover
+      // (e.g. after a late transferee emptied the section).
+      promotions.enrollments.length === 0 ||
+      (withStoredStatus === promotions.enrollments.length &&
+        promotions.draftBlockers.length === 0),
   };
 }
 
@@ -410,9 +413,9 @@ export async function listUnfinalizedSections(schoolYear: string): Promise<Secti
     }
 
     const finalized =
-      sectionEnrollments.length > 0 &&
-      withStoredStatus === sectionEnrollments.length &&
-      draftBlockerCount === 0;
+      // RL-2a: empty sections must not block rollover forever.
+      sectionEnrollments.length === 0 ||
+      (withStoredStatus === sectionEnrollments.length && draftBlockerCount === 0);
 
     if (!finalized) {
       statuses.push({

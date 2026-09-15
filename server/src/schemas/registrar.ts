@@ -21,6 +21,9 @@ export const finalizeGradesSchema = z.object({
     sectionId: z.string().min(1, 'sectionId is required'),
     term: termEnum,
     subjectId: z.string().min(1, 'subjectId is required'),
+    // RL-1a: optional explicit school year so the registrar can still finalize
+    // an outgoing year after EnrollPro has rolled over.
+    schoolYear: z.string().min(1, 'schoolYear must be a non-empty string').optional(),
   }),
 });
 
@@ -29,6 +32,7 @@ export const unfinalizeGradesSchema = z.object({
     sectionId: z.string().min(1, 'sectionId is required'),
     term: termEnum,
     subjectId: z.string().min(1, 'subjectId is required'),
+    schoolYear: z.string().min(1, 'schoolYear must be a non-empty string').optional(),
   }),
 });
 
