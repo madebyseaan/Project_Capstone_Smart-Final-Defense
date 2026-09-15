@@ -488,6 +488,24 @@ export async function getEnrollProSchoolYearWithTerms(schoolYearId: number): Pro
 /**
  * Resolve the best school year context to use for EnrollPro sync calls.
  */
+/**
+ * RL-10a: choose the school year from EnrollPro's list.
+ * The year EnrollPro marks ACTIVE always wins; a pinned/preferred label is only
+ * a fallback. This prevents resolving an outgoing year during a partial outage.
+ */
+export function pickEnrollProSchoolYear<
+  T extends { id: number; yearLabel: string; status?: string | null },
+>(schoolYears: T[], preferredLabel?: string): T | undefined {
+  if (schoolYears.length === 0) return undefined;
+  const wanted = (preferredLabel ?? '').trim();
+  const active = schoolYears.find((sy) => sy.status === 'ACTIVE');
+  const byLabel = wanted
+    ? schoolYears.find((sy) => String(sy.yearLabel).trim() === wanted)
+    : undefined;
+  const latest = [...schoolYears].sort((a, b) => b.id - a.id)[0];
+  return active ?? byLabel ?? latest;
+}
+
 export async function resolveEnrollProSchoolYear(
   preferredLabel?: string,
 ): Promise<{ id: number; yearLabel: string; source: 'integration-active' | 'school-years' | 'env-fallback' }> {
@@ -506,13 +524,7 @@ export async function resolveEnrollProSchoolYear(
   try {
     const schoolYears = await getEnrollProSchoolYears();
     if (schoolYears.length > 0) {
-      const wanted = (preferredLabel ?? '').trim();
-      const byLabel = wanted
-        ? schoolYears.find((sy) => String(sy.yearLabel).trim() === wanted)
-        : undefined;
-      const active = schoolYears.find((sy) => sy.status === 'ACTIVE');
-      const latest = [...schoolYears].sort((a, b) => b.id - a.id)[0];
-      const picked = byLabel ?? active ?? latest;
+      const picked = pickEnrollProSchoolYear(schoolYears, preferredLabel);
       if (picked) {
         return { id: picked.id, yearLabel: picked.yearLabel, source: 'school-years' };
       }
