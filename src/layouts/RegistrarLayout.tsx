@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
+import IntegratedSystemsNav from "@/components/layout/IntegratedSystemsNav";
 interface UserData {
   id: string;
   username: string;
@@ -80,6 +81,10 @@ export default function RegistrarLayout() {
     return saved === 'true';
   });
   const { logoUrl, schoolName, currentSchoolYear } = useTheme();
+
+  useEffect(() => {
+    localStorage.setItem("smart_active_portal", "registrar");
+  }, []);
 
   useEffect(() => {
     const userData = sessionStorage.getItem("user_registrar");
@@ -282,6 +287,7 @@ export default function RegistrarLayout() {
               </div>
             </div>
           ))}
+          <IntegratedSystemsNav collapsed={sidebarCollapsed} />
         </nav>
 
         {/* User Profile at Bottom */}

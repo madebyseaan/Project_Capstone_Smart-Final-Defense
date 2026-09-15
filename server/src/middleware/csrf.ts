@@ -51,8 +51,9 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   const method = req.method.toUpperCase();
   const path = req.path;
 
-  // Exempt auth routes — no session exists yet during login, and refresh uses httpOnly cookie
-  if (path.startsWith("/api/auth")) {
+  // Exempt auth routes — no session exists yet during login, and refresh uses httpOnly cookie.
+  // /api/v1/auth and /auth are SSO compatibility aliases for the same handlers.
+  if (path.startsWith("/api/auth") || path.startsWith("/api/v1/auth") || path.startsWith("/auth")) {
     next();
     return;
   }

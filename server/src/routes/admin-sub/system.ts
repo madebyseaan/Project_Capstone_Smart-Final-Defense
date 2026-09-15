@@ -10,6 +10,7 @@ import { createAuditLog } from "../../lib/audit";
 import { addSettingsSseClient, removeSettingsSseClient, broadcastSettingsUpdate } from "../../lib/sseManager";
 import { syncEnrollProBranding } from "../../lib/enrollproBrandingSync";
 import { invalidateEnrollProCredentials } from "../../lib/enrollproClient";
+import { getEnrollProPublicUrl } from "../../lib/companionSso";
 import { getRecentSyncHistory, runUnifiedSync } from "../../lib/syncCoordinator";
 import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
@@ -126,8 +127,9 @@ export default function (router: Router) {
               logoUrl: settings.logoUrl,
               currentSchoolYear: settings.currentSchoolYear,
               currentTerm: settings.currentTerm,
+              enrollproPublicUrl: getEnrollProPublicUrl(),
             }
-          : {},
+          : { enrollproPublicUrl: getEnrollProPublicUrl() },
       });
     } catch (error) {
       logger.error("Error fetching public settings:", error);

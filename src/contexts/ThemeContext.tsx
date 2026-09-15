@@ -19,6 +19,8 @@ interface ThemeContextType {
   schoolRegion: string;
   schoolId: string;
   currentSchoolYear: string;
+  /** Public EnrollPro origin, used for the Integrated Systems sidebar (reverse SSO launch). */
+  enrollproPublicUrl: string;
   loading: boolean;
   refreshTheme: () => Promise<void>;
 }
@@ -29,6 +31,8 @@ const defaultColors: ThemeColors = {
   accent: "#6ee7b7", // emerald-300
 };
 
+const DEFAULT_ENROLLPRO_PUBLIC_URL = "https://dev-jegs.buru-degree.ts.net";
+
 const ThemeContext = createContext<ThemeContextType>({
   colors: defaultColors,
   logoUrl: null,
@@ -38,6 +42,7 @@ const ThemeContext = createContext<ThemeContextType>({
   schoolRegion: "",
   schoolId: "",
   currentSchoolYear: "",
+  enrollproPublicUrl: DEFAULT_ENROLLPRO_PUBLIC_URL,
   loading: true,
   refreshTheme: async () => {},
 });
@@ -171,6 +176,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [schoolRegion, setSchoolRegion] = useState(() => loadCachedTheme()?.schoolRegion ?? "");
   const [schoolId, setSchoolId] = useState(() => loadCachedTheme()?.schoolId ?? "");
   const [currentSchoolYear, setCurrentSchoolYear] = useState(() => loadCachedTheme()?.currentSchoolYear ?? "");
+  const [enrollproPublicUrl, setEnrollproPublicUrl] = useState(
+    () => import.meta.env.VITE_ENROLLPRO_PUBLIC_URL || DEFAULT_ENROLLPRO_PUBLIC_URL,
+  );
   const [loading, setLoading] = useState(true);
 
   // Apply cached theme immediately so there's no flash on refresh
@@ -182,7 +190,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   const refreshTheme = async () => {
     try {
-      const response = await axios.get<{ settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string } }>(SETTINGS_URL, {
+      const response = await axios.get<{ settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string; currentSchoolYear?: string; enrollproPublicUrl?: string } }>(SETTINGS_URL, {
         withCredentials: true,
       });
       const settings = response.data.settings;
@@ -208,6 +216,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       setSchoolRegion(newRegion);
       setSchoolId(newSchoolId);
       setCurrentSchoolYear(newSchoolYear);
+      if (settings.enrollproPublicUrl) {
+        setEnrollproPublicUrl(settings.enrollproPublicUrl.replace(/\/+$/, ""));
+      }
 
       // Persist to localStorage so refresh loads instantly
       saveThemeCache({ colors: newColors, logoUrl: newLogoUrl, schoolName: newSchoolName, schoolAddress: newAddress, schoolDivision: newDivision, schoolRegion: newRegion, schoolId: newSchoolId, currentSchoolYear: newSchoolYear });
@@ -308,7 +319,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ colors, logoUrl, schoolName, schoolAddress, schoolDivision, schoolRegion, schoolId, currentSchoolYear, loading, refreshTheme }}>
+    <ThemeContext.Provider value={{ colors, logoUrl, schoolName, schoolAddress, schoolDivision, schoolRegion, schoolId, currentSchoolYear, enrollproPublicUrl, loading, refreshTheme }}>
       {children}
     </ThemeContext.Provider>
   );

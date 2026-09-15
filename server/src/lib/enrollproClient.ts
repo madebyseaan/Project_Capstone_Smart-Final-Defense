@@ -86,6 +86,14 @@ async function getEnrollProBase(): Promise<string> {
   return creds.url.replace(/\/$/, '');
 }
 
+/**
+ * Public accessor for the effective EnrollPro API base URL
+ * (DB-configured first, env fallback). Used by the SSO client.
+ */
+export async function getEnrollProEffectiveBaseUrl(): Promise<string> {
+  return getEnrollProBase();
+}
+
 // Cached admin token (re-fetched when expired)
 let _cachedToken: string | null = null;
 let _tokenFetchedAt = 0;

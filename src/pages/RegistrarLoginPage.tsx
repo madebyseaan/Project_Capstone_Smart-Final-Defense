@@ -67,6 +67,17 @@ export default function RegistrarLoginPage() {
         redirectPath = "/admin";
       }
 
+      // Resume an SSO authorize request if login was required first
+      const rawReturnUrl = new URLSearchParams(window.location.search).get("returnUrl");
+      const safeReturnUrl = rawReturnUrl && rawReturnUrl.startsWith("/") && !rawReturnUrl.startsWith("//")
+        ? rawReturnUrl
+        : null;
+
+      if (safeReturnUrl) {
+        navigate(safeReturnUrl, { replace: true });
+        return;
+      }
+
       setTimeout(() => {
         navigate(redirectPath);
       }, 1000);
