@@ -49,6 +49,9 @@ export default function registerClasses(router: Router): void {
           where: {
             teacherId: teacher.id,
             schoolYear: currentSchoolYear,
+            // RL-8a: operational query — never surface archived assignments
+            // (ATLAS reassignment/stale) as current classes.
+            isActive: true,
           },
           include: {
             subject: true,

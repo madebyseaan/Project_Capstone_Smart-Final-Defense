@@ -76,7 +76,9 @@ export default function (router: Router) {
 
         if (totalStudents === 0) {
           const latestEnrollment = await prisma.enrollment.findFirst({
-            where: { status: "ENROLLED" },
+            // RL-8a: operational fallback — an archived year's enrollment must
+            // not be reported as the current student population.
+            where: { status: "ENROLLED", isArchived: false },
             orderBy: { updatedAt: "desc" },
             select: { schoolYear: true },
           });
