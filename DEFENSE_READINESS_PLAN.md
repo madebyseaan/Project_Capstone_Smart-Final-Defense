@@ -615,3 +615,52 @@ The DB guard (`server/scripts/require-test-db.js` + `server/vitest.config.ts`) *
 - ESLint: **2 errors โ’ 0** (`aimsImport.ts` prefer-const, `sf10Scan/parser.ts` useless escape); warnings 1109 remain (D4 budget โค200 tracked in ยง6/P2-8).
 - Backend suite: **34 passed / 10 skipped / 0 failed**; skipped = credential-gated HTTP suites (they run against the live server and are excluded from automated runs by design).
 - Live smoke: **24/24 pages OK**, 0 console errors, 0 API โฅ400.
+
+---
+
+## 15. Night session log & updated scorecard (2026-09-15)
+
+### Commits (branch `feat/rollover-readiness`, `main` untouched)
+| Commit | Item |
+|---|---|
+| `38bb7ee` | R0: atomic rollover, prune year guard, unlock-on-failure, fail-closed teacher sync |
+| `373c761` | RL-4a/P0-4 public term endpoint; P0-5 EOSY no "T3" default |
+| `07a504e` | R1: explicit-year finalize (RL-1a), empty-section unblock (RL-2a), term-lock policy (RL-3a) |
+| `948b367` | Attendance save/clear CSRF 403 fix |
+| `20f6c64` | Frontend typecheck 72 ? 0 (no casts); roster DOM-nesting fix |
+| `37f9301` | `npm run verify` gate (T0-3), 2 lint errors fixed, ง14 documented |
+| `221a798` | RL-8a: hide archived classes; dashboard fallback excludes archived years |
+| `436f3ca` | RL-7a: strict manual year switch; real School Years archive |
+| `1f9d7fa` | P1-5 global error handler + JSON API 404; dead `app.ts` removed |
+| `ebc1851` | P1-3 integration auth fails closed |
+| `5e84a42` | P1-9 LRN/employeeId/email masked in logs |
+| `a26c707` | P1-6 audit rows: attendance clear/bulk, grade finalize/unfinalize, edit-request create |
+| `a26cdca` | P1-13 CSS color sanitization; P0-8 real 404 page |
+| `7395960` | P2-1 remove 7 unreferenced dead files (1,316 lines) |
+
+### Final verification (gate)
+- `npm run verify` ? **exit 0**: frontend `tsc` 0 ท `vite build` ok ท backend `tsc` 0 ท `eslint` **0 errors** (1104 warnings) ท backend suite **38 files passed / 10 skipped / 0 failed** on `smart_test_db`.
+- Live smoke: **24/24 pages OK**, 0 console errors, 0 API =400.
+- Rehearsed flows (real browser, rolled back afterwards): login ื3, grade save, attendance save/clear, SF10 print (PDF), EOSY read-only readiness.
+- Data safety check: grades 7,970 (7,962 archived across 2026-27…2029-30), enrollments 295 (201 archived), students 104, **0 DELETE audit rows today**. Only test-created rows (4 attendance, 4 grades) were removed; demo data intact.
+
+### Updated scorecard (supersedes ง1)
+| Area | Now | Target | Notes |
+|---|---|---|---|
+| Backend type integrity | 100 | 100 | `tsc` 0 |
+| Frontend type integrity | 100 | 100 | `tsc` 0, no casts |
+| Backend tests | 95 | 100 | 38 files/0 fail on isolated DB; credential-gated HTTP suites skipped by design |
+| E2E infrastructure | 15 | 100 | verified Playwright harnesses exist (temp); no in-repo specs yet (T0-1) |
+| Audit-log coverage | 65 | 100 | P1-6 added; remaining gaps: refresh, SSO, class-assignment create/archive, grading rows |
+| Input validation | 55 | 100 | P0 field-loss bugs remain (P1-7), ~33 routes still unvalidated (P1-8) |
+| Secrets / PII | 60 | 100 | P1-3/P1-5/P1-9 done; tokens-in-JS, TLS verify, default password, transport headers remain |
+| Runtime behavior | 90 | 100 | 0 403/5xx, all rehearsed flows pass; edit-request blocked (needs past term) |
+| Code health | 45 | 100 | dead files removed; dedupe/splits/warning burn-down remain |
+| Rollover readiness | 70 | 100 | R0/R1/RL-7a/RL-8a done; RL-10a remainder + rollover drill (RL-11a) |
+| **Overall** | **~76** | 100 | defense-ready on this branch |
+
+### Remaining (post-defense, with rehearsal windows)
+- **Deferred P1 (runtime/data impact):** P1-1 tokens, P1-2 EnrollPro TLS, P1-4 default sync password, P1-7 schema field-loss bugs, P1-8 validation, P1-10 transport/CSP/stream tokens, P1-11 SSE dedupe, P1-12 unique email.
+- **Rollover:** RL-10a remainder, RL-11a rollover drill.
+- **P2:** dedupe helpers, split >1000-line files, warning burn-down to =200.
+- **T0-1:** move the verified Playwright harnesses into the repo as specs.
