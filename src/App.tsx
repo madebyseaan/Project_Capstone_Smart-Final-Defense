@@ -12,6 +12,12 @@ const LoginPage = lazy(() => import('./pages/LoginPage'))
 const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage'))
 const RegistrarLoginPage = lazy(() => import('./pages/RegistrarLoginPage'))
 
+// EnrollPro SSO pages (public)
+const SsoSessionPage = lazy(() => import('./pages/auth/SsoSessionPage'))
+const EnrollProAuthorizePage = lazy(() => import('./pages/auth/EnrollProAuthorizePage'))
+const SsoCallbackForwardPage = lazy(() => import('./pages/auth/SsoCallbackForwardPage'))
+const SsoErrorPage = lazy(() => import('./pages/auth/SsoErrorPage'))
+
 // Teacher pages
 const TeacherDashboard = lazy(() => import('./pages/teacher/Dashboard'))
 const ClassRecordsList = lazy(() => import('./pages/teacher/ClassRecordsList'))
@@ -64,6 +70,14 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/login/admin" element={<AdminLoginPage />} />
         <Route path="/login/registrar" element={<RegistrarLoginPage />} />
+
+        {/* EnrollPro companion SSO */}
+        <Route path="/auth/enrollpro/callback" element={<SsoCallbackForwardPage />} />
+        <Route path="/auth/enrollpro/session" element={<SsoSessionPage />} />
+        <Route path="/auth/enrollpro/authorize" element={<EnrollProAuthorizePage />} />
+        {/* Alias for EnrollPro deployments configured with /auth/sso/authorize */}
+        <Route path="/auth/sso/authorize" element={<EnrollProAuthorizePage />} />
+        <Route path="/auth/enrollpro/error" element={<SsoErrorPage />} />
       
       {/* Teacher routes */}
       <Route path="/teacher" element={<TeacherLayout />}>

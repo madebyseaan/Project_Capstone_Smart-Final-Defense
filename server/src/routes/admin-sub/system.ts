@@ -10,6 +10,7 @@ import { createAuditLog } from "../../lib/audit";
 import { addSettingsSseClient, removeSettingsSseClient, broadcastSettingsUpdate } from "../../lib/sseManager";
 import { syncEnrollProBranding } from "../../lib/enrollproBrandingSync";
 import { invalidateEnrollProCredentials } from "../../lib/enrollproClient";
+import { getEnrollProPublicUrl } from "../../lib/companionSso";
 import { getRecentSyncHistory, runUnifiedSync } from "../../lib/syncCoordinator";
 import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
@@ -138,8 +139,9 @@ export default function (router: Router) {
               currentSchoolYear: settings.currentSchoolYear,
               currentTerm: settings.currentTerm,
               termDatesDerived: settings.termDatesDerived,
+              enrollproPublicUrl: getEnrollProPublicUrl(),
             }
-          : {},
+          : { enrollproPublicUrl: getEnrollProPublicUrl() },
         termLabels,
       });
     } catch (error) {

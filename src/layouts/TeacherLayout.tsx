@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 import { useSyncStream } from "@/hooks/useSyncStream";
+import IntegratedSystemsNav from "@/components/layout/IntegratedSystemsNav";
 interface UserData {
   id: string;
   username: string;
@@ -63,6 +64,10 @@ export default function TeacherLayout() {
   const [atlasBannerDismissed, setAtlasBannerDismissed] = useState(false);
   const { colors, logoUrl, schoolName, currentSchoolYear } = useTheme();
   const { atlasOffline } = useSyncStream();
+
+  useEffect(() => {
+    localStorage.setItem("smart_active_portal", "teacher");
+  }, []);
 
   useEffect(() => {
     const userData = sessionStorage.getItem("user_teacher");
@@ -264,6 +269,7 @@ export default function TeacherLayout() {
               </div>
             </div>
           ))}
+          <IntegratedSystemsNav collapsed={sidebarCollapsed} />
         </nav>
 
         {/* User Profile at Bottom */}

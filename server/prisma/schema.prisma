@@ -12,6 +12,7 @@ model User {
   password           String
   role               Role
   status             UserStatus      @default(ACTIVE)
+  enrollproSubject   String?         @unique // EnrollPro SSO subject "ENROLLPRO_USER:<id>" — stable external identity link
   suspendedAt        DateTime?
   suspendedBy        String?
   suspensionReason   String?
@@ -30,6 +31,7 @@ model User {
   editRequests       GradeEditRequest[] @relation("EditRequestTeacher")
   approvedRequests   GradeEditRequest[] @relation("EditRequestApprover")
   finalizedGrades    Grade[]            @relation("FinalizedGrades")
+  companionSsoCodes  CompanionSsoCode[]
 }
 
 model Teacher {
@@ -58,6 +60,23 @@ model RefreshToken {
 
   @@index([userId])
   @@index([familyId])
+  @@index([expiresAt])
+}
+
+// One-time authorization codes SMART issues to EnrollPro (reverse SSO).
+// Only the SHA-256 hash is stored; codes are single-use, audience-bound, 60s TTL.
+model CompanionSsoCode {
+  id          String    @id @default(cuid())
+  codeHash    String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audience    String // "enrollpro"
+  redirectUri String // exact registered EnrollPro callback this code is bound to
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
   @@index([expiresAt])
 }
 

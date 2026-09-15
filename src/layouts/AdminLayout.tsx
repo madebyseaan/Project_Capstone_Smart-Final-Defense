@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
+import IntegratedSystemsNav from "@/components/layout/IntegratedSystemsNav";
 interface UserData {
   id: string;
   username: string;
@@ -94,6 +95,10 @@ export default function AdminLayout() {
     return saved ? JSON.parse(saved) : { 'Template Managers': true };
   });
   const { logoUrl, schoolName, currentSchoolYear } = useTheme();
+
+  useEffect(() => {
+    localStorage.setItem("smart_active_portal", "admin");
+  }, []);
 
   useEffect(() => {
     const userData = sessionStorage.getItem("user_admin");
@@ -458,6 +463,7 @@ export default function AdminLayout() {
               </div>
             </div>
           ))}
+          <IntegratedSystemsNav collapsed={sidebarCollapsed} />
         </nav>
 
         {/* User Profile at Bottom */}
