@@ -30,6 +30,8 @@ dist-ssr
 
 # Playwright debug output
 .playwright-mcp/
+test-results/
+playwright-report/
 
 # Local E2E/smoke tests + screenshots (may contain local dev credentials)
 tests/

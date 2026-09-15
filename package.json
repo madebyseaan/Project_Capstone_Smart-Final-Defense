@@ -16,6 +16,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "verify": "npm run typecheck && npm run build && npm --prefix server run build && npm run lint && npm --prefix server test",
+    "test:e2e": "playwright test",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
