@@ -303,7 +303,7 @@ export default function AlumniStudents() {
                   ↵
                 </kbd>
               </div>
-              <Select value={gradeFilter} onValueChange={(v) => { setGradeFilter(v); setPage(0); }}>
+              <Select value={gradeFilter} onValueChange={(v) => { if (v) { setGradeFilter(v); setPage(0); } }}>
                 <SelectTrigger className="w-32 h-9 rounded-lg text-xs font-medium">
                   <SelectValue placeholder="All Grades">
                     {gradeLevelLabels[gradeFilter] || "All Grades"}

@@ -14,6 +14,7 @@ const API_URL = "/api";
 interface LoginResponse {
   message: string;
   token: string;
+  refreshToken?: string;
   user: {
     id: string;
     username: string;

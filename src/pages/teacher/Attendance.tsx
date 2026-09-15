@@ -551,7 +551,7 @@ export default function Attendance() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(parseInt(v))}>
+                <Select value={String(selectedMonth)} onValueChange={(v) => { if (v) setSelectedMonth(parseInt(v)); }}>
                   <SelectTrigger className="w-[140px] h-10 rounded-xl text-xs font-bold">
                     <SelectValue>{MONTH_NAMES[selectedMonth - 1]}</SelectValue>
                   </SelectTrigger>
@@ -563,7 +563,7 @@ export default function Attendance() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+                <Select value={String(selectedYear)} onValueChange={(v) => { if (v) setSelectedYear(parseInt(v)); }}>
                   <SelectTrigger className="w-[100px] h-10 rounded-xl text-xs font-bold">
                     <SelectValue>{selectedYear}</SelectValue>
                   </SelectTrigger>

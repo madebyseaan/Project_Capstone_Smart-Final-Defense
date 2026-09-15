@@ -119,6 +119,7 @@ export default function AuditLogs() {
   useEffect(() => {
     const token = getPortalToken();
     if (!token) return;
+    const streamToken: string = token;
 
     let es: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -127,7 +128,7 @@ export default function AuditLogs() {
 
     function connect() {
       if (cancelled) return;
-      const url = `/api/admin/logs/stream?token=${encodeURIComponent(token)}`;
+      const url = `/api/admin/logs/stream?token=${encodeURIComponent(streamToken)}`;
       es = new EventSource(url);
       eventSourceRef.current = es;
 

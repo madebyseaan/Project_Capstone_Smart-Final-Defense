@@ -205,7 +205,7 @@ export const AlertBanner = memo(function AlertBanner({
 }: {
   variant?: AlertVariant;
   title?: string;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const config = ALERT_CONFIG[variant];
   const Icon = config.icon;

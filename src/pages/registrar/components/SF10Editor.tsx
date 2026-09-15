@@ -174,7 +174,7 @@ export default function SF10Editor({ data, onCancel, onSaved, onPreview, onFocus
               <Input type="date" value={form.birthDate} onChange={(e) => set({ birthDate: e.target.value })} />
             </Field>
             <Field label="Sex">
-              <Select value={form.gender || undefined} onValueChange={(v) => set({ gender: v })}>
+              <Select value={form.gender || undefined} onValueChange={(v) => set({ gender: v === "MALE" || v === "FEMALE" ? v : undefined })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>

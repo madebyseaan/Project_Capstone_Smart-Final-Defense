@@ -121,8 +121,6 @@ const ABBREVIATIONS: Record<string, string> = {
   "Mathematics": "Math",
   "English": "English",
   "Science": "Science",
-  "Filipino": "Filipino",
-  "Araling Panlipunan": "Aral. Pan.",
 };
 
 function shortenSubject(name: string): string {
@@ -238,7 +236,7 @@ export default function TeacherSchedule() {
         {/* Header */}
         <PageHeader
           title="My Schedule"
-          description={`S.Y. ${schedule.schoolYear}`}
+          description={`S.Y. ${schedule?.schoolYear ?? ""}`}
         />
 
         {/* Empty state card */}

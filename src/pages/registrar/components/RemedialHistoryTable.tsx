@@ -141,11 +141,11 @@ export function RemedialHistoryTable({ items, loading, page, limit, meta, histor
               <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(1)}>
                 <ChevronsLeft className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>
                 <ChevronLeft className="h-3.5 w-3.5" />
               </Button>
               <Button variant="default" size="sm" className="h-8 w-8 text-xs font-bold">{page}</Button>
-              <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= meta.totalPages} onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}>
+              <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= meta.totalPages} onClick={() => setPage(Math.min(meta.totalPages, page + 1))}>
                 <ChevronRight className="h-3.5 w-3.5" />
               </Button>
               <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= meta.totalPages} onClick={() => setPage(meta.totalPages)}>

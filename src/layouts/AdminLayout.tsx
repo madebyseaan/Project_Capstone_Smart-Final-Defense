@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Calendar,
   FileText,
+  type LucideIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -28,17 +29,25 @@ interface UserData {
   email?: string;
 }
 
+interface NavChild {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  inDevelopment?: boolean;
+  disabled?: boolean;
+}
+
 interface NavItem {
   name: string;
   href?: string;
-  icon: any;
+  icon: LucideIcon;
   isDropdown?: boolean;
   inDevelopment?: boolean;
   disabled?: boolean;
-  children?: Array<{ name: string; href: string; icon: any; inDevelopment?: boolean; disabled?: boolean }>;
+  children?: NavChild[];
 }
 
-const navigationGroups = [
+const navigationGroups: { title: string; items: NavItem[] }[] = [
   {
     title: "OPERATIONS",
     items: [

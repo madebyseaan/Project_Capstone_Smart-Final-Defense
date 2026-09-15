@@ -64,6 +64,7 @@ export default function SystemSettings() {
   useEffect(() => {
     const token = getPortalToken();
     if (!token) return;
+    const streamToken: string = token;
 
     let es: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -72,7 +73,7 @@ export default function SystemSettings() {
 
     function connect() {
       if (cancelled) return;
-      const url = `/api/admin/settings/stream?token=${encodeURIComponent(token)}`;
+      const url = `/api/admin/settings/stream?token=${encodeURIComponent(streamToken)}`;
       es = new EventSource(url);
 
       es.onmessage = (event) => {

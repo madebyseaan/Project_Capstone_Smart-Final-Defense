@@ -159,7 +159,7 @@ export default function SF10Form({ data, schoolName, highlightArea, highlightSec
               </div>
               <div>
                 <span className="font-bold text-gray-900">Date Transferred In:</span>
-                <span className="border-b border-gray-600 ml-1 inline-block min-w-[150px] text-gray-900">{formatISODate(data.student.transferInDate) || ''}</span>
+                <span className="border-b border-gray-600 ml-1 inline-block min-w-[150px] text-gray-900">{formatISODate(data.student.transferInDate ?? undefined) || ''}</span>
               </div>
             </div>
           </div>

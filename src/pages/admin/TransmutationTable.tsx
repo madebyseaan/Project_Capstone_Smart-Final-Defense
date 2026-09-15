@@ -318,7 +318,7 @@ export default function TransmutationTable() {
                   className="pl-9 w-48 rounded-xl border-border"
                 />
               </div>
-              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v ?? "")}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="All Sources">
                     {sourceFilter === "all"

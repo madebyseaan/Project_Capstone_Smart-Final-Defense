@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Repeat } from "lucide-react";
-import type { RotationSibling } from "../../lib/api";
+import type { RotationSibling } from "@/lib/api";
 
 interface RotationBannerProps {
   subjectName: string;

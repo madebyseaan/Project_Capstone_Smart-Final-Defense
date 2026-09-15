@@ -99,7 +99,7 @@ export default function FormViewer() {
               </label>
               <Select
                 value={selectedFormType}
-                onValueChange={setSelectedFormType}
+                onValueChange={(v) => setSelectedFormType(v ?? "")}
                 disabled={templatesLoading}
               >
                 <SelectTrigger className="w-full">
@@ -130,7 +130,7 @@ export default function FormViewer() {
                 </label>
                 <Select
                   value={activeSheet?.name || ''}
-                  onValueChange={setActiveSheetByName}
+                  onValueChange={(v) => v && setActiveSheetByName(v)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Choose a sheet..." />

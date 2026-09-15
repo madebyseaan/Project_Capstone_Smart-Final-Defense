@@ -348,7 +348,7 @@ export default function ClassAssignments() {
         description="Read-only mirror of teaching assignments synchronized from ATLAS"
         actions={
           <>
-            <Select value={schoolYear} onValueChange={setSchoolYear}>
+            <Select value={schoolYear} onValueChange={(v) => setSchoolYear(v ?? "")}>
               <SelectTrigger className="w-36 h-9 rounded-lg text-xs font-medium">
                 <SelectValue />
               </SelectTrigger>

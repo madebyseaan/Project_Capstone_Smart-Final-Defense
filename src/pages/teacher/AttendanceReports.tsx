@@ -233,7 +233,7 @@ export default function AttendanceReports() {
   };
 
   const getAttendanceRate = (present: number, total: number) => {
-    if (total === 0) return 0;
+    if (total === 0) return "0";
     return ((present / total) * 100).toFixed(1);
   };
 

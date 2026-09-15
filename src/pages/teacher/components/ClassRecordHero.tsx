@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { ClassAssignment } from "@/lib/api";
+import type { ClassAssignment, TermLabels } from "@/lib/api";
 
 const gradeLevelLabels: Record<string, string> = {
   GRADE_7: "Grade 7",
@@ -32,12 +32,12 @@ interface ClassRecordHeroProps {
   classAssignment: ClassAssignment;
   effectiveWeightsSource: "subject-override" | "subject-type" | "generic-fallback" | null;
   activeWeights: { ww: number; pt: number; qa: number };
-  stats?: { avg: number; passed: number; total: number; highest: number; lowest: number } | null;
+  stats?: { avg: number; passed: number; total?: number; highest: number; lowest: number } | null;
   onStartTour?: () => void;
   selectedTerm: string;
   onTermChange: (term: string) => void;
   lockedTerm: string | null;
-  termLabels?: Record<string, string>;
+  termLabels?: TermLabels;
   isViewOnly?: boolean;
   userName: string;
   /** Tools cluster (AIMS / Excel actions) rendered on the right of the telemetry bar */
@@ -61,7 +61,7 @@ export function ClassRecordHero({
   toolsSlot,
   rotationSlot,
 }: ClassRecordHeroProps) {
-  const passingRate = stats && stats.total > 0 
+  const passingRate = stats && stats.total != null && stats.total > 0 
     ? `${Math.round((stats.passed / stats.total) * 100)}%` 
     : "0%";
 

@@ -458,8 +458,10 @@ export default function RemedialTracker() {
                 <Select
                   value={selectedSY}
                   onValueChange={(v) => {
-                    setSelectedSY(v);
-                    setPage(1);
+                    if (v) {
+                      setSelectedSY(v);
+                      setPage(1);
+                    }
                   }}
                 >
                   <SelectTrigger className="w-36 h-9 rounded-lg text-xs">
@@ -671,7 +673,7 @@ export default function RemedialTracker() {
       {viewMode === "history" && (<>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">Filter:</span>
-          <Select value={historyYearFilter} onValueChange={(v) => { setHistoryYearFilter(v); setPage(1); }}>
+          <Select value={historyYearFilter} onValueChange={(v) => { if (v) { setHistoryYearFilter(v); setPage(1); } }}>
             <SelectTrigger className="w-36 h-8 rounded-lg text-xs">
               <SelectValue />
             </SelectTrigger>

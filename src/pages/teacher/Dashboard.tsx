@@ -998,7 +998,7 @@ export default function TeacherDashboard() {
                 
                 <div className="flex flex-wrap items-center gap-4">
                   {/* Section Select Filter */}
-                  <Select value={attentionSectionFilter} onValueChange={setAttentionSectionFilter}>
+                  <Select value={attentionSectionFilter} onValueChange={(v) => setAttentionSectionFilter(v ?? "")}>
                     <SelectTrigger className="w-[185px]">
                       <SelectValue placeholder="Select Section" />
                     </SelectTrigger>
@@ -1016,7 +1016,7 @@ export default function TeacherDashboard() {
                   </Select>
 
                   {/* Subject Select Filter */}
-                  <Select value={attentionSubjectFilter} onValueChange={setAttentionSubjectFilter}>
+                  <Select value={attentionSubjectFilter} onValueChange={(v) => setAttentionSubjectFilter(v ?? "")}>
                     <SelectTrigger className="w-[185px]">
                       <SelectValue placeholder="Select Subject" />
                     </SelectTrigger>

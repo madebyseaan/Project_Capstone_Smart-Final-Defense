@@ -626,7 +626,7 @@ export default function Transferees() {
                     <span className="text-muted-foreground font-normal">(from EnrollPro)</span>
                   )}
                 </Label>
-                <Select value={gender || undefined} onValueChange={(v) => setGender(v)}>
+                <Select value={gender || undefined} onValueChange={(v) => v && setGender(v)}>
                   <SelectTrigger id="gender" className="h-9 rounded-lg text-xs font-medium">
                     <SelectValue placeholder="Select sex" />
                   </SelectTrigger>

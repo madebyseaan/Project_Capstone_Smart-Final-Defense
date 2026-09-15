@@ -42,7 +42,7 @@ import { SyncProgressModal } from "@/components/common/SyncProgressModal";
 // Extended student type that includes enrollment data
 interface StudentWithEnrollment {
   id: string;
-  enrollmentId: string;
+  enrollmentId?: string;
   lrn: string;
   firstName: string;
   middleName?: string;
@@ -59,7 +59,7 @@ interface StudentWithEnrollment {
   schoolYear?: string;
   status?: string;
   transferInDate?: string | null;
-  adviser?: string;
+  adviser?: string | null;
 }
 
 const gradeLevelLabels: Record<string, string> = {
@@ -496,7 +496,7 @@ export default function StudentRecords() {
                   loading={loading}
                   searchQuery={searchQuery}
                   hasActiveFilters={!!searchQuery || selectedGradeLevel !== "all" || selectedSection !== "all"}
-                  onViewStudent={handleViewStudent}
+                  onViewStudent={(s) => { void handleViewStudent(s); }}
                   primaryColor={colors.primary}
                 />
               </div>

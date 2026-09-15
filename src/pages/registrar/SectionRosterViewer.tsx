@@ -382,23 +382,9 @@ export default function SectionRosterViewer() {
 
               {/* Desktop Table */}
               <div className="hidden md:block">
-                {sectionsLoading ? (
-                  <div className="py-8">
-                    <LoadingSkeleton columnCount={6} rowCount={8} />
-                  </div>
-                ) : paginatedSections.length === 0 ? (
-                  <div className="py-8">
-                    <EmptyState
-                      columnCount={6}
-                      title="No sections found"
-                      hint="Try adjusting your search or filters"
-                      icon={<Building2 className="h-5 w-5 text-muted-foreground/60" />}
-                    />
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                      <Table className="w-full table-fixed">
-                      <TableHeader>
+                <div className="overflow-x-auto">
+                  <Table className="w-full table-fixed">
+                    <TableHeader>
                         <TableRow className="hover:bg-muted/50 border-b border-slate-100 bg-muted/30">
                           <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[28%] text-left">Section</TableHead>
                           <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[12%] text-left">Grade</TableHead>
@@ -407,9 +393,19 @@ export default function SectionRosterViewer() {
                           <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[13%] text-left">Program</TableHead>
                           <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">Action</TableHead>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {paginatedSections.map((s) => (
+                    </TableHeader>
+                    <TableBody>
+                      {sectionsLoading ? (
+                        <LoadingSkeleton columnCount={6} rowCount={8} />
+                      ) : paginatedSections.length === 0 ? (
+                        <EmptyState
+                          columnCount={6}
+                          title="No sections found"
+                          hint="Try adjusting your search or filters"
+                          icon={<Building2 className="h-5 w-5 text-muted-foreground/60" />}
+                        />
+                      ) : (
+                        paginatedSections.map((s) => (
                           <TableRow
                             key={s.id}
                             className="border-b border-slate-100/80 hover:bg-muted/50 transition-colors"
@@ -466,11 +462,11 @@ export default function SectionRosterViewer() {
                               </Button>
                             </TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             </>
           )}
@@ -597,8 +593,12 @@ export default function SectionRosterViewer() {
 
           <div className="flex-1 overflow-hidden">
             {rosterLoading ? (
-              <div className="py-8">
-                <LoadingSkeleton columnCount={4} rowCount={6} />
+              <div className="py-8 overflow-x-auto">
+                <Table className="w-full table-fixed">
+                  <TableBody>
+                    <LoadingSkeleton columnCount={4} rowCount={6} />
+                  </TableBody>
+                </Table>
               </div>
             ) : rosterError ? (
               <div className="flex flex-col items-center justify-center py-16 text-center px-4">
@@ -609,13 +609,17 @@ export default function SectionRosterViewer() {
                 <p className="text-sm text-muted-foreground">{rosterError}</p>
               </div>
             ) : filteredRoster.length === 0 ? (
-              <div className="py-8">
-                <EmptyState
-                  columnCount={4}
-                  title="No learners found"
-                  hint="Try adjusting your search"
-                  icon={<Users className="h-5 w-5 text-muted-foreground/60" />}
-                />
+              <div className="py-8 overflow-x-auto">
+                <Table className="w-full table-fixed">
+                  <TableBody>
+                    <EmptyState
+                      columnCount={4}
+                      title="No learners found"
+                      hint="Try adjusting your search"
+                      icon={<Users className="h-5 w-5 text-muted-foreground/60" />}
+                    />
+                  </TableBody>
+                </Table>
               </div>
             ) : (
               <>

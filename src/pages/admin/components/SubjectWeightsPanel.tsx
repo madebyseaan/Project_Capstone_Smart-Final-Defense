@@ -180,7 +180,7 @@ export function SubjectWeightsPanel({ configs }: SubjectWeightsPanelProps) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+          <Select value={subjectFilter} onValueChange={(v) => setSubjectFilter(v ?? "")}>
             <SelectTrigger className="w-44 h-9 rounded-lg text-xs font-medium">
               <SelectValue />
             </SelectTrigger>

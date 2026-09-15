@@ -148,7 +148,7 @@ interface ThemeProviderProps {
 
 const THEME_CACHE_KEY = "smart_theme_cache";
 
-function loadCachedTheme(): { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string; currentSchoolYear: string } | null {
+function loadCachedTheme(): { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string; currentSchoolYear?: string } | null {
   try {
     const cached = localStorage.getItem(THEME_CACHE_KEY);
     if (cached) return JSON.parse(cached);
@@ -156,7 +156,7 @@ function loadCachedTheme(): { colors: ThemeColors; logoUrl: string | null; schoo
   return null;
 }
 
-function saveThemeCache(data: { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string; currentSchoolYear: string }) {
+function saveThemeCache(data: { colors: ThemeColors; logoUrl: string | null; schoolName: string; schoolAddress: string; schoolDivision: string; schoolRegion: string; schoolId: string; currentSchoolYear?: string }) {
   try {
     localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(data));
   } catch { /* intentionally empty */ }
@@ -182,7 +182,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   const refreshTheme = async () => {
     try {
-      const response = await axios.get<{ settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string } }>(SETTINGS_URL, {
+      const response = await axios.get<{ settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string; currentSchoolYear?: string } }>(SETTINGS_URL, {
         withCredentials: true,
       });
       const settings = response.data.settings;
@@ -226,7 +226,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   };
 
   // Apply settings from SSE update
-  const applySettingsUpdate = (settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string }) => {
+  const applySettingsUpdate = (settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string; currentSchoolYear?: string }) => {
     const newColors: ThemeColors = {
       primary: settings.primaryColor || defaultColors.primary,
       secondary: settings.secondaryColor || defaultColors.secondary,
@@ -263,6 +263,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   useEffect(() => {
     const token = getPortalToken();
     if (!token) return;
+    const streamToken: string = token;
 
     let es: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -271,7 +272,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
     function connect() {
       if (cancelled) return;
-      const url = `/api/admin/settings/stream?token=${encodeURIComponent(token)}`;
+      const url = `/api/admin/settings/stream?token=${encodeURIComponent(streamToken)}`;
       es = new EventSource(url);
 
       es.onmessage = (event) => {

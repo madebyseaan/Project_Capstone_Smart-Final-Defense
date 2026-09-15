@@ -296,6 +296,10 @@ export interface GradeDeadlineInfo {
   hasIncompleteClasses: boolean;
   incompleteCount: number;
   incompleteClasses: { subjectName: string; sectionName: string; gradedCount: number; totalStudents: number }[];
+  t1EndDate?: string | null;
+  t2EndDate?: string | null;
+  t3EndDate?: string | null;
+  gradeLock?: boolean;
 }
 
 export interface ArchivedClassInfo {
@@ -381,6 +385,7 @@ export const gradesApi = {
     api.get<{
       classStats: {
         id: string;
+        subjectCode: string;
         subjectName: string;
         sectionName: string;
         gradeLevel: string;
@@ -552,7 +557,7 @@ export const gradesApi = {
     api.delete<{ success: boolean }>(`/grades/aims-link/${classAssignmentId}`),
 
   importAims: (classAssignmentId: string, term: string, assessmentIds?: string[]) =>
-    api.post<{ savedCount: number; skipped: { finalized: number; notFound: number; alreadyImported: number; archived: number }; importedAssessments: string[] }>(
+    api.post<{ savedCount: number; skipped: { finalized: number; notFound: number; alreadyImported: number; archived: number }; importedAssessments: string[]; qaSkippedOccupied: number }>(
       `/grades/aims-import/${classAssignmentId}`,
       { term, assessmentIds },
     ),
@@ -888,6 +893,7 @@ export interface SchoolYear {
 
 export interface RegistrarStudent {
   id: string;
+  enrollmentId: string;
   lrn: string;
   firstName: string;
   middleName?: string;
@@ -901,8 +907,10 @@ export interface RegistrarStudent {
   gradeLevel: string;
   sectionId: string;
   sectionName: string;
+  program?: string | null;
   schoolYear: string;
   status: string;
+  transferInDate?: string | null;
   adviser?: string | null;
 }
 
@@ -1100,6 +1108,7 @@ export interface SF9Data {
     name: string;
     gender: string;
     birthDate?: string;
+    age?: number;
     address?: string;
     section: string;
     gradeLevel: string;
@@ -1130,6 +1139,12 @@ export interface SF9Data {
   generalAverage?: number;
   honors?: string;
   promotionStatus?: string;
+  schoolSettings?: {
+    schoolName: string;
+    division: string;
+    region: string;
+    schoolHeadName: string;
+  };
 }
 
 export interface SF10Data {
