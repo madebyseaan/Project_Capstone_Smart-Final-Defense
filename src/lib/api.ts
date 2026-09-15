@@ -60,13 +60,21 @@ api.interceptors.request.use((config) => {
 });
 
 // CSRF: read x-csrf-token cookie and send as header on every request
+export function getCsrfToken(): string {
+  return (
+    document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("x-csrf-token="))
+      ?.split("=")
+      .slice(1)
+      .join("=") ?? ""
+  );
+}
+
 api.interceptors.request.use((config) => {
   const method = config.method?.toUpperCase();
   if (method && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-    const csrfToken = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("x-csrf-token="))
-      ?.split("=")[1];
+    const csrfToken = getCsrfToken();
     if (csrfToken) {
       config.headers.set("x-csrf-token", csrfToken);
     }

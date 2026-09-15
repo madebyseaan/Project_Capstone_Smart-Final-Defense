@@ -28,7 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/ThemeContext";
-import { SERVER_URL, getPortalToken } from "@/lib/api";
+import { SERVER_URL, getPortalToken, getCsrfToken } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import axios from "axios";
 
@@ -296,7 +296,7 @@ export default function Attendance() {
       await axios.post(
         `${SERVER_URL}/api/attendance/clear`,
         { sectionId: selectedSection, date: selectedDate },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}`, "x-csrf-token": getCsrfToken() } }
       );
     } catch (error) {
       console.error("Error deleting attendance records:", error);
@@ -335,7 +335,7 @@ export default function Attendance() {
             remarks: s.remarks || null,
           })),
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}`, "x-csrf-token": getCsrfToken() } }
       );
       setMessage({ type: "success", text: "Attendance saved successfully!" });
       fetchMonthlySF2Stats(selectedSection, selectedDate);
