@@ -50,7 +50,7 @@ export function extractSchoolYear(text: string): string | null {
 }
 
 export function extractGradeLevel(text: string): string | null {
-  const m = text.match(/grade\s*[:\-]?\s*([7-9]|10)\b/i);
+  const m = text.match(/grade\s*[:-]?\s*([7-9]|10)\b/i);
   return m ? `GRADE_${m[1]}` : null;
 }
 

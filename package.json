@@ -15,6 +15,7 @@
     "build": "vite build",
     "typecheck": "tsc -b",
     "lint": "eslint .",
+    "verify": "npm run typecheck && npm run build && npm --prefix server run build && npm run lint && npm --prefix server test",
     "preview": "vite preview"
   },
   "dependencies": {

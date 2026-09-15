@@ -138,7 +138,7 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
   const allStudentIds = Array.from(scoresByStudent.keys());
   const ownStudentIds = new Set(allGrades.map(g => g.studentId));
   const needsPredIds = allStudentIds.filter(sid => !ownStudentIds.has(sid));
-  let predGradesForAlloc: typeof allGrades = [];
+  const predGradesForAlloc: typeof allGrades = [];
   if (needsPredIds.length > 0) {
     const predAssignments = await prisma.classAssignment.findMany({
       where: {

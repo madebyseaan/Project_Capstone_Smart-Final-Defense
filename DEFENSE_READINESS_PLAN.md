@@ -134,6 +134,7 @@ Definition of **100/100** used in this plan: *every acceptance gate in §8 passe
 - **Effort:** ~3 h. **Risk:** local Postgres availability; flyway-style schema drift (use `db push` to match `schema.prisma`).
 
 ### T0-3 · `npm run verify` — one command, all gates
+**Status: DONE** — root `verify` script added and green; see §14 (Regression Protection & Verification Gate).
 - **Fix:** add root script:
   `"verify": "npm run typecheck && npm --prefix server run build && npm run lint && npm --prefix server test && npm run test:e2e"`
   - `typecheck` = `tsc -b` (frontend, both projects).
@@ -562,3 +563,55 @@ Execution order: **R0** = RL-5a, RL-6a, RL-9a, RL-10a (data loss + safety) → *
 | RL-11a | Tests for the above + scheduler lock behavior | Suite green on `smart_test_db` | ~1 day |
 
 Total Phase R: ~3–4 focused days. **R0 alone is ~7–8 h and is the must-ship set** — it removes the irreversible data-loss paths. RL-5a and RL-6a are P0 the moment rollover becomes imminent.
+
+---
+
+## 14. Regression Protection & Verification Gate (non-negotiable)
+
+> **Rule: no change is concluded until the gate passes on that change.** If a behavior cannot be verified, say so — never claim success. Every batch is committed separately and lives on a branch, so any batch can be reverted in isolation.
+
+### 14.1 The one-command gate
+
+```powershell
+$env:DATABASE_URL = (Get-Content server\.env | Select-String '^DATABASE_URL=').Line.Split('=')[1].Trim('"') -replace '/smart_db','/smart_test_db'
+npm run verify
+```
+
+`npm run verify` runs, in order:
+
+1. `npm run typecheck` — frontend `tsc -b` → **0 errors**
+2. `npm run build` — production `vite build` → **succeeds**
+3. `npm --prefix server run build` — backend `tsc` → **0 errors**
+4. `npm run lint` — `eslint .` → **0 errors** (warnings allowed; budget §D4)
+5. `npm --prefix server test` — full backend suite against **`smart_test_db`** → **0 failed**
+
+The DB guard (`server/scripts/require-test-db.js` + `server/vitest.config.ts`) **refuses to run** if `DATABASE_URL` is not a `*_test*` database, so the suite can never touch live `smart_db`. If `DATABASE_URL` is missing, the gate fails loudly instead of silently testing the wrong database.
+
+### 14.2 Per-change protocol
+
+| Change type | Required verification before commit |
+|---|---|
+| Types / refactor (no behavior) | Gate steps 1–4 + the live page smoke (24 pages, 0 console errors / 0 API ≥400) |
+| Behavior change (server or UI) | Every gate step **plus** a targeted live rehearsal of the changed flow (real login, real click, assert the API status/persisted result) |
+| Any test that writes to a DB | Snapshot → rehearse → **restore** → verify the restore (row counts back to baseline) |
+| Schema/migration | Apply on `smart_test_db` first; confirm live DB untouched |
+
+### 14.3 Hard rules
+
+- **No `any`, `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`** to make a check pass. Fix the type for real.
+- **Never test against the live DB.** `smart_test_db` only. Never edit `.env`/`.env.*` (use process env overrides).
+- **Branch-only.** `main` stays defense-stable; work lands on `feat/*`. Merge only after a rehearsal.
+- **One batch = one commit** with a descriptive message; never mix unrelated changes.
+- **Claim only what was verified.** Unverified items are explicitly labeled "not verified" in the report (example: the edit-request flow cannot be rehearsed while the live term is T1).
+
+### 14.4 DB write safety net (already used this session)
+
+`C:\Users\Sean\AppData\Local\Temp\opencode\rehearsal-snapshot.mjs snapshot|restore` snapshots the rows a rehearsal may touch (`Grade` by class assignment, `Attendance` by section, `GradeEditRequest` by teacher) and restores them precisely after. Rehearsals performed so far: grade save, attendance save/clear, SF10 print, EOSY read-only — all rolled back, live demo data verified at baseline.
+
+### 14.5 Current status
+
+- Gate: **GREEN** on `feat/rollover-readiness` @ `20f6c64` (before the §14 lint fixes) and re-verified after.
+- Frontend typecheck: **72 → 0** (no casts added).
+- ESLint: **2 errors → 0** (`aimsImport.ts` prefer-const, `sf10Scan/parser.ts` useless escape); warnings 1109 remain (D4 budget ≤200 tracked in §6/P2-8).
+- Backend suite: **34 passed / 10 skipped / 0 failed**; skipped = credential-gated HTTP suites (they run against the live server and are excluded from automated runs by design).
+- Live smoke: **24/24 pages OK**, 0 console errors, 0 API ≥400.
