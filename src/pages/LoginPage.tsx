@@ -26,6 +26,11 @@ interface LoginResponse {
   };
 }
 
+const PORTAL_BY_ROLE: Record<string, { label: string; path: string }> = {
+  ADMIN: { label: "Admin portal", path: "/login/admin" },
+  REGISTRAR: { label: "Registrar portal", path: "/login/registrar" },
+};
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const { logoUrl, schoolName } = useTheme();
@@ -37,17 +42,26 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<LoginResponse | null>(null);
+  const [portalHint, setPortalHint] = useState<{ label: string; path: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
     setSuccess(null);
+    setPortalHint(null);
 
     try {
+      // A pending SSO authorize request is role-agnostic — only then skip the portal gate.
+      const rawReturnUrl = new URLSearchParams(window.location.search).get("returnUrl");
+      const safeReturnUrl = rawReturnUrl && rawReturnUrl.startsWith("/") && !rawReturnUrl.startsWith("//")
+        ? rawReturnUrl
+        : null;
+
       const response = await axios.post<LoginResponse>(`${API_URL}/auth/login`, {
         email,
         password,
+        ...(safeReturnUrl ? {} : { portal: "TEACHER" }),
       });
 
       // Store in role-specific keys so multiple users can be logged in simultaneously
@@ -63,32 +77,20 @@ export default function LoginPage() {
 
       setSuccess(response.data);
 
-      // Redirect to correct portal based on actual role
-      const role = response.data.user.role;
-      let redirectPath = "/teacher";
-      if (role === "ADMIN") {
-        redirectPath = "/admin";
-      } else if (role === "REGISTRAR") {
-        redirectPath = "/registrar";
-      }
-
       // Resume an SSO authorize request if login was required first
-      const rawReturnUrl = new URLSearchParams(window.location.search).get("returnUrl");
-      const safeReturnUrl = rawReturnUrl && rawReturnUrl.startsWith("/") && !rawReturnUrl.startsWith("//")
-        ? rawReturnUrl
-        : null;
-
       if (safeReturnUrl) {
         navigate(safeReturnUrl, { replace: true });
         return;
       }
 
       setTimeout(() => {
-        navigate(redirectPath);
+        navigate("/teacher");
       }, 1000);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {
-        setError(err.response.data.message || "Login failed");
+        const data = err.response.data as { message?: string; code?: string; role?: string } | undefined;
+        setError(data?.message || "Login failed");
+        setPortalHint(data?.code === "WRONG_PORTAL" && data.role ? PORTAL_BY_ROLE[data.role] ?? null : null);
       } else {
         setError("Unable to connect to server. Please try again.");
       }
@@ -266,11 +268,21 @@ export default function LoginPage() {
             <CardContent className="px-8 pb-8 pt-4">
               {/* Error Message */}
               {error && (
-                <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 flex items-center gap-2.5 login-scale-in">
-                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
-                    <AlertCircle className="w-4 h-4 text-red-600" />
+                <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 login-scale-in">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                      <AlertCircle className="w-4 h-4 text-red-600" />
+                    </div>
+                    <span className="text-sm font-bold text-red-700">{error}</span>
                   </div>
-                  <span className="text-sm font-bold text-red-700">{error}</span>
+                  {portalHint && (
+                    <a
+                      href={portalHint.path}
+                      className="inline-block mt-2 ml-10 text-xs font-bold text-red-800 underline hover:text-red-900"
+                    >
+                      Go to {portalHint.label}
+                    </a>
+                  )}
                 </div>
               )}
 

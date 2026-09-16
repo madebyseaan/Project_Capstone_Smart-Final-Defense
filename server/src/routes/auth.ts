@@ -273,6 +273,29 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
       }
     }
 
+    // Portal gate — each login page only admits its own role
+    const expectedPortal = req.body.portal as 'ADMIN' | 'TEACHER' | 'REGISTRAR' | undefined;
+    if (expectedPortal && user.role !== expectedPortal) {
+      await createAuditLog(
+        AuditAction.LOGIN,
+        { id: user.id, firstName: user.firstName, lastName: user.lastName, role: user.role },
+        `Login blocked: ${user.username} (wrong portal)`,
+        "Auth",
+        `Login attempt blocked — ${user.role} account used the ${expectedPortal} portal`,
+        ipAddress,
+        AuditSeverity.WARNING,
+        undefined,
+        undefined,
+        "failure"
+      );
+      res.status(403).json({
+        code: "WRONG_PORTAL",
+        role: user.role,
+        message: `This account is registered as ${user.role}. Please sign in through the ${expectedPortal === 'ADMIN' ? 'Admin' : expectedPortal === 'REGISTRAR' ? 'Registrar' : 'Teacher'} portal.`,
+      });
+      return;
+    }
+
     // Issue access + refresh token pair
     const accessToken = signAccessToken({
       id: user.id,
