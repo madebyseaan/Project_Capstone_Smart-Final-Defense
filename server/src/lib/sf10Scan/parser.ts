@@ -130,6 +130,41 @@ function subjectFromNumbers(name: string, nums: number[]): ScanSubject {
   return { subjectName: name, terms, finalRating, confidence: 0.8 };
 }
 
+/**
+ * Splits a multi-year SF10 (one document, several grade-level blocks) into one
+ * draft per year. Falls back to a single draft when only one block is present.
+ * Each scholastic block starts with a "School:" row.
+ */
+export function parseSf10Years(raw: string): Sf10ScanDraft[] {
+  const text = String(raw ?? "");
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  let starts: number[] = [];
+  lines.forEach((l, i) => {
+    if (/^\s*school\s*:/i.test(l)) starts.push(i);
+  });
+  if (starts.length <= 1) {
+    // Header may be split across lines — fall back to the "School Year:" marker.
+    const syStarts: number[] = [];
+    lines.forEach((l, i) => {
+      if (/school\s*year\s*:/i.test(l)) syStarts.push(i);
+    });
+    starts = syStarts;
+  }
+  if (starts.length <= 1) return [parseSf10Text(text)];
+
+  const drafts: Sf10ScanDraft[] = [];
+  for (let s = 0; s < starts.length; s++) {
+    const from = starts[s];
+    const to = s + 1 < starts.length ? starts[s + 1] : lines.length;
+    drafts.push(parseSf10Text(lines.slice(from, to).join("\n")));
+  }
+  return drafts;
+}
+
 export function parseSf10Text(raw: string): Sf10ScanDraft {
   const text = String(raw ?? "");
   const lines = text

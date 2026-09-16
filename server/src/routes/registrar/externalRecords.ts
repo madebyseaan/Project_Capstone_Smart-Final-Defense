@@ -129,6 +129,7 @@ export default function registerExternalRecordRoutes(router: Router): void {
         const result = await scanSf10Document(file.buffer, file.mimetype);
         res.json({
           draft: result.draft,
+          drafts: result.drafts,
           rawText: result.rawText,
           confidence: result.confidence,
           method: result.method,

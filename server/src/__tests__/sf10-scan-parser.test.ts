@@ -4,6 +4,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseSf10Text,
+  parseSf10Years,
   detectDocumentType,
   extractSchoolYear,
   extractGradeLevel,
@@ -134,6 +135,34 @@ describe("sf10Scan parser", () => {
       const science = draft.subjects.find((s) => s.subjectName === "Science")!;
       expect(science.terms).toHaveLength(3);
       expect(science.finalRating).toBeNull();
+    });
+
+    it("splits a multi-year SF10 into one draft per year", () => {
+      const twoYears = [
+        "School: VALLEJOS NATIONAL HIGH SCHOOL School ID: 221133 School Year: 2028-2029 Classified as Grade: 7 Section: Sampaguita",
+        "Filipino 84 85 86 85",
+        "MAPEH 86 85 85 85",
+        "General Average 85",
+        "School: VALLEJOS NATIONAL HIGH SCHOOL School ID: 221133 School Year: 2029-2030 Classified as Grade: 8 Section: Ilang-Ilang",
+        "Filipino 85 86 87 86",
+        "MAPEH 87 86 86 86",
+        "General Average 86",
+      ].join("\n");
+      const drafts = parseSf10Years(twoYears);
+      expect(drafts).toHaveLength(2);
+      expect(drafts[0].schoolYear).toBe("2028-2029");
+      expect(drafts[0].gradeLevel).toBe("GRADE_7");
+      expect(drafts[1].schoolYear).toBe("2029-2030");
+      expect(drafts[1].gradeLevel).toBe("GRADE_8");
+      expect(drafts[0].subjects.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("returns a single draft when only one year is present", () => {
+      const drafts = parseSf10Years(
+        "School: X School ID: 1 School Year: 2028-2029 Classified as Grade: 7 Section: A\nFilipino 84 85 86 85"
+      );
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0].schoolYear).toBe("2028-2029");
     });
 
     it("returns a confidence and no crash on empty input", () => {

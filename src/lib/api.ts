@@ -1067,6 +1067,7 @@ export interface Sf10ScanDraft {
 
 export interface Sf10ScanResponse {
   draft: Sf10ScanDraft;
+  drafts?: Sf10ScanDraft[];
   rawText: string;
   confidence: number;
   reason?: string;

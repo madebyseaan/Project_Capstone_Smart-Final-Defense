@@ -6,7 +6,7 @@
  */
 
 import * as XLSX from "xlsx";
-import { parseSf10Text, type Sf10ScanDraft } from "./parser";
+import { parseSf10Years, type Sf10ScanDraft } from "./parser";
 
 export function workbookToText(buffer: Buffer): string {
   const wb = XLSX.read(buffer, { type: "buffer" });
@@ -32,7 +32,7 @@ export function workbookToText(buffer: Buffer): string {
   return lines.join("\n");
 }
 
-export function parseSf10Workbook(buffer: Buffer): { draft: Sf10ScanDraft; rawText: string } {
+export function parseSf10Workbook(buffer: Buffer): { drafts: Sf10ScanDraft[]; rawText: string } {
   const rawText = workbookToText(buffer);
-  return { draft: parseSf10Text(rawText), rawText };
+  return { drafts: parseSf10Years(rawText), rawText };
 }

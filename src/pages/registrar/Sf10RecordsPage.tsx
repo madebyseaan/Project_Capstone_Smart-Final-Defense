@@ -27,6 +27,7 @@ import {
   type ExternalSchoolRecordPayload,
   type ExternalSubjectInput,
   type SF10Data,
+  type Sf10ScanDraft,
 } from "@/lib/api";
 import SF10Form from "./components/SF10Form";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -286,6 +287,59 @@ export default function Sf10RecordsPage() {
     }
   };
 
+  const draftSource = (draft: Sf10ScanDraft, isSheet: boolean) =>
+    isSheet ? "SF10_XLSX" : draft.documentType === "SF9" ? "SF9_SCAN" : "SF10_SCAN";
+
+  const draftToPayload = (draft: Sf10ScanDraft, rawText: string, isSheet: boolean): ExternalSchoolRecordPayload => ({
+    schoolYear: String(draft.schoolYear),
+    gradeLevel: (draft.gradeLevel as ExternalSchoolRecordPayload["gradeLevel"]) || "GRADE_8",
+    schoolName: draft.schoolName || "Previous school",
+    schoolId: draft.schoolId || undefined,
+    sectionName: draft.sectionName || undefined,
+    adviserName: draft.adviserName || undefined,
+    formType: draft.documentType === "SF9" ? "SF9" : "SF10",
+    isPartialYear: !isSheet && draft.documentType === "SF9",
+    source: draftSource(draft, isSheet),
+    ocrRawText: rawText || undefined,
+    subjects: draft.subjects.map((s) => ({
+      subjectName: s.subjectName,
+      terms: s.terms.length ? s.terms : undefined,
+      finalRating: s.finalRating != null ? s.finalRating : undefined,
+    })),
+  });
+
+  const prefillFromDraft = (draft: Sf10ScanDraft, rawText: string, isSheet: boolean) => {
+    resetForm();
+    setIsPartialYear(!isSheet && draft.documentType === "SF9");
+    setScanSource(draftSource(draft, isSheet));
+    setSchoolYear(draft.schoolYear || "");
+    setGradeLevel(draft.gradeLevel || "GRADE_8");
+    setSchoolName(draft.schoolName || "");
+    setSchoolId(draft.schoolId || "");
+    setSectionName(draft.sectionName || "");
+    setAdviserName(draft.adviserName || "");
+    setFormType(draft.documentType === "SF9" ? "SF9" : "SF10");
+    setOcrRawText(rawText || "");
+    setSubjects(
+      draft.subjects.length > 0
+        ? draft.subjects.map((s) => {
+            const term = (label: string) => {
+              const t = s.terms.find((x) => x.label === label);
+              return t != null ? String(t.value) : "";
+            };
+            return {
+              subjectCode: "",
+              subjectName: s.subjectName,
+              t1: term("T1"),
+              t2: term("T2"),
+              t3: term("T3"),
+              finalRating: s.finalRating != null ? String(s.finalRating) : "",
+            };
+          })
+        : [emptySubject()]
+    );
+  };
+
   const handleScanFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -295,42 +349,41 @@ export default function Sf10RecordsPage() {
     try {
       const uploadFile = await prepareImageForUpload(file);
       const res = await registrarApi.scanSf10(uploadFile);
-      const { draft, rawText, confidence, reason } = res.data;
+      const { rawText, confidence, reason } = res.data;
       if (reason) {
         toast.error(reason);
         return;
       }
-      resetForm();
-      setIsPartialYear(!isSheet && draft.documentType === "SF9");
-      setScanSource(isSheet ? "SF10_XLSX" : draft.documentType === "SF9" ? "SF9_SCAN" : "SF10_SCAN");
-      setSchoolYear(draft.schoolYear || "");
-      setGradeLevel(draft.gradeLevel || "GRADE_8");
-      setSchoolName(draft.schoolName || "");
-      setSchoolId(draft.schoolId || "");
-      setSectionName(draft.sectionName || "");
-      setAdviserName(draft.adviserName || "");
-      setFormType(draft.documentType === "SF9" ? "SF9" : "SF10");
-      setOcrRawText(rawText || "");
-      setSubjects(
-        draft.subjects.length > 0
-          ? draft.subjects.map((s) => {
-              const term = (label: string) => {
-                const t = s.terms.find((x) => x.label === label);
-                return t != null ? String(t.value) : "";
-              };
-              return {
-                subjectCode: "",
-                subjectName: s.subjectName,
-                t1: term("T1"),
-                t2: term("T2"),
-                t3: term("T3"),
-                finalRating: s.finalRating != null ? String(s.finalRating) : "",
-              };
-            })
-          : [emptySubject()]
-      );
-      setDialogOpen(true);
-      toast.success(`Scanned (${Math.round((confidence || 0) * 100)}% confidence) — review and correct before saving`);
+
+      const all = res.data.drafts && res.data.drafts.length ? res.data.drafts : [res.data.draft];
+      const drafts = all.filter((d) => /^\d{4}-\d{4}$/.test(d.schoolYear ?? "") && d.subjects.length > 0);
+      if (drafts.length === 0) {
+        toast.error("Couldn't read any grade years — enter manually instead.");
+        return;
+      }
+
+      if (drafts.length === 1) {
+        prefillFromDraft(drafts[0], rawText, isSheet);
+        setDialogOpen(true);
+        toast.success(`Scanned (${Math.round((confidence || 0) * 100)}% confidence) — review before saving`);
+        return;
+      }
+
+      // One SF10 can hold several years — save them all at once.
+      let saved = 0;
+      for (const d of drafts) {
+        try {
+          await registrarApi.createExternalRecord(studentId, draftToPayload(d, rawText, isSheet));
+          saved++;
+        } catch (err) {
+          const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+          toast.error(data?.message || data?.error || `Failed to save ${d.gradeLevel} ${d.schoolYear}`);
+        }
+      }
+      if (saved > 0) {
+        toast.success(`Imported ${saved} prior year${saved !== 1 ? "s" : ""} — review each record.`);
+        void loadData();
+      }
     } catch (err) {
       const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
       toast.error(data?.message || data?.error || "Scan failed — enter manually instead");

@@ -31,7 +31,9 @@ describe("sf10Scan xlsx", () => {
   });
 
   it("parses header fields and subjects from a workbook", () => {
-    const { draft } = parseSf10Workbook(makeWorkbook());
+    const { drafts } = parseSf10Workbook(makeWorkbook());
+    const draft = drafts[0];
+    expect(drafts.length).toBeGreaterThanOrEqual(1);
     expect(draft.schoolName).toBe("Montevista National High School");
     expect(draft.schoolId).toBe("123456");
     expect(draft.schoolYear).toBe("2029-2030");

@@ -11,10 +11,11 @@
 import { preprocessImage } from "./preprocess";
 import { runOcr } from "./ocr";
 import { parseSf10Workbook } from "./xlsx";
-import { parseSf10Text, type Sf10ScanDraft } from "./parser";
+import { parseSf10Text, parseSf10Years, type Sf10ScanDraft } from "./parser";
 
 export interface ScanResult {
   draft: Sf10ScanDraft;
+  drafts: Sf10ScanDraft[];
   rawText: string;
   confidence: number;
   reason?: string;
@@ -39,13 +40,16 @@ export async function scanSf10Document(buffer: Buffer, mimetype?: string): Promi
     (mimetype.includes("spreadsheetml") || mimetype.includes("ms-excel")) ||
     looksLikeZip(buffer);
 
+  const emptyDraft = parseSf10Text("");
+
   if (isSpreadsheet) {
     try {
-      const { draft, rawText } = parseSf10Workbook(buffer);
-      return { draft, rawText, confidence: draft.confidence, method: "xlsx" };
+      const { drafts, rawText } = parseSf10Workbook(buffer);
+      return { draft: drafts[0], drafts, rawText, confidence: drafts[0]?.confidence ?? 0, method: "xlsx" };
     } catch (err: any) {
       return {
-        draft: parseSf10Text(""),
+        draft: emptyDraft,
+        drafts: [emptyDraft],
         rawText: "",
         confidence: 0,
         method: "xlsx",
@@ -58,12 +62,13 @@ export async function scanSf10Document(buffer: Buffer, mimetype?: string): Promi
     return await serialize(async () => {
       const preprocessed = await preprocessImage(buffer);
       const { text, confidence } = await runOcr(preprocessed);
-      const draft = parseSf10Text(text);
-      return { draft, rawText: text, confidence, method: "ocr" as const };
+      const drafts = parseSf10Years(text);
+      return { draft: drafts[0], drafts, rawText: text, confidence, method: "ocr" as const };
     });
   } catch (err: any) {
     return {
-      draft: parseSf10Text(""),
+      draft: emptyDraft,
+      drafts: [emptyDraft],
       rawText: "",
       confidence: 0,
       method: "ocr",
