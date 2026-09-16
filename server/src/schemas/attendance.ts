@@ -9,6 +9,7 @@ const attendanceStatusEnum = z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
 const attendanceRecordSchema = z.object({
   studentId: z.string().min(1, 'studentId is required'),
   status: attendanceStatusEnum,
+  remarks: z.string().max(500).nullable().optional(),
 });
 
 export const attendanceBulkSchema = z.object({

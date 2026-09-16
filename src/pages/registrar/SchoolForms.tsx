@@ -7,7 +7,7 @@ import {
   Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import api, { registrarApi, type Section, SERVER_URL, type SF9Data, type SF10Data, type SF1Data, type SF5Data, type SF1Student } from "@/lib/api";
+import api, { registrarApi, type Section, SERVER_URL, type SF9Data, type SF10Data, type SF1Data, type SF2Data, type SF5Data, type SF1Student } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import SF5Form from "./components/SF5Form";
 import SF9Form from "./components/SF9Form";
@@ -32,6 +32,11 @@ interface FormStudent {
 }
 
 type ViewMode = "list" | "sf1" | "sf2" | "sf5" | "sf6" | "sf9" | "sf10" | "bulk_sf9" | "bulk_sf10";
+
+const MONTH_NAMES = [
+  "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+  "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
+];
 
 /** Right-side slide-over drawer: fixed overlay, independent scroll, no content squeeze. */
 function RightDrawer({
@@ -91,7 +96,9 @@ export default function SchoolForms() {
   
   // Form data states
   const [sf1Data, setSf1Data] = useState<SF1Data | null>(null);
-  const [sf2Data, setSf2Data] = useState<any>(null);
+  const [sf2Data, setSf2Data] = useState<SF2Data | null>(null);
+  const [sf2Month, setSf2Month] = useState<number>(new Date().getMonth() + 1);
+  const [sf2Year, setSf2Year] = useState<number>(new Date().getFullYear());
   const [sf5Data, setSf5Data] = useState<SF5Data | null>(null);
   const [sf6Data, setSf6Data] = useState<any>(null);
   const [sf9Data, setSf9Data] = useState<any>(null);
@@ -99,6 +106,7 @@ export default function SchoolForms() {
   const [bulkSf9Data, setBulkSf9Data] = useState<SF9Data[]>([]);
   const [bulkSf10Data, setBulkSf10Data] = useState<SF10Data[]>([]);
   const sf1PrintRef = useRef<HTMLDivElement | null>(null);
+  const sf2PrintRef = useRef<HTMLDivElement | null>(null);
   const sf5PrintRef = useRef<HTMLDivElement | null>(null);
   const sf9PrintRef = useRef<HTMLDivElement | null>(null);
   const sf10PrintRef = useRef<HTMLDivElement | null>(null);
@@ -169,7 +177,7 @@ export default function SchoolForms() {
     loadStudents();
   }, [selectedSection, schoolYear]);
 
-  const executePrint = (ref: React.RefObject<HTMLDivElement | null>, styleId: string) => {
+  const executePrint = (ref: React.RefObject<HTMLDivElement | null>, styleId: string, orientation: "portrait" | "landscape" = "portrait") => {
     const formNode = ref.current;
     if (!formNode) return;
 
@@ -182,7 +190,7 @@ export default function SchoolForms() {
     printStyle.id = styleId;
     printStyle.textContent = `
       @media print {
-        @page { size: A4 portrait; margin: 10mm 8mm; }
+        @page { size: A4 ${orientation}; margin: 10mm 8mm; }
         body > *:not(.sf-print-container) { display: none !important; }
         .sf-print-container { display: block !important; width: 100% !important; }
         .sf-print-container .print-form { box-shadow: none !important; margin: 0 !important; padding: 4mm !important; border: none !important; width: 100% !important; max-width: none !important; page-break-after: always !important; }
@@ -253,18 +261,28 @@ export default function SchoolForms() {
     }
   };
 
-  const handleViewSF2 = async () => {
-    if (!selectedSection) return;
+  const loadSf2 = async (sectionId: string, month: number, year: number) => {
     setLoading(true);
     try {
-      const response = await registrarApi.getAttendanceSummary(selectedSection);
-      setSf2Data(response.data);
-      setViewMode("sf2");
+      const response = await registrarApi.getSF2(sectionId, month, year);
+      setSf2Data(response.data.data);
     } catch (error) {
       console.error("Error loading SF2:", error);
+      setError("Failed to load SF2 attendance.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewSF2 = async () => {
+    if (!selectedSection) return;
+    const now = new Date();
+    const month = sf2Month || now.getMonth() + 1;
+    const year = sf2Year || now.getFullYear();
+    setSf2Month(month);
+    setSf2Year(year);
+    await loadSf2(selectedSection, month, year);
+    setViewMode("sf2");
   };
 
   const handleViewSF5 = async () => {
@@ -617,9 +635,88 @@ export default function SchoolForms() {
     );
   }
 
-  // SF2 View - Daily Attendance
+  // SF2 View - Daily Attendance (DepEd-aligned)
   if (viewMode === "sf2" && sf2Data) {
-    return <SF2Form data={sf2Data} onBack={handleBack} />;
+    const handlePrint = () => executePrint(sf2PrintRef, "sf2-print-style", "landscape");
+
+    const handleDownloadExcel = () => {
+      const token = sessionStorage.getItem("token_registrar");
+      const url = `${api.defaults.baseURL}/attendance/export/${sf2Data.section.id}?month=${sf2Month}&year=${sf2Year}`;
+      fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => res.blob())
+        .then((blob) => {
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = `SF2_${sf2Data.section.name}_${sf2Data.monthLabel}_${sf2Year}.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(blobUrl);
+        })
+        .catch((err) => console.error("Error downloading SF2:", err));
+    };
+
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-wrap items-center justify-between gap-3 print-hide">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={handleBack}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h2 className="text-xl font-bold text-foreground">SF2 - Daily Attendance Report of Learners</h2>
+              <p className="text-sm text-muted-foreground">
+                {sf2Data.section.name} ({String(sf2Data.section.gradeLevel || "").replace("_", " ")}) - {sf2Data.section.schoolYear}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={sf2Month}
+              onChange={(e) => {
+                const m = Number(e.target.value);
+                setSf2Month(m);
+                void loadSf2(sf2Data.section.id, m, sf2Year);
+              }}
+              className="h-9 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+              aria-label="Report month"
+            >
+              {MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>{name}</option>
+              ))}
+            </select>
+            <select
+              value={sf2Year}
+              onChange={(e) => {
+                const y = Number(e.target.value);
+                setSf2Year(y);
+                void loadSf2(sf2Data.section.id, sf2Month, y);
+              }}
+              className="h-9 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+              aria-label="Report year"
+            >
+              {[sf2Year - 2, sf2Year - 1, sf2Year, sf2Year + 1].map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <Button onClick={handleDownloadExcel} variant="outline" size="sm" className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs">
+              <Download className="w-4 h-4 mr-2" />
+              Download Excel
+            </Button>
+            <Button onClick={handlePrint} variant="default" size="sm" className="font-semibold text-xs shadow-sm shadow-primary/20">
+              <Printer className="w-4 h-4 mr-2" />
+              Print SF2
+            </Button>
+          </div>
+        </div>
+
+        <div ref={sf2PrintRef}>
+          <SF2Form data={sf2Data} />
+        </div>
+      </div>
+    );
   }
 
   // SF5 View - Promotion Report

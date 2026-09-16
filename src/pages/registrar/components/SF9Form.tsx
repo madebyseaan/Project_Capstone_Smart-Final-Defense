@@ -208,12 +208,21 @@ export default function SF9Form({ data, fullLogoUrl, highlightSubject }: SF9Form
             </tr>
           </thead>
           <tbody>
-            {['School Days', 'Days Present', 'Days Absent'].map(row => (
-              <tr key={row} className="border-b border-gray-600">
-                <td className="border-r border-gray-600 p-1.5 font-medium text-gray-900">{row}</td>
-                {Array(12).fill('').map((_, i) => (
-                  <td key={i} className="border-r border-gray-600 p-1.5 text-center"></td>
+            {[
+              { label: "No. of School Days", pick: (m: any) => m.schoolDays, total: data.attendance?.total?.schoolDays },
+              { label: "No. of Days Present", pick: (m: any) => m.present, total: data.attendance?.total?.present },
+              { label: "No. of Days Absent", pick: (m: any) => m.absent, total: data.attendance?.total?.absent },
+            ].map((row) => (
+              <tr key={row.label} className="border-b border-gray-600">
+                <td className="border-r border-gray-600 p-1.5 font-medium text-gray-900">{row.label}</td>
+                {(data.attendance?.months ?? []).map((m) => (
+                  <td key={m.key} className="border-r border-gray-600 p-1.5 text-center text-gray-900">
+                    {row.pick(m) || ""}
+                  </td>
                 ))}
+                <td className="border-r border-gray-600 p-1.5 text-center font-bold text-gray-900">
+                  {row.total ?? ""}
+                </td>
               </tr>
             ))}
           </tbody>

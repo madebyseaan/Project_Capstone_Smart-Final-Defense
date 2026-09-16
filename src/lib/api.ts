@@ -1127,9 +1127,14 @@ export interface SF9Data {
     remarks?: string;
   }[];
   attendance: {
-    T1?: { present: number; absent: number; tardy: number };
-    T2?: { present: number; absent: number; tardy: number };
-    T3?: { present: number; absent: number; tardy: number };
+    months: {
+      key: string;
+      label: string;
+      schoolDays: number;
+      present: number;
+      absent: number;
+    }[];
+    total: { schoolDays: number; present: number; absent: number };
   };
   values: {
     mpiDescription: string;
@@ -1146,6 +1151,58 @@ export interface SF9Data {
     region: string;
     schoolHeadName: string;
   };
+}
+
+export interface SF2Data {
+  section: {
+    id: string;
+    name: string;
+    gradeLevel: string;
+    program?: string;
+    schoolYear: string;
+    adviserName?: string | null;
+  };
+  schoolSettings?: {
+    schoolName: string;
+    schoolId: string;
+    division: string;
+    region: string;
+    schoolHeadName: string;
+    address?: string;
+    district?: string;
+  };
+  schoolDays: { date: string; dayNum: number; dayLetter: string }[];
+  groups: {
+    key: "MALE" | "FEMALE" | "OTHER";
+    label: string;
+    students: {
+      studentId: string;
+      lrn: string;
+      lastName: string;
+      firstName: string;
+      middleName: string | null;
+      gender: string | null;
+      marks: Record<string, string>;
+      absent: number;
+      tardy: number;
+      present: number;
+      maxConsecutiveAbsent: number;
+      remarks: string;
+    }[];
+  }[];
+  dailyPresent: Record<string, number>;
+  summary: {
+    noOfDaysOfClasses: number;
+    enrolmentMale: number;
+    enrolmentFemale: number;
+    enrolmentTotal: number;
+    averageDailyAttendance: number;
+    percentageAttendance: number;
+    studentsAbsent5Consecutive: number;
+  };
+  monthLabel: string;
+  year: number;
+  month: number;
 }
 
 export interface SF10Data {
@@ -1455,8 +1512,8 @@ export const registrarApi = {
   getSF1: (sectionId: string, schoolYear?: string) =>
     api.get<SF1Data>(`/registrar/forms/sf1/${sectionId}`, { params: { schoolYear } }),
 
-  getAttendanceSummary: (sectionId: string, startDate?: string, endDate?: string) =>
-    api.get(`/attendance/summary/${sectionId}`, { params: { startDate, endDate } }),
+  getSF2: (sectionId: string, month: number, year: number) =>
+    api.get<{ success: boolean; data: SF2Data }>(`/attendance/sf2/${sectionId}`, { params: { month, year } }),
 
   getSections: (params?: { schoolYear?: string; gradeLevel?: string }) =>
     api.get<Section[]>("/registrar/sections", { params }),

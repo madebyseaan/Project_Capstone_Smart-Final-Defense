@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
 import { getSchoolIdentityForYear } from "../../lib/schoolSettingsSnapshot";
+import { buildSf9Attendance } from "../../lib/attendanceAggregate";
 import { buildSf10Records } from "../../lib/sf10";
 import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE } from "../../lib/promotion";
 import {
@@ -294,6 +295,16 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
     // Use profile snapshot if available (historical), else current student data
     const snap = enrollment.profileSnapshot as Record<string, any> | null;
 
+    // Attendance record — aggregated per month across the school year
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        studentId,
+        section: { schoolYear: currentSchoolYear },
+      },
+      select: { studentId: true, date: true, status: true },
+    });
+    const attendance = buildSf9Attendance(attendanceRecords, currentSchoolYear);
+
     // Fetch school settings for SF9 header from year snapshot
     const schoolIdentity = await getSchoolIdentityForYear(currentSchoolYear);
 
@@ -324,7 +335,7 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
           final: s.finalGrade,
           remarks: s.finalGrade ? (s.finalGrade >= 75 ? "Passed" : "Failed") : null
         })),
-      attendance: {},
+      attendance: attendance,
       values: [],
       generalAverage,
       honors: generalAverage ? (generalAverage >= 98 ? "With Highest Honors" : generalAverage >= 95 ? "With High Honors" : generalAverage >= 90 ? "With Honors" : null) : null,
