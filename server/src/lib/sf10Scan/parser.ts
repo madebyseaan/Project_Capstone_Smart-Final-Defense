@@ -61,7 +61,7 @@ export function extractSchoolId(text: string): string | null {
 
 /** Strips a following label that OCR merged onto the same row (e.g. "Rizal Transferred In:"). */
 const TRAILING_LABEL =
-  /\s+(?:transferred in|last grade completed|transfer certificate|date transferred in|school year|school id|classified as grade|section|name of elementary school|general average|birthdate|lrn)\s*:.*$/i;
+  /\s+(?:transferred in|last grade completed|transfer certificate|date transferred in|school year|school id|classified as grade|section|district|signature|name of elementary school|general average|birthdate|lrn)\s*:.*$/i;
 
 export function cleanLabeledValue(value: string): string {
   return String(value ?? "").replace(TRAILING_LABEL, "").trim();
@@ -78,6 +78,18 @@ export function extractLabeledValue(lines: string[], label: RegExp): string | nu
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim();
       if (next) return cleanLabeledValue(next);
+    }
+  }
+  return null;
+}
+
+/** Reads the adviser/teacher name, trimming a following "Signature:" label. */
+export function extractAdviserName(lines: string[]): string | null {
+  for (const line of lines) {
+    const m = line.match(/(?:adviser|teacher)(?:\s*\/\s*teacher)?\s*:\s*(.+)/i);
+    if (m) {
+      const value = cleanLabeledValue(m[1]).replace(/\s*signature\s*:.*$/i, "").trim();
+      if (value) return value;
     }
   }
   return null;
@@ -159,7 +171,7 @@ export function parseSf10Text(raw: string): Sf10ScanDraft {
     schoolYear: extractSchoolYear(text),
     gradeLevel: extractGradeLevel(text),
     sectionName: extractLabeledValue(lines, /section/i),
-    adviserName: extractLabeledValue(lines, /adviser|teacher/i),
+    adviserName: extractAdviserName(lines),
     subjects,
     confidence: Math.round(confidence * 100) / 100,
     warnings,

@@ -10,6 +10,7 @@ import {
   extractSchoolId,
   extractLabeledValue,
   extractSchoolName,
+  extractAdviserName,
   cleanLabeledValue,
   parseGradeNumbers,
 } from "../lib/sf10Scan/parser";
@@ -73,6 +74,14 @@ describe("sf10Scan parser", () => {
       expect(cleanLabeledValue("MABINI NATIONAL HIGH SCHOOL School ID: 112233")).toBe(
         "MABINI NATIONAL HIGH SCHOOL"
       );
+      expect(cleanLabeledValue("Sampaguita District: District II")).toBe("Sampaguita");
+    });
+
+    it("reads the adviser name without the trailing Signature label", () => {
+      expect(extractAdviserName(["/Teacher: MARIA CLARA SANTOS Signature:"])).toBe("MARIA CLARA SANTOS");
+      expect(
+        extractAdviserName(["Name of Adviser/Teacher: JUAN DELA CRUZ   Signature: ______"])
+      ).toBe("JUAN DELA CRUZ");
     });
 
     it("extracts school name without matching School ID/Year/Elementary", () => {
