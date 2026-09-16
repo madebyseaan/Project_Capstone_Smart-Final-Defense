@@ -161,8 +161,16 @@ function buildGradeForTarget(
   const ptScores = genScores(4, 20, ptPS, rand, exact);
   const qaScore = Math.round(Math.max(0, Math.min(100, 100 * (qaPS / 100))));
 
+  // Exam breakdown (ST1/ST2 max 10, TE max 30) scaled from the assessment score,
+  // so the ledger's EXS columns are populated (they read Grade.examScores).
+  const examScores = [
+    { name: "ST1", score: Math.round((qaScore / 100) * 10), maxScore: 10 },
+    { name: "ST2", score: Math.round((qaScore / 100) * 10), maxScore: 10 },
+    { name: "TE", score: Math.round((qaScore / 100) * 30), maxScore: 30 },
+  ];
+
   const computed = calculateGrades(wwScores, ptScores, qaScore, 100, weights.ww, weights.pt, weights.qa);
-  return { writtenWorkScores: wwScores, perfTaskScores: ptScores, quarterlyAssessScore: qaScore, quarterlyAssessMax: 100, computed };
+  return { writtenWorkScores: wwScores, perfTaskScores: ptScores, examScores, quarterlyAssessScore: qaScore, quarterlyAssessMax: 100, computed };
 }
 
 // ─── Per-Subject Tier Assignment ─────────────────────────────────────────────
@@ -711,6 +719,7 @@ async function main() {
               update: {
                 writtenWorkScores: gradeData.writtenWorkScores as any,
                 perfTaskScores: gradeData.perfTaskScores as any,
+                examScores: gradeData.examScores as any,
                 quarterlyAssessScore: gradeData.quarterlyAssessScore,
                 quarterlyAssessMax: gradeData.quarterlyAssessMax,
                 writtenWorkPS: gradeData.computed.writtenWorkPS,
@@ -728,6 +737,7 @@ async function main() {
                 term,
                 writtenWorkScores: gradeData.writtenWorkScores as any,
                 perfTaskScores: gradeData.perfTaskScores as any,
+                examScores: gradeData.examScores as any,
                 quarterlyAssessScore: gradeData.quarterlyAssessScore,
                 quarterlyAssessMax: gradeData.quarterlyAssessMax,
                 writtenWorkPS: gradeData.computed.writtenWorkPS,
@@ -1009,10 +1019,23 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
-    console.error("Error during grade seeding:", e);
-    process.exit(1);
+  .then(async () => {
+    // The pg pool behind the Prisma driver adapter (and/or imported modules) can
+    // keep handles open, so the process may never exit on its own — which made
+    // the admin "Seed + Finalize" button spin forever. Exit explicitly.
+    try {
+      await prisma.$disconnect();
+    } catch {
+      // ignore — we are exiting anyway
+    }
+    process.exit(0);
   })
-  .finally(async () => {
-    await prisma.$disconnect();
+  .catch(async (e) => {
+    console.error("Error during grade seeding:", e);
+    try {
+      await prisma.$disconnect();
+    } catch {
+      // ignore
+    }
+    process.exit(1);
   });

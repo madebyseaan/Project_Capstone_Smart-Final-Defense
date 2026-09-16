@@ -597,17 +597,36 @@ export default function (router: Router) {
         if (finalized) scriptArgs.push("--finalized");
         if (clearFirst) scriptArgs.push("--clear");
 
+        // Hard cap so the admin button can never spin forever even if the child
+        // hangs (data already written by the child is kept).
+        const SEED_TIMEOUT_MS = 15 * 60 * 1000;
         const output = await new Promise<string>((resolvePromise, rejectPromise) => {
           const child = spawn(process.execPath, [bin, ...scriptArgs], { cwd: serverRoot, env: process.env });
           let out = "";
+          let settled = false;
+          const finish = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            fn();
+          };
+          const timer = setTimeout(() => {
+            try { child.kill(); } catch { /* ignore */ }
+            finish(() => rejectPromise(new Error(
+              `Seed script exceeded ${SEED_TIMEOUT_MS / 60000} minutes and was stopped. Data written so far is kept — check Rollover Status.`,
+            )));
+          }, SEED_TIMEOUT_MS);
           child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
           child.stderr.on("data", (d: Buffer) => { out += d.toString(); });
-          child.on("error", (err) => rejectPromise(err));
+          child.on("error", (err) => { clearTimeout(timer); finish(() => rejectPromise(err)); });
           child.on("close", (code) => {
-            if (code === 0) resolvePromise(out);
-            else rejectPromise(new Error(`Seed script exited with code ${code}`));
+            clearTimeout(timer);
+            finish(() => (code === 0 ? resolvePromise(out) : rejectPromise(new Error(`Seed script exited with code ${code}`))));
           });
         });
+
+        logger.info(
+          `[DevSeed] Seed finished for ${schoolYearLabel}: ${output.split("\n").map((l) => l.trim()).filter(Boolean).slice(-3).join(" | ")}`,
+        );
 
         await createAuditLog(
           AuditAction.UPDATE,
