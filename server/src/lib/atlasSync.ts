@@ -18,7 +18,14 @@ import { createAuditLog } from './audit';
 import { getEnrollProTeachers, getAllIntegrationV1Sections, resolveEnrollProSchoolYear } from './enrollproClient';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import { setCachedAtlasFaculty, setCachedEffectiveTeachingLoad } from './syncCache';
-import { atlasGet, ATLAS_BASE, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, fetchEffectiveTeachingLoad } from './sync/httpClient';
+import {
+  atlasGet,
+  ATLAS_BASE,
+  ATLAS_SCHOOL_ID,
+  resolveAtlasSchoolYear,
+  fetchEffectiveTeachingLoad,
+  invalidateAtlasSchoolYearCache,
+} from './sync/httpClient';
 import {
   mapGradeLevel,
   resolveSubjectCode,
@@ -52,6 +59,106 @@ let lastSyncResult: {
   teachersWithLoads: number; errors: string[];
 } | null = null;
 
+export type AtlasTeachingLoadState =
+  | 'POPULATED' | 'EMPTY' | 'UNAVAILABLE' | 'MISSING'
+  | 'INACTIVE' | 'REJECTED' | 'AUTH' | 'MISMATCH' | 'UNKNOWN';
+
+let teachingLoadHealth: {
+  state: AtlasTeachingLoadState;
+  atlasSchoolYearId: number | null;
+  atlasYearSource: string | null;
+  assignmentsInPayload: number;
+  assignmentsApplied: number;
+  consecutiveFailures: number;
+  lastError: string | null;
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+} = {
+  state: 'UNKNOWN',
+  atlasSchoolYearId: null,
+  atlasYearSource: null,
+  assignmentsInPayload: 0,
+  assignmentsApplied: 0,
+  consecutiveFailures: 0,
+  lastError: null,
+  lastCheckedAt: null,
+  lastSuccessAt: null,
+};
+
+export function getAtlasTeachingLoadHealth() {
+  return { ...teachingLoadHealth };
+}
+
+/**
+ * Record a failed effective-load fetch. Escalates to a CRITICAL audit entry on
+ * the 2nd consecutive failure — the admin-visible signal that teachers are
+ * losing class lists (the old code only logged a warning).
+ */
+function markTeachingLoadFailure(
+  state: Exclude<AtlasTeachingLoadState, 'POPULATED' | 'EMPTY' | 'UNKNOWN'>,
+  atlasSchoolYearId: number,
+  atlasYearSource: string,
+  message: string,
+): void {
+  const consecutiveFailures = teachingLoadHealth.consecutiveFailures + 1;
+  teachingLoadHealth = {
+    ...teachingLoadHealth,
+    state,
+    atlasSchoolYearId,
+    atlasYearSource,
+    consecutiveFailures,
+    lastError: message,
+    lastCheckedAt: new Date().toISOString(),
+  };
+
+  if (consecutiveFailures === 2) {
+    void createAuditLog(
+      AuditAction.UPDATE,
+      { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+      'ClassAssignment',
+      'SYNC',
+      `ATLAS teaching load failing for ${consecutiveFailures} consecutive sync cycles ` +
+      `(schoolYearId=${atlasSchoolYearId}, source=${atlasYearSource}): ${message}. ` +
+      `Teachers will show no classes until this recovers.`,
+      undefined,
+      AuditSeverity.CRITICAL,
+    ).catch(() => {});
+  }
+}
+
+function markTeachingLoadSuccess(
+  state: 'POPULATED' | 'EMPTY',
+  atlasSchoolYearId: number,
+  atlasYearSource: string,
+  assignmentsInPayload: number,
+): void {
+  const previousFailures = teachingLoadHealth.consecutiveFailures;
+  teachingLoadHealth = {
+    ...teachingLoadHealth,
+    state,
+    atlasSchoolYearId,
+    atlasYearSource,
+    assignmentsInPayload,
+    consecutiveFailures: 0,
+    lastError: null,
+    lastCheckedAt: new Date().toISOString(),
+    lastSuccessAt: new Date().toISOString(),
+  };
+
+  if (previousFailures >= 2) {
+    void createAuditLog(
+      AuditAction.UPDATE,
+      { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+      'ClassAssignment',
+      'SYNC',
+      `ATLAS teaching load recovered after ${previousFailures} failed cycle(s) ` +
+      `(schoolYearId=${atlasSchoolYearId}, state=${state}, assignments=${assignmentsInPayload}).`,
+      undefined,
+      AuditSeverity.INFO,
+    ).catch(() => {});
+  }
+}
+
 // -- Core sync logic --------------------------------------------------------
 export async function runAtlasSync(): Promise<typeof lastSyncResult> {
   if (syncRunning) {
@@ -72,18 +179,54 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     const settings = await prisma.systemSettings.findUnique({
       where: { id: 'main' },
-      select: { currentSchoolYear: true },
+      select: { currentSchoolYear: true, atlasAppliedScope: true },
     });
     const preferredLabel = settings?.currentSchoolYear ?? await getActiveSchoolYearLabel();
     const resolvedSY = await resolveEnrollProSchoolYear(preferredLabel);
     const enrollProSchoolYearId = resolvedSY.id;
     const schoolYearLabel = resolvedSY.yearLabel;
 
-    const resolvedAtlasSY = await resolveAtlasSchoolYear();
-    const atlasSchoolYearId = resolvedAtlasSY.id;
+    // Restart resilience: seed discovery with the last ATLAS year SMART applied
+    // (persisted as "{schoolId}:{schoolYearId}" in atlasAppliedScope).
+    const appliedScopeYearId = Number((settings?.atlasAppliedScope ?? '').split(':')[1]);
+    const atlasSeedYearId = Number.isFinite(appliedScopeYearId) && appliedScopeYearId > 0
+      ? appliedScopeYearId
+      : null;
+
+    const resolvedAtlasSY = await resolveAtlasSchoolYear(atlasSeedYearId);
+    let atlasSchoolYearId = resolvedAtlasSY.id;
+    let atlasYearSource: string = resolvedAtlasSY.source;
     logger.debug(
-      `[AtlasSync] Using EnrollPro SY ${schoolYearLabel} (id=${enrollProSchoolYearId}, source=${resolvedSY.source}) and Atlas SY id=${atlasSchoolYearId} (source=${resolvedAtlasSY.source})`,
+      `[AtlasSync] Using EnrollPro SY ${schoolYearLabel} (id=${enrollProSchoolYearId}, source=${resolvedSY.source}) and Atlas SY id=${atlasSchoolYearId} (source=${atlasYearSource})`,
     );
+
+    // Partial-rollover guard: ATLAS mirrors EnrollPro's numeric year id, so a
+    // mismatch means one side has rolled and the other has not. Applying now
+    // would file next year's load under the wrong label — fail closed instead.
+    const assertYearAlignment = (atlasId: number): void => {
+      if (atlasId === enrollProSchoolYearId) return;
+      const message =
+        `ATLAS active year ${atlasId} ≠ EnrollPro active year ${enrollProSchoolYearId} — ` +
+        `partial rollover; teaching load not applied`;
+      markTeachingLoadFailure('MISMATCH', atlasId, atlasYearSource, message);
+      throw new Error(message);
+    };
+    assertYearAlignment(atlasSchoolYearId);
+
+    // Label ↔ id consistency: the SMART label already has an EnrollPro numeric id
+    // in SchoolYear.externalId. If they disagree, a stale env/local fallback is in
+    // play (e.g. EnrollPro offline mid-rollover) and writes would be mislabeled.
+    const labelRow = await prisma.schoolYear.findUnique({
+      where: { label: schoolYearLabel },
+      select: { externalId: true },
+    });
+    if (labelRow?.externalId != null && labelRow.externalId !== enrollProSchoolYearId) {
+      const message =
+        `School year ${schoolYearLabel} maps to EnrollPro id ${labelRow.externalId}, ` +
+        `but active EnrollPro id resolved to ${enrollProSchoolYearId} — refusing to write mislabeled load`;
+      markTeachingLoadFailure('MISMATCH', atlasSchoolYearId, atlasYearSource, message);
+      throw new Error(message);
+    }
 
     // 1. Get all faculty from ATLAS (with graceful degradation)
     let atlasFaculty: any[] = [];
@@ -277,13 +420,37 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const fetchResults: FacultyAssignmentResult[] = [];
 
     // 5.1 Fetch effective annual teaching load (single call, validated per contract)
-    const effectiveResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+    let effectiveResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+
+    // Rollover self-heal: if the resolved year just went inactive, drop the cache,
+    // re-resolve the now-active year once, and refetch. This keeps annual ATLAS
+    // rollovers automatic even when /runtime/context is unavailable.
+    if (effectiveResult.status === 'inactive') {
+      invalidateAtlasSchoolYearCache();
+      const reResolved = await resolveAtlasSchoolYear();
+      if (reResolved.id !== atlasSchoolYearId) {
+        logger.warn(
+          `[AtlasSync] ATLAS school year ${atlasSchoolYearId} is no longer active — re-resolved to ${reResolved.id} (source=${reResolved.source})`,
+        );
+        atlasSchoolYearId = reResolved.id;
+        atlasYearSource = reResolved.source;
+        assertYearAlignment(atlasSchoolYearId);
+        effectiveResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+      }
+    }
+
     if (effectiveResult.status === 'ok') {
       const effectiveLoad = effectiveResult.data;
       // Cache the response for consumption by teacherSync and teacherDashboardComposer
       setCachedEffectiveTeachingLoad(ATLAS_SCHOOL_ID, atlasSchoolYearId, effectiveLoad);
       effectiveLoadState = effectiveLoad.source.state;
       effectiveAssignmentsCount = effectiveLoad.assignments.length;
+      markTeachingLoadSuccess(
+        effectiveLoad.source.state,
+        atlasSchoolYearId,
+        atlasYearSource,
+        effectiveLoad.assignments.length,
+      );
       logger.info(
         `[AtlasSync] Effective teaching load: state=${effectiveLoad.source.state}, ` +
         `assignments=${effectiveLoad.assignments.length}, version=${effectiveLoad.source.version}`,
@@ -319,6 +486,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       // Contract: fail closed — keep prior scoped version, do not apply current ownership.
       errors.push(`ATLAS payload rejected: ${effectiveResult.reason}`);
       logger.warn(`[AtlasSync] Effective teaching load rejected: ${effectiveResult.reason}`);
+      markTeachingLoadFailure('REJECTED', atlasSchoolYearId, atlasYearSource, effectiveResult.reason);
       await createAuditLog(
         AuditAction.UPDATE,
         { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
@@ -328,10 +496,23 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         undefined,
         AuditSeverity.WARNING,
       ).catch(() => {});
+    } else if (effectiveResult.status === 'inactive') {
+      // Fail closed: the requested year is no longer ATLAS's active year.
+      const message = `ATLAS school year ${atlasSchoolYearId} is inactive — no ownership applied`;
+      errors.push(message);
+      logger.warn(`[AtlasSync] ${message} (source=${atlasYearSource})`);
+      markTeachingLoadFailure('INACTIVE', atlasSchoolYearId, atlasYearSource, message);
+    } else if (effectiveResult.status === 'missing') {
+      // Fail closed: the requested year id does not exist in ATLAS (stale env pin).
+      const message = `ATLAS school year ${atlasSchoolYearId} not found in ATLAS — check ATLAS_SCHOOL_YEAR_ID`;
+      errors.push(message);
+      logger.warn(`[AtlasSync] ${message} (source=${atlasYearSource})`);
+      markTeachingLoadFailure('MISSING', atlasSchoolYearId, atlasYearSource, message);
     } else if (effectiveResult.status === 'auth') {
       // Contract: fail closed on 401/403; surface integration alert
       errors.push('ATLAS authentication failed (401/403) — token rejected or expired');
       logger.error('[AtlasSync] ATLAS auth failure — integration alert');
+      markTeachingLoadFailure('AUTH', atlasSchoolYearId, atlasYearSource, 'ATLAS authentication failed (401/403)');
       await createAuditLog(
         AuditAction.UPDATE,
         { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
@@ -343,8 +524,10 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       ).catch(() => {});
     } else {
       // unreachable
-      errors.push('Failed to fetch effective teaching load from ATLAS');
-      logger.warn('[AtlasSync] Effective teaching load fetch failed (unreachable)');
+      const message = `Failed to fetch effective teaching load from ATLAS (schoolYearId=${atlasSchoolYearId}, source=${atlasYearSource})`;
+      errors.push(message);
+      logger.warn(`[AtlasSync] ${message}`);
+      markTeachingLoadFailure('UNAVAILABLE', atlasSchoolYearId, atlasYearSource, message);
     }
 
     // 5.2 Fetch published schedules per faculty (for ScheduleEntry records)
@@ -368,14 +551,14 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     async function fetchPubEntriesForFaculty(af: any): Promise<any[]> {
       try {
         const data = await atlasGet(
-          `/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published/faculty/${af.id}?termIndex=active`,
+          `/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published/faculty/${af.id}`,
         );
         return Array.isArray(data?.entries) ? data.entries : [];
       } catch {
         // Try school-wide endpoint as fallback
         try {
           const data = await atlasGet(
-            `/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}?termIndex=active`,
+            `/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`,
           );
           return Array.isArray(data?.entries) ? data.entries : [];
         } catch { return []; }
@@ -819,15 +1002,34 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         let scheduleCleaned = 0;
         const teacherIdsWithSchedule = new Set(filteredScheduleEntries.map(e => e.teacherId));
 
+        // A class that repeats identically across terms (year-long subjects) collapses
+        // onto one row: store termIndex=null so it is treated as term-agnostic.
+        const classKeyOf = (e: (typeof filteredScheduleEntries)[number]) =>
+          `${e.teacherId}:${e.subjectCode}:${e.gradeLevel}:${e.sectionName.trim()}:${e.day}:${e.startTime}`;
+        const termIndexesByClassKey = new Map<string, Set<number | null>>();
+        for (const entry of filteredScheduleEntries) {
+          const key = classKeyOf(entry);
+          const terms = termIndexesByClassKey.get(key) ?? new Set<number | null>();
+          terms.add(entry.termIndex);
+          termIndexesByClassKey.set(key, terms);
+        }
+        const writtenClassKeys = new Set<string>();
+
         const existingEntries = await prisma.scheduleEntry.findMany({
           where: { teacherId: { in: Array.from(teacherIdsWithSchedule) }, schoolYear: schoolYearLabel },
-          select: { id: true, teacherId: true, subjectId: true, sectionId: true, day: true, startTime: true },
+          select: { id: true, teacherId: true, subjectId: true, sectionId: true, day: true, startTime: true, termIndex: true },
         });
         const existingByKey = new Map(
-          existingEntries.map(e => [`${e.teacherId}:${e.subjectId}:${e.sectionId}:${e.day}:${e.startTime}`, e.id]),
+          existingEntries.map(e => [`${e.teacherId}:${e.subjectId}:${e.sectionId}:${e.day}:${e.startTime}`, e]),
         );
 
         for (const entry of filteredScheduleEntries) {
+          const classKey = classKeyOf(entry);
+          if (writtenClassKeys.has(classKey)) continue;
+          writtenClassKeys.add(classKey);
+          const termIndexes = termIndexesByClassKey.get(classKey);
+          const storedTermIndex = termIndexes && termIndexes.size > 1 ? null : entry.termIndex;
+
           const smartSubjectCode = resolveSubjectCode(entry.subjectCode, entry.gradeLevel);
           let subject = subjectByCode.get(smartSubjectCode);
           if (!subject) {
@@ -845,9 +1047,19 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           if (!section) continue;
 
           const dedupKey = `${entry.teacherId}:${subject.id}:${section.id}:${entry.day}:${entry.startTime}`;
-          const existingId = existingByKey.get(dedupKey);
-          if (existingId) {
+          const existing = existingByKey.get(dedupKey);
+          if (existing) {
             existingByKey.delete(dedupKey);
+            if (existing.termIndex === storedTermIndex) continue;
+            try {
+              await prisma.scheduleEntry.update({
+                where: { id: existing.id },
+                data: { termIndex: storedTermIndex, endTime: entry.endTime, roomId: entry.roomId },
+              });
+              scheduleCreated++;
+            } catch (err: any) {
+              logger.warn(`[AtlasSync] Schedule entry term update failed: ${err.message}`);
+            }
             continue;
           }
 
@@ -860,11 +1072,11 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
                   day: entry.day, startTime: entry.startTime,
                 },
               },
-              update: { endTime: entry.endTime, roomId: entry.roomId, termIndex: entry.termIndex },
+              update: { endTime: entry.endTime, roomId: entry.roomId, termIndex: storedTermIndex },
               create: {
                 teacherId: entry.teacherId, subjectId: subject.id,
                 sectionId: section.id, schoolYear: schoolYearLabel,
-                termIndex: entry.termIndex,
+                termIndex: storedTermIndex,
                 day: entry.day, startTime: entry.startTime,
                 endTime: entry.endTime, roomId: entry.roomId,
               },
@@ -875,7 +1087,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           }
         }
 
-        const staleIds = Array.from(existingByKey.values());
+        const staleIds = Array.from(existingByKey.values()).map(e => e.id);
         if (staleIds.length > 0 && epSectionById.size > 0) {
           await prisma.scheduleEntry.deleteMany({ where: { id: { in: staleIds } } });
           scheduleCleaned = staleIds.length;
@@ -925,6 +1137,13 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     }
 
     if (hgLoadsSkipped > 0) logger.info(`[AtlasSync] Skipped ${hgLoadsSkipped} Homeroom Guidance loads (HG is a location, not a subject)`);
+    // Applied = resolved ownership pairs present in SMART for the current year.
+    // `created` only counts upserts this cycle and is 0 on idempotent re-runs,
+    // which would wrongly read as "nothing applied" in the health panel.
+    teachingLoadHealth = {
+      ...teachingLoadHealth,
+      assignmentsApplied: effectiveLoadState === 'POPULATED' ? loads.length : 0,
+    };
     lastSyncResult = { matched, created, deleted, teachersWithLoads, errors };
     lastSyncAt = new Date();
     logger.debug(`[AtlasSync] ✔ Done: matched=${matched}, created=${created}, deleted=${deleted}, teachers=${teachersWithLoads}, errors=${errors.length}`);
@@ -944,6 +1163,7 @@ export function getSyncStatus() {
     running: syncRunning,
     lastSyncAt: lastSyncAt?.toISOString() ?? null,
     result: lastSyncResult,
+    teachingLoad: getAtlasTeachingLoadHealth(),
   };
 }
 

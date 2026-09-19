@@ -14,6 +14,7 @@
 import http from 'http';
 import https from 'https';
 import { getAtlasSchoolId, getAtlasSchoolYearId } from '../../config/schoolEnv';
+import { logger } from '../logger';
 import {
   atlasEffectiveTeachingLoadSchema,
   validateAtlasScope,
@@ -141,8 +142,9 @@ export async function httpGet(
   url: string,
   headers?: Record<string, string>,
   timeoutMs?: number,
+  retries?: number,
 ): Promise<any> {
-  return request(url, { method: 'GET', headers, timeoutMs });
+  return request(url, { method: 'GET', headers, timeoutMs, retries });
 }
 
 /**
@@ -176,9 +178,10 @@ function atlasUrl(path: string): string {
 
 /**
  * GET request to Atlas API with auth.
+ * `retries`/`timeoutMs` are exposed for discovery probes that must fail fast.
  */
-export async function atlasGet(path: string): Promise<any> {
-  return httpGet(atlasUrl(path), atlasAuthHeader());
+export async function atlasGet(path: string, retries?: number, timeoutMs?: number): Promise<any> {
+  return httpGet(atlasUrl(path), atlasAuthHeader(), timeoutMs, retries);
 }
 
 /**
@@ -194,42 +197,183 @@ export async function atlasPost(path: string, body: unknown): Promise<any> {
 
 const DEFAULT_ATLAS_SCHOOL_YEAR_ID = getAtlasSchoolYearId();
 const ATLAS_SY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ATLAS_SY_FALLBACK_CACHE_TTL_MS = 60 * 1000; // retry discovery sooner
+const ATLAS_YEAR_PROBE_LIMIT = 25;
+const ATLAS_YEAR_PROBE_TIMEOUT_MS = 8_000;
 
-let cachedAtlasSY: { id: number; source: string } | null = null;
+export type AtlasYearSource = 'runtime-context' | 'discovered' | 'env-fallback';
+
+export interface AtlasYearResolution {
+  id: number;
+  source: AtlasYearSource;
+  error?: string;
+}
+
+let cachedAtlasSY: AtlasYearResolution | null = null;
 let cachedAtlasSYAt: number = 0;
+let lastKnownActiveAtlasYearId: number | null = null;
+let lastYearResolution: (AtlasYearResolution & { resolvedAt: string }) | null = null;
+
+/**
+ * Resolution state for observability — exposed via sync status and system health.
+ */
+export function getAtlasYearResolutionState(): (AtlasYearResolution & { resolvedAt: string }) | null {
+  return lastYearResolution;
+}
+
+/**
+ * Drop the cached year so the next resolve re-verifies / re-discovers.
+ * Called when a fetch reports the resolved year is no longer the active one.
+ */
+export function invalidateAtlasSchoolYearCache(): void {
+  cachedAtlasSY = null;
+  cachedAtlasSYAt = 0;
+}
+
+/**
+ * Ordered candidate list for active-year discovery.
+ *
+ * Priority: last known active year → forward (rollover direction) → env year →
+ * backward down to year 1. Every candidate is validated with
+ * `validateAtlasScope`, which rejects any year where `isActiveSchoolYear=false`,
+ * so probing older ids can never surface stale-year data.
+ *
+ * Forward scan handles the normal case (ATLAS advances one year). Backward scan
+ * handles a renumbered/reset ATLAS year space or a future-pinned env value,
+ * where the active year would otherwise sit below the scan start.
+ */
+export function buildAtlasYearProbeCandidates(
+  envYearId: number,
+  seedYearId: number | null,
+  limit = ATLAS_YEAR_PROBE_LIMIT,
+): number[] {
+  const env = Number.isFinite(envYearId) && envYearId > 0 ? Math.trunc(envYearId) : 1;
+  const seed = Number.isFinite(seedYearId) && (seedYearId as number) > 0
+    ? Math.trunc(seedYearId as number)
+    : null;
+
+  const ordered: number[] = [];
+  const seen = new Set<number>();
+  const push = (id: number) => {
+    if (id > 0 && !seen.has(id)) {
+      seen.add(id);
+      ordered.push(id);
+    }
+  };
+
+  if (seed !== null) {
+    push(seed);
+    for (let id = Math.max(seed, env) + 1; id <= Math.max(seed, env) + limit; id += 1) push(id);
+    push(env);
+    for (let id = Math.max(seed, env) - 1; id >= 1; id -= 1) push(id);
+  } else {
+    push(env);
+    for (let id = env + 1; id <= env + limit; id += 1) push(id);
+    for (let id = env - 1; id >= 1; id -= 1) push(id);
+  }
+
+  return ordered;
+}
+
+function cacheAtlasYearResolution(resolution: AtlasYearResolution): AtlasYearResolution {
+  cachedAtlasSY = resolution;
+  cachedAtlasSYAt = Date.now();
+  lastYearResolution = { ...resolution, resolvedAt: new Date().toISOString() };
+  return resolution;
+}
 
 /**
  * Dynamically resolve the active Atlas school year ID.
  *
- * Resolution order (ATLAS contract-compliant):
- *   1. In-memory cache (5 min TTL)
+ * Resolution order:
+ *   1. In-memory cache (5 min TTL; 60 s when the result is an env fallback)
  *   2. GET /runtime/context?schoolId=X&verifyUpstream=true → activeSchoolYearId
- *   3. Fall back to env ATLAS_SCHOOL_YEAR_ID
+ *   3. Verified discovery: probe /faculty-assignments/effective using the
+ *      ordered candidate list (last known → forward → env → backward) and
+ *      accept ONLY a payload whose scope validation confirms
+ *      `isActiveSchoolYear=true`. Inactive and missing years are skipped, so
+ *      this can never surface stale-year data.
+ *   4. Fall back to env ATLAS_SCHOOL_YEAR_ID (unverified, logged loudly).
  *
- * NOTE: Cross-year probing is intentionally removed per the ATLAS Annual Teaching
- * Load Contract. Probing other school year IDs can surface stale legacy data.
+ * Step 3 exists because ATLAS `/runtime/context` requires an actor-school-bound
+ * token; when that 403s the env fallback silently pinned a dead year and every
+ * teacher lost their class list (2026-09-17 incident). Discovery makes annual
+ * rollovers self-healing: forward covers normal rollover, backward covers a
+ * renumbered/reset year space, and `seedYearId` lets restart recovery start
+ * from the last year SMART actually applied.
  */
-export async function resolveAtlasSchoolYear(): Promise<{ id: number; source: string }> {
+export async function resolveAtlasSchoolYear(seedYearId?: number | null): Promise<AtlasYearResolution> {
   const now = Date.now();
-  if (cachedAtlasSY && (now - cachedAtlasSYAt) < ATLAS_SY_CACHE_TTL_MS) {
-    return cachedAtlasSY;
+  if (cachedAtlasSY) {
+    const ttl = cachedAtlasSY.source === 'env-fallback'
+      ? ATLAS_SY_FALLBACK_CACHE_TTL_MS
+      : ATLAS_SY_CACHE_TTL_MS;
+    if ((now - cachedAtlasSYAt) < ttl) {
+      return cachedAtlasSY;
+    }
   }
 
-  // 1. Try runtime context (contract-compliant resolution)
+  // 1. Runtime context (contract-compliant resolution)
+  let runtimeError: string | undefined;
   try {
     const ctx = await atlasGet(`/runtime/context?schoolId=${ATLAS_SCHOOL_ID}&verifyUpstream=true`);
     const activeYearId = ctx?.activeSchoolYearId;
     if (Number.isFinite(activeYearId) && activeYearId > 0) {
-      cachedAtlasSY = { id: activeYearId, source: 'runtime-context' };
-      cachedAtlasSYAt = now;
-      return cachedAtlasSY;
+      return cacheAtlasYearResolution({ id: activeYearId, source: 'runtime-context' });
     }
-  } catch { /* ATLAS unreachable or no runtime context */ }
+    runtimeError = 'runtime context returned no activeSchoolYearId';
+  } catch (err: unknown) {
+    const status = err instanceof HttpError ? `HTTP ${err.statusCode}` : 'request failed';
+    const detail = err instanceof Error ? err.message.slice(0, 160) : 'unknown error';
+    runtimeError = `${status}: ${detail}`;
+  }
 
-  // 2. Fall back to env default
-  cachedAtlasSY = { id: DEFAULT_ATLAS_SCHOOL_YEAR_ID, source: 'env-fallback' };
-  cachedAtlasSYAt = now;
-  return cachedAtlasSY;
+  logger.warn(
+    `[AtlasYear] runtime/context unavailable (${runtimeError}). Probing ATLAS for the active school year — forward-only, inactive years rejected.`,
+  );
+
+  // 2. Verified discovery — only `isActiveSchoolYear=true` is accepted.
+  //    Seed priority: in-process last known → caller seed (e.g. persisted
+  //    SystemSettings.atlasAppliedScope) → env fallback.
+  const envYearId = DEFAULT_ATLAS_SCHOOL_YEAR_ID;
+  const seed = lastKnownActiveAtlasYearId
+    ?? (Number.isFinite(seedYearId) && (seedYearId as number) > 0
+      ? Math.trunc(seedYearId as number)
+      : null);
+  for (const candidateId of buildAtlasYearProbeCandidates(envYearId, seed)) {
+    const probe = await fetchEffectiveTeachingLoad(candidateId, {
+      retries: 0,
+      timeoutMs: ATLAS_YEAR_PROBE_TIMEOUT_MS,
+    });
+
+    if (probe.status === 'ok') {
+      lastKnownActiveAtlasYearId = candidateId;
+      logger.warn(
+        `[AtlasYear] Resolved active ATLAS school year ${candidateId} by probing (env ATLAS_SCHOOL_YEAR_ID=${envYearId}).`,
+      );
+      return cacheAtlasYearResolution({ id: candidateId, source: 'discovered' });
+    }
+    if (probe.status === 'auth') {
+      runtimeError = 'ATLAS rejected the system token during active-year discovery';
+      break;
+    }
+    if (probe.status === 'unreachable') {
+      runtimeError = 'ATLAS unreachable during active-year discovery';
+      break; // network problem — probing further ids is pointless
+    }
+    // 'missing' (404), 'inactive', 'rejected' → try the next year id
+  }
+
+  // 3. Env fallback (unverified) — loud, never silent.
+  logger.error(
+    `[AtlasYear] Active ATLAS school year could not be verified (${runtimeError ?? 'no active year found'}). ` +
+    `Falling back to env ATLAS_SCHOOL_YEAR_ID=${envYearId}; teaching load may be stale or unavailable.`,
+  );
+  return cacheAtlasYearResolution({
+    id: envYearId,
+    source: 'env-fallback',
+    ...(runtimeError ? { error: runtimeError } : {}),
+  });
 }
 
 export interface AtlasRuntimeContext {
@@ -306,24 +450,30 @@ export interface AtlasEffectiveTeachingLoadResponse {
  */
 export type EffectiveLoadResult =
   | { status: 'ok'; data: AtlasEffectiveTeachingLoadResponse }
+  | { status: 'inactive'; reason: string }
   | { status: 'rejected'; reason: string }
+  | { status: 'missing' }
   | { status: 'unreachable' }
   | { status: 'auth' };
 
 export async function fetchEffectiveTeachingLoad(
   schoolYearId: number,
+  opts?: { retries?: number; timeoutMs?: number },
 ): Promise<EffectiveLoadResult> {
   let raw: unknown;
   try {
     raw = await atlasGet(
       `/faculty-assignments/effective?schoolId=${ATLAS_SCHOOL_ID}&schoolYearId=${schoolYearId}`,
+      opts?.retries,
+      opts?.timeoutMs,
     );
   } catch (err: unknown) {
     if (err instanceof HttpError && err.isAuth) return { status: 'auth' };
     return { status: 'unreachable' };
   }
 
-  if (raw == null) return { status: 'unreachable' };
+  // `request()` resolves null on HTTP 404 — the year id does not exist in ATLAS.
+  if (raw == null) return { status: 'missing' };
 
   // Zod structural validation
   const parsed = atlasEffectiveTeachingLoadSchema.safeParse(raw);
@@ -336,6 +486,9 @@ export async function fetchEffectiveTeachingLoad(
   const constraints: AtlasScopeConstraints = { schoolId: ATLAS_SCHOOL_ID, schoolYearId };
   const scopeError = validateAtlasScope(parsed.data, constraints);
   if (scopeError) {
+    if (scopeError.startsWith('Inactive school year')) {
+      return { status: 'inactive', reason: scopeError };
+    }
     return { status: 'rejected', reason: scopeError };
   }
 

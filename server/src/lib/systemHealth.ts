@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { logger } from './logger';
 import { getSyncCircuitBreakerStatus, getUnifiedSyncStatus } from './syncCoordinator';
+import { getAtlasTeachingLoadHealth } from './atlasSync';
 
 const ENROLLPRO_BASE = (process.env.ENROLLPRO_URL ?? process.env.ENROLLPRO_BASE_URL ?? 'https://dev-jegs.buru-degree.ts.net/api').replace(/\/$/, '');
 const ATLAS_BASE = (process.env.ATLAS_URL ?? process.env.ATLAS_BASE_URL ?? 'https://njgrm.buru-degree.ts.net/api/v1').replace(/\/$/, '');
@@ -92,8 +93,18 @@ export async function getSystemHealthSnapshot() {
   ]);
 
   const external = { enrollpro, atlas, aims };
+  const atlasTeachingLoad = getAtlasTeachingLoadHealth();
   const externalAllOnline = enrollpro.online && atlas.online && aims.online;
-  const overall = !dbOnline ? 'DOWN' : externalAllOnline ? 'HEALTHY' : 'DEGRADED';
+  // ATLAS can be reachable while its teaching-load pipeline fails (the live
+  // 2026-09-17 incident). Surface that as DEGRADED even though /health is green.
+  const teachingLoadUnhealthy = atlasTeachingLoad.lastCheckedAt != null
+    && atlasTeachingLoad.state !== 'POPULATED'
+    && atlasTeachingLoad.state !== 'EMPTY';
+  const overall = !dbOnline
+    ? 'DOWN'
+    : externalAllOnline && !teachingLoadUnhealthy
+      ? 'HEALTHY'
+      : 'DEGRADED';
 
   const memory = process.memoryUsage();
 
@@ -119,6 +130,7 @@ export async function getSystemHealthSnapshot() {
     sync: {
       coordinator: getUnifiedSyncStatus(),
       circuitBreaker: getSyncCircuitBreakerStatus(),
+      atlasTeachingLoad,
       recentHistory,
     },
   };

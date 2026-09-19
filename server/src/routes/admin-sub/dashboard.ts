@@ -47,6 +47,7 @@ export default function (router: Router) {
           where: {
             schoolYear,
             status: "ENROLLED",
+            isArchived: false,
           },
           distinct: ["studentId"],
           select: { studentId: true },
@@ -54,6 +55,11 @@ export default function (router: Router) {
         return enrolledStudents.length;
       };
 
+      // Mirror the registrar's "Active Students" metric: an operational count of
+      // officially enrolled students for the current school year only. Prefer
+      // EnrollPro's real-time feed, then fall back to the local DB. Never count
+      // archived enrollments or the full historical student table — after
+      // rollover this must be 0 until new enrollments arrive.
       let totalStudents = 0;
       let studentCountSchoolYear: string | null = null;
 
@@ -68,30 +74,9 @@ export default function (router: Router) {
         logger.warn("[AdminDashboard] Failed to fetch live student count from EnrollPro, falling back to local DB.", error.message);
       }
 
-      if (totalStudents === 0) {
-        if (configuredSchoolYear) {
-          totalStudents = await countDistinctEnrolledStudents(configuredSchoolYear);
-          studentCountSchoolYear = configuredSchoolYear;
-        }
-
-        if (totalStudents === 0) {
-          const latestEnrollment = await prisma.enrollment.findFirst({
-            // RL-8a: operational fallback — an archived year's enrollment must
-            // not be reported as the current student population.
-            where: { status: "ENROLLED", isArchived: false },
-            orderBy: { updatedAt: "desc" },
-            select: { schoolYear: true },
-          });
-
-          if (latestEnrollment?.schoolYear && latestEnrollment.schoolYear !== studentCountSchoolYear) {
-            totalStudents = await countDistinctEnrolledStudents(latestEnrollment.schoolYear);
-            studentCountSchoolYear = latestEnrollment.schoolYear;
-          }
-        }
-
-        if (totalStudents === 0) {
-          totalStudents = await prisma.student.count();
-        }
+      if (totalStudents === 0 && configuredSchoolYear) {
+        totalStudents = await countDistinctEnrolledStudents(configuredSchoolYear);
+        studentCountSchoolYear = configuredSchoolYear;
       }
 
       const today = new Date();

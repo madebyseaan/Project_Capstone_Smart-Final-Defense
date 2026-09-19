@@ -37,7 +37,7 @@ import {
   resolveSubjectCode,
   normalizeSubjectLabel,
 } from './atlasUtils';
-import { atlasGet, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID } from './sync/httpClient';
+import { atlasGet, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID, invalidateAtlasSchoolYearCache } from './sync/httpClient';
 import {
   upsertLearner,
   dropStaleEnrollments,
@@ -440,7 +440,21 @@ export async function syncTeacherOnLogin(
       if (!effectiveLoad) {
         // Cache miss — background sync hasn't run yet for this year. Fetch live with validation.
         const { fetchEffectiveTeachingLoad } = await import('./sync/httpClient');
-        const loadResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+        let loadResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+
+        // Rollover self-heal: re-resolve once if the year just went inactive.
+        if (loadResult.status === 'inactive') {
+          invalidateAtlasSchoolYearCache();
+          const reResolved = await resolveAtlasSchoolYear();
+          if (reResolved.id !== atlasSchoolYearId) {
+            logger.warn(
+              `[TeacherSync] ATLAS school year ${atlasSchoolYearId} inactive — re-resolved to ${reResolved.id} (source=${reResolved.source})`,
+            );
+            atlasSchoolYearId = reResolved.id;
+            loadResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+          }
+        }
+
         if (loadResult.status === 'ok') {
           effectiveLoad = loadResult.data;
         } else {
@@ -449,6 +463,10 @@ export async function syncTeacherOnLogin(
             result.errors.push(`ATLAS payload rejected: ${loadResult.reason}`);
           } else if (loadResult.status === 'auth') {
             result.errors.push('ATLAS authentication failed');
+          } else if (loadResult.status === 'inactive') {
+            result.errors.push(`ATLAS school year ${atlasSchoolYearId} is inactive`);
+          } else if (loadResult.status === 'missing') {
+            result.errors.push(`ATLAS school year ${atlasSchoolYearId} not found`);
           }
         }
       }

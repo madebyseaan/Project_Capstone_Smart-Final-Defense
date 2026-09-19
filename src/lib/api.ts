@@ -1873,6 +1873,18 @@ export interface AdminSystemHealth {
       failureThreshold: number;
       cooldownMs: number;
     };
+    // ATLAS teaching-load pipeline (the hidden failure that empties teacher class lists)
+    atlasTeachingLoad?: {
+      state: "POPULATED" | "EMPTY" | "UNAVAILABLE" | "MISSING" | "INACTIVE" | "REJECTED" | "AUTH" | "MISMATCH" | "UNKNOWN";
+      atlasSchoolYearId: number | null;
+      atlasYearSource: string | null;
+      assignmentsInPayload: number;
+      assignmentsApplied: number;
+      consecutiveFailures: number;
+      lastError: string | null;
+      lastCheckedAt: string | null;
+      lastSuccessAt: string | null;
+    };
     recentHistory: SyncHistoryItem[];
   };
 }

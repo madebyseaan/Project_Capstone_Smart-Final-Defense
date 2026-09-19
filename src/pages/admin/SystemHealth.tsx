@@ -105,6 +105,22 @@ export default function SystemHealth() {
     return [health.external.enrollpro, health.external.atlas].filter((service) => !service.online);
   }, [health]);
 
+  const teachingLoad = health?.sync.atlasTeachingLoad;
+  const teachingLoadHealthy =
+    teachingLoad?.state === "POPULATED" || teachingLoad?.state === "EMPTY";
+
+  const teachingLoadWarning = useMemo(() => {
+    const tl = health?.sync.atlasTeachingLoad;
+    if (!tl || tl.lastCheckedAt == null) return null;
+    if (tl.state === "POPULATED" || tl.state === "EMPTY") return null;
+    const year = tl.atlasSchoolYearId
+      ? `year ${tl.atlasSchoolYearId} (${tl.atlasYearSource ?? "unknown source"})`
+      : "unknown year";
+    return `State: ${tl.state} for ${year}. Teacher class lists will stay empty until this recovers.${
+      tl.lastError ? ` Last error: ${tl.lastError}` : ""
+    }`;
+  }, [health]);
+
   const lastSyncLabel = useMemo(() => {
     const iso = health?.sync.coordinator.lastSyncAt;
     return iso ? new Date(iso).toLocaleString() : null;
@@ -192,6 +208,16 @@ export default function SystemHealth() {
             </div>
           )}
 
+          {teachingLoadWarning && (
+            <div className="flex items-start gap-2 rounded-xl border-2 border-destructive/20 bg-destructive/5 px-4 py-3 text-destructive">
+              <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+              <div className="text-sm">
+                <span className="font-semibold">ATLAS teaching load pipeline is failing.</span>{" "}
+                {teachingLoadWarning}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
               <CardContent className="p-4">
@@ -267,6 +293,52 @@ export default function SystemHealth() {
               </div>
             </CardContent>
           </Card>
+
+          {teachingLoad && (
+            <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
+              <CardContent className="p-4">
+                <h2 className="text-sm font-semibold text-foreground mb-3">ATLAS Teaching Load</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted-foreground uppercase">State</p>
+                    <p className={`mt-1 font-bold ${teachingLoadHealthy ? "text-foreground" : "text-destructive"}`}>
+                      {teachingLoad.state}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted-foreground uppercase">Resolved ATLAS Year</p>
+                    <p className="mt-1 font-bold text-foreground">
+                      {teachingLoad.atlasSchoolYearId ?? <Dash />}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Source: {teachingLoad.atlasYearSource ?? "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted-foreground uppercase">Assignments</p>
+                    <p className="mt-1 font-bold text-foreground">
+                      {teachingLoad.assignmentsApplied} / {teachingLoad.assignmentsInPayload}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Applied / in payload</p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted-foreground uppercase">Consecutive Failures</p>
+                    <p className={`mt-1 font-bold ${teachingLoad.consecutiveFailures > 0 ? "text-destructive" : "text-foreground"}`}>
+                      {teachingLoad.consecutiveFailures}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {teachingLoad.lastSuccessAt
+                        ? `Last success: ${new Date(teachingLoad.lastSuccessAt).toLocaleString()}`
+                        : "No success recorded yet"}
+                    </p>
+                  </div>
+                </div>
+                {teachingLoad.lastError && (
+                  <p className="text-xs text-destructive mt-3">Last error: {teachingLoad.lastError}</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="border border-border shadow-sm bg-card rounded-xl p-0">
             <CardContent className="p-4">

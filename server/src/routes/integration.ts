@@ -22,6 +22,7 @@ import { checkAimsHealth } from '../lib/aimsClient';
 import { triggerImmediateSync } from '../lib/syncCoordinator';
 import { addSyncSseClient, removeSyncSseClient } from '../lib/sseManager';
 import { getActiveSchoolYearLabel } from '../lib/schoolYearResolver';
+import { resolveCurrentTerm } from './grades-sub/helpers';
 import { serviceAuth } from '../middleware/serviceAuth';
 import { maskId } from '../lib/redact';
 import { buildSf10Records } from '../lib/sf10';
@@ -458,6 +459,24 @@ router.get(
 // Teacher Schedule (from ATLAS published schedule)
 // ---------------------------------------------------------------------------
 
+const TERM_INDEX_BY_LABEL: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+
+async function findTeacherScheduleEntries(teacherId: string, schoolYear: string) {
+  const activeTermIndex = TERM_INDEX_BY_LABEL[await resolveCurrentTerm()] ?? null;
+  return prisma.scheduleEntry.findMany({
+    where: {
+      teacherId,
+      schoolYear,
+      ...(activeTermIndex ? { OR: [{ termIndex: activeTermIndex }, { termIndex: null }] } : {}),
+    },
+    include: {
+      subject: { select: { code: true, name: true } },
+      section: { select: { name: true, gradeLevel: true } },
+    },
+    orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
+  });
+}
+
 /**
  * GET /api/integration/schedule
  * Returns the logged-in teacher's schedule entries for the current school year,
@@ -480,14 +499,7 @@ router.get(
 
       const schoolYear = await getActiveSchoolYearLabel();
 
-      const entries = await prisma.scheduleEntry.findMany({
-        where: { teacherId: teacher.id, schoolYear },
-        include: {
-          subject: { select: { code: true, name: true } },
-          section: { select: { name: true, gradeLevel: true } },
-        },
-        orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
-      });
+      const entries = await findTeacherScheduleEntries(teacher.id, schoolYear);
 
       // Group by day
       const byDay: Record<string, typeof entries> = {
@@ -536,14 +548,7 @@ router.post(
 
       const schoolYear = await getActiveSchoolYearLabel();
 
-      const entries = await prisma.scheduleEntry.findMany({
-        where: { teacherId: teacher.id, schoolYear },
-        include: {
-          subject: { select: { code: true, name: true } },
-          section: { select: { name: true, gradeLevel: true } },
-        },
-        orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
-      });
+      const entries = await findTeacherScheduleEntries(teacher.id, schoolYear);
 
       const byDay: Record<string, typeof entries> = {
         MONDAY: [], TUESDAY: [], WEDNESDAY: [], THURSDAY: [], FRIDAY: [],
