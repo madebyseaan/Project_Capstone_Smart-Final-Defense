@@ -7,23 +7,29 @@ SMART (Student Management and Records Tracking) is a DepEd public school managem
 - **Frontend:** React 19, Vite, React Router, React Query, Tailwind CSS, shadcn/ui
 - **Backend:** Node.js, Express 5, Prisma (PostgreSQL), ts-node-dev
 - **Tooling:** ESLint, TypeScript, Vite, Prisma CLI
-- **Package manager:** npm (package-lock.json)
+- **Package manager:** pnpm (pnpm-lock.yaml; legacy package-lock.json kept for rollback)
 
 ## Commands
 ```bash
+# Dependencies — run in BOTH root and server/ (two separate projects)
+pnpm install
+
 # Frontend (root)
-npm run dev          # Start dev server
-npm run build        # Production build
-npm run lint         # Lint check
+pnpm run dev         # Start dev server (server + client via concurrently)
+pnpm run build       # Production build
+pnpm run lint        # Lint check
+pnpm run verify      # typecheck + build + server build + lint + server tests
 
 # Backend (server/)
-npm run dev          # Start backend
-npm run build        # TypeScript compile
-npm run prisma:generate
-npm run prisma:migrate
-npm run prisma:push
-npm run prisma:seed
+pnpm run dev         # Start backend
+pnpm run build       # TypeScript compile
+pnpm run prisma:generate
+pnpm run prisma:migrate
+pnpm run prisma:push
+pnpm run prisma:seed
 ```
+
+Build scripts for Prisma/tesseract/msw/protobufjs are pre-approved in `pnpm-workspace.yaml` (`allowBuilds`). Do not delete these files or installs fail with `ERR_PNPM_IGNORED_BUILDS`.
 
 ## Coding Rules
 
@@ -286,9 +292,10 @@ Defined in `src/index.css` with light/dark variants.
 - Do not modify `.env` or `.env.*` files
 - Do not write to external systems (EnrollPro/ATLAS) — read-only integrations only
 - Do not refactor unrelated code in the same PR
-- Always run `npm run build` before finishing to verify no type errors
+- Always run `pnpm run build` before finishing to verify no type errors
 
 ## Gotchas
+- Deps are managed with pnpm — run `pnpm install` in root and `server/`, never `npm install`, to avoid lockfile drift
 - EnrollPro offline = term sync uses DB fallback (correct behavior)
 - `gradeLock` prevents edits even for current term
 - Past terms are view-only unless teacher has approved edit request
