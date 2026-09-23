@@ -7,6 +7,7 @@ import registerRemedialRoutes from "./registrar/remedial";
 import registerTransfereeRoutes from "./registrar/transferees";
 import registerExternalRecordRoutes from "./registrar/externalRecords";
 import registerSf10ProfileRoutes from "./registrar/sf10Profile";
+import registerDocumentRoutes from "./registrar/documents";
 
 const router = Router();
 
@@ -18,5 +19,6 @@ registerRemedialRoutes(router);
 registerTransfereeRoutes(router);
 registerExternalRecordRoutes(router);
 registerSf10ProfileRoutes(router);
+registerDocumentRoutes(router);
 
 export default router;

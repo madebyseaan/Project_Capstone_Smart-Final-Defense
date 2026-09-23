@@ -7,6 +7,7 @@ import {
   ArrowRightLeft,
   RefreshCw,
   CloudDownload,
+  FolderOpen,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,22 +36,10 @@ import { StatCard } from "@/components/layout/StatCard";
 import { LoadingSkeleton, EmptyState, Dash } from "@/components/data-table";
 import { toast } from "@/lib/toast";
 import { SyncProgressModal } from "@/components/common/SyncProgressModal";
+import StudentRecordsDrawer from "./components/StudentRecordsDrawer";
+import type { VaultStudent, VaultTab } from "./components/records/types";
 
-interface AlumniStudent {
-  id: string;
-  enrollmentId: string;
-  lrn: string;
-  firstName: string;
-  middleName: string | null;
-  lastName: string;
-  suffix: string | null;
-  gender: string | null;
-  lastGradeLevel: string;
-  lastSection: string;
-  lastSchoolYear: string;
-  lastProgram: string;
-  enrollmentStatus: string;
-}
+type AlumniStudent = VaultStudent;
 
 const formatGradeLevel = (gl: string) => {
   const num = gl.replace("GRADE_", "");
@@ -99,6 +88,10 @@ export default function AlumniStudents() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
   const [counts, setCounts] = useState<Record<string, number>>({ all: 0, graduated: 0, TRANSFERRED: 0 });
+
+  // Records vault
+  const [vaultStudent, setVaultStudent] = useState<AlumniStudent | null>(null);
+  const [vaultTab, setVaultTab] = useState<VaultTab>("sf10");
 
   // Sync modal state
   const [syncModalOpen, setSyncModalOpen] = useState(false);
@@ -155,15 +148,9 @@ export default function AlumniStudents() {
     loadAlumni();
   };
 
-  const handleViewSF10 = async (studentId: string) => {
-    try {
-      const response = await registrarApi.getSF10(studentId);
-      sessionStorage.setItem("sf10Data", JSON.stringify(response.data));
-      sessionStorage.setItem("sf10StudentId", studentId);
-      window.location.href = "/registrar/forms?view=sf10&alumni=1";
-    } catch (err) {
-      console.error("Failed to load SF10:", err);
-    }
+  const openVault = (student: AlumniStudent, tab: VaultTab) => {
+    setVaultTab(tab);
+    setVaultStudent(student);
   };
 
   const handleSync = async () => {
@@ -394,15 +381,28 @@ export default function AlumniStudents() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-left py-3.5 px-4 align-middle">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewSF10(student.id)}
-                          className="h-8 px-3 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap -ml-2.5"
-                        >
-                          <FileText className="h-3.5 w-3.5 mr-1.5" />
-                          SF10
-                        </Button>
+                        <div className="flex items-center gap-1 -ml-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openVault(student, "sf10")}
+                            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                            title="Open SF10"
+                            aria-label={`Open SF10 for ${formatName(student)}`}
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openVault(student, "overview")}
+                            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                            title="All documents"
+                            aria-label={`Open all documents for ${formatName(student)}`}
+                          >
+                            <FolderOpen className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -499,6 +499,13 @@ export default function AlumniStudents() {
           )}
         </CardContent>
       </Card>
+
+      <StudentRecordsDrawer
+        student={vaultStudent}
+        initialTab={vaultTab}
+        onClose={() => setVaultStudent(null)}
+        onRequestSync={() => void handleSync()}
+      />
     </div>
   );
 }

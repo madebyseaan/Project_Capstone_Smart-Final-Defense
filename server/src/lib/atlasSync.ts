@@ -22,6 +22,7 @@ import {
   atlasGet,
   ATLAS_BASE,
   ATLAS_SCHOOL_ID,
+  HttpError,
   resolveAtlasSchoolYear,
   fetchEffectiveTeachingLoad,
   invalidateAtlasSchoolYearCache,
@@ -157,6 +158,39 @@ function markTeachingLoadSuccess(
       AuditSeverity.INFO,
     ).catch(() => {});
   }
+}
+
+// -- Schedule sync state ----------------------------------------------------
+
+export interface AtlasScheduleSyncState {
+  activeTermIndex: number | null;
+  orderedTerms: Array<{ order: number; identity: string; displayLabel: string }>;
+  terms: Array<{ termIndex: number; displayLabel: string | null; revisionMarker: string | null; entries: number }>;
+  snapshotGaps: string[];
+}
+
+let lastScheduleSync: AtlasScheduleSyncState | null = null;
+
+export function getAtlasScheduleSyncState(): AtlasScheduleSyncState | null {
+  if (!lastScheduleSync) return null;
+  return {
+    ...lastScheduleSync,
+    orderedTerms: lastScheduleSync.orderedTerms.map(t => ({ ...t })),
+    terms: lastScheduleSync.terms.map(t => ({ ...t })),
+    snapshotGaps: [...lastScheduleSync.snapshotGaps],
+  };
+}
+
+/**
+ * Human-readable description for ATLAS schedule-read failures.
+ * `409 ACTIVE_SCHOOL_YEAR_AMBIGUOUS` is not retryable — it means a human must
+ * choose the active year (ATLAS contract §5).
+ */
+function describeAtlasError(err: unknown): string {
+  if (err instanceof HttpError && err.statusCode === 409) {
+    return 'ACTIVE_SCHOOL_YEAR_AMBIGUOUS — ATLAS has more than one active school year; a human must resolve which year is current';
+  }
+  return err instanceof Error ? err.message : String(err);
 }
 
 // -- Core sync logic --------------------------------------------------------
@@ -410,15 +444,6 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       }
     } catch { /* non-critical — will use ID as fallback */ }
 
-    type FacultyAssignmentResult = {
-      af: any;
-      detail: any;
-      pubEntries: any[];
-      error?: string;
-    };
-
-    const fetchResults: FacultyAssignmentResult[] = [];
-
     // 5.1 Fetch effective annual teaching load (single call, validated per contract)
     let effectiveResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
 
@@ -530,11 +555,6 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       markTeachingLoadFailure('UNAVAILABLE', atlasSchoolYearId, atlasYearSource, message);
     }
 
-    // 5.2 Fetch published schedules per faculty (for ScheduleEntry records)
-    // Published schedule endpoint is still valid per ATLAS contract — only teaching load ownership changed.
-    // Fetch using active school year only — no cross-year probing.
-    const CONCURRENT_LIMIT = 5;
-
     // Pre-resolve desired assignment pairs from effective loads (for stale-check)
     const allSectionsPre = await prisma.section.findMany({ where: { schoolYear: schoolYearLabel } });
     const sectionByKeyPre = new Map(allSectionsPre.map(s => [`${s.name.trim()}:${s.gradeLevel}`, s]));
@@ -548,31 +568,108 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       }
     }
 
-    async function fetchPubEntriesForFaculty(af: any): Promise<any[]> {
+    type PublishedTermPayload = {
+      termIndex: number | null;
+      revisionMarker: string | null;
+      entries: any[];
+      orderedTerms: any[];
+      snapshotGaps: string[];
+    };
+
+    // 5.2 Fetch published schedules (ATLAS term-aware contract).
+    // ATLAS requires an explicit termIndex — omitting it resolves to the ACTIVE
+    // term, never an all-term read. We read the ordered-term list from `source`
+    // and fetch every term we display, so the teacher view is correct no matter
+    // which term the local resolver reports. Published schedule is timetable
+    // truth (dates/times/rooms) — ownership still comes from the effective load.
+    const fetchPublishedTerm = async (term: number | 'active'): Promise<PublishedTermPayload> => {
+      const data = await atlasGet(
+        `/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published?termIndex=${term}`,
+      );
+      const source = data?.source ?? {};
+      const termIndex = Number(source.termIndex);
+      return {
+        termIndex: Number.isFinite(termIndex) ? termIndex : null,
+        revisionMarker: typeof source.revisionMarker === 'string' ? source.revisionMarker : null,
+        entries: Array.isArray(data?.entries) ? data.entries : [],
+        orderedTerms: Array.isArray(source.orderedTerms) ? source.orderedTerms : [],
+        snapshotGaps: Array.isArray(source.snapshotGaps) ? source.snapshotGaps.map(String) : [],
+      };
+    };
+
+    const publishedScheduleTerms: Array<{ termIndex: number; revisionMarker: string | null; entries: any[] }> = [];
+    let orderedTerms: Array<{ order: number; identity: string; displayLabel: string }> = [];
+    let scheduleActiveTermIndex: number | null = null;
+    let scheduleSnapshotGaps: string[] = [];
+
+    try {
+      const activePayload = await fetchPublishedTerm('active');
+      scheduleActiveTermIndex = activePayload.termIndex;
+      orderedTerms = activePayload.orderedTerms
+        .filter((t: any) => Number.isFinite(Number(t?.order)))
+        .map((t: any) => ({
+          order: Number(t.order),
+          identity: String(t.identity ?? t.order),
+          displayLabel: String(t.displayLabel ?? `TERM ${t.order}`),
+        }));
+      scheduleSnapshotGaps = activePayload.snapshotGaps;
+      if (activePayload.termIndex != null) {
+        publishedScheduleTerms.push({
+          termIndex: activePayload.termIndex,
+          revisionMarker: activePayload.revisionMarker,
+          entries: activePayload.entries,
+        });
+      }
+    } catch (err: any) {
+      const message = describeAtlasError(err);
+      errors.push(`ATLAS published schedule (active term) fetch failed: ${message}`);
+      logger.warn(`[AtlasSync] Published schedule active-term fetch failed: ${message}`);
+    }
+
+    if (scheduleSnapshotGaps.length > 0) {
+      logger.warn(
+        `[AtlasSync] ATLAS snapshot gaps for published schedule: ${scheduleSnapshotGaps.join(', ')} — payload may be incomplete`,
+      );
+    }
+
+    const scheduleTermOrders = orderedTerms.length > 0
+      ? orderedTerms.map(t => t.order)
+      : [1, 2, 3];
+    const labelByOrder = new Map(orderedTerms.map(t => [t.order, t.displayLabel]));
+
+    for (const term of scheduleTermOrders) {
+      if (term === scheduleActiveTermIndex) continue;
       try {
-        const data = await atlasGet(
-          `/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published/faculty/${af.id}`,
-        );
-        return Array.isArray(data?.entries) ? data.entries : [];
-      } catch {
-        // Try school-wide endpoint as fallback
-        try {
-          const data = await atlasGet(
-            `/schools/${ATLAS_SCHOOL_ID}/schedules/published/faculty/${af.id}`,
-          );
-          return Array.isArray(data?.entries) ? data.entries : [];
-        } catch { return []; }
+        const payload = await fetchPublishedTerm(term);
+        publishedScheduleTerms.push({
+          termIndex: payload.termIndex ?? term,
+          revisionMarker: payload.revisionMarker,
+          entries: payload.entries,
+        });
+      } catch (err: any) {
+        const message = describeAtlasError(err);
+        errors.push(`ATLAS published schedule term ${term} fetch failed: ${message}`);
+        logger.warn(`[AtlasSync] Published schedule term ${term} fetch failed: ${message}`);
       }
     }
 
-    for (let i = 0; i < atlasFaculty.length; i += CONCURRENT_LIMIT) {
-      const batch = atlasFaculty.slice(i, i + CONCURRENT_LIMIT);
-      const batchResults = await Promise.all(batch.map(async (af) => {
-        const pubEntries = await fetchPubEntriesForFaculty(af);
-        return { af, detail: null, pubEntries };
-      }));
-      fetchResults.push(...batchResults);
-    }
+    lastScheduleSync = {
+      activeTermIndex: scheduleActiveTermIndex,
+      orderedTerms,
+      terms: publishedScheduleTerms.map(t => ({
+        termIndex: t.termIndex,
+        displayLabel: labelByOrder.get(t.termIndex) ?? null,
+        revisionMarker: t.revisionMarker,
+        entries: t.entries.length,
+      })),
+      snapshotGaps: scheduleSnapshotGaps,
+    };
+
+    logger.debug(
+      `[AtlasSync] Published schedule terms: ${publishedScheduleTerms
+        .map(t => `${t.termIndex}=${t.entries.length}`)
+        .join(', ') || 'none'} (orderedTerms=${orderedTerms.map(t => t.identity).join('/') || 'fallback 1-3'})`,
+    );
 
     // 6. Upsert loads from effective endpoint into ClassAssignment
     // Run BEFORE stale-check so desiredAssignmentPairs is fully populated
@@ -953,17 +1050,20 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       let skippedNoDay = 0;
       let skippedNoSubject = 0;
       let skippedNoSection = 0;
-      for (const result of fetchResults) {
-        if (result.error || !result.pubEntries?.length) continue;
-        totalPubEntries += result.pubEntries.length;
-        const smartTeacherId = atlasIdToSmartTeacherId.get(result.af.id);
-        if (!smartTeacherId) continue;
-        for (const entry of result.pubEntries) {
+      let skippedNoFaculty = 0;
+      for (const term of publishedScheduleTerms) {
+        totalPubEntries += term.entries.length;
+        for (const entry of term.entries) {
           const day = entry?.day;
           const startTime = entry?.startTime;
           const endTime = entry?.endTime;
           if (!day || !startTime || !endTime) { skippedNoDay++; continue; }
           if (entry?.faculty?.isPlaceholder) continue;
+          const atlasFacultyId = Number(entry?.faculty?.id ?? entry?.faculty?.atlasId ?? entry?.facultyId);
+          const smartTeacherId = Number.isFinite(atlasFacultyId)
+            ? atlasIdToSmartTeacherId.get(atlasFacultyId)
+            : undefined;
+          if (!smartTeacherId) { skippedNoFaculty++; continue; }
           const subjectCode = normalizeAtlasSubjectCode(entry?.subject?.code ?? entry?.subjectCode);
           if (!subjectCode) {
             skippedNoSubject++;
@@ -986,10 +1086,11 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           const gradeLevel = mapGradeLevel(gradeLevelRaw);
           if (!gradeLevel) continue;
           const roomId = entry?.room?.id ?? entry?.roomId ?? null;
+          const entryTermIndex = Number(entry?.termIndex);
           allScheduleEntries.push({
             teacherId: smartTeacherId, subjectCode, sectionName: epSection.name,
             gradeLevel, day, startTime, endTime, roomId: Number.isFinite(Number(roomId)) ? Number(roomId) : null,
-            termIndex: Number.isFinite(Number(entry?.termIndex)) ? Number(entry.termIndex) : null,
+            termIndex: Number.isFinite(entryTermIndex) ? entryTermIndex : term.termIndex,
           });
         }
       }
@@ -1102,9 +1203,9 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         }
       }
       if (totalPubEntries > 0) {
-        console.log(`[AtlasSync] Schedule diag: totalPub=${totalPubEntries}, skippedNoDay=${skippedNoDay}, skippedNoSubject=${skippedNoSubject}, skippedNoSection=${skippedNoSection}, resolved=${allScheduleEntries.length}, atlasSY=${atlasSchoolYearId}`);
+        console.log(`[AtlasSync] Schedule diag: totalPub=${totalPubEntries}, terms=${publishedScheduleTerms.map(t => `${t.termIndex}:${t.entries.length}`).join('|')}, skippedNoDay=${skippedNoDay}, skippedNoSubject=${skippedNoSubject}, skippedNoSection=${skippedNoSection}, skippedNoFaculty=${skippedNoFaculty}, resolved=${allScheduleEntries.length}, atlasSY=${atlasSchoolYearId}`);
       } else {
-        console.log(`[AtlasSync] Schedule diag: no published schedule entries found from ATLAS (atlasSY=${atlasSchoolYearId})`);
+        console.log(`[AtlasSync] Schedule diag: no published schedule entries found from ATLAS (atlasSY=${atlasSchoolYearId}, activeTerm=${scheduleActiveTermIndex ?? 'unknown'})`);
       }
     }
 
@@ -1164,6 +1265,7 @@ export function getSyncStatus() {
     lastSyncAt: lastSyncAt?.toISOString() ?? null,
     result: lastSyncResult,
     teachingLoad: getAtlasTeachingLoadHealth(),
+    schedule: getAtlasScheduleSyncState(),
   };
 }
 

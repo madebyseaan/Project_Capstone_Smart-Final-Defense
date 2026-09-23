@@ -11,7 +11,6 @@ import {
   ClipboardCheck,
   FileText,
   CalendarDays,
-  AlertTriangle,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -19,6 +18,8 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 import { useSyncStream } from "@/hooks/useSyncStream";
 import IntegratedSystemsNav from "@/components/layout/IntegratedSystemsNav";
+import PixelGridBackground from "@/components/layout/PixelGridBackground";
+import NotificationBell from "@/components/layout/NotificationBell";
 interface UserData {
   id: string;
   username: string;
@@ -61,9 +62,8 @@ export default function TeacherLayout() {
     const saved = localStorage.getItem('teacherSidebarCollapsed');
     return saved === 'true';
   });
-  const [atlasBannerDismissed, setAtlasBannerDismissed] = useState(false);
   const { colors, logoUrl, schoolName, currentSchoolYear } = useTheme();
-  const { atlasOffline } = useSyncStream();
+  const { atlasOffline, enrollproOffline } = useSyncStream();
 
   useEffect(() => {
     localStorage.setItem("smart_active_portal", "teacher");
@@ -145,7 +145,8 @@ export default function TeacherLayout() {
     : user.username;
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="isolate min-h-screen">
+      <PixelGridBackground />
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -340,6 +341,12 @@ export default function TeacherLayout() {
             </div>
 
             <div className="flex items-center gap-3">
+              <NotificationBell
+                portal="teacher"
+                userId={user.id}
+                atlasOffline={atlasOffline}
+                enrollproOffline={enrollproOffline}
+              />
               {/* School Year Badge */}
               {currentSchoolYear && (
                 <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-wider px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
@@ -374,23 +381,6 @@ export default function TeacherLayout() {
 
         {/* Page content */}
         <main className="p-4 lg:p-8 flex-1">
-          {atlasOffline && !atlasBannerDismissed && (
-            <div className="mb-4 flex items-center gap-3 py-2.5 px-4 rounded-xl bg-amber-50/90 border border-amber-200/80 text-amber-900 shadow-sm animate-fade-in">
-              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-              </div>
-              <p className="flex-1 text-sm font-medium text-amber-800">
-                Class list may be outdated — ATLAS is unreachable. Avoid encoding new grades until this banner disappears.
-              </p>
-              <button
-                onClick={() => setAtlasBannerDismissed(true)}
-                className="p-1 rounded-lg text-amber-700 hover:bg-amber-200/50 transition-colors"
-                title="Dismiss"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
           <Outlet />
         </main>
       </div>

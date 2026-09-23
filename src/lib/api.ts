@@ -17,6 +17,12 @@ export function getPortalRole(): PortalRole {
   return "teacher";
 }
 
+// Login screen that belongs to a portal — keeps each role on its own sign-in.
+export function getPortalLoginPath(role?: PortalRole): string {
+  const resolved = role || getPortalRole();
+  return resolved === "teacher" ? "/login" : `/login/${resolved}`;
+}
+
 export function getTokenKey(role?: PortalRole): string {
   return `token_${role || getPortalRole()}`;
 }
@@ -148,8 +154,8 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        // Redirect to login on failed refresh
-        window.location.href = "/login";
+        // Redirect to the current portal's own login on failed refresh
+        window.location.href = getPortalLoginPath();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -848,6 +854,10 @@ export interface RegistrarDashboard {
     studentCount: number;
     adviser: string | null;
   }[];
+  /** Active enrollment per school year (oldest → newest), real series for the Active Students trend. */
+  enrollmentTrend?: { label: string; count: number }[];
+  /** Transferee arrivals bucketed by week within the current school year. */
+  transfereeWeekly?: { label: string; count: number }[];
   sync: {
     running: boolean;
     lastSyncedAt: string | null;
@@ -1044,6 +1054,18 @@ export interface ExternalRecordsResponse {
   records: ExternalSchoolRecord[];
 }
 
+// Batched document-availability index for the registrar Records Vault.
+export interface StudentDocumentsIndexEntry {
+  sf10: boolean;
+  reportCardYears: string[];
+  priorRecords: number;
+  remedial: boolean;
+}
+
+export interface StudentDocumentsIndexResponse {
+  index: Record<string, StudentDocumentsIndexEntry>;
+}
+
 // OCR scan of a prior SF10/SF9 photo (nothing persisted server-side).
 export interface Sf10ScanSubject {
   subjectName: string;
@@ -1144,7 +1166,7 @@ export interface SF9Data {
   }[];
   generalAverage?: number;
   honors?: string;
-  promotionStatus?: string;
+  promotionStatus?: string | null;
   schoolSettings?: {
     schoolName: string;
     division: string;
@@ -1496,6 +1518,8 @@ export const registrarApi = {
         retained: number;
         dropped: number;
         transferred: number;
+        /** Learners with no encoded grades yet — pending, NOT retained. */
+        noGrades?: number;
         promotionRate: number;
       }>;
       summary: {
@@ -1504,9 +1528,11 @@ export const registrarApi = {
         retained: number;
         dropped: number;
         transferred: number;
+        noGrades?: number;
+        gradedStudents?: number;
         overallPromotionRate: number;
       };
-      byGradeLevel: Record<string, { total: number; promoted: number; retained: number; dropped: number; transferred: number }>;
+      byGradeLevel: Record<string, { total: number; promoted: number; retained: number; dropped: number; transferred: number; noGrades?: number }>;
     }>("/registrar/forms/sf6", { params: { schoolYear } }),
 
   getSF1: (sectionId: string, schoolYear?: string) =>
@@ -1600,6 +1626,9 @@ export const registrarApi = {
   // Prior-school (SF10/SF9) records — manual entry
   getExternalRecords: (studentId: string) =>
     api.get<ExternalRecordsResponse>(`/registrar/students/${studentId}/external-records`),
+
+  getDocumentsIndex: (studentIds: string[]) =>
+    api.post<StudentDocumentsIndexResponse>("/registrar/students/documents-index", { studentIds }),
 
   createExternalRecord: (studentId: string, data: ExternalSchoolRecordPayload) =>
     api.post<{ message: string; record: ExternalSchoolRecord }>(

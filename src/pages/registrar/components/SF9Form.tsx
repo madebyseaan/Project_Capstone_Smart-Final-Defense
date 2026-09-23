@@ -127,7 +127,10 @@ export default function SF9Form({ data, fullLogoUrl, highlightSubject }: SF9Form
                 {data.generalAverage?.toFixed(2) ?? ''}
               </td>
               <td className="p-2 text-center">
-                {data.honors && <span className="text-foreground text-xs">{data.honors}</span>}
+                {data.promotionStatus && (
+                  <span className="block text-xs font-bold text-gray-900">{data.promotionStatus}</span>
+                )}
+                {data.honors && <span className="block text-foreground text-[11px]">{data.honors}</span>}
               </td>
             </tr>
           </tbody>

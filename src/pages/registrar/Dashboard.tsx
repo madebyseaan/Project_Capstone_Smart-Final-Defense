@@ -4,8 +4,6 @@ import {
   Users,
   GraduationCap,
   LayoutGrid,
-  ArrowUpRight,
-  UserMinus,
   AlertTriangle,
   RefreshCw,
   CheckCircle2,
@@ -48,31 +46,246 @@ const gradeLevelLabels: Record<string, string> = {
 
 const GRADE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"];
 
-function getSparklineData(finalValue: number, type: string): { v: number }[] {
-  if (type === "flat") return [{ v: 0 }, { v: 0 }, { v: 0 }, { v: 0 }];
-  if (type === "gender") {
-    const base = Math.max(finalValue, 1);
-    return Array.from({ length: 8 }, (_, i) => ({
-      v: Math.max(0, Math.round(base * (0.82 + 0.18 * Math.sin((i / 7) * Math.PI)))),
-    }));
-  }
-  if (type === "wave") {
-    return Array.from({ length: 6 }, (_, i) => {
-      const t = i / 5;
-      const wave = 0.12 * Math.sin(t * Math.PI * 2 + finalValue * 0.3);
-      const trend = t * 0.3;
-      const raw = finalValue * (0.55 + trend + wave);
-      return { v: Math.max(0, Math.round(raw)) };
-    });
-  }
-  const count = 6;
-  return Array.from({ length: count }, (_, i) => {
-    const t = i / (count - 1);
-    const seed = Math.sin(finalValue * 127.1 + i * 311.7) * 43758.5453;
-    const noise = (seed - Math.floor(seed)) * 0.15 - 0.075;
-    const base = t < 0.5 ? 0.55 + t * 0.6 : 0.55 + t * 0.6 + (t - 0.5) * 0.3;
-    return { v: Math.max(0, Math.round(finalValue * (base + noise))) };
-  });
+const GRADE_ORDER = ["GRADE_7", "GRADE_8", "GRADE_9", "GRADE_10"] as const;
+
+/**
+ * Area sparkline for a real series (e.g. active enrollment per school year).
+ * Only rendered with 2+ points — a one-point "trend" is not a trend.
+ */
+function AreaSparkline({
+  id,
+  series,
+  color,
+  height = 36,
+}: {
+  id: string;
+  series: { label: string; count: number }[];
+  color: string;
+  height?: number;
+}) {
+  if (series.length < 2) return null;
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={series} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.45} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.05} />
+          </linearGradient>
+        </defs>
+        <Tooltip
+          content={({ active, payload }) =>
+            active && payload?.[0] ? (
+              <div className="bg-popover text-popover-foreground rounded-lg px-2 py-1 shadow-lg border border-border">
+                <p className="text-[10px] text-muted-foreground">{payload[0].payload.label}</p>
+                <p className="text-xs font-bold" style={{ color }}>
+                  {payload[0].value?.toLocaleString()} enrolled
+                </p>
+              </div>
+            ) : null
+          }
+        />
+        <Area
+          type="monotone"
+          dataKey="count"
+          stroke={color}
+          strokeWidth={2}
+          fill={`url(#${id})`}
+          dot={false}
+          activeDot={{ r: 3 }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Horizontal bar breakdown — ranks categories (which grade has the fewest sections). */
+function BarBreakdown({
+  items,
+  color,
+  labelWidthClass = "w-7",
+}: {
+  items: { label: string; count: number; color?: string; title?: string }[];
+  color: string;
+  labelWidthClass?: string;
+}) {
+  const max = Math.max(1, ...items.map((i) => i.count));
+  return (
+    <div
+      className="space-y-1"
+      role="img"
+      aria-label={items.map((i) => `${i.title ?? i.label}: ${i.count}`).join(", ")}
+    >
+      {items.map((item) => (
+        <div key={item.label} className="flex items-center gap-2" title={item.title ?? `${item.label}: ${item.count}`}>
+          <span className={`${labelWidthClass} text-[9px] font-bold uppercase text-muted-foreground`}>{item.label}</span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{ width: `${(item.count / max) * 100}%`, backgroundColor: item.color ?? color }}
+            />
+          </div>
+          <span className="w-4 text-right text-[10px] font-bold tabular-nums text-foreground">{item.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Single stacked bar — a ratio, not a trend. */
+function GenderSplitBar({ male, female }: { male: number; female: number }) {
+  const total = male + female;
+  if (total === 0) return null;
+  const malePct = Math.round((male / total) * 100);
+  return (
+    <div>
+      <div
+        className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted"
+        role="img"
+        aria-label={`Gender split: ${malePct}% male (${male}), ${100 - malePct}% female (${female})`}
+      >
+        <div style={{ width: `${malePct}%`, backgroundColor: "#3b82f6" }} />
+        <div style={{ width: `${100 - malePct}%`, backgroundColor: "#ec4899" }} />
+      </div>
+      <div className="mt-1 flex justify-between text-[9px] font-bold text-muted-foreground">
+        <span>{malePct}% M · {male}</span>
+        <span>{100 - malePct}% F · {female}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Discrete counts over time — bars, not a continuous line. */
+function WeeklyBars({ items, color }: { items: { label: string; count: number }[]; color: string }) {
+  const max = Math.max(1, ...items.map((i) => i.count));
+  return (
+    <div
+      className="flex h-9 items-end gap-1"
+      role="img"
+      aria-label={`Transferees per week: ${items.map((i) => `${i.label} ${i.count}`).join(", ")}`}
+    >
+      {items.map((item, i) => (
+        <div
+          key={`${item.label}-${i}`}
+          className="flex h-full flex-1 items-end justify-center"
+          title={`Week of ${item.label}: ${item.count}`}
+        >
+          <div
+            className="w-full max-w-[22px] rounded-t transition-all"
+            style={{ height: `${Math.max(3, (item.count / max) * 100)}%`, backgroundColor: color }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Big-number metric tile used inside the Learner Movement panel. */
+function MovementMetric({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-background/60 p-3">
+      <div className="mb-1 flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+        <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+      </div>
+      <p className="text-3xl font-bold leading-none stat-number" style={{ color }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Learner Movement — inflow vs outflow. Kept full-width because it carries the
+ * most information: three counts, net movement, drop-out rate, weekly arrivals,
+ * and the document gap.
+ */
+function LearnerMovementPanel({
+  inCount,
+  outCount,
+  dropped,
+  dropRate,
+  weekly,
+  missingDocs,
+  schoolYear,
+}: {
+  inCount: number;
+  outCount: number;
+  dropped: number;
+  dropRate: number;
+  weekly: { label: string; count: number }[];
+  missingDocs: number;
+  schoolYear: string;
+}) {
+  const totalOut = outCount + dropped;
+  const net = inCount - totalOut;
+
+  return (
+    <div className="mb-6 rounded-2xl border border-border/40 bg-card/70 p-4 shadow-lg shadow-muted/50 backdrop-blur-xl">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="rounded-xl p-2 text-primary-foreground shadow-md" style={{ backgroundColor: "#8b5cf6" }}>
+            <ArrowLeftRight className="w-4 h-4" />
+          </span>
+          <div>
+            <h3 className="text-sm font-bold text-foreground">Learner Movement</h3>
+            <p className="text-[11px] text-muted-foreground">Transferred in / out · SY {schoolYear}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {missingDocs > 0 && (
+            <Link to="/registrar/transferees?incomplete=1" title="Show learners with missing documents">
+              <Badge
+                variant="outline"
+                className="cursor-pointer rounded-full border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 transition-colors hover:border-amber-300 hover:bg-amber-100"
+              >
+                {missingDocs} Missing SF10 →
+              </Badge>
+            </Link>
+          )}
+          <Link
+            to="/registrar/transferees"
+            className="text-[10px] font-bold uppercase tracking-wider hover:underline"
+            style={{ color: "#8b5cf6" }}
+          >
+            View
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MovementMetric label="Transferred in" value={inCount} color="#8b5cf6" />
+        <MovementMetric label="Transferred out" value={outCount} color="#f59e0b" />
+        <MovementMetric label="Dropped" value={dropped} color="#ef4444" />
+        <div className="rounded-xl border border-border bg-background/60 p-3">
+          <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            Arrivals by week
+          </p>
+          {weekly.length > 0 ? (
+            <WeeklyBars items={weekly} color="#8b5cf6" />
+          ) : (
+            <p className="pt-2 text-[11px] text-muted-foreground">No arrivals recorded</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border/60 pt-2.5 text-[11px] text-muted-foreground">
+        <span>
+          Net movement{" "}
+          <span className="font-bold text-foreground tabular-nums">
+            {net >= 0 ? "+" : ""}
+            {net}
+          </span>
+        </span>
+        <span>
+          Total out <span className="font-bold text-foreground tabular-nums">{totalOut}</span>
+        </span>
+        <span>
+          Drop-out rate <span className="font-bold text-foreground tabular-nums">{dropRate}%</span>
+        </span>
+      </div>
+    </div>
+  );
 }
 
 const quickActions = [
@@ -110,7 +323,7 @@ export default function RegistrarDashboardPage() {
   const [syncError, setSyncError] = useState<string | undefined>();
   const [dashboard, setDashboard] = useState<RegistrarDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [promotionData, setPromotionData] = useState<null | { summary?: { promoted: number; retained: number; dropped: number; transferred: number } }>(null);
+  const [promotionData, setPromotionData] = useState<null | { schoolYear?: string; summary?: { promoted: number; retained: number; dropped: number; transferred: number; noGrades?: number; gradedStudents?: number } }>(null);
   const [showFailingList, setShowFailingList] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
@@ -210,6 +423,9 @@ export default function RegistrarDashboardPage() {
     ? [
         { name: "Promoted", count: promotionData.summary.promoted, color: "#10b981" },
         { name: "Retained", count: promotionData.summary.retained, color: "#f59e0b" },
+        ...(promotionData.summary.noGrades
+          ? [{ name: "Pending (no grades)", count: promotionData.summary.noGrades, color: "#94a3b8" }]
+          : []),
         { name: "Dropped", count: promotionData.summary.dropped, color: "#ef4444" },
         { name: "Transferred", count: promotionData.summary.transferred, color: "#6b7280" },
       ]
@@ -225,6 +441,48 @@ export default function RegistrarDashboardPage() {
     gradeLevel: s.gradeLevel,
     failingStudents: s.failingStudents,
   }));
+
+  // ── KPI card data (real series from the dashboard payload) ──
+  const sectionsByGrade = GRADE_ORDER.map((grade) => ({
+    label: grade.replace("GRADE_", "G"),
+    count: dashboard.sections.filter((s) => s.gradeLevel === grade).length,
+  }));
+  const enrollmentTrend = dashboard.enrollmentTrend ?? [];
+  const transfereeWeekly = dashboard.transfereeWeekly ?? [];
+  const genderTotal = stats.maleCount + stats.femaleCount;
+  const dropCohort = stats.activeStudents + stats.droppedStudents + stats.transferredStudents;
+  const dropRate = dropCohort > 0 ? Math.round((stats.droppedStudents / dropCohort) * 100) : 0;
+  const incompleteCount = stats.incompleteTransferees ?? 0;
+
+  const kpiCards = [
+    {
+      label: "ACTIVE STUDENTS",
+      value: stats.activeStudents,
+      icon: Users,
+      color: colors.primary,
+      subtitle: "Official DepEd LIS Enrolled",
+      chart: { kind: "area" as const, id: "spark-active-students", series: enrollmentTrend },
+    },
+    {
+      label: "SECTIONS",
+      value: stats.totalSections,
+      icon: LayoutGrid,
+      color: "#10b981",
+      subtitle: "Across Grade 7 to Grade 10",
+      chart: { kind: "bars" as const, items: sectionsByGrade },
+    },
+    {
+      label: "MALE / FEMALE",
+      value: `${stats.maleCount}/${stats.femaleCount}`,
+      icon: UserCheck,
+      color: "#3b82f6",
+      subtitle:
+        genderTotal > 0
+          ? `${Math.round((stats.maleCount / genderTotal) * 100)}% Male \u2022 ${Math.round((stats.femaleCount / genderTotal) * 100)}% Female parity`
+          : "No enrollment data",
+      chart: { kind: "gender" as const, male: stats.maleCount, female: stats.femaleCount },
+    },
+  ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -284,86 +542,45 @@ export default function RegistrarDashboardPage() {
       {/* School Year Readiness */}
       <RolloverReadinessCard />
 
-      {/* ── 6 KPI Cards ── */}
+      {/* ── KPI Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {(() => {
-          const incompleteCount = stats.incompleteTransferees ?? 0;
-          const genderTotal = stats.maleCount + stats.femaleCount;
-          return [
-            { label: "ACTIVE STUDENTS", value: stats.activeStudents, icon: Users, color: colors.primary, sparkType: "count" as const, sparkValue: stats.activeStudents, subtitle: "Official DepEd LIS Enrolled" },
-            { label: "SECTIONS", value: stats.totalSections, icon: LayoutGrid, color: "#10b981", sparkType: "count" as const, sparkValue: stats.totalSections, subtitle: "Across Grade 7 to Grade 10" },
-            { label: "MALE / FEMALE", value: `${stats.maleCount}/${stats.femaleCount}`, icon: UserCheck, color: "#3b82f6", sparkType: "gender" as const, sparkValue: genderTotal, subtitle: genderTotal > 0 ? `${Math.round((stats.maleCount / genderTotal) * 100)}% Male \u2022 ${Math.round((stats.femaleCount / genderTotal) * 100)}% Female parity` : "No enrollment data" },
-            { label: "TRANSFERRED OUT", value: stats.transferredStudents, icon: ArrowUpRight, color: "#f59e0b", sparkType: "flat" as const, sparkValue: 0, subtitle: stats.transferredStudents === 0 ? "No outward transfers recorded" : `${stats.transferredStudents} student(s) transferred out`, href: "/registrar/alumni?status=TRANSFERRED" },
-            { label: "DROPPED", value: stats.droppedStudents, icon: UserMinus, color: "#ef4444", sparkType: "flat" as const, sparkValue: 0, subtitle: stats.droppedStudents === 0 ? "0% Drop-out rate" : `${stats.droppedStudents} student(s) dropped`, subtitleClass: stats.droppedStudents === 0 ? "text-emerald-600 font-semibold" : "text-muted-foreground", href: "/registrar/alumni?status=DROPPED" },
-            { label: "TRANSFEREES (T/I)", value: stats.transfereeStudents ?? 0, icon: ArrowLeftRight, color: "#8b5cf6", sparkType: "wave" as const, sparkValue: stats.transfereeStudents ?? 0, subtitle: "Transferred in this school year", href: "/registrar/transferees", badge: incompleteCount > 0 ? `${incompleteCount} Missing SF10` as const : "All Docs Complete" as const, badgeVariant: incompleteCount > 0 ? "warning" as const : "success" as const },
-          ].map((card, idx) => {
-            const gradientId = `spark-grad-${card.label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
-            return (
-              <div key={card.label} className="border border-slate-200/60 rounded-2xl bg-card/70 backdrop-blur-xl p-4 shadow-md shadow-slate-200/40 hover:shadow-xl transition-all group relative overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-300" style={{ animationDelay: `${(idx + 1) * 50}ms` }}>
-                <div className="absolute top-0 right-0 w-20 h-20 opacity-5 rounded-full -mr-6 -mt-6" style={{ backgroundColor: card.color }} />
-                <div className="flex items-center justify-between mb-2">
-                  <div className="p-2 rounded-xl text-primary-foreground shadow-md group-hover:scale-110 transition-transform" style={{ backgroundColor: card.color }}>
-                    <card.icon className="w-4 h-4" />
-                  </div>
-                  {card.href && (
-                    <Link to={card.href} className="text-[10px] font-bold uppercase tracking-wider hover:underline" style={{ color: card.color }}>
-                      View
-                    </Link>
-                  )}
-                </div>
-                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{card.label}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-2xl font-bold text-foreground stat-number leading-none">{card.value}</p>
-                  {"badge" in card && (
-                    card.badgeVariant === "warning" ? (
-                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
-                        {card.badge}
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
-                        {card.badge}
-                      </Badge>
-                    )
-                  )}
-                </div>
-                <p className={`text-[11px] mt-1 ${"subtitleClass" in card ? card.subtitleClass : "text-muted-foreground"}`}>{card.subtitle}</p>
-                <div className="mt-2">
-                  {card.sparkType === "gender" ? (
-                    <ResponsiveContainer width="100%" height={36}>
-                      <AreaChart data={getSparklineData(card.sparkValue, "gender")} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="spark-grad-male" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.25} />
-                            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="spark-grad-female" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#ec4899" stopOpacity={0.25} />
-                            <stop offset="100%" stopColor="#ec4899" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <Area type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} fill="url(#spark-grad-male)" dot={false} activeDot={false} />
-                        <Area type="monotone" dataKey="v" stroke="#ec4899" strokeWidth={2} fill="url(#spark-grad-female)" dot={false} activeDot={false} data={getSparklineData(stats.femaleCount, "gender")} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={36}>
-                      <AreaChart data={getSparklineData(card.sparkValue, card.sparkType)} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={card.color} stopOpacity={0.25} />
-                            <stop offset="100%" stopColor={card.color} stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <Area type="monotone" dataKey="v" stroke={card.color} strokeWidth={2} fill={`url(#${gradientId})`} dot={false} activeDot={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
+        {kpiCards.map((card, idx) => (
+          <div key={card.label} className="border border-slate-200/60 rounded-2xl bg-card/70 backdrop-blur-xl p-4 shadow-md shadow-slate-200/40 hover:shadow-xl transition-all group relative overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-300" style={{ animationDelay: `${(idx + 1) * 50}ms` }}>
+            <div className="absolute top-0 right-0 w-20 h-20 opacity-5 rounded-full -mr-6 -mt-6" style={{ backgroundColor: card.color }} />
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 rounded-xl text-primary-foreground shadow-md group-hover:scale-110 transition-transform" style={{ backgroundColor: card.color }}>
+                <card.icon className="w-4 h-4" />
               </div>
-            );
-          });
-        })()}
+            </div>
+            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{card.label}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-2xl font-bold text-foreground stat-number leading-none">{card.value}</p>
+            </div>
+            <p className="text-[11px] mt-1 text-muted-foreground">{card.subtitle}</p>
+            <div className="mt-2">
+              {card.chart.kind === "area" && (
+                <AreaSparkline id={card.chart.id} series={card.chart.series} color={card.color} />
+              )}
+              {card.chart.kind === "bars" && (
+                <BarBreakdown items={card.chart.items} color={card.color} />
+              )}
+              {card.chart.kind === "gender" && (
+                <GenderSplitBar male={card.chart.male} female={card.chart.female} />
+              )}
+            </div>
+          </div>
+        ))}
       </div>
+
+      <LearnerMovementPanel
+        inCount={stats.transfereeStudents ?? 0}
+        outCount={stats.transferredStudents}
+        dropped={stats.droppedStudents}
+        dropRate={dropRate}
+        weekly={transfereeWeekly}
+        missingDocs={incompleteCount}
+        schoolYear={dashboard.currentSchoolYear}
+      />
 
       {/* ── Charts Row 1: Grade Distribution + Gender ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -458,17 +675,25 @@ export default function RegistrarDashboardPage() {
             <h3 className="text-sm font-bold text-foreground">Promotion Outcomes</h3>
           </div>
           {promotionBarData.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3">
-              {promotionBarData.map((item) => (
-                <div key={item.name} className="flex items-center gap-3 p-2.5 rounded-xl bg-muted/50">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                  <div>
-                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{item.name}</p>
-                    <p className="text-xl font-bold stat-number text-foreground">{item.count}</p>
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                {promotionBarData.map((item) => (
+                  <div key={item.name} className="flex items-center gap-3 p-2.5 rounded-xl bg-muted/50">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                    <div>
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{item.name}</p>
+                      <p className="text-xl font-bold stat-number text-foreground">{item.count}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {!!promotionData?.summary?.noGrades && (
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  {promotionData.summary.noGrades} learner(s) have no grades encoded for{" "}
+                  {promotionData.schoolYear ?? "this school year"} yet — they are pending, not retained.
+                </p>
+              )}
+            </>
           ) : (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <p className="text-xs">No promotion data yet</p>
@@ -482,6 +707,15 @@ export default function RegistrarDashboardPage() {
             <Target className="w-4 h-4" style={{ color: colors.primary }} />
             <h3 className="text-sm font-bold text-foreground">Grade Summary</h3>
           </div>
+          {gradePerformance.totalGraded === 0 ? (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50/60 p-3">
+              <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-800">
+                No grades encoded for the current term yet — passing rates and averages will appear once
+                teachers submit grades.
+              </p>
+            </div>
+          ) : (
           <div className="flex items-center gap-6">
             {/* Big percentage */}
             <div className="text-center flex-shrink-0">
@@ -525,6 +759,7 @@ export default function RegistrarDashboardPage() {
               </div>
             </div>
           </div>
+          )}
 
           {/* Failing Students Dropdown */}
           {showFailingList && gradePerformance.failingStudents.length > 0 && (

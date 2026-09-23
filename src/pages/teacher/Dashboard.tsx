@@ -23,7 +23,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { gradesApi, scheduleApi, type ClassAssignment, type GradeDeadlineInfo, type ArchivedClassInfo } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
-import { GradeDeadlineBanner } from "@/components/GradeDeadlineBanner";
 
 import {
   Select,
@@ -363,11 +362,6 @@ export default function TeacherDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
-      {/* Grade Submission Deadline Banner */}
-      {data.gradeDeadline && (
-        <GradeDeadlineBanner deadline={data.gradeDeadline} />
-      )}
-
       {/* ── Dynamic Living Hero Banner ── */}
       <div
         className="relative overflow-hidden rounded-3xl p-7 md:p-8 text-white shadow-xl shadow-red-950/20 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2"

@@ -26,11 +26,6 @@ interface LoginResponse {
   };
 }
 
-const PORTAL_BY_ROLE: Record<string, { label: string; path: string }> = {
-  ADMIN: { label: "Admin portal", path: "/login/admin" },
-  REGISTRAR: { label: "Registrar portal", path: "/login/registrar" },
-};
-
 export default function LoginPage() {
   const navigate = useNavigate();
   const { logoUrl, schoolName } = useTheme();
@@ -42,14 +37,12 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<LoginResponse | null>(null);
-  const [portalHint, setPortalHint] = useState<{ label: string; path: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
     setSuccess(null);
-    setPortalHint(null);
 
     try {
       // A pending SSO authorize request is role-agnostic — only then skip the portal gate.
@@ -88,9 +81,8 @@ export default function LoginPage() {
       }, 1000);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {
-        const data = err.response.data as { message?: string; code?: string; role?: string } | undefined;
+        const data = err.response.data as { message?: string } | undefined;
         setError(data?.message || "Login failed");
-        setPortalHint(data?.code === "WRONG_PORTAL" && data.role ? PORTAL_BY_ROLE[data.role] ?? null : null);
       } else {
         setError("Unable to connect to server. Please try again.");
       }
@@ -103,6 +95,8 @@ export default function LoginPage() {
     <div
       className="h-screen w-full flex overflow-hidden bg-slate-50"
       style={{
+        backgroundImage:
+          'linear-gradient(to bottom right, #f8fafc 0%, rgba(var(--theme-primary-rgb), 0.08) 50%, rgba(var(--theme-primary-rgb), 0.06) 100%)',
         '--primary': 'var(--theme-primary)',
         '--accent': 'var(--theme-accent)'
       } as React.CSSProperties}
@@ -183,15 +177,8 @@ export default function LoginPage() {
         className="relative w-full lg:w-[45%] xl:w-2/5 flex items-center justify-center p-4 sm:p-6 lg:p-8 overflow-y-auto"
       >
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-          <div
-            className="absolute inset-0"
-            style={{
-              background: 'rgba(var(--theme-primary-rgb), 0.04)',
-            }}
-          />
-
           <svg
-            className="absolute inset-0 h-full w-full opacity-[0.06]"
+            className="absolute inset-0 h-full w-full opacity-[0.08]"
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
@@ -211,13 +198,6 @@ export default function LoginPage() {
             </defs>
             <rect width="100%" height="100%" fill="url(#login-pixel-grid)" />
           </svg>
-
-          <div
-            className="absolute inset-0"
-            style={{
-              background: 'radial-gradient(circle at center, rgba(var(--theme-primary-rgb), 0.05) 0%, transparent 70%)',
-            }}
-          />
         </div>
 
         <div className="relative z-10 w-full max-w-[420px]">
@@ -275,14 +255,6 @@ export default function LoginPage() {
                     </div>
                     <span className="text-sm font-bold text-red-700">{error}</span>
                   </div>
-                  {portalHint && (
-                    <a
-                      href={portalHint.path}
-                      className="inline-block mt-2 ml-10 text-xs font-bold text-red-800 underline hover:text-red-900"
-                    >
-                      Go to {portalHint.label}
-                    </a>
-                  )}
                 </div>
               )}
 
@@ -378,9 +350,9 @@ export default function LoginPage() {
                     </div>
                     <span className="text-slate-600 group-hover:text-slate-900 transition-colors font-medium text-sm select-none">Remember me</span>
                   </label>
-                  <a href="#" className="text-xs font-semibold text-red-800 hover:text-red-900 hover:underline transition-colors">
-                    Forgot password?
-                  </a>
+                  <span className="text-xs font-medium text-muted-foreground select-none">
+                    Contact System Admin
+                  </span>
                 </div>
 
                 {/* Login Button */}

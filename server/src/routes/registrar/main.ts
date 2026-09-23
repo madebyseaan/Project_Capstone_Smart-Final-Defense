@@ -211,6 +211,36 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
       (e) => !e.student.birthDate || !e.student.gender || !e.student.previousSchool || !e.student.transferCertNo
     ).length;
 
+    // Real series for the KPI cards (replaces the client-side fabricated sparklines).
+    // 1) Active enrollment per school year — the "Active Students" trend.
+    const enrollmentTrendRows = await prisma.enrollment.groupBy({
+      by: ['schoolYear'],
+      where: { status: 'ENROLLED' },
+      _count: true,
+      orderBy: { schoolYear: 'asc' },
+    });
+    const enrollmentTrend = enrollmentTrendRows
+      .map((row) => ({ label: row.schoolYear, count: row._count }))
+      .slice(-6);
+
+    // 2) Transferee arrivals bucketed by week — discrete events, so bars.
+    const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const weekBuckets = new Map<string, { start: Date; count: number }>();
+    for (const e of transfereeEnrollments) {
+      if (!e.transferInDate) continue;
+      const start = new Date(e.transferInDate);
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - start.getDay());
+      const key = start.toISOString().slice(0, 10);
+      const bucket = weekBuckets.get(key) ?? { start, count: 0 };
+      bucket.count += 1;
+      weekBuckets.set(key, bucket);
+    }
+    const transfereeWeekly = Array.from(weekBuckets.values())
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+      .slice(-12)
+      .map((b) => ({ label: `${MONTH_ABBR[b.start.getMonth()]} ${b.start.getDate()}`, count: b.count }));
+
     // Grade performance stats: average grade and passing rate per section (current term)
     let gradePerformance: {
       overallPassingRate: number;
@@ -379,6 +409,8 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         incompleteTransferees,
       },
       sections: sectionSummary,
+      enrollmentTrend,
+      transfereeWeekly,
       sync: {
         running: syncStatus.running,
         ...syncFreshness,

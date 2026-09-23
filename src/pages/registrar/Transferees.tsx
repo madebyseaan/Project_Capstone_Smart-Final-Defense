@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeftRight,
   AlertTriangle,
@@ -8,6 +8,7 @@ import {
   CloudDownload,
   RefreshCw,
   History,
+  X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +71,10 @@ export default function Transferees() {
   const [transferees, setTransferees] = useState<TransfereeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  // Deep link from the dashboard's "Missing SF10" badge: show only learners
+  // with incomplete documents.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [incompleteOnly, setIncompleteOnly] = useState(() => searchParams.get("incomplete") === "1");
   const [schoolYearFilter, setSchoolYearFilter] = useState<string>("current");
   const [allYears, setAllYears] = useState(false);
 
@@ -132,16 +137,25 @@ export default function Transferees() {
     }
   };
 
+  const isIncompleteRow = (t: TransfereeRow) =>
+    t.completeness.missingBirthDate || t.completeness.missingGender ||
+    t.completeness.missingPreviousSchool || t.completeness.missingTransferCertNo;
+
   const filtered = transferees.filter((t) => {
+    if (incompleteOnly && !isIncompleteRow(t)) return false;
     const name = t.studentName.toLowerCase();
     const q = search.toLowerCase();
     return name.includes(q) || t.lrn.includes(q);
   });
 
-  const incompleteCount = transferees.filter((t) =>
-    t.completeness.missingBirthDate || t.completeness.missingGender ||
-    t.completeness.missingPreviousSchool || t.completeness.missingTransferCertNo
-  ).length;
+  const incompleteCount = transferees.filter(isIncompleteRow).length;
+
+  const clearIncompleteFilter = () => {
+    setIncompleteOnly(false);
+    const next = new URLSearchParams(searchParams);
+    next.delete("incomplete");
+    setSearchParams(next, { replace: true });
+  };
 
   const openDialog = (row: TransfereeRow) => {
     setSelected(row);
@@ -301,6 +315,18 @@ export default function Transferees() {
                     className="pl-8 pr-4 h-9 w-full sm:w-64 rounded-lg text-xs"
                   />
                 </div>
+                {incompleteOnly && (
+                  <button
+                    type="button"
+                    onClick={clearIncompleteFilter}
+                    title="Clear incomplete-only filter"
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Missing docs only ({incompleteCount})
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
         </div>
@@ -452,7 +478,14 @@ export default function Transferees() {
                     ].filter(Boolean) as string[];
                     const isPastRow = !!row.schoolYear && row.schoolYear !== currentSchoolYear;
                     return (
-                      <TableRow key={row.enrollmentId} className="border-b border-border/20 hover:bg-muted/50 transition-colors">
+                        <TableRow
+                          key={row.enrollmentId}
+                          className={`border-b border-border/20 transition-colors ${
+                            incompleteOnly && isIncompleteRow(row)
+                              ? "bg-amber-50/60 hover:bg-amber-50"
+                              : "hover:bg-muted/50"
+                          }`}
+                        >
                         <TableCell className="py-3.5 px-4 font-mono text-[13px] text-muted-foreground tabular-nums text-left align-middle whitespace-nowrap">
                           {row.lrn || <Dash />}
                         </TableCell>

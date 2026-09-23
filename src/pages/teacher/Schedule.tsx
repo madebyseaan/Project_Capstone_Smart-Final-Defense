@@ -100,6 +100,17 @@ function formatGradeShort(gradeLevel: string): string {
   return map[gradeLevel] ?? gradeLevel;
 }
 
+const gradeLevelLabels: Record<string, string> = {
+  GRADE_7: "Grade 7",
+  GRADE_8: "Grade 8",
+  GRADE_9: "Grade 9",
+  GRADE_10: "Grade 10",
+};
+
+function formatSectionLabel(gradeLevel: string, sectionName: string): string {
+  return `${gradeLevelLabels[gradeLevel] ?? gradeLevel} - ${sectionName}`;
+}
+
 const ABBREVIATIONS: Record<string, string> = {
   "Environmental Science": "Env. Science",
   "Applied Chemistry": "App. Chemistry",
@@ -122,6 +133,10 @@ const ABBREVIATIONS: Record<string, string> = {
   "English": "English",
   "Science": "Science",
 };
+
+function stripGradeSuffix(name: string): string {
+  return name.replace(/\s*\d+$/, "").trim();
+}
 
 function shortenSubject(name: string): string {
   if (name.length <= 15) return name;
@@ -420,9 +435,11 @@ export default function TeacherSchedule() {
                             <div className={`rounded-2xl border ${gc.cell} p-3 transition-all hover:shadow-md hover:-translate-y-0.5 cursor-default h-[88px] flex flex-col justify-between`}>
                               {/* Subject */}
                               <div>
-                                <p className={`text-[13px] font-bold ${gc.text} leading-tight line-clamp-1`} title={entry.subject.name}>{shortenSubject(entry.subject.name)}</p>
-                                {/* Section */}
-                                <p className="text-[11px] font-bold text-muted-foreground mt-0.5 line-clamp-1">{entry.section.name}</p>
+                                <p className={`text-[13px] font-bold ${gc.text} leading-tight line-clamp-1`} title={entry.subject.name}>{shortenSubject(stripGradeSuffix(entry.subject.name))}</p>
+                                {/* Grade + Section */}
+                                <p className="text-[11px] font-bold text-muted-foreground mt-0.5 line-clamp-1" title={formatSectionLabel(entry.section.gradeLevel, entry.section.name)}>
+                                  {formatSectionLabel(entry.section.gradeLevel, entry.section.name)}
+                                </p>
                               </div>
                               {/* Room — always at bottom */}
                               <div className="flex items-center gap-1">
@@ -477,14 +494,11 @@ export default function TeacherSchedule() {
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">{formatTime12h(entry.startTime)} – {formatTime12h(entry.endTime)}</span>
                     </div>
                     {/* Subject */}
-                    <p className={`text-lg font-bold ${gc.text} leading-tight line-clamp-2`} title={entry.subject.name}>{shortenSubject(entry.subject.name)}</p>
-                    {/* Section + Grade */}
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <Badge variant="secondary" className={`border-0 text-[10px] font-bold px-2 py-0.5 rounded-md ${gc.badge} flex-shrink-0`}>
-                        {formatGradeShort(entry.section.gradeLevel)}
-                      </Badge>
-                      <span className="text-sm font-bold text-muted-foreground">{entry.section.name}</span>
-                    </div>
+                    <p className={`text-lg font-bold ${gc.text} leading-tight line-clamp-2`} title={entry.subject.name}>{shortenSubject(stripGradeSuffix(entry.subject.name))}</p>
+                    {/* Grade + Section */}
+                    <p className="text-sm font-bold text-muted-foreground mt-1.5">
+                      {formatSectionLabel(entry.section.gradeLevel, entry.section.name)}
+                    </p>
                     {/* Room — pushed to bottom */}
                     <div className="mt-auto pt-3">
                       {entry.roomId != null ? (

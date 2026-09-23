@@ -25,7 +25,7 @@ export default function SF6Form({ sf6Data, onBack }: SF6FormProps) {
             <p className="text-sm text-muted-foreground">School Year: {sf6Data.schoolYear}</p>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <Card className="border-0 shadow-md rounded-xl">
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-blue-600">{summary.totalStudents || 0}</p>
@@ -46,11 +46,25 @@ export default function SF6Form({ sf6Data, onBack }: SF6FormProps) {
           </Card>
           <Card className="border-0 shadow-md rounded-xl">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-purple-600">{summary.overallPromotionRate || 0}%</p>
+              <p className="text-2xl font-bold text-slate-500">{summary.noGrades || 0}</p>
+              <p className="text-sm text-gray-500">Pending (no grades)</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-purple-600">
+                {summary.gradedStudents ? Math.round((summary.promoted / summary.gradedStudents) * 100) : 0}%
+              </p>
               <p className="text-sm text-gray-500">Promotion Rate</p>
             </CardContent>
           </Card>
         </div>
+        {!!summary.noGrades && (
+          <p className="text-xs text-muted-foreground -mt-3">
+            Learners with no encoded grades yet are <span className="font-semibold">Pending</span>, not retained.
+            Promotion rate is computed over graded learners only.
+          </p>
+        )}
 
         {/* By Grade Level */}
         <Card className="border-0 shadow-lg rounded-2xl">
@@ -63,20 +77,23 @@ export default function SF6Form({ sf6Data, onBack }: SF6FormProps) {
                     <th className="px-4 py-3 text-center font-semibold">Total</th>
                     <th className="px-4 py-3 text-center font-semibold">Promoted</th>
                     <th className="px-4 py-3 text-center font-semibold">Retained</th>
-                    <th className="px-4 py-3 text-center font-semibold">Rate</th>
+                    <th className="px-4 py-3 text-center font-semibold">Pending</th>
+                    <th className="px-4 py-3 text-center font-semibold">Rate (graded)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {gradeOrder.map((gl) => {
                     const data = byGradeLevel[gl];
                     if (!data) return null;
-                    const rate = data.total > 0 ? Math.round((data.promoted / data.total) * 100) : 0;
+                    const graded = (data.promoted || 0) + (data.retained || 0);
+                    const rate = graded > 0 ? Math.round((data.promoted / graded) * 100) : 0;
                     return (
                       <tr key={gl} className="border-b hover:bg-muted/50">
                         <td className="px-4 py-3 font-medium">{formatGradeLevel(gl)}</td>
                         <td className="px-4 py-3 text-center">{data.total}</td>
                         <td className="px-4 py-3 text-center text-green-600 font-semibold">{data.promoted}</td>
                         <td className="px-4 py-3 text-center text-red-600 font-semibold">{data.retained}</td>
+                        <td className="px-4 py-3 text-center text-slate-500 font-semibold">{data.noGrades || 0}</td>
                         <td className="px-4 py-3 text-center font-semibold">{rate}%</td>
                       </tr>
                     );
@@ -86,7 +103,10 @@ export default function SF6Form({ sf6Data, onBack }: SF6FormProps) {
                     <td className="px-4 py-3 text-center">{summary.totalStudents || 0}</td>
                     <td className="px-4 py-3 text-center text-green-600">{summary.promoted || 0}</td>
                     <td className="px-4 py-3 text-center text-red-600">{summary.retained || 0}</td>
-                    <td className="px-4 py-3 text-center">{summary.overallPromotionRate || 0}%</td>
+                    <td className="px-4 py-3 text-center text-slate-500">{summary.noGrades || 0}</td>
+                    <td className="px-4 py-3 text-center">
+                      {summary.gradedStudents ? Math.round((summary.promoted / summary.gradedStudents) * 100) : 0}%
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -110,11 +130,15 @@ export default function SF6Form({ sf6Data, onBack }: SF6FormProps) {
                     <th className="px-4 py-3 text-center font-semibold">Total</th>
                     <th className="px-4 py-3 text-center font-semibold">Promoted</th>
                     <th className="px-4 py-3 text-center font-semibold">Retained</th>
-                    <th className="px-4 py-3 text-center font-semibold">Rate</th>
+                    <th className="px-4 py-3 text-center font-semibold">Pending</th>
+                    <th className="px-4 py-3 text-center font-semibold">Rate (graded)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sections.map((s: any) => (
+                  {sections.map((s: any) => {
+                    const graded = (s.promoted || 0) + (s.retained || 0);
+                    const rate = graded > 0 ? Math.round((s.promoted / graded) * 100) : 0;
+                    return (
                     <tr key={s.sectionId} className="border-b hover:bg-muted/50">
                       <td className="px-4 py-3 font-medium">{s.sectionName}</td>
                       <td className="px-4 py-3">{formatGradeLevel(s.gradeLevel)}</td>
@@ -124,9 +148,11 @@ export default function SF6Form({ sf6Data, onBack }: SF6FormProps) {
                       <td className="px-4 py-3 text-center">{s.totalStudents}</td>
                       <td className="px-4 py-3 text-center text-green-600 font-semibold">{s.promoted}</td>
                       <td className="px-4 py-3 text-center text-red-600 font-semibold">{s.retained}</td>
-                      <td className="px-4 py-3 text-center font-semibold">{s.promotionRate}%</td>
+                      <td className="px-4 py-3 text-center text-slate-500 font-semibold">{s.noGrades || 0}</td>
+                      <td className="px-4 py-3 text-center font-semibold">{rate}%</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

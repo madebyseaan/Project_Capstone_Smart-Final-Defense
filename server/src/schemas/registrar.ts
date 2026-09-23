@@ -178,3 +178,13 @@ export const sf10ProfileUpdateSchema = z.object({
     alsAePasser: z.boolean().optional(),
   }),
 });
+
+/**
+ * Batched document-availability lookup for the registrar Records Vault.
+ * Read-only; used to avoid speculative 404s when opening a former student's file.
+ */
+export const documentsIndexSchema = z.object({
+  body: z.object({
+    studentIds: z.array(z.string().min(1)).min(1).max(200),
+  }),
+});

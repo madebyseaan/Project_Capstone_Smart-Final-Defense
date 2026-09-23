@@ -7,7 +7,7 @@ import { logger } from "../../lib/logger";
 import { getSchoolIdentityForYear } from "../../lib/schoolSettingsSnapshot";
 import { buildSf9Attendance } from "../../lib/attendanceAggregate";
 import { buildSf10Records } from "../../lib/sf10";
-import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE } from "../../lib/promotion";
+import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE, promotionStatusLabel, derivePromotionStatus } from "../../lib/promotion";
 import {
   resolveCurrentSchoolYearLabel,
   normalizeDisplaySex,
@@ -308,6 +308,13 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
     // Fetch school settings for SF9 header from year snapshot
     const schoolIdentity = await getSchoolIdentityForYear(currentSchoolYear);
 
+    // Remedial outcomes for this enrollment — crediting passed remediation in
+    // the derived promotion status.
+    const remedialRows = await prisma.remedialClass.findMany({
+      where: { enrollmentId: enrollment.id },
+      select: { subjectCode: true, subjectName: true, outcome: true, recomputedGrade: true },
+    });
+
     res.json({
       student: {
         id: student.id,
@@ -333,13 +340,33 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
           T2: s.T2,
           T3: s.T3,
           final: s.finalGrade,
-          remarks: s.finalGrade ? (s.finalGrade >= 75 ? "Passed" : "Failed") : null
+          remarks: s.finalGrade != null ? (s.finalGrade >= PASSING_GRADE ? "Passed" : "Failed") : null
         })),
       attendance: attendance,
       values: [],
       generalAverage,
       honors: generalAverage ? (generalAverage >= 98 ? "With Highest Honors" : generalAverage >= 95 ? "With High Honors" : generalAverage >= 90 ? "With Honors" : null) : null,
-      promotionStatus: generalAverage ? (allRows.every((s: any) => !s.finalGrade || s.finalGrade >= 75) ? "Promoted" : "Retained") : null,
+      // Prefer the enrollment's official promotion status (same source as SF10);
+      // otherwise derive with the DO 13 matrix, crediting passed remediation.
+      promotionStatus:
+        promotionStatusLabel(enrollment.promotionStatus ?? null) ??
+        promotionStatusLabel(
+          derivePromotionStatus(
+            enrollment.section.gradeLevel,
+            allRows.map((s: any) => ({
+              subjectCode: s.subjectCode,
+              subjectName: s.subjectName,
+              teacher: s.teacher ?? "",
+              T1: s.T1 ?? null,
+              T2: s.T2 ?? null,
+              T3: s.T3 ?? null,
+              finalRating: s.finalGrade ?? null,
+              remarks: s.finalGrade != null ? (s.finalGrade >= PASSING_GRADE ? "Passed" : "Failed") : null,
+              status: s.finalGrade != null ? ("GRADED" as const) : ("NG" as const),
+            })),
+            remedialRows,
+          ),
+        ),
       schoolSettings: {
         schoolName: schoolIdentity.schoolName,
         division: schoolIdentity.division,
@@ -513,7 +540,7 @@ router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Respon
 
     const gradeOrder = ['GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10'];
     const sectionResults: any[] = [];
-    const byGradeLevel: Record<string, { total: number; promoted: number; retained: number; dropped: number; transferred: number }> = {};
+    const byGradeLevel: Record<string, { total: number; promoted: number; retained: number; dropped: number; transferred: number; noGrades: number }> = {};
 
     for (const section of sections) {
       // Get enrollments
@@ -537,7 +564,7 @@ router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Respon
       });
 
       // Compute per-student promotion status
-      let promoted = 0, retained = 0, dropped = 0, transferred = 0;
+      let promoted = 0, retained = 0, dropped = 0, transferred = 0, noGrades = 0;
 
       for (const enr of enrollments) {
         if (enr.status === 'DROPPED') { dropped++; continue; }
@@ -578,7 +605,9 @@ router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Respon
 
         const hasFailing = subjectFinals.some((g) => g < PASSING_GRADE);
         const hasGrades = subjectFinals.length > 0;
-        if (!hasGrades || hasFailing) { retained++; } else { promoted++; }
+        // A learner with no encoded grades yet is PENDING, not retained — counting
+        // them as retained made an ungraded school year read as "85 retained".
+        if (!hasGrades) { noGrades++; } else if (hasFailing) { retained++; } else { promoted++; }
       }
 
       const total = enrollments.length;
@@ -595,17 +624,19 @@ router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Respon
         retained,
         dropped,
         transferred,
+        noGrades,
         promotionRate,
       });
 
       // Aggregate by grade level
       const gl = section.gradeLevel;
-      if (!byGradeLevel[gl]) byGradeLevel[gl] = { total: 0, promoted: 0, retained: 0, dropped: 0, transferred: 0 };
+      if (!byGradeLevel[gl]) byGradeLevel[gl] = { total: 0, promoted: 0, retained: 0, dropped: 0, transferred: 0, noGrades: 0 };
       byGradeLevel[gl].total += total;
       byGradeLevel[gl].promoted += promoted;
       byGradeLevel[gl].retained += retained;
       byGradeLevel[gl].dropped += dropped;
       byGradeLevel[gl].transferred += transferred;
+      byGradeLevel[gl].noGrades += noGrades;
     }
 
     // Sort section results by grade level then name
@@ -620,6 +651,7 @@ router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Respon
     const totalRetained = sectionResults.reduce((s, r) => s + r.retained, 0);
     const totalDropped = sectionResults.reduce((s, r) => s + r.dropped, 0);
     const totalTransferred = sectionResults.reduce((s, r) => s + r.transferred, 0);
+    const totalNoGrades = sectionResults.reduce((s, r) => s + r.noGrades, 0);
 
     res.json({
       schoolYear: currentSchoolYear,
@@ -630,6 +662,8 @@ router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Respon
         retained: totalRetained,
         dropped: totalDropped,
         transferred: totalTransferred,
+        noGrades: totalNoGrades,
+        gradedStudents: totalPromoted + totalRetained,
         overallPromotionRate: totalStudents > 0 ? Math.round((totalPromoted / totalStudents) * 100) : 0,
       },
       byGradeLevel,

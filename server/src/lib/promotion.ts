@@ -189,6 +189,43 @@ export function promotionStatusLabel(status: PromotionStatus | null): string | n
   return PROMOTION_STATUS_LABELS[status];
 }
 
+export interface RemedialOutcomeInput {
+  subjectCode: string;
+  subjectName?: string | null;
+  outcome?: string | null;
+  recomputedGrade?: number | null;
+}
+
+/**
+ * Derive a promotion status for a school year that has no stored
+ * `Enrollment.promotionStatus` (legacy/imported years).
+ *
+ * Uses the same DO 13 matrix as EOSY (`evaluatePromotion`), then credits
+ * passed remedial subjects: a conditionally-promoted learner whose failed
+ * subjects were all remediated and passed is reported as fully PROMOTED.
+ */
+export function derivePromotionStatus(
+  gradeLevel: GradeLevel,
+  rows: SubjectFinalRow[],
+  remedial: RemedialOutcomeInput[] = [],
+): PromotionStatus | null {
+  const decision = evaluatePromotion(gradeLevel, rows);
+  if (decision.promotionStatus !== "CONDITIONALLY_PROMOTED") return decision.promotionStatus;
+
+  const failing = rows.filter((r) => r.finalRating !== null && r.finalRating < PASSING_GRADE);
+  if (failing.length === 0) return decision.promotionStatus;
+
+  const passedCodes = new Set(
+    remedial
+      .filter((r) => r.outcome === "PASSED" || (r.recomputedGrade ?? 0) >= PASSING_GRADE)
+      .map((r) => r.subjectCode.toUpperCase()),
+  );
+
+  return failing.every((r) => passedCodes.has(r.subjectCode.toUpperCase()))
+    ? "PROMOTED"
+    : decision.promotionStatus;
+}
+
 export interface DraftBlocker {
   studentId: string;
   studentName: string;

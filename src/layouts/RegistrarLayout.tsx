@@ -18,6 +18,9 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 import IntegratedSystemsNav from "@/components/layout/IntegratedSystemsNav";
+import PixelGridBackground from "@/components/layout/PixelGridBackground";
+import NotificationBell from "@/components/layout/NotificationBell";
+import { useSyncStream } from "@/hooks/useSyncStream";
 interface UserData {
   id: string;
   username: string;
@@ -81,6 +84,7 @@ export default function RegistrarLayout() {
     return saved === 'true';
   });
   const { logoUrl, schoolName, currentSchoolYear } = useTheme();
+  const { atlasOffline, enrollproOffline } = useSyncStream();
 
   useEffect(() => {
     localStorage.setItem("smart_active_portal", "registrar");
@@ -90,13 +94,13 @@ export default function RegistrarLayout() {
     const userData = sessionStorage.getItem("user_registrar");
 
     if (!userData) {
-      navigate("/login");
+      navigate("/login/registrar");
       return;
     }
 
     const parsedUser = JSON.parse(userData);
     if (parsedUser.role !== "REGISTRAR") {
-      navigate("/login");
+      navigate("/login/registrar");
       return;
     }
 
@@ -109,7 +113,7 @@ export default function RegistrarLayout() {
     sessionStorage.removeItem("refreshToken_registrar");
     sessionStorage.removeItem("user");
     sessionStorage.removeItem("token");
-    navigate("/login");
+    navigate("/login/registrar");
   };
 
   const toggleSidebarCollapse = () => {
@@ -136,7 +140,8 @@ export default function RegistrarLayout() {
     : user.username;
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="isolate min-h-screen">
+      <PixelGridBackground />
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -358,6 +363,12 @@ export default function RegistrarLayout() {
             </div>
 
             <div className="flex items-center gap-3">
+              <NotificationBell
+                portal="registrar"
+                userId={user.id}
+                atlasOffline={atlasOffline}
+                enrollproOffline={enrollproOffline}
+              />
               {/* School Year Badge */}
               {currentSchoolYear && (
                 <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-wider px-2 py-1 rounded-lg bg-slate-100 text-slate-600">

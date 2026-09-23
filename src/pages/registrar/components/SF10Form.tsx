@@ -286,6 +286,18 @@ export default function SF10Form({ data, schoolName, highlightArea, highlightSec
             </tbody>
           </table>
 
+          {/* Action taken / promotion remarks for this school year */}
+          <div className="border-t border-black px-2 py-1 text-[11px] text-gray-900">
+            <span className="font-bold">Remarks:</span>{" "}
+            {record.promotionStatus
+              ? record.promotionStatus
+              : record.generalAverage != null
+                ? record.generalAverage >= 75
+                  ? "Passed"
+                  : "Failed"
+                : ""}
+          </div>
+
           {/* Remedial Classes Section */}
           <div className="border-t border-black p-2">
             <div className="flex items-center gap-2 mb-1">

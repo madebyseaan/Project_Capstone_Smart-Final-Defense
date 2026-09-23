@@ -291,7 +291,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
       res.status(403).json({
         code: "WRONG_PORTAL",
         role: user.role,
-        message: `This account is registered as ${user.role}. Please sign in through the ${expectedPortal === 'ADMIN' ? 'Admin' : expectedPortal === 'REGISTRAR' ? 'Registrar' : 'Teacher'} portal.`,
+        message: `This account can't sign in through this portal. Please use the portal assigned to your role.`,
       });
       return;
     }

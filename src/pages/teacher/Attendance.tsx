@@ -542,7 +542,7 @@ export default function Attendance() {
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
@@ -577,7 +577,7 @@ export default function Attendance() {
                 </Select>
                 <Button
                   onClick={downloadExcel}
-                  className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] tracking-widest uppercase transition-all"
+                  className="h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-[10px] tracking-widest uppercase transition-all"
                 >
                   <Download className="w-4 h-4 mr-2" />
                   DOWNLOAD SF2

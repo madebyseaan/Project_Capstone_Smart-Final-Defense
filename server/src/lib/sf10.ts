@@ -10,7 +10,7 @@ import { prisma } from './prisma';
 import { getActiveSchoolYearLabel } from './schoolYearResolver';
 import { logger } from './logger';
 import { getSchoolIdentityForYear, getSchoolIdentityByYears } from './schoolSettingsSnapshot';
-import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE, promotionStatusLabel } from './promotion';
+import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE, promotionStatusLabel, derivePromotionStatus } from './promotion';
 import {
   normalizeDisplaySex,
   isHomeroomGuidanceSubjectCode,
@@ -382,7 +382,30 @@ export async function buildSf10Records(studentId: string): Promise<Sf10Response 
       generalAverage,
       honors: generalAverage ? (generalAverage >= 98 ? "With Highest Honors" : generalAverage >= 95 ? "With High Honors" : generalAverage >= 90 ? "With Honors" : null) : null,
       promotionStatus: promotionStatusLabel(enrollmentForYear?.promotionStatus ?? null)
-        ?? (generalAverage ? (subjectGrades.every((s: any) => !s.final || s.final >= 75) ? "Promoted" : "Retained") : null),
+        ?? promotionStatusLabel(
+          derivePromotionStatus(
+            year.gradeLevel,
+            subjectGrades.map((s: any) => ({
+              subjectCode: s.subjectCode,
+              subjectName: s.subjectName,
+              teacher: "",
+              T1: null,
+              T2: null,
+              T3: null,
+              finalRating: s.final ?? null,
+              remarks: s.remarks ?? null,
+              status: s.final != null ? ("GRADED" as const) : ("NG" as const),
+            })),
+            enrollmentForYear
+              ? (remedialByEnrollment.get(enrollmentForYear.id) ?? []).map((rc) => ({
+                  subjectCode: rc.subjectCode,
+                  subjectName: rc.subjectName,
+                  outcome: rc.outcome,
+                  recomputedGrade: rc.recomputedGrade,
+                }))
+              : [],
+          ),
+        ),
       remedialClasses: enrollmentForYear
         ? (remedialByEnrollment.get(enrollmentForYear.id) ?? []).map((rc) => ({
             learningAreas: computeDisplayName(rc.subjectCode, rc.subjectName),
