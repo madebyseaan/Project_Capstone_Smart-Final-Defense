@@ -7,10 +7,10 @@ import {
   getAllIntegrationV1Sections,
   getIntegrationV1LearnersPage,
   resolveEnrollProSchoolYear,
-  getEnrollProSectionRoster,
 } from "../../lib/enrollproClient";
 import { getActiveSchoolYearLabel, getActiveSchoolYear } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
+import { isExternalDown } from "../../lib/externalState";
 import { createAuditLog } from "../../lib/audit";
 import { maskId } from "../../lib/redact";
 import { withSectionLock } from "../../lib/sectionLock";
@@ -26,6 +26,7 @@ import {
   normalizeDisplaySex,
   studentsByGrace,
 } from "./helpers";
+import { getSectionRosterWithStatus, getCachedLearnersPage } from "../../lib/syncCache";
 
 export default function registerMainRoutes(router: Router): void {
 
@@ -151,11 +152,14 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
 
       // Live gender breakdown from EnrollPro learners (page 1 up to 500; fetch more if needed)
       try {
-        const genderPage1 = await getIntegrationV1LearnersPage(resolvedSchoolYear.id, 1, 500);
+        if (isExternalDown('enrollpro')) {
+          throw new Error('EnrollPro is marked unreachable — skipping live gender breakdown (DB fallback)');
+        }
+        const genderPage1 = await getCachedLearnersPage(resolvedSchoolYear.id, 1, 500);
         const allLearnerRows: any[] = [...(genderPage1.data ?? [])];
         const genderTotalPages = Number(genderPage1.meta?.totalPages ?? 1);
         for (let p = 2; p <= genderTotalPages; p++) {
-          const pg = await getIntegrationV1LearnersPage(resolvedSchoolYear.id, p, 500);
+          const pg = await getCachedLearnersPage(resolvedSchoolYear.id, p, 500);
           allLearnerRows.push(...(pg.data ?? []));
         }
         maleCount = allLearnerRows.filter((r: any) => {
@@ -1982,11 +1986,13 @@ router.get("/section-roster/:enrollProId", authenticateToken, async (req: AuthRe
       return;
     }
 
-    const learners = await getEnrollProSectionRoster(enrollProId);
+    const { learners, stale, ageMs } = await getSectionRosterWithStatus(enrollProId);
     res.json({
       section: { enrollProId },
       learners,
       total: learners.length,
+      stale,
+      ageMs,
     });
   } catch (error: any) {
     logger.error("[registrar/section-roster]", error.message);

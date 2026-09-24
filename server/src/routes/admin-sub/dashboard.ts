@@ -5,7 +5,7 @@ import { prisma } from "../../lib/prisma";
 import { getIntegrationV1ActiveSchoolYear, getIntegrationV1FacultyPage, getIntegrationV1LearnersPage } from "../../lib/enrollproClient";
 import { getActiveTermLabels } from "../../lib/schoolYearResolver";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
-import { getUnifiedSyncStatus } from "../../lib/syncCoordinator";
+import { getUnifiedSyncStatus, getSyncCircuitBreakerStatus } from "../../lib/syncCoordinator";
 import { listUnfinalizedSections } from "../../lib/promotion";
 import { logger } from "../../lib/logger";
 import { requireAdmin } from "./helpers";
@@ -156,10 +156,23 @@ export default function (router: Router) {
 
       try {
         // Best-effort: never let external health pings block the dashboard.
-        const health = await Promise.race([
-          getSystemHealthSnapshot(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-        ]);
+        // Prefer the scheduler's last dependency snapshot when it is fresh
+        // (< 60s); otherwise fall back to a live probe bounded at 3s.
+        const snapshot = getSyncCircuitBreakerStatus().lastDependencyHealth;
+        const snapshotFresh =
+          snapshot && Date.now() - new Date(snapshot.checkedAt).getTime() < 60_000;
+        let health: { external: { enrollpro: any; atlas: any }; status: string } | null = null;
+        if (snapshotFresh && snapshot) {
+          health = {
+            external: { enrollpro: snapshot.enrollpro, atlas: snapshot.atlas },
+            status: snapshot.enrollpro.online && snapshot.atlas.online ? "HEALTHY" : "DEGRADED",
+          };
+        } else {
+          health = await Promise.race([
+            getSystemHealthSnapshot(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+          ]);
+        }
         if (health) {
           offlineServices = [health.external.enrollpro, health.external.atlas]
             .filter((service) => !service.online)

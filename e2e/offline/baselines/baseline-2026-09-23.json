@@ -1,0 +1,28 @@
+{
+  "date": "2026-09-23",
+  "machine": "dev-workstation (Windows)",
+  "rig": {
+    "db": "smart_test_db",
+    "enrollpro": "http://127.0.0.1:5999 (stub)",
+    "atlas": "http://127.0.0.1:5998 (unreachable by design)",
+    "aims": "unconfigured",
+    "endpoint": "GET /api/registrar/dashboard (real handler, rig fixtures)"
+  },
+  "before": {
+    "note": "pre-Phase-0 code, same rig",
+    "online_ms": 84,
+    "hang_ms": 80109,
+    "refuse_ms": 70
+  },
+  "after": {
+    "note": "Phase 0 (fast-fail + breaker + per-source invalidation + health) then P1 (SWR) + P2 (externalState/reconnect guard)",
+    "online_ms": 57,
+    "hang_ms": 3056,
+    "refuse_ms": 13,
+    "budgets_ms": { "online": 2000, "hang": 8000, "refuse": 2000 }
+  },
+  "improvement": {
+    "hang_factor": "~26x",
+    "log_transitions": "one WARN on EP down, one INFO on recovery (no per-request spam observed in the rig log)"
+  }
+}

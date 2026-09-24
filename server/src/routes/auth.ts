@@ -83,7 +83,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
     // 1b. Faculty gate for locally-authenticated teachers (5-min staleness closer)
     if (user && isValidPassword && user.role === 'TEACHER') {
       try {
-        const epFaculty = await getCachedEnrollProTeachers();
+        const epFaculty = await getCachedEnrollProTeachers(false, false);
         const employeeId = user.username;
         if (epFaculty.length > 0 && !epFaculty.some((t) => String(t.employeeId ?? '').trim() === employeeId)) {
           await createAuditLog(
@@ -132,7 +132,7 @@ router.post("/login", loginLimiter, validate(loginSchema), async (req: Request, 
         let isFacultyMember = true;
         if (assignedRole === 'TEACHER') {
           try {
-            const epFaculty = await getCachedEnrollProTeachers();
+            const epFaculty = await getCachedEnrollProTeachers(false, false);
             isFacultyMember = epFaculty.length > 0 && epFaculty.some((t) => String(t.employeeId ?? '').trim() === empId);
           } catch {
             // EP unreachable — for live-auth, allow existing users only

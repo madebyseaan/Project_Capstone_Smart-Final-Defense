@@ -15,6 +15,7 @@
 
 import { prisma } from './prisma';
 import { logger } from './logger';
+import { isExternalDown } from './externalState';
 import {
   findEnrollProTeacherByEmployeeId,
   findIntegrationV1FacultyByEmployeeId,
@@ -37,7 +38,7 @@ import {
   resolveSubjectCode,
   normalizeSubjectLabel,
 } from './atlasUtils';
-import { atlasGet, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID, invalidateAtlasSchoolYearCache } from './sync/httpClient';
+import { atlasGet, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID, invalidateAtlasSchoolYearCache, ATLAS_REQUEST_TIMEOUT_MS, ATLAS_REQUEST_RETRIES } from './sync/httpClient';
 import {
   upsertLearner,
   dropStaleEnrollments,
@@ -132,7 +133,7 @@ export async function syncTeacherOnLogin(
   // Resolve Atlas school year dynamically (runtime/context → env fallback)
   let atlasSchoolYearId = DEFAULT_ATLAS_SCHOOL_YEAR_ID;
   try {
-    const resolvedAtlasSY = await resolveAtlasSchoolYear();
+    const resolvedAtlasSY = await resolveAtlasSchoolYear(undefined, { retries: ATLAS_REQUEST_RETRIES, timeoutMs: ATLAS_REQUEST_TIMEOUT_MS });
     atlasSchoolYearId = resolvedAtlasSY.id;
     logger.debug(`[TeacherSync] Using Atlas SY id=${atlasSchoolYearId} (source=${resolvedAtlasSY.source})`);
   } catch {
@@ -397,7 +398,7 @@ export async function syncTeacherOnLogin(
         // Fall back to a live fetch on cache miss so login always works.
         let atlasFaculty: any[] = getCachedAtlasFaculty() ?? [];
         if (atlasFaculty.length === 0) {
-          const facultyData = await atlasGet(`/faculty?schoolId=${ATLAS_SCHOOL_ID}`);
+          const facultyData = await atlasGet(`/faculty?schoolId=${ATLAS_SCHOOL_ID}`, ATLAS_REQUEST_RETRIES, ATLAS_REQUEST_TIMEOUT_MS);
           atlasFaculty = facultyData?.faculty ?? [];
           if (atlasFaculty.length > 0) setCachedAtlasFaculty(atlasFaculty);
         }
@@ -440,18 +441,18 @@ export async function syncTeacherOnLogin(
       if (!effectiveLoad) {
         // Cache miss — background sync hasn't run yet for this year. Fetch live with validation.
         const { fetchEffectiveTeachingLoad } = await import('./sync/httpClient');
-        let loadResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+        let loadResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId, { retries: ATLAS_REQUEST_RETRIES, timeoutMs: ATLAS_REQUEST_TIMEOUT_MS });
 
         // Rollover self-heal: re-resolve once if the year just went inactive.
         if (loadResult.status === 'inactive') {
           invalidateAtlasSchoolYearCache();
-          const reResolved = await resolveAtlasSchoolYear();
+          const reResolved = await resolveAtlasSchoolYear(undefined, { retries: ATLAS_REQUEST_RETRIES, timeoutMs: ATLAS_REQUEST_TIMEOUT_MS });
           if (reResolved.id !== atlasSchoolYearId) {
             logger.warn(
               `[TeacherSync] ATLAS school year ${atlasSchoolYearId} inactive — re-resolved to ${reResolved.id} (source=${reResolved.source})`,
             );
             atlasSchoolYearId = reResolved.id;
-            loadResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId);
+            loadResult = await fetchEffectiveTeachingLoad(atlasSchoolYearId, { retries: ATLAS_REQUEST_RETRIES, timeoutMs: ATLAS_REQUEST_TIMEOUT_MS });
           }
         }
 
@@ -724,6 +725,10 @@ export async function syncTeacherOnLogin(
       };
 
       for (const assignment of teachingAssignments) {
+        if (isExternalDown('enrollpro')) {
+          logger.warn('[TeacherSync] EnrollPro marked down — aborting teaching-section roster sync (DB fallback).');
+          break;
+        }
         const smartSection = assignment.section;
 
         // Skip advisory section — already synced in step 2

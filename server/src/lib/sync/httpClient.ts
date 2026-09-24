@@ -15,6 +15,7 @@ import http from 'http';
 import https from 'https';
 import { getAtlasSchoolId, getAtlasSchoolYearId } from '../../config/schoolEnv';
 import { logger } from '../logger';
+import { reportExternalSuccess, reportExternalFailure, isExternalDown } from '../externalState';
 import {
   atlasEffectiveTeachingLoadSchema,
   validateAtlasScope,
@@ -25,6 +26,13 @@ import {
 const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
+
+// Request-path ATLAS calls must fail fast; background sync keeps the defaults.
+export const ATLAS_REQUEST_TIMEOUT_MS = parseInt(process.env.ATLAS_REQUEST_TIMEOUT_MS ?? '5000', 10);
+export const ATLAS_REQUEST_RETRIES = parseInt(process.env.ATLAS_REQUEST_RETRIES ?? '0', 10);
+
+// Request-path ATLAS year discovery is probe-capped; background sync stays exhaustive.
+export const ATLAS_YEAR_PROBE_CAP_REQUEST_PATH = parseInt(process.env.ATLAS_YEAR_PROBE_CAP ?? '3', 10);
 
 // ---------------------------------------------------------------------------
 // Custom error class for typed HTTP failures
@@ -179,9 +187,19 @@ function atlasUrl(path: string): string {
 /**
  * GET request to Atlas API with auth.
  * `retries`/`timeoutMs` are exposed for discovery probes that must fail fast.
+ * Connectivity outcomes are reported to externalState (transition-only logging).
  */
 export async function atlasGet(path: string, retries?: number, timeoutMs?: number): Promise<any> {
-  return httpGet(atlasUrl(path), atlasAuthHeader(), timeoutMs, retries);
+  const headers = atlasAuthHeader();
+  try {
+    const result = await httpGet(atlasUrl(path), headers, timeoutMs, retries);
+    reportExternalSuccess('atlas');
+    return result;
+  } catch (err) {
+    // HTTP errors mean Atlas is reachable; only network failures count as down.
+    if (!(err instanceof HttpError)) reportExternalFailure('atlas', err);
+    throw err;
+  }
 }
 
 /**
@@ -302,7 +320,10 @@ function cacheAtlasYearResolution(resolution: AtlasYearResolution): AtlasYearRes
  * renumbered/reset year space, and `seedYearId` lets restart recovery start
  * from the last year SMART actually applied.
  */
-export async function resolveAtlasSchoolYear(seedYearId?: number | null): Promise<AtlasYearResolution> {
+export async function resolveAtlasSchoolYear(
+  seedYearId?: number | null,
+  opts?: { retries?: number; timeoutMs?: number },
+): Promise<AtlasYearResolution> {
   const now = Date.now();
   if (cachedAtlasSY) {
     const ttl = cachedAtlasSY.source === 'env-fallback'
@@ -316,7 +337,11 @@ export async function resolveAtlasSchoolYear(seedYearId?: number | null): Promis
   // 1. Runtime context (contract-compliant resolution)
   let runtimeError: string | undefined;
   try {
-    const ctx = await atlasGet(`/runtime/context?schoolId=${ATLAS_SCHOOL_ID}&verifyUpstream=true`);
+    const ctx = await atlasGet(
+      `/runtime/context?schoolId=${ATLAS_SCHOOL_ID}&verifyUpstream=true`,
+      opts?.retries,
+      opts?.timeoutMs,
+    );
     const activeYearId = ctx?.activeSchoolYearId;
     if (Number.isFinite(activeYearId) && activeYearId > 0) {
       return cacheAtlasYearResolution({ id: activeYearId, source: 'runtime-context' });
@@ -340,7 +365,28 @@ export async function resolveAtlasSchoolYear(seedYearId?: number | null): Promis
     ?? (Number.isFinite(seedYearId) && (seedYearId as number) > 0
       ? Math.trunc(seedYearId as number)
       : null);
+
+  // P3-2: the request path must never walk the whole candidate list.
+  const isRequestPath = Boolean(opts);
+  if (isRequestPath && isExternalDown('atlas')) {
+    const fallbackId = lastKnownActiveAtlasYearId ?? envYearId;
+    logger.warn(
+      `[AtlasYear] ATLAS marked down — skipping active-year discovery; using year ${fallbackId} (unverified; will re-resolve after recovery).`,
+    );
+    return cacheAtlasYearResolution({
+      id: fallbackId,
+      source: 'env-fallback',
+      error: 'ATLAS marked down — discovery skipped on request path',
+    });
+  }
+  const maxProbes = isRequestPath ? ATLAS_YEAR_PROBE_CAP_REQUEST_PATH : Number.POSITIVE_INFINITY;
+  let probes = 0;
   for (const candidateId of buildAtlasYearProbeCandidates(envYearId, seed)) {
+    if (probes >= maxProbes) {
+      runtimeError = `probe cap (${maxProbes}) reached on request path`;
+      break;
+    }
+    probes++;
     const probe = await fetchEffectiveTeachingLoad(candidateId, {
       retries: 0,
       timeoutMs: ATLAS_YEAR_PROBE_TIMEOUT_MS,

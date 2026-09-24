@@ -18,8 +18,10 @@ import { logger } from './logger';
 import {
   isAimsConfigured,
   getAimsPublicScores,
+  AIMS_SYNC_FETCH_OPTS,
 } from './aimsClient';
 import { getEnrollProStudentDetail } from './enrollproClient';
+import { getExternalState } from './externalState';
 import { aimsPublicScoresSchema } from '../schemas/aims';
 import type { AimsPublicScoresPayload } from '../schemas/aims';
 
@@ -326,6 +328,14 @@ export async function runAimsScoreSync(): Promise<AimsSyncResult> {
     return { status: 'skipped', coursesSynced: 0, scoresUpserted: 0, unmatched: [], lastSyncedAt: null, reason: 'not-configured' };
   }
 
+  // Fail-soft skip: when AIMS is known down, do not pay a timeout per course every
+  // cycle. One probe is allowed per retry window so recovery is detected.
+  const aimsRetryMs = parseInt(process.env.AIMS_RETRY_MS ?? '300000', 10);
+  const aimsState = getExternalState('aims');
+  if (aimsState.status === 'down' && Date.now() - aimsState.lastCheckAt < aimsRetryMs) {
+    return { status: 'offline', coursesSynced: 0, scoresUpserted: 0, unmatched: [], lastSyncedAt: null, reason: 'aims-down-skip' };
+  }
+
   const allUnmatched: AimsSyncResult['unmatched'] = [];
   let coursesSynced = 0;
   let scoresUpserted = 0;
@@ -361,11 +371,15 @@ export async function runAimsScoreSync(): Promise<AimsSyncResult> {
 
     // 3. Process each linked assignment
     for (const assignment of linkedAssignments) {
+      if (getExternalState('aims').status === 'down') {
+        logger.debug('[AimsSync] AIMS marked down — skipping remaining courses this cycle');
+        break;
+      }
       const courseId = assignment.aimsCourseId!;
       const classAssignmentId = assignment.id;
 
       try {
-        const scoresData = await getAimsPublicScores(courseId);
+        const scoresData = await getAimsPublicScores(courseId, AIMS_SYNC_FETCH_OPTS);
 
         if (!scoresData) {
           logger.warn(`[AimsSync] Course ${courseId} returned null (404 or error) for assignment ${classAssignmentId}`);

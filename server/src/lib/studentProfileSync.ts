@@ -11,6 +11,7 @@
 
 import { prisma } from './prisma';
 import { logger } from './logger';
+import { isExternalDown } from './externalState';
 import {
   getAllIntegrationV1Learners,
   getEnrollProStudentDetail,
@@ -149,10 +150,20 @@ export async function runStudentProfileSync(): Promise<StudentProfileSyncResult>
     // Step 3: Fetch detail for each student needing enrichment
     const updates: Array<{ id: string; data: Record<string, any> }> = [];
 
+    if (isExternalDown('enrollpro')) {
+      logger.warn('[StudentProfileSync] EnrollPro marked down — skipping profile enrichment (DB fallback).');
+      result.errors.push('EnrollPro marked down — profile enrichment skipped');
+      return result;
+    }
+
     for (let i = 0; i < needsEnrichment.length; i += CONCURRENCY_LIMIT) {
       const batch = needsEnrichment.slice(i, i + CONCURRENCY_LIMIT);
 
       const fetchPromises = batch.map(async (student) => {
+        if (isExternalDown('enrollpro')) {
+          result.skipped++;
+          return;
+        }
         const epId = lrnToEpId.get(student.lrn);
         if (!epId) {
           result.skipped++;

@@ -13,7 +13,9 @@
 
 import https from 'https';
 import http from 'http';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { logger } from './logger';
+import { reportExternalSuccess, reportExternalFailure } from './externalState';
 import { getActiveSchoolYearLabel } from './schoolYearResolver';
 import { prisma } from './prisma';
 import { getEnrollProSchoolYearId } from '../config/schoolEnv';
@@ -100,12 +102,46 @@ let _tokenFetchedAt = 0;
 const TOKEN_TTL_MS = 25 * 60 * 1000; // 25 minutes
 
 // ---------------------------------------------------------------------------
+// Request-path fast-fail vs background sync timeout
+// ---------------------------------------------------------------------------
+// Request-path calls fail fast (default 3s) so a hung EnrollPro cannot stall
+// page loads. Background sync wraps its steps in runWithSyncTimeout() to keep
+// the longer 20s budget for bulk pagination.
+
+const REQUEST_TIMEOUT_MS = parseInt(process.env.EP_REQUEST_TIMEOUT_MS ?? '3000', 10);
+const SYNC_TIMEOUT_MS = parseInt(process.env.EP_SYNC_TIMEOUT_MS ?? '20000', 10);
+const BREAKER_COOLDOWN_MS = parseInt(process.env.EP_BREAKER_COOLDOWN_MS ?? '60000', 10);
+
+const fetchScope = new AsyncLocalStorage<{ timeoutMs: number }>();
+
+// Request-path breaker: once a connectivity failure is observed, request-path
+// calls fail instantly for the cooldown window instead of re-dialing a hung
+// server (each dial costs the full timeout). Background sync bypasses it.
+let epDownUntil = 0;
+
+function isConnectivityFailure(err: any): boolean {
+  const msg = String(err?.message ?? '');
+  const code = err?.code;
+  return (
+    msg.startsWith('Timeout fetching') ||
+    msg.includes('socket hang up') ||
+    ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EHOSTUNREACH', 'EPIPE'].includes(code)
+  );
+}
+
+/** Run background sync work with the long sync timeout instead of the fast-fail default. */
+export function runWithSyncTimeout<T>(fn: () => Promise<T>): Promise<T> {
+  return fetchScope.run({ timeoutMs: SYNC_TIMEOUT_MS }, fn);
+}
+
+// ---------------------------------------------------------------------------
 // HTTP helper
 // ---------------------------------------------------------------------------
 
-function fetchJSON(
+function performFetchJSON(
   url: string,
-  options?: { method?: string; body?: string; headers?: Record<string, string> }
+  options: { method?: string; body?: string; headers?: Record<string, string> } | undefined,
+  timeoutMs: number
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -140,12 +176,43 @@ function fetchJSON(
       });
     });
     req.on('error', (err: Error) => reject(err));
-    req.setTimeout(20000, () => {
+    req.setTimeout(timeoutMs, () => {
       req.destroy(new Error(`Timeout fetching ${url}`));
     });
     if (bodyBuf) req.write(bodyBuf);
     req.end();
   });
+}
+
+function fetchJSON(
+  url: string,
+  options?: { method?: string; body?: string; headers?: Record<string, string> },
+  explicitTimeoutMs?: number
+): Promise<any> {
+  const scopeTimeout = fetchScope.getStore()?.timeoutMs;
+  const timeoutMs = explicitTimeoutMs ?? scopeTimeout ?? REQUEST_TIMEOUT_MS;
+
+  // Request-path breaker: fail instantly while EnrollPro is marked unreachable.
+  if (scopeTimeout == null && Date.now() < epDownUntil) {
+    return Promise.reject(new Error(`EnrollPro is marked unreachable — fast-failing request-path call to ${url}`));
+  }
+
+  return performFetchJSON(url, options, timeoutMs).then(
+    (value) => {
+      if (scopeTimeout == null && epDownUntil !== 0) {
+        epDownUntil = 0;
+        reportExternalSuccess('enrollpro');
+      }
+      return value;
+    },
+    (err) => {
+      if (scopeTimeout == null && isConnectivityFailure(err)) {
+        if (epDownUntil === 0) reportExternalFailure('enrollpro', err);
+        epDownUntil = Date.now() + BREAKER_COOLDOWN_MS;
+      }
+      throw err;
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -942,18 +1009,21 @@ export async function validateEnrollProTeacherCredentials(
  * Returns true if EnrollPro is reachable.
  */
 export async function checkEnrollProHealth(): Promise<boolean> {
+  const base = await getEnrollProBase();
   try {
-    await fetchJSON(`${await getEnrollProBase()}/integration/v1/health`, {
-      headers: await getIntegrationHeaders(),
-    });
+    const headers = await getIntegrationHeaders();
+    await fetchJSON(`${base}/integration/v1/health`, { headers }, 3000);
+    return true;
+  } catch (err: any) {
+    // Fall through to the unauthenticated health path only when the integration
+    // key is missing; a network failure/timeout should fail fast, not retry.
+    if (!String(err?.message ?? '').includes('ENROLLPRO_INTEGRATION_KEY')) return false;
+  }
+  try {
+    await fetchJSON(`${base}/health`, undefined, 3000);
     return true;
   } catch {
-    try {
-      await fetchJSON(`${await getEnrollProBase()}/health`);
-      return true;
-    } catch {
-      return false;
-    }
+    return false;
   }
 }
 

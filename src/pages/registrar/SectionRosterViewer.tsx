@@ -75,6 +75,7 @@ export default function SectionRosterViewer() {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [rosterData, setRosterData] = useState<any[]>([]);
+  const [rosterMeta, setRosterMeta] = useState<{ stale: boolean; ageMs: number } | null>(null);
   const [rosterSearch, setRosterSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const limit = 10;
@@ -103,6 +104,7 @@ export default function SectionRosterViewer() {
     setRosterLoading(true);
     setRosterError(null);
     setRosterData([]);
+    setRosterMeta(null);
     setRosterSearch("");
     setCurrentPage(1);
 
@@ -115,6 +117,7 @@ export default function SectionRosterViewer() {
     try {
       const res = await registrarApi.getSectionRoster(section.enrollProId);
       const payload = res.data as any;
+      setRosterMeta({ stale: Boolean(payload.stale), ageMs: Number(payload.ageMs ?? 0) });
       const rawLearners: any[] = payload.learners ?? [];
       const learners = rawLearners.map((row: any) => {
         const l = row.learner ?? row;
@@ -564,6 +567,11 @@ export default function SectionRosterViewer() {
                       {rosterStats.female} female
                     </span>
                   </div>
+                )}
+                {rosterMeta?.stale && (
+                  <span className="block mt-0.5 text-[11px] font-medium text-muted-foreground">
+                    Cached data — about {Math.max(1, Math.round(rosterMeta.ageMs / 60000))} min old (EnrollPro unreachable)
+                  </span>
                 )}
               </div>
             </div>

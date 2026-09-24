@@ -7,6 +7,7 @@
 
 import { httpGet, HttpError } from './sync/httpClient';
 import { logger } from './logger';
+import { reportExternalSuccess, reportExternalFailure } from './externalState';
 import { aimsPublicScoresSchema, aimsCourseSummarySchema } from '../schemas/aims';
 import type { AimsPublicScoresPayload } from '../schemas/aims';
 
@@ -16,6 +17,15 @@ import type { AimsPublicScoresPayload } from '../schemas/aims';
 
 const AIMS_BASE = (process.env.AIMS_URL ?? process.env.AIMS_BASE_URL ?? 'http://100.92.245.14:5000/api/v1').replace(/\/$/, '');
 const AIMS_API_KEY = process.env.AIMS_API_KEY ?? '';
+
+// Request-path fast-fail. Background sync (aimsScoreSync) passes explicit opts.
+const AIMS_REQUEST_TIMEOUT_MS = parseInt(process.env.AIMS_REQUEST_TIMEOUT_MS ?? '3000', 10);
+const AIMS_REQUEST_RETRIES = parseInt(process.env.AIMS_REQUEST_RETRIES ?? '0', 10);
+
+export interface AimsFetchOpts {
+  timeoutMs?: number;
+  retries?: number;
+}
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -141,18 +151,22 @@ export async function checkAimsHealth(): Promise<boolean> {
   try {
     const url = aimsUrl('/health');
     await httpGet(url, undefined, 5000);
+    reportExternalSuccess('aims');
     return true;
-  } catch {
+  } catch (err) {
+    reportExternalFailure('aims', err);
     return false;
   }
 }
+
+export const AIMS_SYNC_FETCH_OPTS: AimsFetchOpts = { timeoutMs: 20000, retries: 3 };
 
 /**
  * Fetch public scores for a course.
  * GET /public/courses/:courseId/scores
  * Returns null on 404 (course not found).
  */
-export async function getAimsPublicScores(courseId: string): Promise<AimsPublicScoresPayload | null> {
+export async function getAimsPublicScores(courseId: string, fetchOpts?: AimsFetchOpts): Promise<AimsPublicScoresPayload | null> {
   if (!isAimsConfigured()) {
     throw new AimsError(503, 'AIMS EXTERNAL_API_KEY not configured');
   }
@@ -161,7 +175,10 @@ export async function getAimsPublicScores(courseId: string): Promise<AimsPublicS
     const raw = await httpGet(
       aimsUrl(`/public/courses/${courseId}/scores`),
       aimsAuthHeaders(),
+      fetchOpts?.timeoutMs ?? AIMS_REQUEST_TIMEOUT_MS,
+      fetchOpts?.retries ?? AIMS_REQUEST_RETRIES,
     );
+    reportExternalSuccess('aims');
 
     if (raw === null) return null; // 404
 
@@ -178,13 +195,17 @@ export async function getAimsPublicScores(courseId: string): Promise<AimsPublicS
   } catch (err) {
     if (err instanceof AimsError) throw err;
     if (err instanceof HttpError) {
+      // The server responded — AIMS is reachable even though this call failed.
+      reportExternalSuccess('aims');
       if (err.statusCode === 401) {
         throw new AimsError(401, 'AIMS API key rejected');
       }
       if (err.statusCode === 404) {
         return null;
       }
+      throw err;
     }
+    reportExternalFailure('aims', err);
     throw err;
   }
 }
@@ -194,7 +215,7 @@ export async function getAimsPublicScores(courseId: string): Promise<AimsPublicS
  * GET /public/courses?teacherEmail=...&schoolYear=...&includeArchived=true
  * May 404 until AIMS ships the endpoint — returns [] in that case.
  */
-export async function getAimsPublicCourses(opts?: AimsCourseListOptions): Promise<AimsCourseSummary[]> {
+export async function getAimsPublicCourses(opts?: AimsCourseListOptions, fetchOpts?: AimsFetchOpts): Promise<AimsCourseSummary[]> {
   if (!isAimsConfigured()) {
     throw new AimsError(503, 'AIMS EXTERNAL_API_KEY not configured');
   }
@@ -209,6 +230,8 @@ export async function getAimsPublicCourses(opts?: AimsCourseListOptions): Promis
     const raw = await httpGet(
       aimsUrl(`/public/courses${qs ? `?${qs}` : ''}`),
       aimsAuthHeaders(),
+      fetchOpts?.timeoutMs ?? AIMS_REQUEST_TIMEOUT_MS,
+      fetchOpts?.retries ?? AIMS_REQUEST_RETRIES,
     );
 
     if (raw === null) return []; // 404

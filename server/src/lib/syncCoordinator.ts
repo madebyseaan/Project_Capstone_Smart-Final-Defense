@@ -22,7 +22,26 @@ import { runStudentProfileSync } from './studentProfileSync';
 import { runPruneFromLiveSources } from './prune';
 import { broadcastSyncStatus } from './sseManager';
 import { prisma } from './prisma';
-import { invalidateAllCaches } from './syncCache';
+import { invalidatePrefix } from './syncCache';
+import { runWithSyncTimeout } from './enrollproClient';
+import { setExternalRecoveryHandler } from './externalState';
+import { broadcastSseEvent } from './sseManager';
+
+// ---------------------------------------------------------------------------
+// P2-2: EnrollPro recovery guard.
+// The moment EnrollPro is reachable again, drop scope caches (school year) and
+// trigger an immediate sync — SMART must never keep serving a stale scope after
+// EnrollPro comes back (rollover safety invariant I3).
+// ---------------------------------------------------------------------------
+setExternalRecoveryHandler((system) => {
+  if (system !== 'enrollpro') return;
+  invalidatePrefix('enrollpro:schoolYear:');
+  broadcastSseEvent('DEPENDENCY_RECONNECTED', {
+    system: 'enrollpro',
+    timestamp: new Date().toISOString(),
+  });
+  triggerImmediateSync('enrollpro-reconnect');
+});
 import { logger } from './logger';
 import { runAimsScoreSync, type AimsSyncResult } from './aimsScoreSync';
 
@@ -240,6 +259,10 @@ export async function runUnifiedSync(options?: {
 
   let enrollproResult: UnifiedSyncResult['enrollpro'] = null;
   let atlasResult: UnifiedSyncResult['atlas'] = null;
+  // Per-source cache invalidation flags (P0-2): only refresh caches for steps
+  // that actually ran. Skipped/partial cycles keep last-known-good data.
+  let epStepRan = false;
+  let atlasStepRan = false;
   let transfereeResult: UnifiedSyncResult['transferees'] = null;
   let brandingSynced = false;
   let aimsResult: AimsSyncResult | null = null;
@@ -252,8 +275,9 @@ export async function runUnifiedSync(options?: {
     if (!epOffline) {
       try {
         logger.debug('[SyncCoordinator] Step 1/5: EnrollPro sync...');
-        const epResult = await runEnrollProSync();
+        const epResult = await runWithSyncTimeout(() => runEnrollProSync());
         if (epResult) {
+          epStepRan = true;
           enrollproResult = {
             advisoriesSynced: epResult.advisoriesSynced,
             studentsFetched: epResult.studentsFetched,
@@ -294,7 +318,7 @@ export async function runUnifiedSync(options?: {
     // Runs after successful EnrollPro sync. Fire-and-forget with error logging.
     if (!epOffline && enrollproResult && !rolloverBlocked && enrollproResult.errors.length === 0) {
       try {
-        const pruneResult = await runPruneFromLiveSources();
+        const pruneResult = await runWithSyncTimeout(() => runPruneFromLiveSources());
         if (!pruneResult.aborted) {
           logger.info(
             `[SyncCoordinator] Prune completed: suspended=${pruneResult.phases.teachersSuspended}, ` +
@@ -313,7 +337,7 @@ export async function runUnifiedSync(options?: {
     // Runs after EnrollPro sync. Fail-soft — never breaks the cycle.
     if (!epOffline && !rolloverBlocked) {
       try {
-        const transfereeResultData = await syncTransferees();
+        const transfereeResultData = await runWithSyncTimeout(() => syncTransferees());
         transfereeResult = {
           tagged: transfereeResultData.transfereesTagged,
           unmatched: transfereeResultData.unmatched,
@@ -346,8 +370,9 @@ export async function runUnifiedSync(options?: {
     } else if (!atlasOffline && !epOffline) {
       try {
         logger.debug('[SyncCoordinator] Step 2/5: Atlas sync...');
-        const atResult = await runAtlasSync();
+        const atResult = await runWithSyncTimeout(() => runAtlasSync());
         if (atResult) {
+          atlasStepRan = true;
           atlasResult = {
             matched: atResult.matched,
             created: atResult.created,
@@ -375,7 +400,7 @@ export async function runUnifiedSync(options?: {
       if (shouldSyncBranding) {
         try {
           logger.debug('[SyncCoordinator] Step 3/5: Branding sync...');
-          await syncEnrollProBranding();
+          await runWithSyncTimeout(() => syncEnrollProBranding());
           brandingSynced = true;
         } catch (err: any) {
           logger.error('[SyncCoordinator] Branding sync failed:', err.message);
@@ -396,7 +421,7 @@ export async function runUnifiedSync(options?: {
       if (shouldSyncStudentProfiles) {
         try {
           logger.debug('[SyncCoordinator] Step 4/5: Student profile sync...');
-          const profileResult = await runStudentProfileSync();
+          const profileResult = await runWithSyncTimeout(() => runStudentProfileSync());
           if (profileResult.errors.length > 0) {
             logger.warn(`[SyncCoordinator] Student profile sync had ${profileResult.errors.length} errors`);
           }
@@ -417,7 +442,7 @@ export async function runUnifiedSync(options?: {
     // Runs every cycle. AIMS offline = skipped step, never breaks the cycle.
     try {
       logger.debug('[SyncCoordinator] Step 5/5: AIMS score sync...');
-      aimsResult = await runAimsScoreSync();
+      aimsResult = await runWithSyncTimeout(() => runAimsScoreSync());
       if (aimsResult.status === 'ok' || aimsResult.status === 'partial') {
         logger.info(
           `[SyncCoordinator] AIMS sync: ${aimsResult.coursesSynced} courses, ${aimsResult.scoresUpserted} scores, ${aimsResult.unmatched.length} unmatched`,
@@ -435,7 +460,11 @@ export async function runUnifiedSync(options?: {
     logger.error('[SyncCoordinator] Fatal error:', err.message);
   } finally {
     syncRunning = false;
-    invalidateAllCaches(); // Force fresh reads on next request
+    // Per-source invalidation (P0-2): refresh only what actually synced.
+    // Skipped/partial cycles keep last-known-good data for offline resilience.
+    if (epStepRan) invalidatePrefix('enrollpro:');
+    if (atlasStepRan) invalidatePrefix('atlas:');
+    // 'aims:' keys are TTL-managed and never flushed by sync cycles.
   }
 
   const durationMs = Date.now() - startTime;
@@ -507,8 +536,21 @@ export async function runUnifiedSync(options?: {
 /**
  * Trigger an immediate sync cycle (from webhook or manual admin action).
  * Non-blocking — returns immediately if sync is already running.
+ *
+ * Debounced: page-load triggers (registrar/teacher) fire constantly, and during
+ * an outage each one logged a "partial sync" warning every ~15s. Manual triggers
+ * and the EnrollPro reconnect guard are always allowed through.
  */
+let lastImmediateTriggerAt = 0;
+const IMMEDIATE_TRIGGER_MIN_GAP_MS = parseInt(process.env.SYNC_TRIGGER_MIN_GAP_MS ?? '60000', 10);
+const ALWAYS_ALLOWED_SOURCES = new Set(['manual', 'enrollpro-reconnect']);
+
 export function triggerImmediateSync(source = 'manual'): void {
+  const now = Date.now();
+  if (!ALWAYS_ALLOWED_SOURCES.has(source) && now - lastImmediateTriggerAt < IMMEDIATE_TRIGGER_MIN_GAP_MS) {
+    return;
+  }
+  lastImmediateTriggerAt = now;
   runUnifiedSync({ source, forceBranding: false }).catch((err) => {
     console.error(`[SyncCoordinator] Triggered sync (${source}) failed:`, err);
   });

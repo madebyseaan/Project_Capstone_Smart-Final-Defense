@@ -15,16 +15,17 @@ export default defineConfig({
     },
   },
   server: {
+    port: Number(process.env.VITE_PORT ?? 5173),
     proxy: {
       '/api': {
-        target: 'http://localhost:5003',
+        target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:5003',
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('error', () => {}); // Suppress startup race condition errors
         },
       },
       '/uploads': {
-        target: 'http://localhost:5003',
+        target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:5003',
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('error', () => {}); // Suppress startup race condition errors

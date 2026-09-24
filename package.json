@@ -17,6 +17,8 @@
     "lint": "eslint .",
     "verify": "npm run typecheck && npm run build && npm --prefix server run build && npm run lint && npm --prefix server test",
     "test:e2e": "playwright test",
+    "test:offline": "node e2e/offline/run-rig.mjs",
+    "test:e2e:offline": "node e2e/offline/run-playwright.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
