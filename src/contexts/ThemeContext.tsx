@@ -131,7 +131,7 @@ function updateBrowserMetadata(schoolName: string, logoUrl: string | null) {
     document.title = "SMART - Academic Grading System";
   }
 
-  // Update favicon if logo exists
+  // Update favicon if logo exists; reset to default when EnrollPro clears it
   if (logoUrl) {
     const fullLogoUrl = logoUrl.startsWith("http") ? logoUrl : `${window.location.origin}${logoUrl}`;
     
@@ -144,6 +144,12 @@ function updateBrowserMetadata(schoolName: string, logoUrl: string | null) {
     }
     link.href = fullLogoUrl;
     link.type = "image/x-icon"; // Standard for favicons
+  } else {
+    const link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+    if (link) {
+      link.href = "/favicon.svg";
+      link.type = "image/svg+xml";
+    }
   }
 }
 

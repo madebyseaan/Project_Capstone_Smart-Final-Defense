@@ -39,6 +39,9 @@ tests/
 # User uploads
 server/uploads/
 
+# Database backups (contain student data)
+server/backups/
+
 # Root-level data/debug files
 *.pdf
 *.xlsx

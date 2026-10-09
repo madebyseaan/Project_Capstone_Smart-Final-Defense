@@ -99,6 +99,18 @@ router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Resp
         previousSchool: e.student.previousSchool,
         lastGradeCompleted: e.student.lastGradeCompleted,
         transferCertNo: e.student.transferCertNo,
+        originatingSchoolId: e.student.originatingSchoolId,
+        previousGenAve: e.student.previousGenAve,
+      },
+      // EnrollPro transferee-details feed (contract v1.1) — feed-sourced signals,
+      // not a registrar-verified document audit trail.
+      enrollpro: {
+        sf9EligibilityStatus: e.sf9EligibilityStatus,
+        conditionalSubjectCodes: e.conditionalSubjectCodes,
+        hasSf9: e.hasSf9,
+        hasPsa: e.student.hasPsa,
+        isTemporarilyEnrolled: e.isTemporarilyEnrolled,
+        detailsSyncedAt: e.transfereeDetailsSyncedAt,
       },
       completeness: {
         missingBirthDate: !e.student.birthDate,

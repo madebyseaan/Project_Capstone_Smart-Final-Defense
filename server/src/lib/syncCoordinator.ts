@@ -100,6 +100,7 @@ export interface UnifiedSyncResult {
     tagged: number;
     unmatched: Array<{ lrn: string; reason: string }>;
     applicationRefsPersisted?: number;
+    detailsUpdated?: number;
     generatedAt?: string | null;
     status?: "success" | "stale";
   } | null;
@@ -342,6 +343,7 @@ export async function runUnifiedSync(options?: {
           tagged: transfereeResultData.transfereesTagged,
           unmatched: transfereeResultData.unmatched,
           applicationRefsPersisted: transfereeResultData.applicationRefsPersisted,
+          detailsUpdated: transfereeResultData.detailsUpdated,
           generatedAt: transfereeResultData.generatedAt,
           status: transfereeResultData.status,
         };

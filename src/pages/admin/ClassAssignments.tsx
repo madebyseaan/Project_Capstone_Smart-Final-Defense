@@ -373,7 +373,7 @@ export default function ClassAssignments() {
       />
 
       {/* Trust strip */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary-subtle px-4 py-3 text-sm">
         <span className="w-2 h-2 rounded-full bg-emerald-500" />
         <span className="text-foreground">
           <strong>Synced from ATLAS</strong> · last sync {relativeTime(lastSyncAt)}

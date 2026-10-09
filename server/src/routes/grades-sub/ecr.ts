@@ -164,4 +164,39 @@ export default function registerEcr(router: Router): void {
       }
     },
   );
+
+  // GET /ecr-sync/:classAssignmentId — last successful ECR import timestamp per term
+  router.get(
+    "/ecr-sync/:classAssignmentId",
+    authenticateToken,
+    authorizeRoles("TEACHER"),
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        const classAssignmentId = String(req.params.classAssignmentId);
+
+        const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
+        if (!teacher) { res.status(404).json({ message: "Teacher profile not found" }); return; }
+
+        const classAssignment = await prisma.classAssignment.findFirst({
+          where: { id: classAssignmentId, teacherId: teacher.id },
+        });
+        if (!classAssignment) { res.status(403).json({ message: "Not authorized for this class" }); return; }
+
+        const rows = await prisma.ecrSync.findMany({
+          where: { classAssignmentId },
+          select: { term: true, lastSyncedAt: true },
+        });
+        const byTerm = new Map(rows.map((row) => [row.term, row.lastSyncedAt.toISOString()]));
+
+        res.json({
+          T1: byTerm.get("T1") ?? null,
+          T2: byTerm.get("T2") ?? null,
+          T3: byTerm.get("T3") ?? null,
+        });
+      } catch (error) {
+        logger.error("Error fetching ECR sync status:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    },
+  );
 }

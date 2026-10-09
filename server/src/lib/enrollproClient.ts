@@ -772,13 +772,49 @@ export async function getSmartStudentsFeed(): Promise<any[]> {
   return all;
 }
 
+/**
+ * A row of the SMART transferee feed (contract v1.1, 2026-09-29).
+ * Every active-year row contains every key; unknown stored values are null.
+ */
+export interface SmartTransfereeFeedRecord {
+  enrollmentApplicationId?: number | null;
+  enrollmentStatus?: string | null;
+  lrn?: string | null;
+  isPendingLrn?: boolean | null;
+  fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  middleName?: string | null;
+  extensionName?: string | null;
+  gradeLevel?: { id?: number | null; name?: string | null; displayOrder?: number | null } | null;
+  section?: { id?: number | null; name?: string | null; programType?: string | null } | null;
+  enrolledAt?: string | null;
+  eosyStatus?: string | null;
+  dropOutDate?: string | null;
+  dropOutReason?: string | null;
+  transferOutDate?: string | null;
+  // v1.1 additive fields
+  previousSchoolName?: string | null;
+  originatingSchoolId?: string | null;
+  transferCertificateNo?: string | null;
+  previousGenAve?: number | null;
+  lastGradeCompleted?: string | null;
+  sf9EligibilityStatus?: string | null;
+  conditionalSubjectCodes?: string[] | null;
+  hasSf9?: boolean | null;
+  hasPsa?: boolean | null;
+  isTemporarilyEnrolled?: boolean | null;
+  schoolYear?: { id?: number | null; yearLabel?: string | null } | null;
+}
+
 export interface SmartTransfereeFeedResult {
-  data: any[];
+  data: SmartTransfereeFeedRecord[];
   pageCount: number;
   total: number;
   generatedAt: string | null;
   scopeSchoolYearId: number | null;
   scopeSchoolYearLabel: string | null;
+  contractVersion: string | null;
 }
 
 /**
@@ -794,12 +830,13 @@ export async function getSmartTransferees(opts?: {
   schoolYearId?: number;
   schoolYearLabel?: string;
 }): Promise<SmartTransfereeFeedResult> {
-  const all: any[] = [];
+  const all: SmartTransfereeFeedRecord[] = [];
   let page = 1;
   const limit = 200; // handoff: default 50, max 200
   let generatedAt: string | null = null;
   let scopeSchoolYearId: number | null = null;
   let scopeSchoolYearLabel: string | null = null;
+  let contractVersion: string | null = null;
   let total = 0;
 
   while (true) {
@@ -810,7 +847,7 @@ export async function getSmartTransferees(opts?: {
       `${await getEnrollProBase()}/integration/v1/default/smart/transferees?${query.toString()}`,
       { headers: await getIntegrationHeaders() }
     );
-    const data = result?.data ?? [];
+    const data = (result?.data ?? []) as SmartTransfereeFeedRecord[];
     const meta = result?.meta ?? { totalPages: 1 };
 
     const metaSyId = meta.scopeSchoolYearId != null ? Number(meta.scopeSchoolYearId) : null;
@@ -818,6 +855,7 @@ export async function getSmartTransferees(opts?: {
     if (metaSyId != null) scopeSchoolYearId = metaSyId;
     if (metaSyLabel != null) scopeSchoolYearLabel = metaSyLabel;
     if (meta.generatedAt) generatedAt = String(meta.generatedAt);
+    if (meta.contractVersion != null) contractVersion = String(meta.contractVersion);
     if (typeof meta.total === "number") total = meta.total;
 
     if (opts?.schoolYearId != null && metaSyId != null && metaSyId !== opts.schoolYearId) {
@@ -837,7 +875,7 @@ export async function getSmartTransferees(opts?: {
     page++;
   }
 
-  return { data: all, pageCount: page, total, generatedAt, scopeSchoolYearId, scopeSchoolYearLabel };
+  return { data: all, pageCount: page, total, generatedAt, scopeSchoolYearId, scopeSchoolYearLabel, contractVersion };
 }
 
 /**

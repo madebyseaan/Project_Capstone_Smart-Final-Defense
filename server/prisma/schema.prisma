@@ -110,6 +110,10 @@ model Student {
   previousSchool  String?       // Name of school transferred from
   lastGradeCompleted String?    // Free text — e.g. "Grade 6"
   transferCertNo  String?       // Transfer Certificate / SF10 reference no.
+  // Transferee v1.1 feed details — written only when null (registrar edits win).
+  originatingSchoolId String?   // Previous school's ID; keep leading zeroes (string)
+  previousGenAve      Float?    // Previous school general average
+  hasPsa              Boolean?  // Learner.hasPsaBirthCertificate — feed signal, not document verification
   // SF10 "Eligibility for JHS Enrolment" block — registrar-entered (EnrollPro does not provide these)
   elementarySchoolCompleter Boolean? @default(false)
   elementarySchoolName      String?
@@ -190,9 +194,10 @@ model ClassAssignment {
   section         Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   subject         Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   teacher         Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  grades          Grade[]
-  workloadEntries WorkloadEntry[]
-  aimsScores      AimsScore[]
+    grades          Grade[]
+    workloadEntries WorkloadEntry[]
+    aimsScores      AimsScore[]
+    ecrSyncs        EcrSync[]
 
   @@unique([teacherId, subjectId, sectionId, schoolYear])
   @@index([schoolYear])
@@ -223,6 +228,44 @@ model ScheduleEntry {
   @@index([sectionId])
 }
 
+// Companion-side ATLAS id crosswalk (term-aware published-schedule handoff §4.3):
+// ATLAS exposes only surrogate ids (room.id has no external id and no room-lookup
+// endpoint), so SMART keeps its own map of ATLAS surrogate id -> human label +
+// SMART id. Also resolves the raw draft-entry ids from the §8A draft read.
+model AtlasCrosswalk {
+  id         String   @id @default(cuid())
+  kind       String   // 'ROOM' | 'SECTION' | 'SUBJECT' | 'FACULTY'
+  atlasId    Int
+  schoolYear String
+  label      String
+  detail     String?  // ROOM: buildingName | SECTION: gradeLevel | SUBJECT: code | FACULTY: employeeId
+  smartId    String?  // SMART-side id when resolvable (Section.id / Subject.id / Teacher.id)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([kind, atlasId, schoolYear])
+  @@index([schoolYear])
+}
+
+// Per-school-year provenance of the last ATLAS published-schedule read (the
+// `source` block of the term-aware contract). Persists orderedTerms (label
+// authority), per-term revisionMarker/activeRevisionId (change detection),
+// snapshotState/snapshotGaps (payload completeness) and the verbatim
+// specialEvents[]/timeSlots[] used to render break bands.
+model AtlasScheduleMeta {
+  id              Int       @id @default(autoincrement())
+  schoolYear      String    @unique
+  source          Json?     // full `source` block minus per-term arrays
+  terms           Json?     // [{termIndex, order, identity, displayLabel, revisionMarker, revisionId, entries}]
+  specialEvents   Json?     // [{eventName, startTime, endTime, dayOfWeek, days, termIndex}]
+  timeSlots       Json?     // [{startTime, endTime}]
+  activeTermIndex Int?
+  conflict        String?   // e.g. 'ACTIVE_SCHOOL_YEAR_AMBIGUOUS' — ask a human, never retry
+  syncedAt        DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
 model Enrollment {
   id             String           @id @default(cuid())
   studentId      String
@@ -239,6 +282,12 @@ model Enrollment {
   dropOutReason  String?
   transferInDate DateTime?       // Set by transferee sync or registrar. Null = not a transferee.
   enrollproApplicationId String? // EnrollPro EnrollmentApplication reference (opaque; not a SMART PK)
+  // Transferee v1.1 feed details — application-scoped, owned by the feed (registrar has no editor).
+  sf9EligibilityStatus   Sf9EligibilityStatus? // Prior-school SF9 eligibility decision
+  conditionalSubjectCodes String[]             @default([]) // Up to 2 back-subject codes, ordered by EP record ID
+  hasSf9                 Boolean?              // Inverse of EnrollmentApplication.isMissingSf9
+  isTemporarilyEnrolled  Boolean?              // EnrollmentApplication.isTemporarilyEnrolled
+  transfereeDetailsSyncedAt DateTime?          // Last time v1.1 feed details were applied to this row
   profileSnapshot Json?            // Student profile snapshot at enrollment time (immutable)
   promotionStatus      PromotionStatus?
   promotedToGradeLevel GradeLevel?
@@ -673,6 +722,13 @@ enum PromotionStatus {
   JHS_COMPLETER
 }
 
+// Prior-school SF9 eligibility as decided by EnrollPro (transferee feed v1.1).
+enum Sf9EligibilityStatus {
+  PROMOTED
+  CONDITIONALLY_PROMOTED
+  RETAINED
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -725,6 +781,19 @@ model AimsScore {
   @@unique([classAssignmentId, studentId, assessmentId])
   @@index([classAssignmentId, term])
   @@index([studentId])
+}
+
+model EcrSync {
+  id                String   @id @default(cuid())
+  classAssignmentId String
+  term              Term // T1 | T2 | T3
+  lastSyncedAt      DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  classAssignment ClassAssignment @relation(fields: [classAssignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([classAssignmentId, term])
 }
 
 model RemedialClass {

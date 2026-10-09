@@ -610,3 +610,155 @@ export async function backfillStaleConditionalPromotions(): Promise<StalePromoti
   logger.info(`[BackfillPromotions] Scanned ${result.scanned} CONDITIONALLY_PROMOTED, upgraded ${result.upgraded} to PROMOTED`);
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Rollover guard (ENROLLPRO_REMEDIAL_CONTRACT.md §Guardrail 1)
+// A school year must not roll over while any learner in it is still
+// CONDITIONALLY_PROMOTED with at least one PENDING remedial row.
+// Exposed to EnrollPro via GET /registrar/remedial/rollover-block and enforced
+// inside SMART's own archive path (lib/rollover.ts).
+// ---------------------------------------------------------------------------
+
+export interface RolloverBlockStudent {
+  lrn: string;
+  name: string;
+  grade: string;
+  section: string;
+  pendingSubjects: string[];
+}
+
+export interface RolloverBlockResult {
+  blocked: boolean;
+  count: number;
+  students: RolloverBlockStudent[];
+}
+
+export async function getRemedialRolloverBlock(schoolYear?: string): Promise<RolloverBlockResult> {
+  let effectiveSY = schoolYear;
+  if (!effectiveSY) {
+    const { getActiveSchoolYearLabel } = await import("./schoolYearResolver");
+    effectiveSY = await getActiveSchoolYearLabel();
+  }
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: {
+      schoolYear: effectiveSY,
+      promotionStatus: "CONDITIONALLY_PROMOTED",
+      remedialClasses: { some: { status: "PENDING" } },
+    },
+    include: {
+      student: { select: { lrn: true, firstName: true, lastName: true, middleName: true } },
+      section: { select: { gradeLevel: true, name: true } },
+      remedialClasses: { where: { status: "PENDING" }, select: { subjectName: true }, orderBy: { subjectName: "asc" } },
+    },
+    orderBy: { student: { lastName: "asc" } },
+  });
+
+  const students: RolloverBlockStudent[] = enrollments.map((e) => ({
+    lrn: e.student.lrn,
+    name: `${e.student.lastName}, ${e.student.firstName}${e.student.middleName ? ` ${e.student.middleName}` : ""}`,
+    grade: e.section.gradeLevel,
+    section: e.section.name,
+    pendingSubjects: e.remedialClasses.map((rc) => rc.subjectName),
+  }));
+
+  return { blocked: students.length > 0, count: students.length, students };
+}
+
+// ---------------------------------------------------------------------------
+// Reconcile: remove orphaned PENDING remedial rows.
+//
+// Invariant: a never-conducted PENDING row may only be acted on while its
+// enrollment is the live, CONDITIONALLY_PROMOTED one. Two orphan classes:
+//  - enrollment is not CONDITIONALLY_PROMOTED (completeRemedial rejects it)
+//  - enrollment is archived (year rolled over; the Pending tracker is
+//    year-scoped, so the row can never be completed through the UI)
+//
+// Rows WITH remedial data entered are never auto-deleted; they are reported as
+// needing registrar attention. COMPLETED rows are historical records and are
+// never touched.
+// ---------------------------------------------------------------------------
+
+export interface ReconcileRemedialResult {
+  schoolYear: string;
+  enrollmentsScanned: number;
+  rowsDeleted: number;
+  needsAttention: Array<{ enrollmentId: string; lrn: string; reason: string }>;
+}
+
+export async function reconcileRemedialRows(opts?: {
+  schoolYear?: string;
+  actor?: { id: string; name: string; role: string };
+}): Promise<ReconcileRemedialResult> {
+  const schoolYear = opts?.schoolYear;
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: {
+      ...(schoolYear ? { schoolYear } : {}),
+      remedialClasses: { some: { status: "PENDING" } },
+    },
+    include: {
+      student: { select: { lrn: true } },
+      remedialClasses: {
+        where: { status: "PENDING" },
+        select: { id: true, subjectName: true, remedialMark: true, conductedFrom: true, conductedTo: true },
+      },
+    },
+    orderBy: [{ schoolYear: "asc" }, { student: { lastName: "asc" } }],
+  });
+
+  const result: ReconcileRemedialResult = {
+    schoolYear: schoolYear ?? "ALL",
+    enrollmentsScanned: enrollments.length,
+    rowsDeleted: 0,
+    needsAttention: [],
+  };
+
+  for (const enrollment of enrollments) {
+    const isActionable = !enrollment.isArchived && enrollment.promotionStatus === "CONDITIONALLY_PROMOTED";
+    if (isActionable) continue;
+
+    const untouched = enrollment.remedialClasses.filter(
+      (rc) => rc.remedialMark === null && rc.conductedFrom === null && rc.conductedTo === null,
+    );
+    const conducted = enrollment.remedialClasses.filter(
+      (rc) => rc.remedialMark !== null || rc.conductedFrom !== null || rc.conductedTo !== null,
+    );
+
+    if (conducted.length > 0) {
+      result.needsAttention.push({
+        enrollmentId: enrollment.id,
+        lrn: enrollment.student.lrn,
+        reason: `${conducted.length} PENDING row(s) with remedial data on a ${enrollment.promotionStatus ?? "status-less"} enrollment: ${conducted.map((rc) => rc.subjectName).join(", ")}`,
+      });
+    }
+
+    if (untouched.length > 0) {
+      const deleted = await prisma.remedialClass.deleteMany({
+        where: { id: { in: untouched.map((rc) => rc.id) } },
+      });
+      result.rowsDeleted += deleted.count;
+    }
+  }
+
+  const scopeLabel = schoolYear ? `SY ${schoolYear}` : "all school years";
+
+  if (result.rowsDeleted > 0 || result.needsAttention.length > 0) {
+    await createAuditLog(
+      AuditAction.UPDATE,
+      opts?.actor ?? { id: "system", name: "Remedial Reconcile", role: "SYSTEM" },
+      "Remedial Reconcile",
+      "RemedialClass",
+      `Reconciled remedial rows for ${scopeLabel}: ${result.rowsDeleted} orphaned PENDING row(s) removed, ${result.needsAttention.length} enrollment(s) with conducted data need registrar attention.`,
+      undefined,
+      AuditSeverity.WARNING,
+      undefined,
+      result,
+    );
+  }
+
+  logger.info(
+    `[RemedialReconcile] ${scopeLabel}: scanned=${result.enrollmentsScanned}, deleted=${result.rowsDeleted}, attention=${result.needsAttention.length}`,
+  );
+  return result;
+}

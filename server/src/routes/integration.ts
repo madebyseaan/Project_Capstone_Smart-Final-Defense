@@ -26,6 +26,14 @@ import { resolveCurrentTerm } from './grades-sub/helpers';
 import { serviceAuth } from '../middleware/serviceAuth';
 import { maskId } from '../lib/redact';
 import { buildSf10Records } from '../lib/sf10';
+import { parseTermSelector } from '../schemas/atlasSchedule';
+import {
+  fetchTeacherDraftSchedule,
+  resolveAtlasFacultyRefs,
+  resolveAtlasSchoolYearIdForLabel,
+  getOrderedTermContract,
+  validateDraftTermSelection,
+} from '../lib/atlasDraftSchedule';
 
 const router = Router();
 
@@ -456,18 +464,50 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// Teacher Schedule (from ATLAS published schedule)
+// ---------------------------------------------------------------------------
+// Teacher Schedule (ATLAS term-aware published schedule, contract pin 70a51608)
 // ---------------------------------------------------------------------------
 
 const TERM_INDEX_BY_LABEL: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
 
-async function findTeacherScheduleEntries(teacherId: string, schoolYear: string) {
-  const activeTermIndex = TERM_INDEX_BY_LABEL[await resolveCurrentTerm()] ?? null;
+interface ScheduleTermRow {
+  termIndex: number;
+  order: number;
+  identity: string;
+  displayLabel: string;
+  revisionMarker: string | null;
+  entries: number;
+}
+
+interface ScheduleMetaView {
+  revisionMarker: string | null;
+  revisionId: number | null;
+  appliedRevisionIds: number[];
+  publishedAt: string | null;
+  generatedAt: string | null;
+  snapshotState: string | null;
+  snapshotGaps: string[];
+  isHistorical: boolean;
+  isActiveSchoolYear: boolean | null;
+  conflict: string | null;
+  syncedAt: string | null;
+}
+
+interface ScheduleSpecialEventView {
+  eventName: string;
+  startTime: string;
+  endTime: string;
+  dayOfWeek: string | null;
+  days: string[];
+  termIndex: number | null;
+}
+
+async function findTeacherScheduleEntries(teacherId: string, schoolYear: string, termIndex: number | null) {
   return prisma.scheduleEntry.findMany({
     where: {
       teacherId,
       schoolYear,
-      ...(activeTermIndex ? { OR: [{ termIndex: activeTermIndex }, { termIndex: null }] } : {}),
+      ...(termIndex ? { OR: [{ termIndex }, { termIndex: null }] } : {}),
     },
     include: {
       subject: { select: { code: true, name: true } },
@@ -478,9 +518,108 @@ async function findTeacherScheduleEntries(teacherId: string, schoolYear: string)
 }
 
 /**
+ * Compose the teacher schedule response for a term (default: the locally
+ * resolved current term). Term labels come from `source.orderedTerms` via the
+ * persisted AtlasScheduleMeta (label authority §4.1 — never hardcoded); room
+ * names come from the AtlasCrosswalk (§4.3 — a raw ATLAS surrogate id is never
+ * presented as a room number).
+ */
+async function buildScheduleResponse(teacherId: string, requestedTermIndex: number | null) {
+  const schoolYear = await getActiveSchoolYearLabel();
+  const resolvedTermIndex = TERM_INDEX_BY_LABEL[await resolveCurrentTerm()] ?? null;
+  const termIndex = requestedTermIndex ?? resolvedTermIndex;
+
+  const [entries, meta] = await Promise.all([
+    findTeacherScheduleEntries(teacherId, schoolYear, termIndex),
+    prisma.atlasScheduleMeta.findUnique({ where: { schoolYear } }),
+  ]);
+
+  const roomIds = Array.from(new Set(entries.map(e => e.roomId).filter((id): id is number => id != null)));
+  const roomRows = roomIds.length > 0
+    ? await prisma.atlasCrosswalk.findMany({
+        where: { kind: 'ROOM', schoolYear, atlasId: { in: roomIds } },
+        select: { atlasId: true, label: true, detail: true },
+      })
+    : [];
+  const roomByAtlasId = new Map(roomRows.map(r => [r.atlasId, r]));
+
+  const entriesWithRooms = entries.map(e => {
+    const room = e.roomId != null ? roomByAtlasId.get(e.roomId) : undefined;
+    return { ...e, roomLabel: room?.label ?? null, roomBuilding: room?.detail ?? null };
+  });
+
+  const byDay: Record<string, typeof entriesWithRooms> = {
+    MONDAY: [], TUESDAY: [], WEDNESDAY: [], THURSDAY: [], FRIDAY: [],
+  };
+  for (const entry of entriesWithRooms) {
+    const day = entry.day.toUpperCase();
+    if (byDay[day]) byDay[day].push(entry);
+  }
+
+  const terms: ScheduleTermRow[] = ((meta?.terms ?? []) as any[])
+    .filter(t => Number.isFinite(Number(t?.termIndex)))
+    .map(t => ({
+      termIndex: Number(t.termIndex),
+      order: Number(t.order ?? t.termIndex),
+      identity: String(t.identity ?? t.termIndex),
+      displayLabel: String(t.displayLabel ?? `TERM ${t.termIndex}`),
+      revisionMarker: t.revisionMarker ?? null,
+      entries: Number(t.entries ?? 0),
+    }))
+    .sort((a, b) => a.order - b.order);
+
+  // §4.4: specialEvents[] is the school-wide union of non-teaching windows.
+  // Duplicate windows are real (two "Lunch Break" rows) and are never merged.
+  const specialEvents: ScheduleSpecialEventView[] = ((meta?.specialEvents ?? []) as any[])
+    .map(e => ({
+      eventName: String(e.eventName ?? ''),
+      startTime: String(e.startTime ?? ''),
+      endTime: String(e.endTime ?? ''),
+      dayOfWeek: e.dayOfWeek != null ? String(e.dayOfWeek) : null,
+      days: Array.isArray(e.days) ? e.days.map(String) : [],
+      termIndex: e.termIndex != null ? Number(e.termIndex) : null,
+    }))
+    .filter(e => e.eventName && e.startTime && e.endTime)
+    .filter(e => termIndex == null || e.termIndex == null || e.termIndex === termIndex);
+
+  const timeSlots = ((meta?.timeSlots ?? []) as any[])
+    .map(s => ({ startTime: String(s.startTime ?? ''), endTime: String(s.endTime ?? '') }))
+    .filter(s => s.startTime && s.endTime);
+
+  const source = (meta?.source ?? {}) as any;
+  const metaView: ScheduleMetaView = {
+    revisionMarker: source.revisionMarker ?? null,
+    revisionId: source.activeRevisionId ?? null,
+    appliedRevisionIds: Array.isArray(source.appliedRevisionIds) ? source.appliedRevisionIds : [],
+    publishedAt: source.publishedAt ?? null,
+    generatedAt: source.generatedAt ?? null,
+    snapshotState: source.snapshotState ?? null,
+    snapshotGaps: Array.isArray(source.snapshotGaps) ? source.snapshotGaps.map(String) : [],
+    isHistorical: source.isHistorical === true,
+    isActiveSchoolYear: source.isActiveSchoolYear ?? null,
+    conflict: meta?.conflict ?? null,
+    syncedAt: meta?.syncedAt ? new Date(meta.syncedAt).toISOString() : null,
+  };
+
+  return {
+    schoolYear,
+    entries: entriesWithRooms,
+    byDay,
+    count: entriesWithRooms.length,
+    requestedTermIndex: termIndex,
+    activeTermIndex: resolvedTermIndex,
+    terms: terms.map(t => ({ order: t.order, identity: t.identity, displayLabel: t.displayLabel })),
+    specialEvents,
+    timeSlots,
+    meta: metaView,
+  };
+}
+
+/**
  * GET /api/integration/schedule
- * Returns the logged-in teacher's schedule entries for the current school year,
- * grouped by day for easy frontend rendering.
+ * Returns the logged-in teacher's schedule entries for the current school year
+ * and term, grouped by day. `?termIndex=1..4` switches the term (labels come
+ * from `terms`, per contract §7.4).
  */
 router.get(
   '/schedule',
@@ -497,25 +636,17 @@ router.get(
       });
       if (!teacher) { res.status(404).json({ error: 'Teacher profile not found' }); return; }
 
-      const schoolYear = await getActiveSchoolYearLabel();
-
-      const entries = await findTeacherScheduleEntries(teacher.id, schoolYear);
-
-      // Group by day
-      const byDay: Record<string, typeof entries> = {
-        MONDAY: [], TUESDAY: [], WEDNESDAY: [], THURSDAY: [], FRIDAY: [],
-      };
-      for (const entry of entries) {
-        const day = entry.day.toUpperCase();
-        if (byDay[day]) byDay[day].push(entry);
+      let requestedTermIndex: number | null = null;
+      if (req.query.termIndex != null) {
+        const parsed = parseTermSelector(req.query.termIndex);
+        if (parsed === null || parsed === 'active') {
+          res.status(400).json({ code: 'INVALID_TERM_INDEX', error: 'termIndex must be 1..4' });
+          return;
+        }
+        requestedTermIndex = parsed;
       }
 
-      res.json({
-        schoolYear,
-        entries,
-        byDay,
-        count: entries.length,
-      });
+      res.json(await buildScheduleResponse(teacher.id, requestedTermIndex));
     } catch (err: any) {
       logger.error('[Schedule] Failed to fetch schedule:', err.message);
       res.status(500).json({ error: 'Failed to fetch schedule' });
@@ -546,28 +677,92 @@ router.post(
       });
       if (!teacher) { res.status(404).json({ error: 'Teacher profile not found' }); return; }
 
-      const schoolYear = await getActiveSchoolYearLabel();
-
-      const entries = await findTeacherScheduleEntries(teacher.id, schoolYear);
-
-      const byDay: Record<string, typeof entries> = {
-        MONDAY: [], TUESDAY: [], WEDNESDAY: [], THURSDAY: [], FRIDAY: [],
-      };
-      for (const entry of entries) {
-        const day = entry.day.toUpperCase();
-        if (byDay[day]) byDay[day].push(entry);
-      }
-
-      res.json({
-        schoolYear,
-        entries,
-        byDay,
-        count: entries.length,
-        syncTriggered: true,
-      });
+      res.json({ ...(await buildScheduleResponse(teacher.id, null)), syncTriggered: true });
     } catch (err: any) {
       logger.error('[Schedule] Failed to refresh schedule:', err.message);
       res.status(500).json({ error: 'Failed to refresh schedule' });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Teacher Draft Schedule (ATLAS §8A — share-gated, term-scoped, own-draft only)
+// ---------------------------------------------------------------------------
+
+function draftErrorStatus(code: string, httpStatus: number): number {
+  if (httpStatus === 401) return 502; // our credential — integration config problem
+  if (httpStatus >= 400 && httpStatus < 600) return httpStatus;
+  return 502;
+}
+
+/**
+ * GET /api/integration/schedule/draft?termIndex=<n>
+ * The logged-in teacher's own DRAFT schedule (ATLAS §8A). Never whole-school
+ * (contract D3): the ATLAS faculty identity is always resolved from the caller.
+ *
+ * `status` is one of:
+ *   shared      — a scheduler shared the draft; entries carry labels mapped
+ *                 from SMART's AtlasCrosswalk (unmapped ids listed per row)
+ *   not_shared  — the run exists but the sharing switch is OFF (the default)
+ *   unavailable — no completed FULL draft run, or the latest run is published
+ *
+ * Term selection errors use the contract codes (TERM_INDEX_REQUIRED,
+ * INVALID_TERM_INDEX, TERM_INDEX_OUTSIDE_CONTRACT).
+ */
+router.get(
+  '/schedule/draft',
+  authenticateToken,
+  authorizeRoles('TEACHER'),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+      const teacher = await prisma.teacher.findUnique({
+        where: { userId },
+        select: { id: true, employeeId: true, user: { select: { email: true } } },
+      });
+      if (!teacher) { res.status(404).json({ error: 'Teacher profile not found' }); return; }
+
+      const schoolYear = await getActiveSchoolYearLabel();
+      const orderedTerms = await getOrderedTermContract(schoolYear);
+      const termCheck = validateDraftTermSelection(req.query.termIndex, orderedTerms);
+      if (!termCheck.ok) {
+        res.status(400).json({ code: termCheck.code, error: termCheck.message });
+        return;
+      }
+
+      const atlasSchoolYearId = await resolveAtlasSchoolYearIdForLabel(schoolYear);
+      if (!atlasSchoolYearId) {
+        res.status(502).json({ code: 'ATLAS_YEAR_UNRESOLVED', error: 'ATLAS school year could not be resolved' });
+        return;
+      }
+
+      const facultyRefs = await resolveAtlasFacultyRefs({
+        id: teacher.id,
+        employeeId: teacher.employeeId,
+        email: teacher.user?.email ?? null,
+      });
+      const outcome = await fetchTeacherDraftSchedule({
+        schoolYearLabel: schoolYear,
+        atlasSchoolYearId,
+        facultyRefs,
+        termIndex: termCheck.term,
+      });
+
+      if (outcome.status === 'error') {
+        logger.error(`[Schedule] Draft read failed: ${outcome.code} — ${outcome.message}`);
+        res.status(draftErrorStatus(outcome.code, outcome.httpStatus)).json({
+          code: outcome.code,
+          error: outcome.message,
+        });
+        return;
+      }
+
+      res.json({ ...outcome, schoolYear, terms: orderedTerms });
+    } catch (err: any) {
+      logger.error('[Schedule] Failed to fetch draft schedule:', err.message);
+      res.status(500).json({ error: 'Failed to fetch draft schedule' });
     }
   }
 );

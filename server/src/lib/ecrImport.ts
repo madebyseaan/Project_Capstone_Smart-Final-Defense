@@ -29,6 +29,8 @@ export interface EcrImportReport {
   specialSkipped: string[];
   overwrittenCount: number;
   warnings: string[];
+  /** ISO timestamp of the persisted last successful sync; null on dry runs. */
+  lastSyncedAt: string | null;
 }
 
 export interface EcrImportInput {
@@ -83,16 +85,27 @@ export function findStudentId(excelName: string, roster: RosterEntry[]): string 
 
 // ─── Score mapping ────────────────────────────────────────────────────────────
 
+export type ImportedTask = {
+  name: string;
+  score: number;
+  maxScore: number;
+  description?: string | null;
+  date?: string | null;
+  status?: "A" | "E";
+  isAims?: boolean;
+  assessmentId?: string | null;
+};
+
 export function buildTasks(
   scores: EcrTask[],
   prefix: "WW" | "PT",
   existing: Array<Record<string, unknown>> = [],
-): Array<{ name: string; score: number; maxScore: number; description?: string | null; date?: string | null }> {
-  const out: Array<{ name: string; score: number; maxScore: number; description?: string | null; date?: string | null }> = [];
+): ImportedTask[] {
+  const out: ImportedTask[] = [];
   scores.forEach((t, i) => {
     if (t.maxScore <= 0) return;
     const prev = existing[i];
-    const item: { name: string; score: number; maxScore: number; description?: string | null; date?: string | null } = {
+    const item: ImportedTask = {
       name: (typeof prev?.name === "string" && prev.name.trim()) ? prev.name : `${prefix} ${i + 1}`,
       score: t.score ?? 0,
       maxScore: t.maxScore,
@@ -100,6 +113,11 @@ export function buildTasks(
     // Only carry metadata through when it actually exists (keeps round-trips byte-identical).
     if (typeof prev?.description === "string" && prev.description) item.description = prev.description;
     if (typeof prev?.date === "string" && prev.date) item.date = prev.date;
+    if (prev?.isAims === true) item.isAims = true;
+    if (typeof prev?.assessmentId === "string" && prev.assessmentId) item.assessmentId = prev.assessmentId;
+    // A/E marks have no Excel representation (the export leaves them blank) — keep them
+    // when the cell is blank instead of erasing the mark.
+    if (t.score === null && (prev?.status === "A" || prev?.status === "E")) item.status = prev.status;
     out.push(item);
   });
   return out;
@@ -127,8 +145,8 @@ function gradeHasData(g: { writtenWorkScores: unknown; perfTaskScores: unknown; 
   const ww = Array.isArray(g.writtenWorkScores) ? (g.writtenWorkScores as Array<Record<string, unknown>>) : [];
   const pt = Array.isArray(g.perfTaskScores) ? (g.perfTaskScores as Array<Record<string, unknown>>) : [];
   return (
-    ww.some((i) => Number(i?.score) > 0) ||
-    pt.some((i) => Number(i?.score) > 0) ||
+    ww.some((i) => Number(i?.score) > 0 || !!i?.status) ||
+    pt.some((i) => Number(i?.score) > 0 || !!i?.status) ||
     (g.quarterlyAssessScore ?? 0) > 0
   );
 }
@@ -148,6 +166,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
     specialSkipped: [],
     overwrittenCount: 0,
     warnings,
+    lastSyncedAt: null,
   });
 
   const classAssignment = await prisma.classAssignment.findUnique({
@@ -200,8 +219,8 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
   interface Prepared {
     studentId: string;
     studentName: string;
-    ww: Array<{ name: string; score: number; maxScore: number; description?: string | null; date?: string | null }>;
-    pt: Array<{ name: string; score: number; maxScore: number; description?: string | null; date?: string | null }>;
+    ww: ImportedTask[];
+    pt: ImportedTask[];
     examScores: Array<{ name: string; score: number; maxScore: number }> | null;
     qaScore: number | null;
     qaMax: number;
@@ -250,7 +269,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
       qaMax = existing.quarterlyAssessMax ?? 100;
     }
 
-    const hasAny = ww.some((t) => t.score > 0) || pt.some((t) => t.score > 0) || (qaScore ?? 0) > 0;
+    const hasAny = ww.some((t) => t.score > 0 || !!t.status) || pt.some((t) => t.score > 0 || !!t.status) || (qaScore ?? 0) > 0;
     if (!hasAny) {
       emptySkipped++;
       continue;
@@ -274,10 +293,12 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
       specialSkipped: parsed.specialSkipped,
       overwrittenCount,
       warnings,
+      lastSyncedAt: null,
     };
   }
 
   let savedCount = 0;
+  const syncedAt = new Date();
   await prisma.$transaction(async (tx) => {
     for (const item of prepared) {
       const calculated = await calculateGrades(
@@ -359,6 +380,13 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
       }
       savedCount++;
     }
+
+    // Record the successful sync timestamp for this class + term (survives reloads).
+    await tx.ecrSync.upsert({
+      where: { classAssignmentId_term: { classAssignmentId, term } },
+      update: { lastSyncedAt: syncedAt },
+      create: { classAssignmentId, term, lastSyncedAt: syncedAt },
+    });
   });
 
   return {
@@ -369,5 +397,6 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
     specialSkipped: parsed.specialSkipped,
     overwrittenCount,
     warnings,
+    lastSyncedAt: syncedAt.toISOString(),
   };
 }

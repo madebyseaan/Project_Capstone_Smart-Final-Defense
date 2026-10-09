@@ -1,14 +1,18 @@
 /**
  * external-records-api.test.ts — Prior-school record CRUD routes (live server).
  *
- * Self-contained: mints a registrar/teacher JWT with the server's own signer and
- * cleans up any record it creates. Read-only against existing students.
+ * LIVE-STACK ONLY: hits the dev backend on :5003, which reads the live DB.
+ * Tokens are minted against this test process's DATABASE_URL, so the run is
+ * only meaningful when the live server and the test DB are the same database.
+ * It is therefore gated behind SMART_LIVE_API=1 and must never run by default
+ * (it would either 403 or write to live data). Prefer route-level tests.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "../lib/prisma";
 import { signAccessToken } from "../lib/tokens";
 
-const BASE = "http://localhost:5003/api";
+const LIVE_API = process.env.SMART_LIVE_API === "1";
+const BASE = process.env.SMART_LIVE_API_BASE ?? "http://localhost:5003/api";
 
 let ready = false;
 let registrarToken = "";
@@ -30,7 +34,7 @@ function auth(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "x-csrf-token": csrf };
 }
 
-describe("External prior-school records API", () => {
+describe.skipIf(!LIVE_API)("External prior-school records API", () => {
   beforeAll(async () => {
     try {
       const health = await fetch(`${BASE}/health`);

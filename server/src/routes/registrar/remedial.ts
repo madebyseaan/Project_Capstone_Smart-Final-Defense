@@ -7,6 +7,7 @@
 
 import { Router, Request, Response } from "express";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
+import { serviceAuth } from "../../middleware/serviceAuth";
 import { validate } from "../../middleware/validate";
 import {
   remedialUpdateSchema,
@@ -19,7 +20,7 @@ import {
 import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
 import { AuditAction, AuditSeverity } from "@prisma/client";
-import { completeRemedial, buildCertificate, computeRfg, determineOutcome, syncBackSubjectsFromEnrollPro } from "../../lib/remedial";
+import { completeRemedial, buildCertificate, computeRfg, determineOutcome, syncBackSubjectsFromEnrollPro, reconcileRemedialRows, getRemedialRolloverBlock } from "../../lib/remedial";
 import { logger } from "../../lib/logger";
 
 export default function registerRemedialRoutes(router: Router): void {
@@ -200,6 +201,19 @@ router.get("/remedial/history", authenticateToken, validate(remedialHistoryQuery
   }
 });
 
+// GET /registrar/remedial/rollover-block — EnrollPro pre-rollover guardrail.
+// 200 { blocked: false } when clear; 409 { blocked: true, count, students } otherwise.
+router.get("/remedial/rollover-block", serviceAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { schoolYear } = req.query as { schoolYear?: string };
+    const result = await getRemedialRolloverBlock(schoolYear);
+    res.status(result.blocked ? 409 : 200).json(result);
+  } catch (err: any) {
+    logger.error("[registrar/remedial/rollover-block]", err.message);
+    res.status(500).json({ message: "Failed to evaluate rollover block" });
+  }
+});
+
 // POST /registrar/remedial/sync-from-enrollpro — pull back-subjects from EnrollPro
 router.post("/remedial/sync-from-enrollpro", authenticateToken, validate(remedialSyncSchema), async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
@@ -227,6 +241,29 @@ router.post("/remedial/sync-from-enrollpro", authenticateToken, validate(remedia
   } catch (err: any) {
     logger.error("[registrar/remedial/sync-from-enrollpro]", err.message);
     res.status(500).json({ message: "Failed to sync back-subjects from EnrollPro" });
+  }
+});
+
+// POST /registrar/remedial/reconcile — remove orphaned PENDING rows (self-heal)
+router.post("/remedial/reconcile", authenticateToken, validate(remedialSyncSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user || user.role !== "REGISTRAR") {
+    res.status(403).json({ message: "Access denied. Registrar only." });
+    return;
+  }
+  try {
+    const { schoolYear } = req.body as { schoolYear?: string };
+    const result = await reconcileRemedialRows({
+      schoolYear,
+      actor: { id: user.id, name: user.username, role: user.role },
+    });
+    res.json({
+      message: `Reconciled: ${result.rowsDeleted} orphaned remedial row(s) removed, ${result.needsAttention.length} enrollment(s) need attention`,
+      ...result,
+    });
+  } catch (err: any) {
+    logger.error("[registrar/remedial/reconcile]", err.message);
+    res.status(500).json({ message: "Failed to reconcile remedial records" });
   }
 });
 

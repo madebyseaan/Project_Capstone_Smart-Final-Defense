@@ -1,49 +1,48 @@
 import { useState, useEffect } from "react";
-import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun, Coffee, UtensilsCrossed } from "lucide-react";
+import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun, Coffee, UtensilsCrossed, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useSyncStream } from "@/hooks/useSyncStream";
-import { scheduleApi } from "@/lib/api";
+import {
+  scheduleApi,
+  type ScheduleDataDto,
+  type ScheduleEntryDto,
+  type ScheduleSpecialEvent,
+  type ScheduleTermInfo,
+} from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import ScheduleDraftPanel from "./components/ScheduleDraftPanel";
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (server DTOs — ATLAS term-aware published-schedule contract)
 // ---------------------------------------------------------------------------
-interface ScheduleEntry {
-  id: string;
-  day: string;
-  startTime: string;
-  endTime: string;
-  roomId: number | null;
-  subject: { code: string; name: string };
-  section: { name: string; gradeLevel: string };
-}
-
-interface ScheduleData {
-  schoolYear: string;
-  entries: ScheduleEntry[];
-  byDay: Record<string, ScheduleEntry[]>;
-  count: number;
-}
+type ScheduleEntry = ScheduleEntryDto;
+type ScheduleData = ScheduleDataDto;
 
 // ---------------------------------------------------------------------------
-// Time slot types — class slots and break slots
+// Time slot types — class slots and break slots (contract §4.4 specialEvents)
 // ---------------------------------------------------------------------------
 interface ClassSlot {
   type: "class";
   start: string;
   end: string;
   entries: Record<string, ScheduleEntry>;
+  /** Contract special-event window matching this row exactly (§4.4). */
+  event?: ScheduleSpecialEvent | undefined;
 }
 
 interface BreakSlot {
   type: "break";
   start: string;
   end: string;
-  breakType: "recess" | "lunch";
+  /** Contract event name — the display label (never invented). */
+  eventName: string;
+  breakType: "recess" | "lunch" | "other";
   durationMin: number;
+  /** Days the window applies to (`specialEvents[].days`). */
+  days: string[];
 }
 
 type TimeSlot = ClassSlot | BreakSlot;
@@ -178,10 +177,11 @@ export default function TeacherSchedule() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
 
-  const fetchSchedule = async () => {
+  const fetchSchedule = async (termIndex?: number | null) => {
     try {
-      const res = await scheduleApi.getMySchedule();
+      const res = await scheduleApi.getMySchedule(termIndex ?? undefined);
       setSchedule(res.data);
       setError(null);
     } catch {
@@ -191,7 +191,7 @@ export default function TeacherSchedule() {
     }
   };
 
-  useEffect(() => { fetchSchedule(); }, [syncVersion]);
+  useEffect(() => { fetchSchedule(selectedTerm); }, [syncVersion, selectedTerm]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -201,8 +201,78 @@ export default function TeacherSchedule() {
 
   const todayKey = getDayKey();
   const todayClasses = schedule?.byDay[todayKey] ?? [];
-  const timeSlots = getTimeSlots(schedule?.entries ?? []);
+  const gridRows = getTimeSlots(schedule?.entries ?? [], schedule?.specialEvents ?? [], schedule?.timeSlots ?? []);
   const gradeLevels = [...new Set((schedule?.entries ?? []).map(e => e.section.gradeLevel))].sort();
+  const terms: ScheduleTermInfo[] = schedule?.terms ?? [];
+  const meta = schedule?.meta ?? null;
+  const activeTerm = selectedTerm ?? schedule?.activeTermIndex ?? schedule?.requestedTermIndex ?? null;
+
+  // ---- Shared fragments (contract §7.5: surface gaps/conflicts to a human) ----
+  const notices = (
+    <>
+      {meta?.conflict === "ACTIVE_SCHOOL_YEAR_AMBIGUOUS" && (
+        <Card className="border border-destructive/30 bg-destructive/5 rounded-2xl">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Schedule sync paused — ambiguous school year</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                ATLAS reports more than one active school year. An administrator must choose which year is current
+                before schedules can sync again.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {(meta?.snapshotGaps?.length ?? 0) > 0 && (
+        <Card className="border border-amber-300/40 bg-amber-50/50 rounded-2xl">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Schedule data may be incomplete</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                The ATLAS timetable snapshot reports gaps:{" "}
+                <span className="font-medium text-foreground">{meta!.snapshotGaps.join(", ")}</span>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {meta?.isHistorical && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Info className="w-4 h-4" />
+          <span>Viewing a historical (archived) school year.</span>
+        </div>
+      )}
+    </>
+  );
+
+  const termChips = terms.length > 1 ? (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Term:</span>
+      {terms.map((t) => {
+        const isActive = t.order === activeTerm;
+        return (
+          <button
+            key={t.identity}
+            type="button"
+            onClick={() => setSelectedTerm(t.order)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              isActive
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background text-muted-foreground border-border hover:bg-muted"
+            }`}
+          >
+            {t.displayLabel}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+
+  const draftPanel = (
+    <ScheduleDraftPanel termIndex={activeTerm} terms={terms} syncVersion={syncVersion} />
+  );
 
   // ---- Loading ----
   if (loading) {
@@ -235,7 +305,7 @@ export default function TeacherSchedule() {
             </div>
             <h3 className="font-bold text-foreground text-2xl mb-3">Unable to Load Schedule</h3>
             <p className="text-muted-foreground max-w-sm mx-auto font-medium text-lg leading-relaxed">{error}</p>
-            <Button onClick={fetchSchedule} className="mt-6 h-12 px-8 rounded-2xl text-white font-bold shadow-lg" style={{ backgroundColor: colors.primary }}>
+            <Button onClick={() => fetchSchedule(selectedTerm)} className="mt-6 h-12 px-8 rounded-2xl text-white font-bold shadow-lg" style={{ backgroundColor: colors.primary }}>
               Try Again
             </Button>
           </CardContent>
@@ -253,6 +323,12 @@ export default function TeacherSchedule() {
           title="My Schedule"
           description={`S.Y. ${schedule?.schoolYear ?? ""}`}
         />
+
+        {notices}
+        {termChips}
+
+        {/* Draft preview — shown even with no published schedule */}
+        {draftPanel}
 
         {/* Empty state card */}
         <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] bg-white overflow-hidden">
@@ -321,6 +397,9 @@ export default function TeacherSchedule() {
         }
       />
 
+      {notices}
+      {termChips}
+
       {/* Grade Level Legend */}
       {gradeLevels.length > 1 && (
         <div className="flex items-center gap-3 flex-wrap">
@@ -365,19 +444,19 @@ export default function TeacherSchedule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {timeSlots.map((slot, idx) => {
-                  // --- Break row ---
+                {gridRows.map((slot, idx) => {
+                  // --- Break row (contract §4.4 specialEvents window) ---
                   if (slot.type === "break") {
-                    const isLunch = slot.breakType === "lunch";
-                    const BreakIcon = isLunch ? UtensilsCrossed : Coffee;
-                    const label = isLunch ? "Lunch Break" : "Recess";
+                    const BreakIcon = slot.breakType === "lunch" ? UtensilsCrossed : slot.breakType === "recess" ? Coffee : Sun;
+                    const label = slot.eventName;
+                    const tone = slot.breakType === "lunch" ? "orange" : slot.breakType === "recess" ? "amber" : "slate";
                     return (
                       <tr key={`break-${idx}`} className="border-y border-dashed border-slate-200/80">
                         {/* Time column */}
                         <td className="px-5 py-3 align-middle border-r border-slate-100 whitespace-nowrap">
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isLunch ? "bg-orange-50" : "bg-amber-50"}`}>
-                              <BreakIcon className={`w-4 h-4 ${isLunch ? "text-orange-400" : "text-amber-500"}`} />
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tone === "orange" ? "bg-orange-50" : tone === "amber" ? "bg-amber-50" : "bg-slate-100"}`}>
+                              <BreakIcon className={`w-4 h-4 ${tone === "orange" ? "text-orange-400" : tone === "amber" ? "text-amber-500" : "text-muted-foreground"}`} />
                             </div>
                             <div className="leading-none">
                               <p className="text-sm font-bold text-muted-foreground whitespace-nowrap">{formatTime12h(slot.start)}</p>
@@ -385,21 +464,33 @@ export default function TeacherSchedule() {
                             </div>
                           </div>
                         </td>
-                        {/* Day columns — merged break label */}
-                        {DAYS.map((day) => (
-                          <td key={day} className="px-2 py-2 align-middle">
-                            <div className={`h-[88px] rounded-2xl border border-dashed flex flex-col items-center justify-center gap-1 ${
-                              isLunch
-                                ? "border-orange-200/60 bg-orange-50/30"
-                                : "border-amber-200/60 bg-amber-50/30"
-                            }`}>
-                              <BreakIcon className={`w-4 h-4 ${isLunch ? "text-orange-300" : "text-amber-400"}`} />
-                              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLunch ? "text-orange-400" : "text-amber-400"}`}>
-                                {label}
-                              </span>
-                            </div>
-                          </td>
-                        ))}
+                        {/* Day columns — only the days the window applies to (§4.4 days[]) */}
+                        {DAYS.map((day) => {
+                          const applies = slot.days.length === 0 || slot.days.includes(day);
+                          if (!applies) {
+                            return (
+                              <td key={day} className="px-2 py-2 align-middle">
+                                <div className={`h-[88px] rounded-2xl ${day === todayKey ? "bg-primary/[0.03]" : "bg-slate-50/50"}`} />
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={day} className="px-2 py-2 align-middle">
+                              <div className={`h-[88px] rounded-2xl border border-dashed flex flex-col items-center justify-center gap-1 ${
+                                tone === "orange"
+                                  ? "border-orange-200/60 bg-orange-50/30"
+                                  : tone === "amber"
+                                    ? "border-amber-200/60 bg-amber-50/30"
+                                    : "border-slate-200/60 bg-slate-50/30"
+                              }`}>
+                                <BreakIcon className={`w-4 h-4 ${tone === "orange" ? "text-orange-300" : tone === "amber" ? "text-amber-400" : "text-muted-foreground"}`} />
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${tone === "orange" ? "text-orange-400" : tone === "amber" ? "text-amber-400" : "text-muted-foreground"}`}>
+                                  {label}
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   }
@@ -423,9 +514,26 @@ export default function TeacherSchedule() {
                       {DAYS.map((day) => {
                         const entry = slot.entries[day];
                         if (!entry) {
+                          // A class row's window may still carry a school-wide
+                          // event (§4.4 union) — show it where no class sits.
+                          const eventApplies =
+                            slot.event && (slot.event.days.length === 0 || slot.event.days.includes(day));
                           return (
                             <td key={day} className="px-2 py-2 align-middle">
-                              <div className={`h-[88px] rounded-2xl ${day === todayKey ? "bg-primary/[0.03]" : "bg-slate-50/50"}`} />
+                              <div className={`h-[88px] rounded-2xl flex flex-col items-center justify-center gap-1 ${
+                                eventApplies
+                                  ? "border border-dashed border-amber-200/60 bg-amber-50/30"
+                                  : day === todayKey ? "bg-primary/[0.03]" : "bg-slate-50/50"
+                              }`}>
+                                {eventApplies && (
+                                  <>
+                                    <Coffee className="w-4 h-4 text-amber-400" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                                      {slot.event!.eventName}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
                             </td>
                           );
                         }
@@ -441,12 +549,14 @@ export default function TeacherSchedule() {
                                   {formatSectionLabel(entry.section.gradeLevel, entry.section.name)}
                                 </p>
                               </div>
-                              {/* Room — always at bottom */}
+                              {/* Room — label from the ATLAS crosswalk (§4.3) */}
                               <div className="flex items-center gap-1">
-                                {entry.roomId != null ? (
+                                {roomDisplay(entry) ? (
                                   <>
                                     <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                                    <span className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">Rm {entry.roomId}</span>
+                                    <span className="text-[11px] font-bold text-muted-foreground whitespace-nowrap" title={roomDisplay(entry)!.title}>
+                                      {roomDisplay(entry)!.text}
+                                    </span>
                                   </>
                                 ) : (
                                   <span className="text-[11px] text-muted-foreground">&nbsp;</span>
@@ -499,12 +609,14 @@ export default function TeacherSchedule() {
                     <p className="text-sm font-bold text-muted-foreground mt-1.5">
                       {formatSectionLabel(entry.section.gradeLevel, entry.section.name)}
                     </p>
-                    {/* Room — pushed to bottom */}
+                    {/* Room — label from the ATLAS crosswalk (§4.3) */}
                     <div className="mt-auto pt-3">
-                      {entry.roomId != null ? (
+                      {roomDisplay(entry) ? (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <span className="text-xs font-bold text-muted-foreground">Room {entry.roomId}</span>
+                          <span className="text-xs font-bold text-muted-foreground" title={roomDisplay(entry)!.title}>
+                            {roomDisplay(entry)!.text}
+                          </span>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">&nbsp;</span>
@@ -528,6 +640,9 @@ export default function TeacherSchedule() {
           </CardContent>
         </Card>
       )}
+
+      {/* Draft (unpublished) timetable preview — ATLAS §8A */}
+      {draftPanel}
     </div>
   );
 }
@@ -536,11 +651,32 @@ export default function TeacherSchedule() {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Minimum gap (minutes) to qualify as a break row */
+/** Minimum gap (minutes) to qualify as a fallback break row */
 const BREAK_THRESHOLD_MIN = 15;
 
-function getTimeSlots(entries: ScheduleEntry[]): TimeSlot[] {
-  // 1. Group entries by their exact start-end time pair (existing logic)
+function classifyBreak(eventName: string): BreakSlot["breakType"] {
+  const n = eventName.toLowerCase();
+  if (n.includes("lunch")) return "lunch";
+  if (n.includes("health") || n.includes("recess")) return "recess";
+  return "other";
+}
+
+/**
+ * Build the grid rows from the contract's own windows (§4.4):
+ *  - class rows keyed by their exact start-end window;
+ *  - break rows from `specialEvents[]` — the published school-wide union of
+ *    non-teaching windows. Distinct windows are kept as distinct rows (two
+ *    "Lunch Break" rows are real: different grade/shift groups); day scope is
+ *    honored through `days`. Never invent or merge a window.
+ * The old gap heuristic is used ONLY as a fallback when ATLAS published no
+ * special events at all (e.g. first sync before the contract state lands).
+ */
+function getTimeSlots(
+  entries: ScheduleEntry[],
+  specialEvents: ScheduleSpecialEvent[],
+  contractSlots: { startTime: string; endTime: string }[],
+): TimeSlot[] {
+  // 1. Class windows by exact start-end pair
   const slotMap = new Map<string, ClassSlot>();
   for (const entry of entries) {
     const key = `${entry.startTime}-${entry.endTime}`;
@@ -550,11 +686,57 @@ function getTimeSlots(entries: ScheduleEntry[]): TimeSlot[] {
     slotMap.get(key)!.entries[entry.day.toUpperCase()] = entry;
   }
 
+  const result: TimeSlot[] = [];
+
+  if (specialEvents.length > 0) {
+    // 2a. Break rows from the published specialEvents union (§4.4).
+    const breakRows = new Map<string, BreakSlot>();
+    for (const evt of specialEvents) {
+      const key = `${evt.startTime}-${evt.endTime}`;
+      const existing = breakRows.get(key);
+      if (existing) {
+        // Same window emitted for overlapping scopes — union the day scope.
+        // The ROW stays single; the distinct-window rule is about windows.
+        existing.days = [...new Set([...existing.days, ...evt.days])];
+        continue;
+      }
+      breakRows.set(key, {
+        type: "break",
+        start: evt.startTime,
+        end: evt.endTime,
+        eventName: evt.eventName,
+        breakType: classifyBreak(evt.eventName),
+        durationMin: timeToMinutes(evt.endTime) - timeToMinutes(evt.startTime),
+        days: [...evt.days],
+      });
+    }
+
+    // Contract period windows anchor the row set (§4.4: use timeSlots to render
+    // a correct grid); rows with no class and no event are skipped as noise.
+    const windowKeys = new Set<string>([
+      ...slotMap.keys(),
+      ...breakRows.keys(),
+      ...contractSlots.map(s => `${s.startTime}-${s.endTime}`),
+    ]);
+    for (const key of windowKeys) {
+      const classSlot = slotMap.get(key);
+      const breakSlot = breakRows.get(key);
+      if (classSlot) {
+        // Class wins the row; a matching event still colors empty day cells.
+        if (breakSlot) classSlot.event = specialEvents.find(e => e.startTime === breakSlot.start && e.endTime === breakSlot.end);
+        result.push(classSlot);
+      } else if (breakSlot) {
+        result.push(breakSlot);
+      }
+    }
+    return result.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+  }
+
+  // 2b. Fallback: derive break rows from gaps between class slots (legacy).
   const classSlots = Array.from(slotMap.values()).sort((a, b) => a.start.localeCompare(b.start));
   if (classSlots.length === 0) return [];
 
-  // 2. Detect gaps between consecutive class slots and insert break rows
-  const result: TimeSlot[] = [classSlots[0]];
+  result.push(classSlots[0]);
   for (let i = 1; i < classSlots.length; i++) {
     const prevEnd = timeToMinutes(classSlots[i - 1].end);
     const nextStart = timeToMinutes(classSlots[i].start);
@@ -566,12 +748,25 @@ function getTimeSlots(entries: ScheduleEntry[]): TimeSlot[] {
         type: "break",
         start: classSlots[i - 1].end,
         end: classSlots[i].start,
+        eventName: breakType === "lunch" ? "Lunch Break" : "Recess",
         breakType,
         durationMin: gap,
+        days: [...DAYS],
       });
     }
     result.push(classSlots[i]);
   }
 
   return result;
+}
+
+/** Room label per contract §4.3 — never present a raw ATLAS surrogate id as a room. */
+function roomDisplay(entry: ScheduleEntry): { text: string; title: string } | null {
+  if (entry.roomLabel) {
+    return { text: entry.roomLabel, title: entry.roomBuilding ? `${entry.roomLabel} — ${entry.roomBuilding}` : entry.roomLabel };
+  }
+  if (entry.roomId != null) {
+    return { text: "Room", title: `ATLAS room id ${entry.roomId} — name not mapped yet` };
+  }
+  return null;
 }

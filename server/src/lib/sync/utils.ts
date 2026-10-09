@@ -54,10 +54,17 @@ export async function upsertLearner(
   const incomingDisability = learner.disability && learner.disability !== 'NONE' ? learner.disability : null;
   const incomingIsBalikAral = learner.isBalikAral === true || String(learner.isBalikAral).toUpperCase() === 'YES';
 
-  // R1-1: Pre-read enrollproId so we can backfill only when currently null
+  // R1-1: Pre-read enrollproId so we can backfill only when currently null.
+  // Also pre-read enriched fields so the DPA-minimized feed never nulls them out.
   const existingStudent = await prisma.student.findUnique({
     where: { lrn: learner.lrn },
-    select: { enrollproId: true },
+    select: {
+      enrollproId: true,
+      address: true, guardianName: true, guardianContact: true,
+      religion: true, motherTongue: true, barangay: true, city: true, province: true,
+      fatherName: true, fatherContact: true, motherName: true, motherContact: true,
+      ipCommunity: true, is4PsBeneficiary: true, disability: true, isBalikAral: true,
+    },
   });
 
   const incomingEnrollproId = Number(learner.id) || null;
@@ -71,22 +78,25 @@ export async function upsertLearner(
       suffix: learner.extensionName ?? null,
       gender: learner.sex ?? null,
       birthDate: learner.birthdate ? new Date(learner.birthdate) : undefined,
-      address: incomingAddress,
-      guardianName: incomingGuardian,
-      guardianContact: incomingGuardianContact,
-      religion: incomingReligion,
-      motherTongue: incomingMotherTongue,
-      barangay: incomingBarangay,
-      city: incomingCity,
-      province: incomingProvince,
-      fatherName: incomingFatherName,
-      fatherContact: incomingFatherContact,
-      motherName: incomingMotherName,
-      motherContact: incomingMotherContact,
-      ipCommunity: incomingIpCommunity,
-      is4PsBeneficiary: incomingIs4Ps,
-      disability: incomingDisability,
-      isBalikAral: incomingIsBalikAral,
+      // Only overwrite enriched fields when the feed has a value — never null them out.
+      // Integration v1 feeds are DPA-minimized (no parent/address fields); the enrichment
+      // pass fills these from /students/:id, and this sync must not erase them.
+      address: incomingAddress || existingStudent?.address || null,
+      guardianName: incomingGuardian || existingStudent?.guardianName || null,
+      guardianContact: incomingGuardianContact || existingStudent?.guardianContact || null,
+      religion: incomingReligion || existingStudent?.religion || null,
+      motherTongue: incomingMotherTongue || existingStudent?.motherTongue || null,
+      barangay: incomingBarangay || existingStudent?.barangay || null,
+      city: incomingCity || existingStudent?.city || null,
+      province: incomingProvince || existingStudent?.province || null,
+      fatherName: incomingFatherName || existingStudent?.fatherName || null,
+      fatherContact: incomingFatherContact || existingStudent?.fatherContact || null,
+      motherName: incomingMotherName || existingStudent?.motherName || null,
+      motherContact: incomingMotherContact || existingStudent?.motherContact || null,
+      ipCommunity: incomingIpCommunity || existingStudent?.ipCommunity || false,
+      is4PsBeneficiary: incomingIs4Ps || existingStudent?.is4PsBeneficiary || false,
+      disability: incomingDisability || existingStudent?.disability || null,
+      isBalikAral: incomingIsBalikAral || existingStudent?.isBalikAral || false,
       // R1-1: Only backfill enrollproId when currently null (don't overwrite)
       ...(existingStudent?.enrollproId == null && incomingEnrollproId ? { enrollproId: incomingEnrollproId } : {}),
     },

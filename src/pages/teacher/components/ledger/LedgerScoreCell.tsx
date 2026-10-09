@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 // ─── LedgerScoreCell ─────────────────────────────────────────────────────────
 
@@ -35,9 +35,34 @@ export const LedgerScoreCell = React.memo(function LedgerScoreCell({
   ariaLabel,
   aims,
 }: LedgerScoreCellProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    if (typeof document !== "undefined" && document.activeElement === el) return;
+    const next = value === undefined || value === null ? "" : String(value);
+    if (el.value !== next) el.value = next;
+    el.dataset.prev = next;
+  }, [value, status]);
+
+  const commitIfChanged = (el: HTMLInputElement) => {
+    if (el.value === (el.dataset.prev ?? "")) return;
+    onCommit(el);
+  };
+
+  const moveFocusDown = () => {
+    requestAnimationFrame(() => {
+      const nextInput = document.querySelector<HTMLInputElement>(
+        `[data-row-index="${rowIndex + 1}"][data-cat="${cat}"][data-col="${index}"]`
+      );
+      nextInput?.focus();
+    });
+  };
+
   return (
     <input
-      key={`${String(value ?? "")}-${status ?? ""}`}
+      ref={inputRef}
       type={isHps ? "number" : "text"}
       inputMode="decimal"
       defaultValue={value}
@@ -61,29 +86,28 @@ export const LedgerScoreCell = React.memo(function LedgerScoreCell({
       }}
       onBlur={(e) => {
         if (isHps) {
+          if (e.currentTarget.value === (e.currentTarget.dataset.prev ?? "")) return;
           const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
           onHps(val);
         } else {
-          onCommit(e.currentTarget);
+          commitIfChanged(e.currentTarget);
         }
       }}
       onKeyDown={(e) => {
         if (e.key !== "Enter") return;
         e.preventDefault();
         if (isHps) {
-          const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
-          onHps(val);
+          if (e.currentTarget.value !== (e.currentTarget.dataset.prev ?? "")) {
+            const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
+            onHps(val);
+            e.currentTarget.dataset.prev = e.currentTarget.value;
+          }
         } else {
-          onCommit(e.currentTarget);
+          commitIfChanged(e.currentTarget);
         }
-        // Defer focus to after React's batched state updates and re-render,
-        // so the next row's input exists in the DOM when we query for it.
-        requestAnimationFrame(() => {
-          const nextInput = document.querySelector<HTMLInputElement>(
-            `[data-row-index="${rowIndex + 1}"][data-cat="${cat}"][data-col="${index}"]`
-          );
-          nextInput?.focus();
-        });
+        // Focus the next learner in the same column. Inputs are no longer remounted
+        // on value changes, so the next input already exists in the DOM.
+        moveFocusDown();
       }}
       data-row-index={isHps ? -1 : rowIndex}
       data-cat={cat}

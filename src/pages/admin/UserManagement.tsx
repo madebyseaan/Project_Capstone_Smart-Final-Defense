@@ -259,7 +259,7 @@ export default function UserManagement() {
       />
 
       {/* Trust strip */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary-subtle px-4 py-3 text-sm">
         <Link2 className="w-4 h-4 text-primary" />
         <span className="text-foreground">
           <strong>Accounts are provisioned in EnrollPro</strong> — this page is read-only.

@@ -64,6 +64,12 @@ DPA-minimized and exposes **none** of: previous school / originating school ID /
 SMART must not infer, fabricate, or scrape them from another endpoint — the registrar captures them
 here (SF9 scan/manual). A separate versioned EnrollPro contract is required before these can be pulled.
 
+> **Update 2026-09-29 (contract v1.1):** that separate contract is now live. The existing transferee
+> feed carries previous school name/ID, TC no., previous average, last grade completed, SF9
+> eligibility, up to two back-subject codes, and the SF9/PSA/temporary-enrollment flags. SMART
+> syncs them fill-null-only/feed-owned — see `TRANSFEREE_PLAN.md` §6.4. Registrar manual/scan entry
+> remains for prior **grades** (this plan), which the feed still does not provide.
+
 **Related (implemented 2026-09-12):** the transferee-feed hardening from that handoff is live — see
 `TRANSFEREE_PLAN.md` §6 — and `Enrollment.enrollproApplicationId` now stores the EnrollPro
 application reference (useful for correlating a transferee with its EnrollPro application).

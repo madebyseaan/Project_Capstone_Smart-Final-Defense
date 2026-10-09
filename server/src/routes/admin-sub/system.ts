@@ -376,7 +376,7 @@ export default function (router: Router) {
         });
 
         if (currentSettings?.logoUrl) {
-          const oldLogoPath = path.join(__dirname, "../../", currentSettings.logoUrl);
+          const oldLogoPath = path.join(__dirname, "../../../", currentSettings.logoUrl);
           if (fs.existsSync(oldLogoPath)) {
             try {
               fs.unlinkSync(oldLogoPath);
@@ -814,9 +814,7 @@ export default function (router: Router) {
     requireAdmin,
     async (req: AuthRequest, res: Response): Promise<void> => {
       try {
-        const settings = await syncEnrollProBranding(
-          path.join(__dirname, "../../uploads")
-        );
+        const settings = await syncEnrollProBranding();
 
         await createAuditLog(
           AuditAction.CONFIG,
@@ -868,7 +866,7 @@ export default function (router: Router) {
         );
 
         // Trigger an immediate branding sync to repopulate from EnrollPro
-        const settings = await syncEnrollProBranding(path.join(__dirname, "../../uploads"));
+        const settings = await syncEnrollProBranding();
 
         res.json({ message: "Term dates reset and repopulated from EnrollPro", settings: sanitizeSettings(settings) });
       } catch (error) {

@@ -40,10 +40,17 @@ export const ATLAS_YEAR_PROBE_CAP_REQUEST_PATH = parseInt(process.env.ATLAS_YEAR
 
 export class HttpError extends Error {
   statusCode: number;
-  constructor(statusCode: number, message: string) {
+  /** Machine-readable code from the error body (e.g. `ACTIVE_SCHOOL_YEAR_AMBIGUOUS`). */
+  code: string | null;
+  /** Parsed error body, when JSON (e.g. `{ reason: 'PUBLISHED_RUN_IS_NOT_A_DRAFT' }`). */
+  details: unknown;
+
+  constructor(statusCode: number, message: string, code?: string | null, details?: unknown) {
     super(message);
     this.name = 'HttpError';
     this.statusCode = statusCode;
+    this.code = code ?? null;
+    this.details = details;
   }
 
   get isAuth(): boolean {
@@ -63,6 +70,8 @@ function request(
     body?: unknown;
     timeoutMs?: number;
     retries?: number;
+    /** When true, 404 rejects with a typed HttpError instead of resolving `null`. */
+    reject404?: boolean;
   } = {},
 ): Promise<any> {
   const maxRetries = options.retries ?? MAX_RETRIES;
@@ -94,7 +103,7 @@ function request(
         let body = '';
         res.on('data', (chunk: any) => (body += chunk));
         res.on('end', () => {
-          if (res.statusCode === 404) {
+          if (res.statusCode === 404 && !options.reject404) {
             resolve(null);
             return;
           }
@@ -105,7 +114,22 @@ function request(
             return;
           }
           if (res.statusCode && res.statusCode >= 400) {
-            reject(new HttpError(res.statusCode, `HTTP ${res.statusCode} ${url}: ${body.slice(0, 300)}`));
+            // Parse the error body so callers can branch on the machine-readable
+            // `code` (e.g. INVALID_TERM_INDEX, DRAFT_SHARING_DISABLED) instead of
+            // string-matching messages.
+            let errCode: string | null = null;
+            let errDetails: unknown;
+            try {
+              const parsedBody = JSON.parse(body);
+              errDetails = parsedBody;
+              if (parsedBody && typeof parsedBody.code === 'string') errCode = parsedBody.code;
+            } catch { /* non-JSON error body — keep code null */ }
+            reject(new HttpError(
+              res.statusCode,
+              `HTTP ${res.statusCode} ${url}: ${body.slice(0, 300)}`,
+              errCode,
+              errDetails,
+            ));
             return;
           }
           try {
@@ -153,6 +177,19 @@ export async function httpGet(
   retries?: number,
 ): Promise<any> {
   return request(url, { method: 'GET', headers, timeoutMs, retries });
+}
+
+/**
+ * Generic GET request that rejects (typed HttpError) on 404 instead of
+ * resolving null. Used where the response's `code` is contract-significant.
+ */
+export async function httpGetRaw(
+  url: string,
+  headers?: Record<string, string>,
+  timeoutMs?: number,
+  retries?: number,
+): Promise<any> {
+  return request(url, { method: 'GET', headers, timeoutMs, retries, reject404: true });
 }
 
 /**
@@ -207,6 +244,30 @@ export async function atlasGet(path: string, retries?: number, timeoutMs?: numbe
  */
 export async function atlasPost(path: string, body: unknown): Promise<any> {
   return httpPost(atlasUrl(path), body, atlasAuthHeader());
+}
+
+/**
+ * GET request to Atlas API with auth that does NOT collapse 404 into `null`.
+ *
+ * The schedule-read error taxonomy (term-aware published + §8A draft contracts)
+ * distinguishes `404 DRAFT_RUN_NOT_FOUND` from `404 FACULTY_NOT_FOUND`, so the
+ * caller needs the typed HttpError (with `code` / `details.reason`) instead of
+ * a silent null. 409s are never retried and propagate as HttpError too.
+ */
+export async function atlasGetRaw(
+  path: string,
+  opts?: { retries?: number; timeoutMs?: number },
+): Promise<any> {
+  const headers = atlasAuthHeader();
+  try {
+    const result = await httpGetRaw(atlasUrl(path), headers, opts?.timeoutMs, opts?.retries);
+    reportExternalSuccess('atlas');
+    return result;
+  } catch (err) {
+    // HTTP errors mean Atlas is reachable; only network failures count as down.
+    if (!(err instanceof HttpError)) reportExternalFailure('atlas', err);
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

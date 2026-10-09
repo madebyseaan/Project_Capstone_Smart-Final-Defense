@@ -148,6 +148,23 @@ async function archiveYearInTx(
     return { outcome: "error", error: `Snapshot gap detected for sections: ${gapSections.join(", ")}. Finalize EOSY before archiving.` };
   }
 
+  // Remedial guard (ENROLLPRO_REMEDIAL_CONTRACT.md §Guardrail 1): never roll a
+  // year over while a learner is still CONDITIONALLY_PROMOTED with pending
+  // remedial rows — rolling over first produces wrong grade-level placement.
+  const pendingRemedialCount = await tx.enrollment.count({
+    where: {
+      schoolYear: yearLabel,
+      promotionStatus: "CONDITIONALLY_PROMOTED",
+      remedialClasses: { some: { status: "PENDING" } },
+    },
+  });
+  if (pendingRemedialCount > 0) {
+    return {
+      outcome: "error",
+      error: `${pendingRemedialCount} learner(s) still have pending remedial classes. Complete remedial for all learners before archiving.`,
+    };
+  }
+
   // All five archive writes + legacy gradeLock reset
   await tx.grade.updateMany({
     where: { classAssignment: { schoolYear: yearLabel } },

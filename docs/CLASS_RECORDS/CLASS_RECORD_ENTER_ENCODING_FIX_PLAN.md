@@ -5,6 +5,24 @@
 **Status:** Ready for implementation
 **Reported symptom:** "Spamming scores using Enter like Excel for fast encoding — super lag, it's bugging, sometimes scores disappeared."
 
+> **Implementation status (2026-09-24):** Phases 1–3 implemented (uncommitted at time of writing).
+> - Phase 1: per-commit refetch removed from the queue path; commit-once guard; inputs no longer
+>   remounted by value; no-op edits skipped; focus chain made deterministic.
+> - Phase 2: coalescing write queue (`useScoreWriteQueue`) with 400 ms debounce + 1.5 s max wait,
+>   3 retries, flush on term change/unmount/tab-hide/class-wide actions, `beforeunload` guard.
+> - Phase 3: memoized `weights`/AIMS partitions; stable `onCellFocus`/`getMaxForCell`/`onScoreCommit`;
+>   meta-editor state updates deduped; mobile list gated to <1024px.
+> - Kill switch: `localStorage.setItem("smart:scoreQueue", "off")` restores the legacy per-commit
+>   save + refetch path (`executeScoreUpdate`).
+> - Not implemented: Phase 4 (arrow/Tab navigation — Enter at last learner stays in place) and
+>   Phase 5 (server caching). D-3 idle reconcile was intentionally skipped: with no per-commit
+>   refetch there is nothing to race, and `refetchOnWindowFocus` plus the error-path refetch
+>   reconcile server truth.
+> - Verified: `tsc -b` clean, root/server builds green, Playwright encoding test (3 learners:
+>   3 coalesced POSTs, 0 class-record GETs, 0 no-op POSTs, focus chain intact, values persisted
+>   after reload).
+
+
 ---
 
 ## 1. How to use this document

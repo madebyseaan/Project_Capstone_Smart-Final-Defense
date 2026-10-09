@@ -15,6 +15,7 @@ import {
   getAimsPublicScores,
   getAimsPublicCourses,
   AimsError,
+  type AimsCourseSummary,
 } from "../../lib/aimsClient";
 import { aimsLinkSchema, aimsImportSchema } from "../../schemas/aims";
 import {
@@ -23,7 +24,7 @@ import {
 } from "./helpers";
 import { checkGradeEditLocks } from "../../lib/gradeLocks";
 import { importAimsScoresToGrades } from "../../lib/aimsImport";
-import { computeCourseWarnings } from "../../lib/aimsCourseMatch";
+import { computeCourseWarnings, rankCoursesForAssignment } from "../../lib/aimsCourseMatch";
 
 const VALID_TERMS = ["T1", "T2", "T3"] as const;
 
@@ -170,16 +171,37 @@ export default function registerAims(router: Router): void {
     async (req: AuthRequest, res: Response): Promise<void> => {
       try {
         if (!isAimsConfigured()) {
-          res.json({ courses: [], scope: "none" });
+          res.json({ courses: [], scope: "none", suggestedCourseId: null });
           return;
         }
 
         const user = await prisma.user.findUnique({ where: { id: req.user?.id }, select: { email: true } });
         const teacher = await prisma.teacher.findUnique({
           where: { userId: req.user?.id },
-          select: { employeeId: true },
+          select: { id: true, employeeId: true },
         });
         const employeeId = teacher?.employeeId?.trim();
+
+        // Optional class context — used to rank/preselect the best course for the class.
+        const classAssignmentId = typeof req.query.classAssignmentId === "string" ? req.query.classAssignmentId : undefined;
+        let assignment: { schoolYear: string; sectionName: string | null; subjectName: string | null; gradeLevel: string | null } | null = null;
+        if (classAssignmentId && teacher) {
+          const classAssignment = await prisma.classAssignment.findFirst({
+            where: { id: classAssignmentId, teacherId: teacher.id },
+            include: {
+              section: { select: { name: true, gradeLevel: true } },
+              subject: { select: { name: true } },
+            },
+          });
+          if (classAssignment) {
+            assignment = {
+              schoolYear: classAssignment.schoolYear,
+              sectionName: classAssignment.section?.name ?? null,
+              subjectName: classAssignment.subject?.name ?? null,
+              gradeLevel: classAssignment.section?.gradeLevel ?? null,
+            };
+          }
+        }
 
         // Resolve current school year for scoping
         const { getActiveSchoolYearLabel } = await import("../../lib/schoolYearResolver");
@@ -188,7 +210,7 @@ export default function registerAims(router: Router): void {
           schoolYear = await getActiveSchoolYearLabel();
         } catch {
           // No active school year — fail-soft
-          res.json({ courses: [], scope: "none" });
+          res.json({ courses: [], scope: "none", suggestedCourseId: null });
           return;
         }
 
@@ -196,36 +218,37 @@ export default function registerAims(router: Router): void {
         // We want either-or matching, so these must be sequential separate calls.
         // NEVER send both in the same getAimsPublicCourses() call.
 
+        let courses: AimsCourseSummary[] = [];
+        let scope: "teacher" | "school" | "none" = "none";
+
         // 1st try: match by employee number (teacherUsername)
         if (employeeId) {
-          const usernameCourses = await getAimsPublicCourses({ teacherUsername: employeeId, schoolYear });
-          if (usernameCourses.length > 0) {
-            res.json({ courses: usernameCourses, scope: "teacher" });
-            return;
-          }
+          courses = await getAimsPublicCourses({ teacherUsername: employeeId, schoolYear });
+          if (courses.length > 0) scope = "teacher";
         }
 
         // 2nd try: match by email (catches legacy null-username accounts)
-        if (user?.email) {
-          const emailCourses = await getAimsPublicCourses({ teacherEmail: user.email, schoolYear });
-          if (emailCourses.length > 0) {
-            res.json({ courses: emailCourses, scope: "teacher" });
-            return;
-          }
+        if (courses.length === 0 && user?.email) {
+          courses = await getAimsPublicCourses({ teacherEmail: user.email, schoolYear });
+          if (courses.length > 0) scope = "teacher";
         }
 
         // 3rd try: school-wide fallback
-        const schoolCourses = await getAimsPublicCourses({ schoolYear });
-        if (schoolCourses.length > 0) {
-          res.json({ courses: schoolCourses, scope: "school" });
+        if (courses.length === 0) {
+          courses = await getAimsPublicCourses({ schoolYear });
+          if (courses.length > 0) scope = "school";
+        }
+
+        if (!assignment) {
+          res.json({ courses, scope, suggestedCourseId: null });
           return;
         }
 
-        // All empty
-        res.json({ courses: [], scope: "none" });
+        const ranked = rankCoursesForAssignment(courses, assignment);
+        res.json({ courses: ranked.courses, scope, suggestedCourseId: ranked.suggestedCourseId });
       } catch (error) {
         logger.error("Error fetching AIMS courses:", error);
-        res.json({ courses: [], scope: "none" }); // Fail-soft
+        res.json({ courses: [], scope: "none", suggestedCourseId: null }); // Fail-soft
       }
     }
   );

@@ -5,7 +5,8 @@
  * Exported for testability — the CLI script (scripts/wipe.ts) is a thin wrapper.
  *
  * Wipes all domain tables in FK-safe order, resets SystemSettings,
- * and verifies all domain tables are empty within the same transaction.
+ * and verifies every database table is empty within the same transaction
+ * (catalog-driven, so new tables from future migrations are covered).
  */
 
 import { PrismaClient, Prisma } from "@prisma/client";
@@ -17,12 +18,19 @@ export const WIPE_ORDER: readonly string[] = [
   "Attendance",
   "Grade",
   "GradeSnapshot",
+  "AimsScore",
   "GradeEditRequest",
   "WorkloadEntry",
   "ScheduleEntry",
+  "AtlasCrosswalk",
+  "AtlasScheduleMeta",
+  "RemedialClass",
   "Enrollment",
   "ClassAssignment",
+  "ExternalSubjectRecord",
+  "ExternalSchoolRecord",
   "RefreshToken",
+  "CompanionSsoCode",
   "Teacher",
   "Section",
   "Subject",
@@ -34,6 +42,14 @@ export const WIPE_ORDER: readonly string[] = [
   "AuditLog",
   "ExcelTemplate",
   "User",
+] as const;
+
+// Tables that intentionally survive a wipe (config/branding/audit of the wipe itself)
+export const KEPT_TABLES: readonly string[] = [
+  "SystemSettings",
+  "GradingConfig",
+  "TransmutationEntry",
+  "_prisma_migrations",
 ] as const;
 
 // Config tables to KEEP: SystemSettings, GradingConfig, TransmutationEntry
@@ -66,6 +82,7 @@ export async function collectCounts(prisma: PrismaClient | Prisma.TransactionCli
  */
 const USER_FAMILY = new Set([
   "RefreshToken",
+  "CompanionSsoCode",
   "Teacher",
   "User",
 ]);
@@ -124,11 +141,22 @@ export async function runWipe(
     },
   });
 
-  // Verification: all wiped tables must be 0
-  for (const table of WIPE_ORDER) {
-    if (skipTables.has(table)) continue;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const count = await (tx as any)[table].count();
+  // Verification: every table in the database must be empty (except kept/skipped
+  // tables). Catalog-driven so a future migration that adds a table can never
+  // silently survive a wipe.
+  const catalogRows = await tx.$queryRawUnsafe<Array<{ table_name: string }>>(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'`,
+  );
+  const catalogTables = catalogRows
+    .map((r) => r.table_name)
+    .filter((name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name));
+
+  for (const table of catalogTables) {
+    if (KEPT_TABLES.includes(table) || skipTables.has(table)) continue;
+    const [{ count }] = await tx.$queryRawUnsafe<Array<{ count: number }>>(
+      `SELECT COUNT(*)::int AS count FROM "${table}"`,
+    );
     if (count > 0) {
       throw new Error(
         `[wipe] VERIFICATION FAILED: ${table} has ${count} rows after deleteMany. Rolling back.`

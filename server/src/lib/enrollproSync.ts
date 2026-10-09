@@ -30,13 +30,13 @@ import { ensureSchoolYearFromEnrollPro } from './schoolYearResolver';
 import { prisma } from './prisma';
 import { logger } from './logger';
 import bcrypt from 'bcryptjs';
-import { type GradeLevel, AuditAction, AuditSeverity } from '@prisma/client';
+import { type GradeLevel, AuditAction, AuditSeverity, type Prisma } from '@prisma/client';
 import { broadcastSyncStatus } from './sseManager';
 import { syncAdvisoryWorkloadEntry } from './workload';
 import { snapshotForDb } from './studentSnapshot';
 import { createAuditLog } from './audit';
 import { isConfidentData, exceedsRatio, MAX_DEACTIVATION_RATIO } from './syncGuard';
-import { isValidLrn, normalizeLrn, isOfficiallyEnrolled, mapGradeLevelToEnum } from './transfereeValidation';
+import { isValidLrn, normalizeLrn, isOfficiallyEnrolled, mapGradeLevelToEnum, sanitizeSf9EligibilityStatus, sanitizeConditionalSubjectCodes, sanitizeOptionalBoolean, sanitizeOptionalNumber, sanitizeOptionalText, type Sf9EligibilityStatusValue } from './transfereeValidation';
 import { createHash } from 'crypto';
 
 // ---------------------------------------------------------------------------
@@ -1156,6 +1156,7 @@ export interface TransfereeSyncResult {
   transfereesTagged: number;
   unmatched: Array<{ lrn: string; reason: string }>;
   applicationRefsPersisted: number;
+  detailsUpdated: number;
   generatedAt: string | null;
   status: "success" | "stale";
 }
@@ -1188,15 +1189,19 @@ export function getTransfereeSyncStatus(): TransfereeSyncStatus {
 }
 
 /**
- * Enrichment pass that tags transferee enrollments with transferInDate and retains the
- * EnrollPro application reference. Runs AFTER the main EnrollPro sync. Never creates
- * Students or Enrollments, and never deletes anything.
+ * Enrichment pass that tags transferee enrollments with transferInDate and persists the
+ * transferee-details contract fields (v1.1, 2026-09-29). Runs AFTER the main EnrollPro
+ * sync. Never creates Students or Enrollments, and never deletes anything.
  *
- * Validation follows the 2026-09-11 "SMART Transferee Enrollment Handoff":
+ * Validation follows the 2026-09-11 "SMART Transferee Enrollment Handoff" and the
+ * 2026-09-29 v1.1 details contract:
  *  - the feed must be scoped to the resolved school year (id + label must agree);
  *  - only OFFICIALLY_ENROLLED rows with a section and a Grade 7-10 level are activated;
  *  - the LRN must be exactly 12 digits (otherwise quarantined into `unmatched`);
- *  - transferInDate is set only when currently null (registrar corrections win).
+ *  - transferInDate is set only when currently null (registrar corrections win);
+ *  - previous-school fields (school name/ID, TC no., last grade, previous average) fill
+ *    nulls only — registrar-entered values are never overwritten;
+ *  - eligibility/back-subject/document flags are feed-owned and refreshed when they change.
  * On any failure the last known state is retained and marked `stale`.
  */
 export async function syncTransferees(): Promise<TransfereeSyncResult> {
@@ -1204,6 +1209,7 @@ export async function syncTransferees(): Promise<TransfereeSyncResult> {
     transfereesTagged: 0,
     unmatched: [],
     applicationRefsPersisted: 0,
+    detailsUpdated: 0,
     generatedAt: null,
     status: "success",
   };
@@ -1226,7 +1232,7 @@ export async function syncTransferees(): Promise<TransfereeSyncResult> {
     logger.info(
       `[syncTransferees] Fetched ${feed.data.length} transferee records from EnrollPro ` +
       `(SY ${currentSY}${enrollproSchoolYearId ? `, EP id ${enrollproSchoolYearId}` : ''}, ` +
-      `generatedAt=${feed.generatedAt ?? 'n/a'})`,
+      `contract=${feed.contractVersion ?? 'unknown'}, generatedAt=${feed.generatedAt ?? 'n/a'})`,
     );
 
     for (const record of feed.data) {
@@ -1261,7 +1267,15 @@ export async function syncTransferees(): Promise<TransfereeSyncResult> {
 
         const student = await prisma.student.findUnique({
           where: { lrn },
-          select: { id: true },
+          select: {
+            id: true,
+            previousSchool: true,
+            originatingSchoolId: true,
+            transferCertNo: true,
+            lastGradeCompleted: true,
+            previousGenAve: true,
+            hasPsa: true,
+          },
         });
         if (!student) {
           result.unmatched.push({ lrn, reason: "Student not found in SMART DB" });
@@ -1281,24 +1295,112 @@ export async function syncTransferees(): Promise<TransfereeSyncResult> {
           continue;
         }
 
+        // Previous-school fields — fill nulls only; registrar-entered values win.
+        const studentData: {
+          previousSchool?: string;
+          originatingSchoolId?: string;
+          transferCertNo?: string;
+          lastGradeCompleted?: string;
+          previousGenAve?: number;
+          hasPsa?: boolean;
+        } = {};
+        if (student.previousSchool == null) {
+          const value = sanitizeOptionalText(record.previousSchoolName);
+          if (value) studentData.previousSchool = value;
+        }
+        if (student.originatingSchoolId == null) {
+          const value = sanitizeOptionalText(record.originatingSchoolId);
+          if (value) studentData.originatingSchoolId = value;
+        }
+        if (student.transferCertNo == null) {
+          const value = sanitizeOptionalText(record.transferCertificateNo);
+          if (value) studentData.transferCertNo = value;
+        }
+        if (student.lastGradeCompleted == null) {
+          const value = sanitizeOptionalText(record.lastGradeCompleted);
+          if (value) studentData.lastGradeCompleted = value;
+        }
+        if (student.previousGenAve == null) {
+          const value = sanitizeOptionalNumber(record.previousGenAve);
+          if (value != null) studentData.previousGenAve = value;
+        }
+
+        // Eligibility / back subjects / document flags — feed-owned (no registrar editor),
+        // refreshed only when the value actually changes.
+        const enrollmentData: {
+          transferInDate?: Date;
+          enrollproApplicationId?: string;
+          sf9EligibilityStatus?: Sf9EligibilityStatusValue;
+          conditionalSubjectCodes?: string[];
+          hasSf9?: boolean;
+          isTemporarilyEnrolled?: boolean;
+          transfereeDetailsSyncedAt?: Date;
+        } = {};
+
         const applicationId =
           record.enrollmentApplicationId != null ? String(record.enrollmentApplicationId) : null;
 
-        const data: { transferInDate?: Date; enrollproApplicationId?: string } = {};
         if (enrollment.transferInDate == null && record.enrolledAt) {
-          data.transferInDate = new Date(record.enrolledAt);
+          const enrolledAt = new Date(record.enrolledAt);
+          if (!Number.isNaN(enrolledAt.getTime())) enrollmentData.transferInDate = enrolledAt;
         }
         if (applicationId && enrollment.enrollproApplicationId !== applicationId) {
-          data.enrollproApplicationId = applicationId;
+          enrollmentData.enrollproApplicationId = applicationId;
         }
 
-        if (Object.keys(data).length > 0) {
-          await prisma.enrollment.update({ where: { id: enrollment.id }, data });
-          if (data.transferInDate) {
+        const eligibility = sanitizeSf9EligibilityStatus(record.sf9EligibilityStatus);
+        if (eligibility && enrollment.sf9EligibilityStatus !== eligibility) {
+          enrollmentData.sf9EligibilityStatus = eligibility;
+        }
+
+        const conditionalSubjectCodes = sanitizeConditionalSubjectCodes(record.conditionalSubjectCodes);
+        if (
+          conditionalSubjectCodes &&
+          JSON.stringify(conditionalSubjectCodes) !== JSON.stringify(enrollment.conditionalSubjectCodes)
+        ) {
+          enrollmentData.conditionalSubjectCodes = conditionalSubjectCodes;
+        }
+
+        const hasSf9 = sanitizeOptionalBoolean(record.hasSf9);
+        if (hasSf9 != null && enrollment.hasSf9 !== hasSf9) {
+          enrollmentData.hasSf9 = hasSf9;
+        }
+
+        const hasPsa = sanitizeOptionalBoolean(record.hasPsa);
+        if (hasPsa != null && student.hasPsa !== hasPsa) {
+          studentData.hasPsa = hasPsa;
+        }
+
+        const isTemporarilyEnrolled = sanitizeOptionalBoolean(record.isTemporarilyEnrolled);
+        if (isTemporarilyEnrolled != null && enrollment.isTemporarilyEnrolled !== isTemporarilyEnrolled) {
+          enrollmentData.isTemporarilyEnrolled = isTemporarilyEnrolled;
+        }
+
+        const detailsApplied =
+          Object.keys(studentData).length > 0 ||
+          enrollmentData.sf9EligibilityStatus !== undefined ||
+          enrollmentData.conditionalSubjectCodes !== undefined ||
+          enrollmentData.hasSf9 !== undefined ||
+          enrollmentData.isTemporarilyEnrolled !== undefined;
+        if (detailsApplied) {
+          enrollmentData.transfereeDetailsSyncedAt = new Date();
+          result.detailsUpdated++;
+        }
+
+        const updates: Prisma.PrismaPromise<unknown>[] = [];
+        if (Object.keys(studentData).length > 0) {
+          updates.push(prisma.student.update({ where: { id: student.id }, data: studentData }));
+        }
+        if (Object.keys(enrollmentData).length > 0) {
+          updates.push(prisma.enrollment.update({ where: { id: enrollment.id }, data: enrollmentData }));
+        }
+        if (updates.length > 0) {
+          await prisma.$transaction(updates);
+          if (enrollmentData.transferInDate) {
             result.transfereesTagged++;
             lastSyncTaggedLrns.add(lrn);
           }
-          if (data.enrollproApplicationId) result.applicationRefsPersisted++;
+          if (enrollmentData.enrollproApplicationId) result.applicationRefsPersisted++;
         }
       } catch (itemErr: any) {
         logger.warn(`[syncTransferees] Error processing LRN ${record.lrn}: ${itemErr.message}`);
@@ -1315,7 +1417,8 @@ export async function syncTransferees(): Promise<TransfereeSyncResult> {
 
     logger.info(
       `[syncTransferees] Done: ${result.transfereesTagged} tagged, ` +
-      `${result.applicationRefsPersisted} app refs, ${result.unmatched.length} unmatched`,
+      `${result.applicationRefsPersisted} app refs, ${result.detailsUpdated} detail updates, ` +
+      `${result.unmatched.length} unmatched`,
     );
   } catch (err: any) {
     const previous = lastTransfereeSyncStatus;

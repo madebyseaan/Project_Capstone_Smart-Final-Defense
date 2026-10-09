@@ -384,6 +384,7 @@ export const gradesApi = {
       transferredCount?: number;
       archivedClasses?: ArchivedClassInfo[];
       currentTerm: string;
+      currentSchoolYear?: string;
       gradeDeadline?: GradeDeadlineInfo | null;
     }>("/grades/dashboard"),
 
@@ -568,8 +569,11 @@ export const gradesApi = {
       { term, assessmentIds },
     ),
 
-  getAimsCourses: () =>
-    api.get<{ courses: AimsCourseSummary[]; scope: "teacher" | "school" | "none" }>("/grades/aims-courses"),
+  getAimsCourses: (classAssignmentId?: string) =>
+    api.get<{ courses: AimsCourseSummary[]; scope: "teacher" | "school" | "none"; suggestedCourseId: string | null }>(
+      "/grades/aims-courses",
+      classAssignmentId ? { params: { classAssignmentId } } : undefined,
+    ),
 
   syncAims: (classAssignmentId: string) =>
     api.post<{ status: 'ok' | 'offline'; scoresUpserted: number; unmatchedCount: number }>(
@@ -589,6 +593,9 @@ export const gradesApi = {
 
   ecrExport: (classAssignmentId: string, term: string) =>
     api.get(`/grades/ecr-export/${classAssignmentId}`, { params: { term }, responseType: "blob" }),
+
+  ecrSync: (classAssignmentId: string) =>
+    api.get<EcrSyncStatus>(`/grades/ecr-sync/${classAssignmentId}`),
 };
 
 // AIMS named types (P2-10: single source of truth)
@@ -642,6 +649,14 @@ export interface AimsScoresResponse {
   warnings: string[];
 }
 
+export interface AimsCourseMatchInfo {
+  score: number;
+  subjectMatched: boolean;
+  schoolYearMatched: boolean;
+  sectionMatched: boolean;
+  gradeLevelMatched: boolean;
+}
+
 export interface AimsCourseSummary {
   id: string;
   name: string;
@@ -655,6 +670,7 @@ export interface AimsCourseSummary {
   teacherName?: string | null;
   teacherUsername?: string | null;
   studentCount?: number;
+  match?: AimsCourseMatchInfo;
 }
 
 // E-Class-Record Excel exchange
@@ -666,6 +682,13 @@ export interface EcrImportReport {
   specialSkipped: string[];
   overwrittenCount: number;
   warnings: string[];
+  lastSyncedAt: string | null;
+}
+
+export interface EcrSyncStatus {
+  T1: string | null;
+  T2: string | null;
+  T3: string | null;
 }
 
 // Advisory API
@@ -871,6 +894,7 @@ export interface RegistrarDashboard {
     totalIssues: number;
   };
   gradePerformance: {
+    term: string;
     overallPassingRate: number;
     overallAvgGrade: number;
     totalGraded: number;
@@ -881,6 +905,7 @@ export interface RegistrarDashboard {
       sectionName: string;
       gradeLevel: string;
       average: number;
+      failingSubjects: number;
     }>;
     bySection: Array<{
       sectionId: string;
@@ -890,7 +915,7 @@ export interface RegistrarDashboard {
       passingRate: number;
       totalStudents: number;
       failingCount: number;
-      failingStudents: Array<{ studentName: string; average: number }>;
+      failingStudents: Array<{ studentName: string; average: number; failingSubjects: number }>;
     }>;
   };
 }
@@ -934,6 +959,8 @@ export interface RegistrarSyncStatus {
 }
 
 // Transferee types
+export type Sf9EligibilityStatus = "PROMOTED" | "CONDITIONALLY_PROMOTED" | "RETAINED";
+
 export interface TransfereeRow {
   enrollmentId: string;
   studentId: string;
@@ -948,6 +975,18 @@ export interface TransfereeRow {
     previousSchool: string | null;
     lastGradeCompleted: string | null;
     transferCertNo: string | null;
+    originatingSchoolId: string | null;
+    previousGenAve: number | null;
+  };
+  // EnrollPro transferee-details feed (contract v1.1) — feed-sourced signals,
+  // not a registrar-verified document audit trail.
+  enrollpro: {
+    sf9EligibilityStatus: Sf9EligibilityStatus | null;
+    conditionalSubjectCodes: string[];
+    hasSf9: boolean | null;
+    hasPsa: boolean | null;
+    isTemporarilyEnrolled: boolean | null;
+    detailsSyncedAt: string | null;
   };
   completeness: {
     missingBirthDate: boolean;
@@ -1653,11 +1692,131 @@ export const registrarApi = {
 };
 
 // ============================================
-// SCHEDULE API
+// SCHEDULE API (ATLAS term-aware published + §8A draft contracts)
 // ============================================
+export interface ScheduleTermInfo {
+  order: number;
+  identity: string;
+  displayLabel: string;
+}
+
+export interface ScheduleSpecialEvent {
+  eventName: string;
+  startTime: string;
+  endTime: string;
+  dayOfWeek: string | null;
+  days: string[];
+  termIndex: number | null;
+}
+
+export interface ScheduleTimeSlot {
+  startTime: string;
+  endTime: string;
+}
+
+export interface ScheduleMeta {
+  revisionMarker: string | null;
+  revisionId: number | null;
+  appliedRevisionIds: number[];
+  publishedAt: string | null;
+  generatedAt: string | null;
+  snapshotState: string | null;
+  snapshotGaps: string[];
+  isHistorical: boolean;
+  isActiveSchoolYear: boolean | null;
+  conflict: string | null;
+  syncedAt: string | null;
+}
+
+export interface ScheduleEntryDto {
+  id: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  roomId: number | null;
+  termIndex: number | null;
+  roomLabel: string | null;
+  roomBuilding: string | null;
+  subject: { code: string; name: string };
+  section: { name: string; gradeLevel: string };
+}
+
+export interface ScheduleDataDto {
+  schoolYear: string;
+  entries: ScheduleEntryDto[];
+  byDay: Record<string, ScheduleEntryDto[]>;
+  count: number;
+  requestedTermIndex: number | null;
+  activeTermIndex: number | null;
+  terms: ScheduleTermInfo[];
+  specialEvents: ScheduleSpecialEvent[];
+  timeSlots: ScheduleTimeSlot[];
+  meta: ScheduleMeta;
+  syncTriggered?: boolean;
+}
+
+export interface DraftScheduleEntryDto {
+  entryId: string | null;
+  facultyId: number | null;
+  sectionId: number | null;
+  subjectId: number | null;
+  roomId: number | null;
+  day: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number | null;
+  termIndex: number | null;
+  subjectLabel: string | null;
+  sectionLabel: string | null;
+  roomLabel: string | null;
+  facultyLabel: string | null;
+  unmapped: string[];
+}
+
+export type DraftScheduleResponse =
+  | {
+      status: "shared";
+      schoolYear: string;
+      termIndex: number | null;
+      termScope: string | null;
+      terms: ScheduleTermInfo[];
+      runId: number | null;
+      runStatus: string | null;
+      draftSharedWithTeachers: boolean;
+      inputFingerprint: string | null;
+      inputStateStatus: string | null;
+      entries: DraftScheduleEntryDto[];
+      unassignedItems: unknown[];
+      finishedAt: string | null;
+      createdAt: string | null;
+    }
+  | {
+      status: "not_shared";
+      schoolYear: string;
+      reason: string | null;
+      terms: ScheduleTermInfo[];
+      entries: DraftScheduleEntryDto[];
+      unassignedItems: unknown[];
+    }
+  | {
+      status: "unavailable";
+      schoolYear: string;
+      reason: string | null;
+      terms: ScheduleTermInfo[];
+      entries: DraftScheduleEntryDto[];
+      unassignedItems: unknown[];
+    };
+
 export const scheduleApi = {
-  getMySchedule: () => api.get("/integration/schedule"),
-  refreshSchedule: () => api.post("/integration/schedule/refresh"),
+  getMySchedule: (termIndex?: number) =>
+    api.get<ScheduleDataDto>("/integration/schedule", {
+      params: termIndex != null ? { termIndex } : {},
+    }),
+  refreshSchedule: () => api.post<ScheduleDataDto>("/integration/schedule/refresh"),
+  getMyDraft: (termIndex?: number) =>
+    api.get<DraftScheduleResponse>("/integration/schedule/draft", {
+      params: termIndex != null ? { termIndex } : {},
+    }),
 };
 
 // ============================================

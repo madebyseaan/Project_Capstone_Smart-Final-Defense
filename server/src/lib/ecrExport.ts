@@ -3,9 +3,10 @@
  * from the ledger for a class assignment + term.
  *
  * Engine: jszip XML injection into a pristine copy of the official template.
- * This is byte-preserving: formulas, styles, merges, sheet protection, the
- * HELPER table and FINAL GRADES formulas all remain untouched (xlsx-populate
- * was rejected because it drops every formula on round-trip).
+ * Styles, merges, sheet protection and formulas are preserved; the HELPER scale is
+ * overridden with the admin transmutation table + SMART descriptors so the exported
+ * Term Grade/Descriptor match the ledger, and incompatible `_xlfn.XLOOKUP` formulas
+ * are rewritten to INDEX/MATCH for Excel 2016/2019/WPS/LibreOffice compatibility.
  *
  * QA encoding: the template's exam category is 3 sub-tests (ST1/ST2/TE) weighted
  * 30/30/40 via fixed W15/X15/Y15. We encode the ledger's single composite QA so
@@ -18,11 +19,11 @@
 import path from "path";
 import fs from "fs";
 import JSZip from "jszip";
-import * as XLSX from "xlsx";
 import { Term, AuditAction, AuditSeverity } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { createAuditLog } from "./audit";
+import { getTransmutationTable } from "./transmutationCache";
 
 const CORE_TEMPLATE = "E-Class-Record-CORE-Grades-2-10-3Term.xlsx";
 const TLE_TEMPLATE = "E-Class-Record-TLE-MAPEH-Grades-2-10-3Term.xlsx";
@@ -34,6 +35,7 @@ const TERM_SHEET: Record<Term, string> = {
   T3: "xl/worksheets/sheet4.xml",
 };
 const FINAL_GRADES_SHEET = "xl/worksheets/sheet5.xml";
+const HELPER_SHEET = "xl/worksheets/sheet6.xml";
 
 const WW_COLS = ["F", "G", "H", "I", "J"] as const;
 const PT_COLS = ["N", "O", "P"] as const;
@@ -84,6 +86,95 @@ function forceFullCalcOnLoad(workbookXml: string): string {
   });
 }
 
+/** Remove calcChain.xml AND its dangling relationship + content-type override (OPC integrity). */
+async function removeCalcChain(zip: JSZip): Promise<void> {
+  zip.remove("xl/calcChain.xml");
+
+  const relsPath = "xl/_rels/workbook.xml.rels";
+  const rels = await zip.file(relsPath)?.async("string");
+  if (rels) {
+    zip.file(relsPath, rels.replace(/<Relationship\b[^>]*Target="[^"]*calcChain\.xml"[^>]*\/>/g, ""));
+  }
+
+  const ctPath = "[Content_Types].xml";
+  const ct = await zip.file(ctPath)?.async("string");
+  if (ct) {
+    zip.file(ctPath, ct.replace(/<Override\b[^>]*PartName="\/xl\/calcChain\.xml"[^>]*\/>/g, ""));
+  }
+}
+
+/**
+ * Rewrite the template's incompatible formulas so the exported workbook computes
+ * exactly like the SMART ledger:
+ *
+ * 1. `_xlfn.XLOOKUP` → INDEX/MATCH. XLOOKUP exists only in Excel 365/2021+
+ *    (stored as `_xlfn.XLOOKUP`); Excel 2016/2019, older WPS and LibreOffice treat
+ *    it as an unknown name → #NAME?, which the surrounding IFERROR swallows → blank
+ *    Term Grade / Descriptor. The HELPER lookup arrays are sorted DESCENDING, so the
+ *    equivalent of match_mode 1 ("exact or next larger") is MATCH(..., -1); the
+ *    FINAL GRADES name lookups become an exact MATCH(..., 0).
+ * 2. `AB` (Initial Grade) keeps 2 decimals instead of the template's whole-number
+ *    rounding, so the term-grade band lookup matches the ledger's round-to-2dp math.
+ */
+export function rewriteTemplateFormulas(xml: string): string {
+  return xml
+    .replace(/ROUND\((M\d+)\+(S\d+)\+(AA\d+),0\)/g, "ROUND($1+$2+$3,2)")
+    .replace(
+      /SUM\(\$F(\d+):\$H\1\)\/3/g,
+      (_m, row: string) => `SUM($F$${row}:$H$${row})/COUNT($F$${row}:$H$${row})`,
+    )
+    .replace(
+      /_xlfn\.XLOOKUP\(([A-Z]+\d+),HELPER!\$C\$8:\$C\$48,HELPER!\$D\$8:\$D\$48,,\s*1\)/g,
+      (_m, ref: string) => `INDEX(HELPER!$D$8:$D$48,MATCH(${ref},HELPER!$C$8:$C$48,-1))`,
+    )
+    .replace(
+      /_xlfn\.XLOOKUP\(([A-Z]+\d+),HELPER!\$F\$8:\$F\$48,HELPER!\$G\$8:\$G\$48,,\s*1\)/g,
+      (_m, ref: string) => `INDEX(HELPER!$G$8:$G$48,MATCH(${ref},HELPER!$F$8:$F$48,-1))`,
+    )
+    .replace(
+      /_xlfn\.XLOOKUP\((TRIM\([A-Z]+\d+\)),('TERM [123]')!\$C\$(\d+):\$C\$(\d+),\2!\$AC\$\3:\$AC\$\4\)/g,
+      (_m, lookup: string, sheet: string, rowFrom: string, rowTo: string) =>
+        `INDEX(${sheet}!$AC$${rowFrom}:$AC$${rowTo},MATCH(${lookup},${sheet}!$C$${rowFrom}:$C$${rowTo},0))`,
+    );
+}
+
+/** Qualitative descriptors — mirrors src/lib/gradeMath.ts GRADE_DESCRIPTORS (DO 015, s. 2026). */
+const GRADE_DESCRIPTOR_BANDS: Array<{ label: string; min: number; max: number }> = [
+  { label: "Advancing", min: 90, max: 100 },
+  { label: "Benchmarking", min: 85, max: 89 },
+  { label: "Connecting", min: 80, max: 84 },
+  { label: "Developing", min: 75, max: 79 },
+  { label: "Emerging", min: 60, max: 74 },
+];
+
+const HELPER_FIRST_ROW = 8;
+const HELPER_ROWS = 41;
+
+/**
+ * Build HELPER-sheet overrides from the admin-configured transmutation table so the
+ * exported Term Grade / Descriptor match the ledger (the template's baked-in HELPER
+ * table is a different/older scale). Column C = band maximum (descending), D = the
+ * transmuted grade; F = term grade (100→60), G = the matching descriptor label.
+ */
+export function buildHelperCells(
+  table: Array<{ minGrade: number; maxGrade: number; transmutedGrade: number }>,
+): Record<string, string | number> {
+  const cells: Record<string, string | number> = {};
+  const bands = [...table].sort((a, b) => b.maxGrade - a.maxGrade).slice(0, HELPER_ROWS);
+  if (bands.length === 0) return cells;
+  const lastBand = bands[bands.length - 1];
+  for (let i = 0; i < HELPER_ROWS; i++) {
+    const row = HELPER_FIRST_ROW + i;
+    const band = bands[i] ?? lastBand;
+    cells[`C${row}`] = band.maxGrade;
+    cells[`D${row}`] = band.transmutedGrade;
+    const grade = 100 - i;
+    cells[`F${row}`] = grade;
+    cells[`G${row}`] = GRADE_DESCRIPTOR_BANDS.find((d) => grade >= d.min && grade <= d.max)?.label ?? "";
+  }
+  return cells;
+}
+
 /** Inject values into a sheet XML, replacing only the addressed cells. */
 function injectCells(xml: string, cells: Record<string, string | number>): string {
   let out = xml;
@@ -93,8 +184,9 @@ function injectCells(xml: string, cells: Record<string, string | number>): strin
       throw new Error(`ECR export: cell ${addr} not found in template.`);
     }
     out = out.replace(re, (_m, attrs: string): string => {
-      if (typeof value === "number") return `<c r="${addr}"${attrs}><v>${value}</v></c>`;
-      return `<c r="${addr}"${attrs} t="inlineStr"><is><t>${escapeXml(String(value))}</t></is></c>`;
+      const cleanAttrs = attrs.replace(/\st="[^"]*"/g, "");
+      if (typeof value === "number") return `<c r="${addr}"${cleanAttrs}><v>${value}</v></c>`;
+      return `<c r="${addr}"${cleanAttrs} t="inlineStr"><is><t>${escapeXml(String(value))}</t></is></c>`;
     });
   }
   return out;
@@ -109,6 +201,7 @@ function injectCells(xml: string, cells: Record<string, string | number>): strin
  * Silently skips cells that don't exist (cache-only, not load-bearing).
  */
 function setFormulaCache(xml: string, addr: string, value: string | number): string {
+  if (typeof value === "number" && !Number.isFinite(value)) return xml;
   const re = new RegExp(`(<c r="${addr}"[^>]*>)([\\s\\S]*?)(</c>)`);
   if (!re.test(xml)) return xml;
   return xml.replace(re, (_m, head: string, body: string, tail: string): string => {
@@ -125,18 +218,9 @@ function setFormulaCache(xml: string, addr: string, value: string | number): str
   });
 }
 
-/** Read the template's HELPER sheet (numerical grade -> descriptor) for FINAL GRADES cache. */
-function buildDescriptorMap(templateBuffer: Buffer): Map<number, string> {
-  const wb = XLSX.read(templateBuffer, { cellFormula: false });
-  const sheet = wb.Sheets["HELPER"];
-  const map = new Map<number, string>();
-  if (!sheet) return map;
-  for (let r = 8; r <= 48; r++) {
-    const grade = Number(sheet[`F${r}`]?.v);
-    const desc = sheet[`G${r}`]?.v;
-    if (Number.isFinite(grade) && typeof desc === "string" && desc.trim()) map.set(grade, desc.trim());
-  }
-  return map;
+/** Descriptor for a term grade, mirroring the ledger's getDescriptor(). */
+function descriptorForGrade(grade: number): string | undefined {
+  return GRADE_DESCRIPTOR_BANDS.find((d) => grade >= d.min && grade <= d.max)?.label;
 }
 
 export async function exportEcrWorkbook(input: {
@@ -177,9 +261,17 @@ export async function exportEcrWorkbook(input: {
   const templateName = ca.subject.type === "MAPEH" || ca.subject.type === "TLE" ? TLE_TEMPLATE : CORE_TEMPLATE;
   const templatePath = path.join(templateDir(), templateName);
   const templateBuffer = fs.readFileSync(templatePath);
-  const descriptorByGrade = buildDescriptorMap(templateBuffer);
 
   const zip = await JSZip.loadAsync(templateBuffer);
+
+  // ── HELPER: override the template's baked-in scale with the admin-configured
+  //    transmutation table + SMART descriptors so Term Grade/Descriptor match the ledger.
+  const transmutation = await getTransmutationTable();
+  const helperCells = buildHelperCells(transmutation);
+  if (Object.keys(helperCells).length > 0) {
+    const helperXml = await zip.file(HELPER_SHEET)?.async("string");
+    if (helperXml) zip.file(HELPER_SHEET, injectCells(helperXml, helperCells));
+  }
 
   // ── INPUT DATA ──────────────────────────────────────────────────────────────
   const inputCells: Record<string, string> = {
@@ -246,10 +338,18 @@ export async function exportEcrWorkbook(input: {
     const gPT = Array.isArray(g?.perfTaskScores) ? (g.perfTaskScores as Array<Record<string, unknown>>) : [];
 
     for (let i = 0; i < 5; i++) {
-      if (wwMax[i] > 0) termCells[`${WW_COLS[i]}${row}`] = Number(gWW[i]?.score) || 0;
+      if (wwMax[i] > 0) {
+        const item = gWW[i];
+        if ((item as any)?.status) continue;
+        termCells[`${WW_COLS[i]}${row}`] = Number(item?.score) || 0;
+      }
     }
     for (let i = 0; i < 3; i++) {
-      if (ptMax[i] > 0) termCells[`${PT_COLS[i]}${row}`] = Number(gPT[i]?.score) || 0;
+      if (ptMax[i] > 0) {
+        const item = gPT[i];
+        if ((item as any)?.status) continue;
+        termCells[`${PT_COLS[i]}${row}`] = Number(item?.score) || 0;
+      }
     }
     if (hasExamBreakdown) {
       const es = (g as any)?.examScores as Array<{ score?: number }> | null;
@@ -284,7 +384,7 @@ export async function exportEcrWorkbook(input: {
   for (const sheetKey of termKeys) {
     const xml = await zip.file(TERM_SHEET[sheetKey])?.async("string");
     if (!xml) continue;
-    let out = xml;
+    let out = rewriteTemplateFormulas(xml);
     for (const [addr, val] of Object.entries(headerValues)) out = setFormulaCache(out, addr, val);
     males.slice(0, MAX_PER_GENDER).forEach((e, i) => {
       out = setFormulaCache(out, `C${MALE_START_ROW + i}`, `${e.student.lastName}, ${e.student.firstName}`);
@@ -303,7 +403,7 @@ export async function exportEcrWorkbook(input: {
   // ── FINAL GRADES: cached header + names + term grades + average + descriptor ─
   const fgXml = await zip.file(FINAL_GRADES_SHEET)?.async("string");
   if (fgXml) {
-    let out = fgXml;
+    let out = rewriteTemplateFormulas(fgXml);
     const fgHeader: Record<string, string> = {
       D5: settings?.region ?? "",
       G5: settings?.division ?? "",
@@ -322,16 +422,15 @@ export async function exportEcrWorkbook(input: {
       const t1 = Number(gradeByKey.get(`${studentId}:T1`)?.quarterlyGrade);
       const t2 = Number(gradeByKey.get(`${studentId}:T2`)?.quarterlyGrade);
       const t3 = Number(gradeByKey.get(`${studentId}:T3`)?.quarterlyGrade);
-      const terms = [t1, t2, t3].filter((t) => Number.isFinite(t) && t > 0);
-      if (terms.length > 0) {
-        out = setFormulaCache(out, `F${row}`, t1);
-        out = setFormulaCache(out, `G${row}`, t2);
-        out = setFormulaCache(out, `H${row}`, t3);
-        const avg = Math.round((terms.reduce((a, b) => a + b, 0) / terms.length) * 100) / 100;
-        out = setFormulaCache(out, `I${row}`, avg);
-        const desc = descriptorByGrade.get(Math.round(avg));
-        if (desc) out = setFormulaCache(out, `J${row}`, desc);
-      }
+      const valid = [t1, t2, t3].filter((t) => Number.isFinite(t) && t > 0);
+      if (valid.length === 0) return;
+      if (Number.isFinite(t1) && t1 > 0) out = setFormulaCache(out, `F${row}`, t1);
+      if (Number.isFinite(t2) && t2 > 0) out = setFormulaCache(out, `G${row}`, t2);
+      if (Number.isFinite(t3) && t3 > 0) out = setFormulaCache(out, `H${row}`, t3);
+      const avg = Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 100) / 100;
+      out = setFormulaCache(out, `I${row}`, avg);
+      const desc = descriptorForGrade(Math.round(avg));
+      if (desc) out = setFormulaCache(out, `J${row}`, desc);
     };
 
     males.slice(0, MAX_PER_GENDER).forEach((e, i) => writeFgRow(e.student.id, 14 + i, `${e.student.lastName}, ${e.student.firstName}`));
@@ -343,7 +442,7 @@ export async function exportEcrWorkbook(input: {
   // ── Force recalculation on open + drop stale calc chain ─────────────────────
   const workbookXml = await zip.file("xl/workbook.xml")?.async("string");
   if (workbookXml) zip.file("xl/workbook.xml", forceFullCalcOnLoad(workbookXml));
-  zip.remove("xl/calcChain.xml");
+  await removeCalcChain(zip);
 
   const buffer = Buffer.from(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
   const fileName = `E-Class-Record-${ca.subject.code}-${prettifyGradeLevel(String(ca.section.gradeLevel))}-${ca.section.name}-${term}.xlsx`;

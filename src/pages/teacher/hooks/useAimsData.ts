@@ -11,16 +11,18 @@ export function useAimsData(classAssignmentId: string | undefined, selectedTerm:
 
   const aimsQuery = useAimsScoresQuery(classAssignmentId, selectedTerm, syncVersion);
   const aimsData = aimsQuery.data;
+  const aimsPending = aimsQuery.isPending;
 
-  // Auto-open AIMS link dialog from ?connect=aims query param
+  // Auto-open AIMS dialog from ?connect=aims query param (wait for the query
+  // so a linked class never flashes the connect picker).
   useEffect(() => {
-    if (searchParams.get("connect") === "aims") {
-      if (!aimsData?.linked) {
-        setLinkDialogSignal((s) => s + 1);
-      }
-      setSearchParams({}, { replace: true });
+    if (searchParams.get("connect") !== "aims") return;
+    if (aimsPending) return;
+    if (!aimsData?.linked) {
+      setLinkDialogSignal((s) => s + 1);
     }
-  }, [searchParams, aimsData?.linked, setSearchParams]);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, aimsPending, aimsData?.linked, setSearchParams]);
 
   const aimsAssessments = useMemo(() => {
     if (!aimsData?.linked || !aimsData.assessments) return [];

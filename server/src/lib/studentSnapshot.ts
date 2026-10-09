@@ -40,6 +40,9 @@ export interface StudentProfileSnapshot {
   previousSchool: string | null;
   lastGradeCompleted: string | null;
   transferCertNo: string | null;
+  originatingSchoolId: string | null;
+  previousGenAve: number | null;
+  hasPsa: boolean | null;
 }
 
 /**
@@ -74,6 +77,9 @@ export function createProfileSnapshot(student: Record<string, any>): StudentProf
     previousSchool: student.previousSchool ?? null,
     lastGradeCompleted: student.lastGradeCompleted ?? null,
     transferCertNo: student.transferCertNo ?? null,
+    originatingSchoolId: student.originatingSchoolId ?? null,
+    previousGenAve: student.previousGenAve ?? null,
+    hasPsa: student.hasPsa ?? null,
   };
 }
 

@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { binTerm, dedupLatestAttempt, processAimsCourseData, type TermEndDates } from "../lib/aimsScoreSync";
 import { importAimsScoresToGrades } from "../lib/aimsImport";
-import { computeCourseWarnings } from "../lib/aimsCourseMatch";
+import { computeCourseWarnings, rankCoursesForAssignment, scoreCourseMatch } from "../lib/aimsCourseMatch";
 import type { AimsPublicScoresPayload } from "../schemas/aims";
 import { gradeSaveSchema } from "../schemas/grades";
 import { prisma } from "../lib/prisma";
@@ -505,6 +505,89 @@ describe("computeCourseWarnings / subjectsMatch", () => {
     expect(warnings.some(w => w.includes("School year mismatch"))).toBe(true);
     expect(warnings.some(w => w.includes("Section mismatch"))).toBe(true);
     expect(warnings.filter(w => w.includes("Subject"))).toHaveLength(0);
+  });
+});
+
+// ─── Course ranking / preselect (no DB) ─────────────────────────────────────
+
+describe("scoreCourseMatch / rankCoursesForAssignment", () => {
+  const assignment = {
+    schoolYear: "2026-2027",
+    sectionName: "Rizal",
+    subjectName: "English 8",
+    gradeLevel: "GRADE_8",
+  };
+
+  const mkCourse = (o: Partial<Parameters<typeof scoreCourseMatch>[0]> = {}) => ({
+    id: "c1",
+    schoolYear: "2026-2027",
+    sectionName: "Rizal",
+    subject: "English 8",
+    gradeLevel: "Grade 8",
+    archived: false,
+    ...o,
+  });
+
+  it("perfect match scores max and flags every dimension", () => {
+    const m = scoreCourseMatch(mkCourse(), assignment);
+    expect(m).toEqual({
+      score: 10,
+      subjectMatched: true,
+      schoolYearMatched: true,
+      sectionMatched: true,
+      gradeLevelMatched: true,
+    });
+  });
+
+  it("grade-level normalization: GRADE_8 vs 'Grade 8' matches", () => {
+    const m = scoreCourseMatch(mkCourse({ gradeLevel: "GRADE_8" }), assignment);
+    expect(m.gradeLevelMatched).toBe(true);
+  });
+
+  it("suffix-only subject (AIMS 'English' vs SMART 'English 8') still matches subject", () => {
+    const m = scoreCourseMatch(mkCourse({ subject: "English" }), assignment);
+    expect(m.subjectMatched).toBe(true);
+    expect(m.score).toBe(8); // no exact-suffix bonus
+  });
+
+  it("cross-grade subject is not a subject match", () => {
+    const m = scoreCourseMatch(mkCourse({ subject: "English 7" }), assignment);
+    expect(m.subjectMatched).toBe(false);
+  });
+
+  it("case-insensitive section compare", () => {
+    const m = scoreCourseMatch(mkCourse({ sectionName: "rizal" }), assignment);
+    expect(m.sectionMatched).toBe(true);
+  });
+
+  it("ranks best match first and skips archived for the suggestion", () => {
+    const ranked = rankCoursesForAssignment(
+      [
+        mkCourse({ id: "wrong-subject", subject: "Mathematics 8" }),
+        mkCourse({ id: "right", sectionName: "Rizal" }),
+        mkCourse({ id: "archived-perfect", archived: true }),
+      ],
+      assignment,
+    );
+    expect(ranked.courses[0].id).toBe("right");
+    expect(ranked.courses[ranked.courses.length - 1].id).toBe("archived-perfect");
+    expect(ranked.suggestedCourseId).toBe("right");
+  });
+
+  it("suggests cross-section course when subject + school year match", () => {
+    const ranked = rankCoursesForAssignment([mkCourse({ id: "other-section", sectionName: "Luna" })], assignment);
+    expect(ranked.suggestedCourseId).toBe("other-section");
+  });
+
+  it("does not suggest when no course matches both subject and school year", () => {
+    const ranked = rankCoursesForAssignment(
+      [
+        mkCourse({ id: "old-sy", schoolYear: "2025-2026" }),
+        mkCourse({ id: "wrong-subject", subject: "Mathematics 8" }),
+      ],
+      assignment,
+    );
+    expect(ranked.suggestedCourseId).toBeNull();
   });
 });
 

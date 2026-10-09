@@ -170,6 +170,7 @@ export default function registerDashboard(router: Router): void {
           transferredCount,
           archivedClasses,
           currentTerm,
+          currentSchoolYear,
           gradeDeadline,
         });
       } catch (error) {
@@ -346,6 +347,7 @@ export default function registerDashboard(router: Router): void {
             gradeLevel: ca.section.gradeLevel,
             totalStudents,
             gradedCount,
+            passingCount,
             avgGrade,
             passingRate,
             studentsAtRisk,
@@ -379,8 +381,14 @@ export default function registerDashboard(router: Router): void {
           return sum + cs.totalStudents;
         }, 0);
 
-        const overallPassingRate = totalGraded > 0
-          ? Math.round(classStats.reduce((sum: number, cs: any) => sum + (cs.passingRate * cs.gradedCount), 0) / totalGraded)
+        // Overall passing rate: share of graded student-subject records at or above passing.
+        // Both sides must use the same raw population — weighting on totalGraded (which is
+        // deduplicated per section) while summing every class inflates the rate above 100%
+        // whenever a teacher has multiple classes in the same section.
+        const totalGradedRecords = classStats.reduce((sum: number, cs: any) => sum + cs.gradedCount, 0);
+        const totalPassingRecords = classStats.reduce((sum: number, cs: any) => sum + cs.passingCount, 0);
+        const overallPassingRate = totalGradedRecords > 0
+          ? Math.round((totalPassingRecords / totalGradedRecords) * 100)
           : 0;
 
         // Grade submission rate: group by section, count each section once

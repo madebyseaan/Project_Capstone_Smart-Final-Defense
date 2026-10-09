@@ -14,7 +14,7 @@ import { AssessmentHeader } from "./components/AssessmentHeader";
 import RotationBanner from "./components/RotationBanner";
 import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "@/lib/toast";
-import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate } from "./components/classRecordActions";
+import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate, prepareScoreEdit, applyScoreEditToRecord, type ScoreEdit, type ScoreEditContext } from "./components/classRecordActions";
 import { getDisplayFinalGrade as computeDisplayFinalGrade, getMobileDraftKey, getScoreFromGrade as computeScoreFromGrade } from "./components/classRecordMobileUtils";
 import { getGradeColor, EXAM_SUB_TESTS } from "@/lib/gradeMath";
 import { useClassRecordQuery, useTransmutationTable } from "./hooks/useClassRecord";
@@ -23,6 +23,8 @@ import { useAssessmentMeta } from "./hooks/useAssessmentMeta";
 import { useMobileEditor } from "./hooks/useMobileEditor";
 import { useStickyLayout } from "./hooks/useStickyLayout";
 import { useAimsData } from "./hooks/useAimsData";
+import { useScoreWriteQueue } from "./hooks/useScoreWriteQueue";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { ClassRecordHeroTools } from "./components/ClassRecordHeroTools";
 import { ClassDescriptorFooter } from "./components/ClassDescriptorFooter";
 import { InheritedGradesNotice } from "./components/InheritedGradesNotice";
@@ -175,24 +177,72 @@ export default function ClassRecordView() {
     return { wwScores, ptScores, qaMax: qaMax || 100, examMaxes: examMaxesFinal };
   }, [mergedRecords, selectedTerm, metaHook.wwCount, metaHook.ptCount]);
 
+  const hpsDataRef = useRef(hpsData);
+  useEffect(() => { hpsDataRef.current = hpsData; }, [hpsData]);
+
   const getCellKey = useCallback((sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => `${sid}:${cat}:${idx}`, []);
   const getMaxForCell = useCallback((cat: "WW" | "PT" | "QA" | "EX", idx: number): number => {
-    if (cat === "WW") return Number(hpsData.wwScores[idx]?.maxScore ?? 0);
-    if (cat === "PT") return Number(hpsData.ptScores[idx]?.maxScore ?? 0);
-    if (cat === "EX") return Number(hpsData.examMaxes[idx] ?? 0);
-    return Number(hpsData.qaMax ?? 0);
-  }, [hpsData]);
+    const h = hpsDataRef.current;
+    if (cat === "WW") return Number(h.wwScores[idx]?.maxScore ?? 0);
+    if (cat === "PT") return Number(h.ptScores[idx]?.maxScore ?? 0);
+    if (cat === "EX") return Number(h.examMaxes[idx] ?? 0);
+    return Number(h.qaMax ?? 0);
+  }, []);
   const isCellInvalid = useCallback((sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => invalidCells[getCellKey(sid, cat, idx)], [invalidCells, getCellKey]);
 
-  const handleScoreUpdate = useCallback(async (studentId: string, category: "WW" | "PT" | "QA" | "EX", index: number, newValue: number) => {
-    if (editAccess.isViewOnly) return;
-    await executeScoreUpdate({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, studentId, category, index, newValue, qaMeta: metaHook.qaMeta, getCellKey, getMaxForCell, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setInvalidCells, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook.qaMeta, getCellKey, getMaxForCell, metaHook.applyMetaToScores, fetchClassRecord]);
+  const scoreQueueEnabled = useMemo(() => {
+    try { return localStorage.getItem("smart:scoreQueue") !== "off"; } catch { return true; }
+  }, []);
+
+  const scoreQueue = useScoreWriteQueue({
+    classAssignmentId,
+    selectedTerm,
+    queryClient,
+    qaMeta: metaHook.qaMeta,
+    applyMetaToScores: metaHook.applyMetaToScores,
+    onError: (msg) => setError(msg),
+    refetch: fetchClassRecord,
+  });
+  const scoreQueueRef = useRef(scoreQueue);
+  useEffect(() => { scoreQueueRef.current = scoreQueue; }, [scoreQueue]);
+  const flushPendingScores = useCallback(() => scoreQueueRef.current.flushNow(), []);
+
+  const handleScoreUpdate = useCallback(async (studentId: string, category: "WW" | "PT" | "QA" | "EX", index: number, newValue: number | "A" | "E") => {
+    if (editAccess.isViewOnly || !classAssignmentId) return;
+
+    if (!scoreQueueEnabled) {
+      await executeScoreUpdate({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, studentId, category, index, newValue, qaMeta: metaHook.qaMeta, getCellKey, getMaxForCell, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setInvalidCells, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
+      return;
+    }
+
+    const key = getCellKey(studentId, category, index);
+    const maxAllowed = getMaxForCell(category, index);
+    const edit: ScoreEdit = { studentId, category, index, newValue };
+
+    const prepared = prepareScoreEdit({ classRecord: classRecordRef.current, selectedTerm, edit, maxAllowed });
+    if (prepared.error) {
+      setInvalidCells((prev) => ({ ...prev, [key]: prepared.error as string }));
+      setError(prepared.error);
+      return;
+    }
+    setInvalidCells((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    if (prepared.noop) return;
+
+    const ctx: ScoreEditContext = { classAssignmentId, selectedTerm, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores };
+    setClassRecord((prev) => prev.map((r) => (r.student.id === studentId ? applyScoreEditToRecord(r, edit, ctx) : r)));
+    scoreQueueRef.current.enqueue(edit);
+  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, scoreQueueEnabled, metaHook.qaMeta, metaHook.applyMetaToScores, getCellKey, getMaxForCell, fetchClassRecord]);
 
   const handleHpsUpdate = useCallback(async (category: "WW" | "PT" | "QA" | "EX", index: number, newMax: number) => {
     if (editAccess.isViewOnly) return;
+    await flushPendingScores();
     await executeHpsUpdate({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, category, index, newMax, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setError, setSuccess, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook.qaMeta, metaHook.applyMetaToScores, fetchClassRecord]);
+  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook.qaMeta, metaHook.applyMetaToScores, fetchClassRecord, flushPendingScores]);
 
   const addTask = useCallback((category: "WW" | "PT") => {
     if (editAccess.isViewOnly) return;
@@ -202,8 +252,9 @@ export default function ClassRecordView() {
 
   const removeTask = useCallback(async (category: "WW" | "PT") => {
     if (editAccess.isViewOnly) return;
+    await flushPendingScores();
     await executeRemoveTask({ classAssignmentId, classRecord: classRecordRef.current, selectedTerm, category, wwCount: metaHook.wwCount, ptCount: metaHook.ptCount, qaMeta: metaHook.qaMeta, applyMetaToScores: metaHook.applyMetaToScores, setClassRecord, setWwMeta: metaHook.setWwMeta, setPtMeta: metaHook.setPtMeta, setSuccess, setError, fetchClassRecord, isViewOnly: editAccess.isViewOnly });
-  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook, metaHook.applyMetaToScores, fetchClassRecord]);
+  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, metaHook.wwCount, metaHook.ptCount, metaHook.qaMeta, metaHook.applyMetaToScores, metaHook.setWwMeta, metaHook.setPtMeta, fetchClassRecord, flushPendingScores]);
 
   const sortedRecords = useMemo(() => [...mergedRecords].sort((a, b) => `${a.student.lastName}, ${a.student.firstName}`.localeCompare(`${b.student.lastName}, ${b.student.firstName}`)), [mergedRecords]);
   const maleRecords = useMemo(() => sortedRecords.filter((r) => r.student.gender?.toLowerCase() === "male"), [sortedRecords]);
@@ -224,6 +275,8 @@ export default function ClassRecordView() {
   // Sticky layout hook
   const layout = useStickyLayout({ classAssignmentId, showAssessmentDetails, selectedColumn: metaHook.selectedColumn });
 
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+
   // AIMS integration
   const {
     aimsQuery,
@@ -234,10 +287,11 @@ export default function ClassRecordView() {
     linkDialogSignal,
   } = useAimsData(classAssignmentId, selectedTerm);
 
-  const handleToolsChanged = useCallback(() => {
+  const handleToolsChanged = useCallback(async () => {
+    await flushPendingScores();
     queryClient.invalidateQueries({ queryKey: ["class-record", classAssignmentId] });
     aimsQuery.refetch();
-  }, [queryClient, classAssignmentId, aimsQuery.refetch]);
+  }, [queryClient, classAssignmentId, aimsQuery.refetch, flushPendingScores]);
 
   const commitScoreInput = useCallback((inputEl: HTMLInputElement, studentId: string, category: "WW" | "PT" | "QA" | "EX", index: number): boolean => {
     const rawValue = inputEl.value.trim().toUpperCase();
@@ -267,8 +321,35 @@ export default function ClassRecordView() {
 
   const handleClearScores = useCallback(async () => {
     if (editAccess.isViewOnly || !classAssignmentId) return;
+    await flushPendingScores();
     try { await gradesApi.clearScores(classAssignmentId, selectedTerm); setSuccess("Successfully cleared all scores for the current term."); await fetchClassRecord(); } catch (err: any) { setError(err?.response?.data?.message || "Failed to clear scores"); }
-  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, fetchClassRecord]);
+  }, [editAccess.isViewOnly, classAssignmentId, selectedTerm, fetchClassRecord, flushPendingScores]);
+
+  const handleTermChange = useCallback(async (term: string) => {
+    if (term === selectedTerm) return;
+    await flushPendingScores();
+    setSelectedTerm(term);
+  }, [selectedTerm, flushPendingScores]);
+
+  const handleCellFocus = useCallback((cat: "WW" | "PT" | "QA" | "EX", idx: number) => {
+    if (cat === "EX") return;
+    metaHook.openMetaEditor(cat, idx);
+  }, [metaHook.openMetaEditor]);
+
+  const saveAssessmentDetailsFlushed = useCallback(async () => {
+    await flushPendingScores();
+    await metaHook.saveAssessmentDetails();
+  }, [flushPendingScores, metaHook.saveAssessmentDetails]);
+
+  const saveColumnMetaFlushed = useCallback(async () => {
+    await flushPendingScores();
+    await metaHook.saveColumnMeta();
+  }, [flushPendingScores, metaHook.saveColumnMeta]);
+
+  const applyColumnMetaFromMobileFlushed = useCallback(async (category: "WW" | "PT" | "QA", index: number, description: string, date: string) => {
+    await flushPendingScores();
+    await metaHook.applyColumnMetaFromMobile(category, index, description, date);
+  }, [flushPendingScores, metaHook.applyColumnMetaFromMobile]);
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="text-center"><div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm"><Loader2 className="w-10 h-10 text-indigo-600 animate-spin" /></div><p className="text-slate-500 font-bold text-xs uppercase tracking-widest">Fetching Class Records...</p></div></div>;
   if (!classAssignment) return null;
@@ -294,7 +375,7 @@ export default function ClassRecordView() {
         stats={stats}
         onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }}
         selectedTerm={selectedTerm}
-        onTermChange={setSelectedTerm}
+        onTermChange={handleTermChange}
         lockedTerm={lockedTerm}
         termLabels={termLabels}
         isViewOnly={editAccess.isViewOnly}
@@ -307,6 +388,13 @@ export default function ClassRecordView() {
             isViewOnly={editAccess.isViewOnly}
             openLinkDialogSignal={linkDialogSignal}
             onChanged={handleToolsChanged}
+            beforeImport={flushPendingScores}
+            classContext={{
+              subjectName: classAssignment.subject.name,
+              sectionName: classAssignment.section.name,
+              gradeLevel: classAssignment.section.gradeLevel,
+              schoolYear: classAssignment.schoolYear,
+            }}
           />
         ) : undefined}
         rotationSlot={lockedTerm && classAssignment?.subject?.rotationTermRank ? (
@@ -338,13 +426,15 @@ export default function ClassRecordView() {
         </div>
       ) : (
         <>
-          <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={setSelectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} aimsByStudent={aimsByStudent} aimsAssessments={aimsAssessments} />
+          {!isDesktop && (
+            <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={handleTermChange} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} aimsByStudent={aimsByStudent} aimsAssessments={aimsAssessments} />
+          )}
 
-      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={(cat, idx) => { if (cat === "EX") return; metaHook.openMetaEditor(cat, idx); }} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsAllAssessments={aimsAllAssessments} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={metaHook.saveAssessmentDetails} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={metaHook.saveColumnMeta} isViewOnly={editAccess.isViewOnly} />} />
+      <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={handleCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsAllAssessments={aimsAllAssessments} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={saveAssessmentDetailsFlushed} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={saveColumnMetaFlushed} isViewOnly={editAccess.isViewOnly} />} />
 
       <ClassDescriptorFooter average={stats?.avg ?? null} totalLearners={mergedRecords.length} />
 
-      <GradeEditModal open={mobileEditor.mobileEditorOpen} onOpenChange={(open) => { mobileEditor.setMobileEditorOpen(open); if (!open) { mobileEditor.setMobileEditorStudentId(null); mobileEditor.setMobileScoreDraft({}); } }} selectedRecord={mobileEditor.selectedMobileRecord} selectedTerm={selectedTerm} mobileEditorTab={mobileEditor.mobileEditorTab} onTabChange={mobileEditor.setMobileEditorTab} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} mobileScoreDraft={mobileEditor.mobileScoreDraft} invalidCells={invalidCells} getCellKey={getCellKey} getMobileDraftKey={getMobileDraftKey} getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)} getMaxForCell={getMaxForCell} onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange} onMobileScoreCommit={mobileEditor.commitMobileScore} onApplyColumnMeta={metaHook.applyColumnMetaFromMobile} isViewOnly={editAccess.isViewOnly} aimsScores={mobileEditor.selectedMobileRecord ? aimsByStudent[mobileEditor.selectedMobileRecord.student.id] : undefined} aimsAssessmentTitles={Object.fromEntries(aimsAssessments.map(a => [a.assessmentId, a.title]))} aimsAllAssessments={aimsAllAssessments} aimsByStudent={aimsByStudent} />
+      <GradeEditModal open={mobileEditor.mobileEditorOpen} onOpenChange={(open) => { mobileEditor.setMobileEditorOpen(open); if (!open) { mobileEditor.setMobileEditorStudentId(null); mobileEditor.setMobileScoreDraft({}); } }} selectedRecord={mobileEditor.selectedMobileRecord} selectedTerm={selectedTerm} mobileEditorTab={mobileEditor.mobileEditorTab} onTabChange={mobileEditor.setMobileEditorTab} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} mobileScoreDraft={mobileEditor.mobileScoreDraft} invalidCells={invalidCells} getCellKey={getCellKey} getMobileDraftKey={getMobileDraftKey} getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)} getMaxForCell={getMaxForCell} onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange} onMobileScoreCommit={mobileEditor.commitMobileScore} onApplyColumnMeta={applyColumnMetaFromMobileFlushed} isViewOnly={editAccess.isViewOnly} aimsScores={mobileEditor.selectedMobileRecord ? aimsByStudent[mobileEditor.selectedMobileRecord.student.id] : undefined} aimsAssessmentTitles={Object.fromEntries(aimsAssessments.map(a => [a.assessmentId, a.title]))} aimsAllAssessments={aimsAllAssessments} aimsByStudent={aimsByStudent} />
 
           <ClassRecordTour isOpen={isTourOpen} onClose={() => { setIsTourOpen(false); setShowAssessmentDetails(false); metaHook.setSelectedColumn(null); window.dispatchEvent(new Event("tour:end")); }} setShowAssessmentDetails={setShowAssessmentDetails} setSelectedColumn={metaHook.setSelectedColumn} hasAimsColumns={aimsAssessments.length > 0} />
 

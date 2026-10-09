@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { downloadBlobResponse } from "@/lib/download";
 import { gradesApi, type AimsScoresResponse } from "@/lib/api";
-import { AimsPanel } from "./AimsPanel";
+import { AimsLinkForm, type AimsClassContext } from "./AimsLinkForm";
+import { AimsLinkedPanel } from "./AimsLinkedPanel";
 import { ExcelExchangePanel } from "./ExcelExchangePanel";
 
 interface ClassRecordHeroToolsProps {
@@ -15,8 +17,12 @@ interface ClassRecordHeroToolsProps {
   isViewOnly: boolean;
   /** Invalidate class-record + aims queries after a successful tool action */
   onChanged: () => void;
-  /** Auto-open the AIMS link dialog (e.g. from the ?connect=aims query param) */
+  /** Persist pending unsaved scores before a class-wide action (imports) */
+  beforeImport?: () => Promise<void>;
+  /** Auto-open the AIMS dialog (e.g. from the ?connect=aims query param) */
   openLinkDialogSignal?: number;
+  /** Class identity shown in the link dialog so teachers can verify the match */
+  classContext?: AimsClassContext;
 }
 
 export function ClassRecordHeroTools({
@@ -25,41 +31,29 @@ export function ClassRecordHeroTools({
   aimsData,
   isViewOnly,
   onChanged,
+  beforeImport,
   openLinkDialogSignal = 0,
+  classContext,
 }: ClassRecordHeroToolsProps) {
   const [aimsOpen, setAimsOpen] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [linkSignal, setLinkSignal] = useState(0);
 
   const linked = aimsData?.linked ?? false;
   const courseCode = aimsData?.course?.code;
 
-  // Auto-open the AIMS manager + link dialog when signalled from outside
+  // Auto-open the AIMS dialog when signalled from outside
   useEffect(() => {
-    if (openLinkDialogSignal > 0) {
-      setAimsOpen(true);
-      setLinkSignal((n) => n + 1);
-    }
+    if (openLinkDialogSignal > 0) setAimsOpen(true);
   }, [openLinkDialogSignal]);
 
-  const openAims = () => {
-    setAimsOpen(true);
-    if (!linked) setLinkSignal((n) => n + 1);
-  };
+  const openAims = () => setAimsOpen(true);
 
   const handleDownload = async () => {
     setDownloading(true);
     try {
       const res = await gradesApi.ecrExport(classAssignmentId, selectedTerm);
-      const url = window.URL.createObjectURL(new Blob([res.data as Blob]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `E-Class-Record-${selectedTerm}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      downloadBlobResponse(res, `E-Class-Record-${selectedTerm}.xlsx`);
       toast.success("Official E-Class-Record downloaded — it opens pre-filled with your roster.");
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to download E-Class-Record");
@@ -110,20 +104,37 @@ export function ClassRecordHeroTools({
         Import filled Excel
       </Button>
 
-      {/* AIMS LMS manager (link / import assessments / disconnect) */}
+      {/* AIMS LMS manager — one dialog, no nesting (link form XOR manager) */}
       <Dialog open={aimsOpen} onOpenChange={setAimsOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>AIMS LMS Integration</DialogTitle>
-          </DialogHeader>
-          <AimsPanel
-            classAssignmentId={classAssignmentId}
-            selectedTerm={selectedTerm}
-            aimsData={aimsData}
-            isViewOnly={isViewOnly}
-            openLinkDialogSignal={linkSignal}
-            onImportComplete={onChanged}
-          />
+        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+          {!aimsData ? (
+            <DialogHeader>
+              <DialogTitle>AIMS LMS Integration</DialogTitle>
+              <div className="py-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Checking AIMS connection...
+              </div>
+            </DialogHeader>
+          ) : linked ? (
+            <AimsLinkedPanel
+              classAssignmentId={classAssignmentId}
+              selectedTerm={selectedTerm}
+              aimsData={aimsData}
+              isViewOnly={isViewOnly}
+              onChanged={onChanged}
+              onClose={() => setAimsOpen(false)}
+            />
+          ) : (
+            <AimsLinkForm
+              classAssignmentId={classAssignmentId}
+              classContext={classContext}
+              onConnected={() => {
+                onChanged();
+                setAimsOpen(false);
+              }}
+              onCancel={() => setAimsOpen(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -138,6 +149,11 @@ export function ClassRecordHeroTools({
             selectedTerm={selectedTerm}
             isViewOnly={isViewOnly}
             autoStartImport
+            beforeImport={beforeImport}
+            onImported={() => {
+              onChanged();
+              setExcelOpen(false);
+            }}
           />
         </DialogContent>
       </Dialog>

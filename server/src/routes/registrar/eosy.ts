@@ -136,7 +136,7 @@ router.post("/eosy/finalize", authenticateToken, validate(eosyFinalizeSchema), a
       user,
       `EOSY Finalize: ${sectionId} (${schoolYear})`,
       "EOSY",
-      `EOSY finalize for section ${sectionId} SY ${schoolYear}: ${result.processed} enrollments, ${result.snapshotsCreated} snapshots created`,
+      `EOSY finalize for section ${sectionId} SY ${schoolYear}: ${result.processed} enrollments, ${result.snapshotsCreated} snapshots created, ${result.remedialRowsCleared} orphaned remedial row(s) cleared`,
       req.ip,
       AuditSeverity.WARNING
     );
@@ -147,6 +147,7 @@ router.post("/eosy/finalize", authenticateToken, validate(eosyFinalizeSchema), a
       schoolYear,
       processed: result.processed,
       snapshotsCreated: result.snapshotsCreated,
+      remedialRowsCleared: result.remedialRowsCleared,
     });
   } catch (err: any) {
     logger.error("[registrar/eosy/finalize]", err.message);

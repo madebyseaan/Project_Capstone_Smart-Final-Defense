@@ -1,8 +1,20 @@
 import "dotenv/config";
 import { PrismaClient, Term, GradeStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { makeTransmuter, resolveCanonicalWeights } from "./canonicalGrade";
+import { resolveCanonicalWeights } from "./canonicalGrade";
 import { finalizeSectionEosy } from "../src/lib/promotion";
+import {
+  STE_ELIGIBLE_TIERS,
+  TIER_LABELS,
+  TIER_QG,
+  buildGradeForTarget,
+  hashStr,
+  initTransmutation,
+  seededRandom,
+  type SpecialStudent,
+  type StudentInfo,
+  type Tier,
+} from "./seedTeacherScoresCore";
 
 const connectionString = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({
@@ -11,186 +23,18 @@ const prisma = new PrismaClient({
 
 const VALID_TERMS: Term[] = ["T1", "T2", "T3"];
 
-// ─── Tier Definitions ────────────────────────────────────────────────────────
-
-type Tier =
-  | "HIGHEST_HONORS"
-  | "HIGH_HONORS"
-  | "HONORS"
-  | "ABOVE_AVG"
-  | "AVERAGE"
-  | "BELOW_AVG"
-  | "AT_RISK"
-  | "REMEDIAL_FAIL_70"
-  | "REMEDIAL_FAIL_71";
-
-const TIER_QG: Record<Tier, number[]> = {
-  HIGHEST_HONORS: [98, 99, 98],
-  HIGH_HONORS: [95, 96, 95],
-  HONORS: [91, 90, 92],
-  ABOVE_AVG: [93, 91, 92],
-  AVERAGE: [84, 83, 85],
-  BELOW_AVG: [77, 76, 78],
-  // Retained students' failed subjects (final ~70, any failing grade is valid)
-  AT_RISK: [70, 68, 72],
-  // Remedial/conditionally-promoted failed subjects — DepEd DO 13: 1-2 failed
-  // subjects. Final rating must land at exactly 70 or 71 so the RemedialTracker
-  // shows originalGrade 70-71 and RFG = (70-71 + RCM)/2 reaches 75 with RCM >= 79-80.
-  REMEDIAL_FAIL_70: [70, 70, 70],
-  REMEDIAL_FAIL_71: [71, 71, 71],
-};
-
-const TIER_LABELS: Record<Tier, string> = {
-  HIGHEST_HONORS: "With Highest Honors",
-  HIGH_HONORS: "With High Honors",
-  HONORS: "With Honors",
-  ABOVE_AVG: "Above Average",
-  AVERAGE: "Average",
-  BELOW_AVG: "Below Average",
-  AT_RISK: "At Risk",
-  REMEDIAL_FAIL_70: "Remedial (Final 70)",
-  REMEDIAL_FAIL_71: "Remedial (Final 71)",
-};
-
-// ─── Transmutation ───────────────────────────────────────────────────────────
-
-// Canonical transmuter — loaded from the DB TransmutationEntry table in main()
-// so seeded grades always match the admin-configured table.
-let transmute: (initialGrade: number) => number;
-let transmutationRanges: Array<{ minGrade: number; maxGrade: number; transmutedGrade: number }>;
-
-// Deterministic: returns the MIDPOINT of the first table range mapping to targetQG
-// (midpoint keeps integer-score rounding noise safely inside the range).
-function findInitialGradeForTarget(targetQG: number): number {
-  const range = transmutationRanges.find((r) => r.transmutedGrade === targetQG);
-  if (range) return (range.minGrade + range.maxGrade) / 2;
-  // Fallback: binary search
-  let low = 0;
-  let high = 100;
-  let best = 50;
-  for (let i = 0; i < 50; i++) {
-    const mid = (low + high) / 2;
-    if (transmute(mid) === targetQG) { best = mid; low = mid + 0.01; }
-    else if (transmute(mid) < targetQG) low = mid + 0.01;
-    else high = mid - 0.01;
-  }
-  if (transmute(best) === targetQG) return best;
-  for (let ig = 0; ig <= 100; ig += 0.01) {
-    if (transmute(ig) === targetQG) return ig;
-  }
-  return best;
-}
-
-// ─── Grading Weights ─────────────────────────────────────────────────────────
-
-// ─── Score Generation ────────────────────────────────────────────────────────
-
-function seededRandom(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 16807 + 0) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
-
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function genScores(
-  count: number,
-  max: number,
-  targetPS: number,
-  rand: () => number,
-  exact = false,
-): Array<{ name: string; score: number; maxScore: number }> {
-  return Array.from({ length: count }, (_, i) => {
-    // exact = no per-item jitter so the computed PS (and thus QG) lands exactly on target
-    const jitter = exact ? 1 : 1 + (rand() - 0.5) * 0.08;
-    const raw = max * (targetPS / 100) * jitter;
-    const score = Math.round(Math.max(1, Math.min(max, raw)));
-    return { name: `Item ${i + 1}`, score, maxScore: max };
-  });
-}
-
-function calculateGrades(
-  wwScores: Array<{ name: string; score: number; maxScore: number }>,
-  ptScores: Array<{ name: string; score: number; maxScore: number }>,
-  qaScore: number,
-  qaMax: number,
-  wwWeight: number,
-  ptWeight: number,
-  qaWeight: number,
-) {
-  const wwTotal = wwScores.reduce((s, i) => s + i.score, 0);
-  const wwMax = wwScores.reduce((s, i) => s + i.maxScore, 0);
-  const wwPS = wwMax > 0 ? (wwTotal / wwMax) * 100 : 0;
-
-  const ptTotal = ptScores.reduce((s, i) => s + i.score, 0);
-  const ptMax = ptScores.reduce((s, i) => s + i.maxScore, 0);
-  const ptPS = ptMax > 0 ? (ptTotal / ptMax) * 100 : 0;
-
-  const qaPS = qaMax > 0 ? (qaScore / qaMax) * 100 : 0;
-
-  const ig = (wwPS * wwWeight) / 100 + (ptPS * ptWeight) / 100 + (qaPS * qaWeight) / 100;
-  const qg = transmute(ig);
-
-  return { writtenWorkPS: wwPS, perfTaskPS: ptPS, quarterlyAssessPS: qaPS, initialGrade: ig, quarterlyGrade: qg };
-}
-
-function buildGradeForTarget(
-  targetQG: number,
-  weights: { ww: number; pt: number; qa: number },
-  rand: () => number,
-  exact = false,
-) {
-  const targetInitial = findInitialGradeForTarget(targetQG);
-  // exact = no jitter: PS values sit at the range midpoint so integer-score
-  // rounding can never push the quarterly grade off target (used for remedial
-  // failed subjects that must land at exactly 70/71).
-  const jitterOf = (r: number) => (exact ? 0 : (r - 0.5) * 3);
-  const wwPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
-  const ptPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
-  const qaPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
-
-  const wwScores = genScores(4, 10, wwPS, rand, exact);
-  const ptScores = genScores(4, 20, ptPS, rand, exact);
-  const qaScore = Math.round(Math.max(0, Math.min(100, 100 * (qaPS / 100))));
-
-  // Exam breakdown (ST1/ST2 max 10, TE max 30) scaled from the assessment score,
-  // so the ledger's EXS columns are populated (they read Grade.examScores).
-  const examScores = [
-    { name: "ST1", score: Math.round((qaScore / 100) * 10), maxScore: 10 },
-    { name: "ST2", score: Math.round((qaScore / 100) * 10), maxScore: 10 },
-    { name: "TE", score: Math.round((qaScore / 100) * 30), maxScore: 30 },
-  ];
-
-  const computed = calculateGrades(wwScores, ptScores, qaScore, 100, weights.ww, weights.pt, weights.qa);
-  return { writtenWorkScores: wwScores, perfTaskScores: ptScores, examScores, quarterlyAssessScore: qaScore, quarterlyAssessMax: 100, computed };
-}
+// School names an older seed run fabricated for transferee `previousSchool`.
+// Kept only so --clear-transferee-details can remove those fabricated values;
+// real data comes from the EnrollPro transferee feed (contract v1.1).
+const SEEDED_TRANSFEREE_SCHOOLS = [
+  "San Jose National High School", "Sta. Rosa National High School",
+  "Binalbagan National High School", "La Castellana National High School",
+  "Hinigaran National High School (Annex)", "Pontevedra National High School",
+  "Pulupandan National High School", "Valladolid National High School",
+  "San Enrique National High School", "Ilog National High School",
+];
 
 // ─── Per-Subject Tier Assignment ─────────────────────────────────────────────
-
-interface StudentInfo {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-}
-
-interface SpecialStudent {
-  studentId: string;
-  failedSubjects: string[];
-  type: "RETAINED" | "REMEDIAL";
-}
-
-interface StudentSectionInfo {
-  studentId: string;
-  gradeLevel: string;
-}
 
 function pickSpecialStudents(
   students: StudentInfo[],
@@ -198,12 +42,20 @@ function pickSpecialStudents(
   retainedCount: number,
   remedialCount: number,
   studentGradeLevels: Map<string, string>,
+  studentPrograms: Map<string, string>,
   retainedGrade: string | null,
   remedialGrade: string | null,
   transfereeIds: Set<string>,
 ): SpecialStudent[] {
-  // Filter students by grade level and exclude transferees
+  // Special picks come from REGULAR sections only: a failing STE/SPA/SPS learner
+  // exits the program rather than being retained in it, so seeding them as
+  // retained/remedial would misrepresent the program rules.
+  const isRegular = (s: StudentInfo) =>
+    (studentPrograms.get(s.id) ?? "REGULAR").toUpperCase() === "REGULAR";
+
+  // Filter students by program + grade level, and exclude transferees
   const retainedPool = students.filter(s => {
+    if (!isRegular(s)) return false;
     if (transfereeIds.has(s.id)) return false;
     if (retainedGrade) {
       const gl = studentGradeLevels.get(s.id);
@@ -213,6 +65,7 @@ function pickSpecialStudents(
   });
 
   const remedialPool = students.filter(s => {
+    if (!isRegular(s)) return false;
     if (transfereeIds.has(s.id)) return false;
     if (remedialGrade) {
       const gl = studentGradeLevels.get(s.id);
@@ -230,6 +83,13 @@ function pickSpecialStudents(
     const cmp = (a.lastName ?? "").localeCompare(b.lastName ?? "");
     return cmp !== 0 ? cmp : (a.firstName ?? "").localeCompare(b.firstName ?? "");
   });
+
+  if (sortedRetained.length < retainedCount) {
+    console.log(`  Note: only ${sortedRetained.length} REGULAR student(s) eligible for retained picks (requested ${retainedCount}).`);
+  }
+  if (sortedRemedial.length < remedialCount) {
+    console.log(`  Note: only ${sortedRemedial.length} REGULAR student(s) eligible for remedial picks (requested ${remedialCount}).`);
+  }
 
   const result: SpecialStudent[] = [];
   const usedIds = new Set<string>();
@@ -304,7 +164,7 @@ function getTierForStudentSubject(
   return { tier: remedialFailTier(studentId), isFailedSubject: true };
 }
 
-function assignNormalTiers(students: StudentInfo[]): Map<string, Tier> {
+function assignNormalTiers(students: StudentInfo[], studentPrograms: Map<string, string>): Map<string, Tier> {
   const sorted = [...students].sort((a, b) => {
     const cmp = (a.lastName ?? "").localeCompare(b.lastName ?? "");
     return cmp !== 0 ? cmp : (a.firstName ?? "").localeCompare(b.firstName ?? "");
@@ -326,7 +186,15 @@ function assignNormalTiers(students: StudentInfo[]): Map<string, Tier> {
   const pattern = patterns[patternIdx];
 
   for (let i = 0; i < sorted.length; i++) {
-    tiers.set(sorted[i].id, pattern[i % pattern.length]);
+    const student = sorted[i];
+    const program = (studentPrograms.get(student.id) ?? "REGULAR").toUpperCase();
+    // STE learners must stay at 85+ in every subject to remain eligible for the
+    // program — never give them a mixed pattern tier.
+    if (program === "STE") {
+      tiers.set(student.id, STE_ELIGIBLE_TIERS[i % STE_ELIGIBLE_TIERS.length]);
+      continue;
+    }
+    tiers.set(student.id, pattern[i % pattern.length]);
   }
 
   return tiers;
@@ -363,13 +231,16 @@ interface ParsedArgs {
   retainedGrade: string | null;
   remedialGrade: string | null;
   completeTransferees: boolean;
+  clearTransfereeDetails: boolean;
 }
 
 function parseArgs(): ParsedArgs {
   const args = process.argv.slice(2);
+  const clearTransfereeDetails = args.includes("--clear-transferee-details");
 
   if (args.length === 0 || args[0] === "--help") {
     console.error("Usage: npx ts-node prisma/seed-teacher-scores.ts <T1|T2|T3|--all> [flags]");
+    console.error("       npx ts-node prisma/seed-teacher-scores.ts --clear-transferee-details");
     console.error("Flags:");
     console.error("  --finalized            Set status=FINALIZED (default: DRAFT)");
     console.error("  --clear                Delete existing grades for this SY first");
@@ -378,14 +249,18 @@ function parseArgs(): ParsedArgs {
     console.error("  --retained-grade G     Restrict retained picks to this grade (e.g. 9)");
     console.error("  --remedial N           Number of remedial students (default: 2)");
     console.error("  --remedial-grade G     Restrict remedial picks to this grade (e.g. 8)");
-    console.error("  --complete-transferees Fill in missing details for existing transferees");
+    console.error("  --complete-transferees Fill in missing birth date/sex for existing transferees");
+    console.error("  --clear-transferee-details  Standalone mode: remove seed-fabricated previous-school");
+    console.error("                              details so the EnrollPro sync can fill the real values");
     process.exit(1);
   }
 
   const firstArg = args[0];
-  let terms: Term[];
+  let terms: Term[] = [];
 
-  if (firstArg === "--all") {
+  if (clearTransfereeDetails) {
+    // Standalone cleanup mode — skips all grade seeding.
+  } else if (firstArg === "--all") {
     terms = ["T1", "T2", "T3"];
   } else if (VALID_TERMS.includes(firstArg as Term)) {
     terms = [firstArg as Term];
@@ -410,6 +285,7 @@ function parseArgs(): ParsedArgs {
     retainedGrade: retainedGradeIdx >= 0 ? (remaining[retainedGradeIdx + 1] ?? null) : null,
     remedialGrade: remedialGradeIdx >= 0 ? (remaining[remedialGradeIdx + 1] ?? null) : null,
     completeTransferees: remaining.includes("--complete-transferees"),
+    clearTransfereeDetails,
   };
 }
 
@@ -429,17 +305,61 @@ async function resolveSchoolYear(): Promise<{ label: string; id: string }> {
   return { label: sy.label, id: sy.id };
 }
 
+// Remove previous-school details fabricated by older seed runs so the EnrollPro
+// transferee feed (contract v1.1) can fill the real values under fill-nulls-only.
+async function clearSeededTransfereeDetails(schoolYearLabel: string): Promise<void> {
+  const transferees = await prisma.enrollment.findMany({
+    where: { schoolYear: schoolYearLabel, transferInDate: { not: null }, status: "ENROLLED" },
+    include: { student: true, section: true },
+  });
+
+  let clearedCount = 0;
+  for (const t of transferees) {
+    const clearData: Record<string, any> = {};
+    const last6 = t.student.lrn?.slice(-6);
+    if (last6 && t.student.transferCertNo === `TC-${last6}`) {
+      clearData.transferCertNo = null;
+    }
+    if (t.student.previousSchool && SEEDED_TRANSFEREE_SCHOOLS.includes(t.student.previousSchool)) {
+      clearData.previousSchool = null;
+    }
+    const gradeNum = parseInt(t.section.gradeLevel.replace("GRADE_", "")) - 1;
+    if (t.student.lastGradeCompleted === `Grade ${gradeNum > 0 ? gradeNum : 6}`) {
+      clearData.lastGradeCompleted = null;
+    }
+
+    if (Object.keys(clearData).length > 0) {
+      await prisma.student.update({ where: { id: t.studentId }, data: clearData });
+      clearedCount++;
+      console.log(`  Cleared: ${t.student.lastName}, ${t.student.firstName} (${Object.keys(clearData).join(", ")})`);
+    }
+  }
+
+  console.log(`\n  Learners cleared: ${clearedCount} of ${transferees.length}`);
+  console.log(`  Run a sync to fill real values from the EnrollPro transferee feed.`);
+}
+
 async function main() {
   const args = parseArgs();
   const startTime = Date.now();
 
   console.log(`=== SMART Teacher Score Seed Script ===`);
-  console.log(`Terms: ${args.terms.join(", ")} | Finalized: ${args.finalized} | Clear: ${args.clear} | Dry-run: ${args.dryRun}`);
-  console.log(`Retained: ${args.retainedCount}${args.retainedGrade ? ` (Grade ${args.retainedGrade})` : ""} (fails 4 subjects) | Remedial: ${args.remedialCount}${args.remedialGrade ? ` (Grade ${args.remedialGrade})` : ""} (fails 1-2 subjects, final 70-71)`);
-  if (args.completeTransferees) console.log(`Transferee completion: ENABLED`);
+  if (args.clearTransfereeDetails) {
+    console.log(`Mode: CLEAR SEEDED TRANSFEREE DETAILS (standalone — no grade seeding)`);
+  } else {
+    console.log(`Terms: ${args.terms.join(", ")} | Finalized: ${args.finalized} | Clear: ${args.clear} | Dry-run: ${args.dryRun}`);
+    console.log(`Retained: ${args.retainedCount}${args.retainedGrade ? ` (Grade ${args.retainedGrade})` : ""} (REGULAR only, fails 4 subjects) | Remedial: ${args.remedialCount}${args.remedialGrade ? ` (Grade ${args.remedialGrade})` : ""} (REGULAR only, fails 1-2 subjects, final 70-71)`);
+    if (args.completeTransferees) console.log(`Transferee completion: ENABLED`);
+  }
 
   const { label: schoolYearLabel, id: schoolYearId } = await resolveSchoolYear();
   console.log(`Active school year: ${schoolYearLabel}\n`);
+
+  if (args.clearTransfereeDetails) {
+    await clearSeededTransfereeDetails(schoolYearLabel);
+    console.log(`\nDone in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+    return;
+  }
 
   // Load canonical grading config from the DB so seeded grades match what the
   // app computes (class record ledger recompute + SF9/SF10 display)
@@ -448,8 +368,7 @@ async function main() {
     console.error("TransmutationEntry table is empty — run `npm run prisma:seed` first.");
     process.exit(1);
   }
-  transmute = makeTransmuter(transmutationTable);
-  transmutationRanges = transmutationTable;
+  initTransmutation(transmutationTable);
   const gradingConfigs = await prisma.gradingConfig.findMany();
 
   let adminUserId: string | null = null;
@@ -489,8 +408,9 @@ async function main() {
   const allStudents = [...studentMap.values()];
   console.log(`Unique students: ${allStudents.length}`);
 
-  // Build student → grade level map (from their enrollment section)
+  // Build student → grade level / program maps (from their enrollment section)
   const studentGradeLevels = new Map<string, string>();
+  const studentPrograms = new Map<string, string>();
   for (const sec of allSections) {
     const enrollments = await prisma.enrollment.findMany({
       where: { sectionId: sec.id, status: "ENROLLED", isArchived: false },
@@ -498,6 +418,7 @@ async function main() {
     for (const e of enrollments) {
       if (!studentGradeLevels.has(e.studentId)) {
         studentGradeLevels.set(e.studentId, sec.gradeLevel);
+        studentPrograms.set(e.studentId, sec.program);
       }
     }
   }
@@ -509,6 +430,9 @@ async function main() {
   });
   const transfereeIds = new Set(transfereeEnrollments.map(e => e.studentId));
   console.log(`Transferees: ${transfereeIds.size}`);
+
+  const steCount = [...studentPrograms.values()].filter((p) => p.toUpperCase() === "STE").length;
+  console.log(`STE learners: ${steCount} (seeded at 85+ in every subject)`);
 
   // Collect per-student enrolled subjects (from class assignments in their sections).
   // HG and non-promotional subjects are excluded — they never count as failed
@@ -532,14 +456,40 @@ async function main() {
     }
   }
 
-  // Pick special students (retained & remedial)
+  // Pick special students (retained & remedial) — REGULAR sections only
   const specialStudents = pickSpecialStudents(
     allStudents, studentSubjects, args.retainedCount, args.remedialCount,
-    studentGradeLevels, args.retainedGrade, args.remedialGrade, transfereeIds,
+    studentGradeLevels, studentPrograms, args.retainedGrade, args.remedialGrade, transfereeIds,
   );
 
-  // Assign normal tiers for non-special students
-  const normalTiers = assignNormalTiers(allStudents);
+  // Rotation groups count as ONE learning area (e.g. TLE exploratory: ICT/AFA/FCS
+  // are term strands, merged before promotion). Failing a single strand does not
+  // fail the merged subject while the other strands pass — expand each picked
+  // failed subject to its whole rotation group so EOSY finalize sees a real
+  // failure and produces a single canonical remedial row (e.g. "TLE").
+  const rotationSubjects = await prisma.subject.findMany({
+    where: { rotationTermGroupId: { not: null } },
+    select: { code: true, rotationTermGroupId: true },
+  });
+  const rotationGroupByCode = new Map(
+    rotationSubjects.map((s) => [s.code, s.rotationTermGroupId as string]),
+  );
+  for (const sp of specialStudents) {
+    const groups = new Set(
+      sp.failedSubjects
+        .map((code) => rotationGroupByCode.get(code))
+        .filter((g): g is string => Boolean(g)),
+    );
+    if (groups.size === 0) continue;
+    const expanded = new Set(sp.failedSubjects);
+    for (const [code, group] of rotationGroupByCode) {
+      if (groups.has(group)) expanded.add(code);
+    }
+    sp.failedSubjects = [...expanded];
+  }
+
+  // Assign normal tiers for non-special students (STE learners get 85+ tiers only)
+  const normalTiers = assignNormalTiers(allStudents, studentPrograms);
 
   // Log special students
   console.log(`\n--- Special Students ---`);
@@ -655,6 +605,7 @@ async function main() {
           let gradeData: {
             writtenWorkScores: Array<{ name: string; score: number; maxScore: number }> | null;
             perfTaskScores: Array<{ name: string; score: number; maxScore: number }> | null;
+            examScores?: Array<{ name: string; score: number; maxScore: number }>;
             quarterlyAssessScore: number | null;
             quarterlyAssessMax: number;
             computed: { writtenWorkPS: number | null; perfTaskPS: number | null; quarterlyAssessPS: number | null; initialGrade: number | null; quarterlyGrade: number | null };
@@ -670,8 +621,9 @@ async function main() {
               qualitativeDescriptor: descs[di],
             };
           } else {
-            // Remedial failed subjects build exact (no jitter) so QG lands at 70/71
-            const exact = tier === "REMEDIAL_FAIL_70" || tier === "REMEDIAL_FAIL_71";
+            // Remedial failed subjects build exact (no jitter) so QG lands at 70/71.
+            // STE_ELIGIBLE also builds exact so the 85 threshold is never undershot.
+            const exact = tier === "REMEDIAL_FAIL_70" || tier === "REMEDIAL_FAIL_71" || tier === "STE_ELIGIBLE";
             gradeData = buildGradeForTarget(qgTarget, weights, rand, exact);
           }
 
@@ -786,131 +738,17 @@ async function main() {
     console.log(`  Grades: ${termGrades} | Snapshots: ${termSnapshots} | Skipped: ${termSkipped}`);
   }
 
-  // ─── Promotion Status & Remedial Classes ──────────────────────────────────
-  if (!args.dryRun) {
-    console.log(`\n${"=".repeat(60)}`);
-    console.log(`PROMOTION STATUS & REMEDIAL CLASSES`);
-    console.log(`${"=".repeat(60)}`);
-
-    const nextGrade: Record<string, string> = {
-      GRADE_7: "GRADE_8",
-      GRADE_8: "GRADE_9",
-      GRADE_9: "GRADE_10",
-      GRADE_10: "GRADE_10",
-    };
-
-    // Process each special student
-    for (const sp of specialStudents) {
-      const student = allStudents.find(s => s.id === sp.studentId);
-      if (!student) continue;
-
-      // Find all enrollments for this student in the current SY
-      const enrollments = await prisma.enrollment.findMany({
-        where: {
-          studentId: sp.studentId,
-          section: { schoolYear: schoolYearLabel },
-          isArchived: false,
-        },
-        include: { section: true },
-      });
-
-      for (const enrollment of enrollments) {
-        const currentGrade = enrollment.section.gradeLevel;
-        const promotedGrade = sp.type === "RETAINED" ? null : nextGrade[currentGrade] ?? null;
-        const promotionStatus = sp.type === "RETAINED" ? "RETAINED" : "CONDITIONALLY_PROMOTED";
-
-        await prisma.enrollment.update({
-          where: { id: enrollment.id },
-          data: {
-            promotionStatus: promotionStatus as any,
-            promotedToGradeLevel: promotedGrade as any,
-          },
-        });
-
-        console.log(`  ${sp.type}: ${student.lastName}, ${student.firstName} | ${currentGrade} → ${promotedGrade ?? "STAY"}`);
-
-        // Create RemedialClass records for remedial students' failed subjects
-        if (sp.type === "REMEDIAL") {
-          for (const subjectCode of sp.failedSubjects) {
-            // Find the class assignment for this subject in the student's section
-            const ca = await prisma.classAssignment.findFirst({
-              where: {
-                sectionId: enrollment.sectionId,
-                subject: { code: subjectCode },
-                schoolYear: schoolYearLabel,
-                isActive: true,
-              },
-              include: { subject: true },
-            });
-            if (!ca) continue;
-
-            // Get the average quarterly grade across all terms for this subject
-            const grades = await prisma.grade.findMany({
-              where: {
-                studentId: sp.studentId,
-                classAssignmentId: ca.id,
-              },
-            });
-            const avgQG = grades.length > 0
-              ? grades.reduce((sum, g) => sum + (g.quarterlyGrade ?? 0), 0) / grades.length
-              : 0;
-
-            await prisma.remedialClass.upsert({
-              where: {
-                enrollmentId_subjectCode: {
-                  enrollmentId: enrollment.id,
-                  subjectCode,
-                },
-              },
-              create: {
-                enrollmentId: enrollment.id,
-                schoolYear: schoolYearLabel,
-                gradeLevel: currentGrade as any,
-                subjectCode,
-                subjectName: ca.subject.name,
-                originalGrade: Math.round(avgQG * 100) / 100,
-                status: "PENDING",
-              },
-              update: {
-                originalGrade: Math.round(avgQG * 100) / 100,
-                status: "PENDING",
-              },
-            });
-
-            console.log(`    RemedialClass: ${ca.subject.name} (avg QG: ${Math.round(avgQG * 100) / 100})`);
-          }
-        }
-      }
-    }
-
-    // Set normal students to PROMOTED
-    const specialIds = new Set(specialStudents.map(sp => sp.studentId));
-    const normalEnrollments = await prisma.enrollment.findMany({
-      where: {
-        section: { schoolYear: schoolYearLabel },
-        isArchived: false,
-        status: "ENROLLED",
-        studentId: { notIn: [...specialIds] },
-      },
-      include: { section: true },
-    });
-
-    for (const enrollment of normalEnrollments) {
-      const currentGrade = enrollment.section.gradeLevel;
-      const promotedGrade = nextGrade[currentGrade] ?? currentGrade;
-      await prisma.enrollment.update({
-        where: { id: enrollment.id },
-        data: {
-          promotionStatus: "PROMOTED" as any,
-          promotedToGradeLevel: promotedGrade as any,
-        },
-      });
-    }
-
-    console.log(`\n  Normal students set to PROMOTED: ${normalEnrollments.length}`);
-  }
+  // Promotion statuses and RemedialClass rows are NOT written here. The EOSY
+  // finalize step below (finalizeSectionEosy) is the single writer: it derives
+  // the DO 8 / DO 13 promotion matrix from the seeded grades, canonicalizes
+  // rotation subjects (one "TLE" row, not per-strand rows), and removes
+  // orphaned never-conducted PENDING rows when the decision is not
+  // CONDITIONALLY_PROMOTED.
 
   // ─── Transferee Detail Completion ───────────────────────────────────────────
+  // Only demographics are fabricated. Previous-school fields are supplied by the
+  // EnrollPro feed (contract v1.1) and must never be seeded — fabricated values
+  // would permanently block the real ones under fill-nulls-only.
   if (args.completeTransferees && !args.dryRun) {
     console.log(`\n${"=".repeat(60)}`);
     console.log(`TRANSFEREE DETAIL COMPLETION`);
@@ -921,29 +759,10 @@ async function main() {
       include: { student: true, section: true },
     });
 
-    const schoolNames = [
-      "San Jose National High School", "Sta. Rosa National High School",
-      "Binalbagan National High School", "La Castellana National High School",
-      "Hinigaran National High School (Annex)", "Pontevedra National High School",
-      "Pulupandan National High School", "Valladolid National High School",
-      "San Enrique National High School", "Ilog National High School",
-    ];
-
     let completedCount = 0;
-    for (let i = 0; i < transferees.length; i++) {
-      const t = transferees[i];
+    for (const t of transferees) {
       const studentUpdates: Record<string, any> = {};
 
-      if (!t.student.previousSchool) {
-        studentUpdates.previousSchool = schoolNames[i % schoolNames.length];
-      }
-      if (!t.student.lastGradeCompleted) {
-        const gradeNum = parseInt(t.section.gradeLevel.replace("GRADE_", "")) - 1;
-        studentUpdates.lastGradeCompleted = `Grade ${gradeNum > 0 ? gradeNum : 6}`;
-      }
-      if (!t.student.transferCertNo) {
-        studentUpdates.transferCertNo = `TC-${t.student.lrn?.slice(-6) ?? String(i).padStart(6, "0")}`;
-      }
       if (!t.student.birthDate) {
         // Generate a plausible birth date (12-16 years old)
         const age = 12 + (hashStr(t.studentId + "-age") % 5);

@@ -482,7 +482,7 @@ export async function finalizeSectionEosy(opts: {
 }): Promise<
   | { ok: false; error: "SECTION_NOT_FOUND" }
   | { ok: false; error: "DRAFT_BLOCKED"; blockers: DraftBlocker[] }
-  | { ok: true; processed: number; snapshotsCreated: number }
+  | { ok: true; processed: number; snapshotsCreated: number; remedialRowsCleared: number }
 > {
   const promotions = await computeSectionPromotions(opts.sectionId, opts.schoolYear);
   if (!promotions) return { ok: false, error: "SECTION_NOT_FOUND" };
@@ -496,6 +496,7 @@ export async function finalizeSectionEosy(opts: {
   });
 
   let snapshotsCreated = 0;
+  let remedialRowsCleared = 0;
 
   await prisma.$transaction(async (tx) => {
     for (const enrollment of promotions.enrollments) {
@@ -573,11 +574,29 @@ export async function finalizeSectionEosy(opts: {
             skipDuplicates: true,
           });
         }
+      } else {
+        // Invariant: a never-conducted PENDING remedial row may only exist on a
+        // CONDITIONALLY_PROMOTED enrollment. Once the decision is PROMOTED /
+        // RETAINED / JHS_COMPLETER such rows can never be completed
+        // (completeRemedial requires CP) and would be invisible to the
+        // tracker's Pending list while still showing in History. Rows with
+        // remedial data entered (mark or conducted dates) are kept for the
+        // registrar to resolve; COMPLETED rows are never touched.
+        const orphaned = await tx.remedialClass.deleteMany({
+          where: {
+            enrollmentId: enrollment.enrollmentId,
+            status: "PENDING",
+            remedialMark: null,
+            conductedFrom: null,
+            conductedTo: null,
+          },
+        });
+        remedialRowsCleared += orphaned.count;
       }
     }
   });
 
-  return { ok: true, processed: promotions.enrollments.length, snapshotsCreated };
+  return { ok: true, processed: promotions.enrollments.length, snapshotsCreated, remedialRowsCleared };
 }
 
 export async function unfinalizeSectionEosy(opts: {

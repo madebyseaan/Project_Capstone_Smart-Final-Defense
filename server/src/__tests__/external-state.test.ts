@@ -33,7 +33,7 @@ describe('externalState', () => {
   });
 
   it('recovery fires the handler exactly once per down→up transition', () => {
-    let calls: string[] = [];
+    const calls: string[] = [];
     setExternalRecoveryHandler((system) => calls.push(system));
 
     reportExternalFailure('enrollpro', new Error('down'));

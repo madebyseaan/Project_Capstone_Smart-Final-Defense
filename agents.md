@@ -303,6 +303,7 @@ Defined in `src/index.css` with light/dark variants.
 - Backend is in `server/src/`
 - **isActive/isArchived query rule:** operational queries (current dashboards, teacher current classes, BOSY) filter `ClassAssignment.isActive` / `Enrollment.isArchived`. Historical/SF-form queries (SF1/SF5/SF10, registrar year-scoped views, EnrollPro sync-grades pull, promotion/EOSY libs) must filter by `schoolYear` string ONLY — never by isActive/isArchived, or prior-year data disappears after rollover archiving.
 - **Grade lock precedence (T2/A1):** archived → year lock → term lock → legacy system-wide `gradeLock`. An APPROVED `GradeEditRequest` bypasses the TERM lock only; it never bypasses archived/year locks (only registrar unfinalize + admin unlock open those). Scheduler locks terms on their end dates and the year on T3 end.
+- **Remedial rollover guard (`ENROLLPRO_REMEDIAL_CONTRACT.md`):** archiving/rollover is blocked while any `CONDITIONALLY_PROMOTED` enrollment in the outgoing year has a `PENDING` remedial row (`lib/rollover.ts` + `GET /api/registrar/remedial/rollover-block`, service-auth). Dead rows (never-conducted PENDING on archived/non-CP enrollments) are cleaned by `reconcileRemedialRows` / `server/prisma/reconcile-remedial.ts [schoolYear]` (omit SY = all years).
 
 ## Communication
 - English, terse responses

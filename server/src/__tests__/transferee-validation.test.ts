@@ -8,6 +8,11 @@ import {
   normalizeLrn,
   isOfficiallyEnrolled,
   mapGradeLevelToEnum,
+  sanitizeSf9EligibilityStatus,
+  sanitizeConditionalSubjectCodes,
+  sanitizeOptionalBoolean,
+  sanitizeOptionalNumber,
+  sanitizeOptionalText,
 } from "../lib/transfereeValidation";
 
 describe("transfereeValidation", () => {
@@ -72,6 +77,78 @@ describe("transfereeValidation", () => {
       expect(mapGradeLevelToEnum("Kinder")).toBeNull();
       expect(mapGradeLevelToEnum(null)).toBeNull();
       expect(mapGradeLevelToEnum("")).toBeNull();
+    });
+  });
+
+  describe("sanitizeSf9EligibilityStatus", () => {
+    it("accepts the contract's three statuses (case-insensitive)", () => {
+      expect(sanitizeSf9EligibilityStatus("PROMOTED")).toBe("PROMOTED");
+      expect(sanitizeSf9EligibilityStatus("conditionally_promoted")).toBe("CONDITIONALLY_PROMOTED");
+      expect(sanitizeSf9EligibilityStatus(" Retained ")).toBe("RETAINED");
+    });
+
+    it("rejects unknown / missing values", () => {
+      expect(sanitizeSf9EligibilityStatus("JHS_COMPLETER")).toBeNull();
+      expect(sanitizeSf9EligibilityStatus("")).toBeNull();
+      expect(sanitizeSf9EligibilityStatus(null)).toBeNull();
+      expect(sanitizeSf9EligibilityStatus(undefined)).toBeNull();
+    });
+  });
+
+  describe("sanitizeConditionalSubjectCodes", () => {
+    it("returns an empty array for no back subjects", () => {
+      expect(sanitizeConditionalSubjectCodes([])).toEqual([]);
+    });
+
+    it("preserves order and trims codes", () => {
+      expect(sanitizeConditionalSubjectCodes([" MATH ", "ENG"])).toEqual(["MATH", "ENG"]);
+    });
+
+    it("rejects malformed payloads and cardinality violations", () => {
+      expect(sanitizeConditionalSubjectCodes(["MATH", "ENG", "SCI"])).toBeNull();
+      expect(sanitizeConditionalSubjectCodes(["MATH", ""])).toBeNull();
+      expect(sanitizeConditionalSubjectCodes("MATH")).toBeNull();
+      expect(sanitizeConditionalSubjectCodes(null)).toBeNull();
+      expect(sanitizeConditionalSubjectCodes(undefined)).toBeNull();
+    });
+  });
+
+  describe("sanitizeOptionalBoolean", () => {
+    it("passes through booleans", () => {
+      expect(sanitizeOptionalBoolean(true)).toBe(true);
+      expect(sanitizeOptionalBoolean(false)).toBe(false);
+    });
+
+    it("rejects non-boolean or missing values", () => {
+      expect(sanitizeOptionalBoolean("true")).toBeNull();
+      expect(sanitizeOptionalBoolean(1)).toBeNull();
+      expect(sanitizeOptionalBoolean(null)).toBeNull();
+    });
+  });
+
+  describe("sanitizeOptionalNumber", () => {
+    it("passes through finite numbers", () => {
+      expect(sanitizeOptionalNumber(84.5)).toBe(84.5);
+      expect(sanitizeOptionalNumber(0)).toBe(0);
+    });
+
+    it("rejects numeric strings, NaN, Infinity, and null", () => {
+      expect(sanitizeOptionalNumber("84.5")).toBeNull();
+      expect(sanitizeOptionalNumber(NaN)).toBeNull();
+      expect(sanitizeOptionalNumber(Infinity)).toBeNull();
+      expect(sanitizeOptionalNumber(null)).toBeNull();
+    });
+  });
+
+  describe("sanitizeOptionalText", () => {
+    it("trims and returns non-empty strings", () => {
+      expect(sanitizeOptionalText("  Rizal NHS ")).toBe("Rizal NHS");
+    });
+
+    it("returns null for blank, non-string, or missing values", () => {
+      expect(sanitizeOptionalText("   ")).toBeNull();
+      expect(sanitizeOptionalText(123)).toBeNull();
+      expect(sanitizeOptionalText(null)).toBeNull();
     });
   });
 });

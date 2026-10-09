@@ -703,9 +703,14 @@ export default function RegistrarDashboardPage() {
 
         {/* Grade Summary */}
         <div className="bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
-          <div className="flex items-center gap-2 mb-4">
-            <Target className="w-4 h-4" style={{ color: colors.primary }} />
-            <h3 className="text-sm font-bold text-foreground">Grade Summary</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Target className="w-4 h-4" style={{ color: colors.primary }} />
+              <h3 className="text-sm font-bold text-foreground">Grade Summary</h3>
+            </div>
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+              {gradePerformance.term ? `Current Term · ${gradePerformance.term}` : "Current Term"}
+            </span>
           </div>
           {gradePerformance.totalGraded === 0 ? (
             <div className="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50/60 p-3">
@@ -765,7 +770,7 @@ export default function RegistrarDashboardPage() {
           {showFailingList && gradePerformance.failingStudents.length > 0 && (
             <div className="mt-3 pt-3 border-t border-border">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Students Below 75 Average</p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Students With Failing Subject(s)</p>
                 <span className="text-[10px] text-muted-foreground">{gradePerformance.failingStudents.length} student(s)</span>
               </div>
               <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
@@ -775,6 +780,7 @@ export default function RegistrarDashboardPage() {
                       <th className="text-left font-semibold text-muted-foreground px-3 py-2">Student</th>
                       <th className="text-left font-semibold text-muted-foreground px-3 py-2">Section</th>
                       <th className="text-left font-semibold text-muted-foreground px-3 py-2">Grade</th>
+                      <th className="text-center font-semibold text-muted-foreground px-3 py-2">Failed</th>
                       <th className="text-right font-semibold text-muted-foreground px-3 py-2">Avg</th>
                     </tr>
                   </thead>
@@ -784,12 +790,18 @@ export default function RegistrarDashboardPage() {
                         <td className="px-3 py-1.5 font-medium text-foreground">{s.studentName}</td>
                         <td className="px-3 py-1.5 text-muted-foreground">{s.sectionName}</td>
                         <td className="px-3 py-1.5 text-muted-foreground">{s.gradeLevel?.replace("GRADE_", "Grade ")}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className={`font-bold ${s.failingSubjects >= 3 ? "text-red-600" : "text-amber-600"}`}>{s.failingSubjects}</span>
+                        </td>
                         <td className="px-3 py-1.5 text-right font-bold text-red-500">{s.average}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                3+ failed subjects = retained at year end; 1–2 = for remedial classes.
+              </p>
             </div>
           )}
         </div>
@@ -859,6 +871,7 @@ export default function RegistrarDashboardPage() {
                             <thead>
                               <tr className="bg-red-50">
                                 <th className="text-left font-semibold text-red-600 px-3 py-1.5">Student</th>
+                                <th className="text-center font-semibold text-red-600 px-3 py-1.5">Failed</th>
                                 <th className="text-right font-semibold text-red-600 px-3 py-1.5">Average</th>
                               </tr>
                             </thead>
@@ -866,6 +879,9 @@ export default function RegistrarDashboardPage() {
                               {s.failingStudents.map((fs, j) => (
                                 <tr key={j} className="border-t border-red-100/50">
                                   <td className="px-3 py-1 text-foreground">{fs.studentName}</td>
+                                  <td className="px-3 py-1 text-center">
+                                    <span className={`font-bold ${fs.failingSubjects >= 3 ? "text-red-600" : "text-amber-600"}`}>{fs.failingSubjects}</span>
+                                  </td>
                                   <td className="px-3 py-1 text-right font-bold text-red-500">{fs.average}</td>
                                 </tr>
                               ))}

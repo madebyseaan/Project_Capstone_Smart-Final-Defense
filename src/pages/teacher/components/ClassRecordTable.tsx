@@ -142,16 +142,16 @@ export function ClassRecordTable({
     return () => observers.forEach((o) => o?.disconnect());
   }, [wwCount, ptCount]);
 
-  const weights = {
+  const weights = useMemo(() => ({
     ww: effectiveWeights?.ww ?? classAssignment.subject.writtenWorkWeight,
     pt: effectiveWeights?.pt ?? classAssignment.subject.perfTaskWeight,
     qa: effectiveWeights?.qa ?? classAssignment.subject.quarterlyAssessWeight,
-  };
+  }), [effectiveWeights, classAssignment]);
 
   // Phase 7: Partition visible AIMS assessments by category
-  const aimsWW = aimsAssessments.filter(a => a.category === 'WW');
-  const aimsPT = aimsAssessments.filter(a => a.category === 'PT');
-  const aimsQA = aimsAssessments.filter(a => a.category === 'QA');
+  const aimsWW = useMemo(() => aimsAssessments.filter(a => a.category === 'WW'), [aimsAssessments]);
+  const aimsPT = useMemo(() => aimsAssessments.filter(a => a.category === 'PT'), [aimsAssessments]);
+  const aimsQA = useMemo(() => aimsAssessments.filter(a => a.category === 'QA'), [aimsAssessments]);
 
   // Phase 7: Derive per-column isAims flags from ALL grades for the selected term
   const gradeList = useMemo(() =>

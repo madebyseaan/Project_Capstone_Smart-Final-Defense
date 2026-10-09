@@ -254,7 +254,9 @@ export default function SF9Form({ data, fullLogoUrl, highlightSubject }: SF9Form
           <p className="text-sm text-gray-900 font-medium">Class Adviser</p>
         </div>
         <div className="text-center">
-          <div className="border-b border-gray-600 mx-8 mb-1 h-8"></div>
+          <div className="border-b border-gray-600 mx-8 mb-1 min-h-[2rem] flex items-end justify-center font-bold text-gray-900">
+            {data.schoolSettings?.schoolHeadName || ""}
+          </div>
           <p className="text-sm text-gray-900 font-medium">School Principal</p>
         </div>
       </div>

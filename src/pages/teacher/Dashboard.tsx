@@ -66,6 +66,7 @@ interface DashboardData {
   transferredCount?: number;
   archivedClasses?: ArchivedClassInfo[];
   currentTerm: string;
+  currentSchoolYear?: string;
   gradeDeadline?: GradeDeadlineInfo | null;
 }
 
@@ -382,7 +383,7 @@ export default function TeacherDashboard() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
                 </span>
-                <span>S.Y. {data.classAssignments[0]?.schoolYear || "2029-2030"}</span>
+                <span>S.Y. {data.classAssignments[0]?.schoolYear || data.currentSchoolYear || "—"}</span>
                 <span className="text-white/40">•</span>
                 <span className="text-amber-200 font-bold">
                   {data.currentTerm === "T1" ? "Term 1" : data.currentTerm === "T2" ? "Term 2" : data.currentTerm === "T3" ? "Term 3" : "Active Term"}

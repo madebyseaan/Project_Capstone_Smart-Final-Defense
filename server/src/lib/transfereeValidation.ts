@@ -69,3 +69,55 @@ export function mapGradeLevelToEnum(input: unknown): string | null {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// v1.1 transferee-details contract (2026-09-29) — pure field sanitizers
+// ---------------------------------------------------------------------------
+
+export const SF9_ELIGIBILITY_STATUSES = [
+  "PROMOTED",
+  "CONDITIONALLY_PROMOTED",
+  "RETAINED",
+] as const;
+
+export type Sf9EligibilityStatusValue = (typeof SF9_ELIGIBILITY_STATUSES)[number];
+
+/** Contract enum `sf9EligibilityStatus`; unknown values are rejected (null). */
+export function sanitizeSf9EligibilityStatus(value: unknown): Sf9EligibilityStatusValue | null {
+  const raw = String(value ?? "").trim().toUpperCase();
+  return (SF9_ELIGIBILITY_STATUSES as readonly string[]).includes(raw)
+    ? (raw as Sf9EligibilityStatusValue)
+    : null;
+}
+
+/**
+ * `conditionalSubjectCodes` — 0-2 non-empty strings, order preserved.
+ * Returns null for a malformed payload or a cardinality violation so the
+ * caller keeps the previously stored value instead of writing bad data.
+ */
+export function sanitizeConditionalSubjectCodes(value: unknown): string[] | null {
+  if (value == null) return null;
+  if (!Array.isArray(value)) return null;
+  const codes = value
+    .map((code) => (typeof code === "string" ? code.trim() : ""))
+    .filter((code) => code.length > 0 && code.length <= 50);
+  if (codes.length !== value.length || codes.length > 2) return null;
+  return codes;
+}
+
+/** Strict optional boolean — non-boolean payloads are skipped (null). */
+export function sanitizeOptionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+/** Strict optional finite number — numeric strings are not coerced. */
+export function sanitizeOptionalNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Optional text — trimmed; blank/absent/non-string becomes null. */
+export function sanitizeOptionalText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}

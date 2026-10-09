@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from "react";
 import { FileDown, FileUp, Loader2, AlertTriangle, Info, CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/lib/toast";
+import { downloadBlobResponse } from "@/lib/download";
 import { gradesApi, type EcrImportReport } from "@/lib/api";
 
 interface ExcelExchangePanelProps {
@@ -10,6 +11,10 @@ interface ExcelExchangePanelProps {
   isViewOnly: boolean;
   /** When true, immediately open the OS file picker on mount (used by hero "Import filled Excel") */
   autoStartImport?: boolean;
+  /** Called after a successful import so the ledger can refresh */
+  onImported?: () => void;
+  /** Called before preview/import so pending unsaved scores are persisted first */
+  beforeImport?: () => Promise<void>;
 }
 
 interface ApiErrorBody {
@@ -17,21 +22,52 @@ interface ApiErrorBody {
   details?: string[];
 }
 
+const TERM_KEYS = ["T1", "T2", "T3"] as const;
+
+function formatSyncedAt(iso: string | null): string {
+  if (!iso) return "Never";
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function errorMessage(err: unknown): string {
   const body = (err as { response?: { data?: ApiErrorBody } })?.response?.data;
   return body?.message || body?.details?.join(" ") || "Request failed. Please try again.";
 }
 
-export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly, autoStartImport = false }: ExcelExchangePanelProps) {
+export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly, autoStartImport = false, onImported, beforeImport }: ExcelExchangePanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<EcrImportReport | null>(null);
   const [busy, setBusy] = useState<"downloading" | "previewing" | "importing" | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   // Reset preview when the term or class changes
   useEffect(() => {
     setFile(null);
     setReport(null);
+  }, [classAssignmentId, selectedTerm]);
+
+  // Load the persisted last-synced timestamp for the selected term
+  useEffect(() => {
+    let cancelled = false;
+    setLastSyncedAt(null);
+    gradesApi
+      .ecrSync(classAssignmentId)
+      .then((res) => {
+        if (cancelled) return;
+        const key = TERM_KEYS.find((t) => t === selectedTerm);
+        setLastSyncedAt(key ? res.data[key] : null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [classAssignmentId, selectedTerm]);
 
   // Open the OS file picker immediately when requested by the hero action
@@ -43,14 +79,7 @@ export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly
     setBusy("downloading");
     try {
       const res = await gradesApi.ecrExport(classAssignmentId, selectedTerm);
-      const url = window.URL.createObjectURL(new Blob([res.data as Blob]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `E-Class-Record-${selectedTerm}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      downloadBlobResponse(res, `E-Class-Record-${selectedTerm}.xlsx`);
       toast.success("Official E-Class-Record downloaded — it opens pre-filled with your roster.");
     } catch (err) {
       toast.error(errorMessage(err));
@@ -67,6 +96,7 @@ export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly
     setReport(null);
     setBusy("previewing");
     try {
+      await beforeImport?.();
       const res = await gradesApi.ecrImport(classAssignmentId, selectedTerm, picked, true);
       setReport(res.data);
     } catch (err) {
@@ -81,10 +111,13 @@ export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly
     if (!file) return;
     setBusy("importing");
     try {
+      await beforeImport?.();
       const res = await gradesApi.ecrImport(classAssignmentId, selectedTerm, file, false);
       toast.success(`Imported scores for ${res.data.savedCount} learner(s).`);
+      setLastSyncedAt(res.data.lastSyncedAt ?? new Date().toISOString());
       setFile(null);
       setReport(null);
+      onImported?.();
     } catch (err) {
       toast.error(errorMessage(err));
     } finally {
@@ -107,6 +140,9 @@ export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly
             <span className="text-sm font-bold text-foreground">Official E-Class-Record</span>
             <p className="text-xs text-muted-foreground mt-0.5">
               Work offline in the DepEd Excel — download it pre-filled with your roster, then import scores back.
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Last synced: <span className="font-medium text-foreground">{formatSyncedAt(lastSyncedAt)}</span>
             </p>
           </div>
         </div>

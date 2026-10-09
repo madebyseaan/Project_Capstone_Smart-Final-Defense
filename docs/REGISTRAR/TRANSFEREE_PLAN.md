@@ -9,6 +9,14 @@
 > inclusion changed — see §5. **Implemented 2026-09-12** in `enrollproClient.ts` /
 > `enrollproSync.ts` (migration `20260912120000_add_enrollpro_application_id` applied). See §6.
 >
+> **Contract update (2026-09-29, v1.1):** the existing feed now carries 10 transferee-detail
+> fields (previous school name/ID, TC no., previous average, last grade completed, SF9
+> eligibility, up to 2 back-subject codes, SF9/PSA flags, temporary-enrollment flag).
+> **SMART consumption implemented 2026-09-29** — migration
+> `20260929000000_transferee_contract_v11`, sync persistence, registrar API + badges. See §6.4.
+> This supersedes the "Explicitly NOT provided" list in §5 for exactly those fields; all other
+> exclusions (birthdate, sex, guardian/contact data, document images, credentials) remain.
+>
 > **Test rule (binding):** no phase/step is "done" until its test gate passes — see §11. Never
 > conclude work on an unrun, skipped, or failing test.
 > All file:line references below were verified against the codebase on 2026-09-04.
@@ -184,18 +192,24 @@ Query: schoolYearId (optional; omit = authoritative active year), page (default 
 
 ### Explicitly NOT provided (registrar must complete / capture in SMART)
 
-Confirmed by the 2026-09-11 handoff. SMART must not infer, fabricate, or scrape these from another
-endpoint — a separate versioned contract is required before EnrollPro exposes them:
+Confirmed by the 2026-09-11 handoff — **partially superseded by contract v1.1 (2026-09-29)**.
+SMART must not infer, fabricate, or scrape any field from another endpoint:
 
 - `birthDate`, `gender` — may already exist on the Student from the main learners feed; the registrar
-  completion UI flags whichever are still null.
-- `previousSchool`, `originatingSchoolId`, `transferCertNo`, `previousGenAve` — registrar enters.
-- `hasSf9`, `hasPsa` document flags, `isTemporarilyEnrolled`, `isRemedialRequired`.
-- `sf9EligibilityStatus` (`PROMOTED` | `CONDITIONALLY_PROMOTED` | `RETAINED`).
-- `conditionalSubjectCodes` (1–2 ATLAS back subjects for conditionally promoted transferees).
+  completion UI flags whichever are still null. **(Still not in the transferee feed.)**
+- ~~`previousSchool`, `originatingSchoolId`, `transferCertNo`, `previousGenAve` — registrar enters.~~
+  **Now provided by v1.1** (`previousSchoolName` / `originatingSchoolId` / `transferCertificateNo` /
+  `previousGenAve`); persisted fill-null-only, registrar values win.
+- ~~`hasSf9`, `hasPsa` document flags, `isTemporarilyEnrolled`, `isRemedialRequired`.~~
+  **`hasSf9` / `hasPsa` / `isTemporarilyEnrolled` now provided by v1.1** (feed signals, not a
+  document audit trail). `isRemedialRequired` remains outside the feed.
+- ~~`sf9EligibilityStatus` (`PROMOTED` | `CONDITIONALLY_PROMOTED` | `RETAINED`).~~ **Now provided by v1.1.**
+- ~~`conditionalSubjectCodes` (1–2 ATLAS back subjects for conditionally promoted transferees).~~
+  **Now provided by v1.1.**
 
-SF9 eligibility and back subjects are legitimate future academic inputs (see
-`docs/REGISTRAR/SF10_SF9_IMPORT_PLAN.md`), but they are **not** in the current feed.
+SF9 eligibility and back subjects are legitimate academic inputs (see
+`docs/REGISTRAR/SF10_SF9_IMPORT_PLAN.md`); as of contract v1.1 they arrive directly from the
+transferee feed (see §6.4) instead of being registrar-captured.
 
 ---
 
@@ -261,8 +275,8 @@ Notes:
 - **Retain last-known roster on failure.** The feed is fail-soft today (catch + warn). The handoff
   requires stronger semantics: on an error or incomplete page set, keep the previous roster and mark
   it stale — never replace it with an empty set. Empty archived responses must not delete history.
-- **No back subjects / SF9 eligibility from the feed** — see §5. Those are registrar-captured in the
-  SF10/SF9 import plan.
+- **No back subjects / SF9 eligibility from the feed** — true until 2026-09-11; contract v1.1
+  (2026-09-29) now supplies them — see §6.4.
 
 ### 6.3 `server/src/lib/syncCoordinator.ts` — wire into the cycle
 
@@ -274,6 +288,46 @@ Also include the result in `UnifiedSyncResult` (syncCoordinator.ts:58-79) as a n
 `status: "success" | "stale"` in addition to `tagged` / `unmatched`.
 
 **Acceptance:** with a real or mocked feed, a student enrolled in EnrollPro as TRANSFEREE gets `transferInDate` set after one sync cycle; nothing else changes; sync never fails when the endpoint 404s/times out (fail-soft verified).
+
+### 6.4 Contract v1.1 transferee details (IMPLEMENTED 2026-09-29)
+
+`syncTransferees()` persists the v1.1 fields with two ownership rules:
+
+| Feed field(s) | Storage | Write rule |
+|---|---|---|
+| `previousSchoolName`, `originatingSchoolId`, `transferCertificateNo`, `lastGradeCompleted`, `previousGenAve` | `Student.previousSchool` / `.originatingSchoolId` / `.transferCertNo` / `.lastGradeCompleted` / `.previousGenAve` | **Fill nulls only** — registrar-entered values are never overwritten |
+| `hasPsa` | `Student.hasPsa` | Feed-owned; refreshed when the value changes |
+| `sf9EligibilityStatus`, `conditionalSubjectCodes`, `hasSf9`, `isTemporarilyEnrolled` | `Enrollment.sf9EligibilityStatus` (new enum), `.conditionalSubjectCodes` (`String[]`), `.hasSf9`, `.isTemporarilyEnrolled` | Feed-owned; refreshed when the value changes |
+| — | `Enrollment.transfereeDetailsSyncedAt` | Set whenever a v1.1 field is applied (feed provenance) |
+
+- Migration `20260929000000_transferee_contract_v11` (additive). `originatingSchoolId` is a string
+  to preserve leading zeroes.
+- Validation is defensive (`transfereeValidation.ts` sanitizers): eligibility must be one of the
+  three contract values; back subjects must be 0–2 non-empty strings — a cardinality violation or
+  malformed payload skips the write and keeps the stored value; booleans/numbers are strictly typed.
+- Registrar `GET /transferees` exposes the data under `details` (originating school ID, previous
+  average) and `enrollpro` (eligibility, back subjects, document flags, temporary flag, sync
+  timestamp). The Transferees page renders badges and a read-only details block.
+- Per the contract, feed flags are **not** a document-audit trail — the UI labels them as
+  EnrollPro-sourced and never marks a document verified from them.
+- Scope validation, pagination, auth (`X-Integration-Key`), and fail-soft staleness are unchanged
+  from §6.1–6.3. The `UnifiedSyncResult.transferees` payload gains `detailsUpdated`.
+- Seed hygiene: `seed-teacher-scores.ts --complete-transferees` no longer fabricates
+  `previousSchool`/`lastGradeCompleted`/`transferCertNo` (fake values would permanently block the
+  feed under fill-nulls-only). `--clear-transferee-details` is a standalone mode that removes values
+  created by older seed runs so the next sync fills real data.
+- Feed diagnostics: `SmartTransfereeFeedResult.contractVersion` captures `meta.contractVersion`
+  (verified live `"1.1"`) and is logged by `syncTransferees` for staleness troubleshooting.
+- TC source of truth: EnrollPro's `application_previous_schools.transfer_certificate_no` (via
+  `data[i].transferCertificateNo`). Null means never encoded — SMART shows it missing and keeps the
+  registrar-entry path; it never fabricates or overwrites with null. See
+  `docs/ENROLLPRO_TRANSFEREE_TC_MISSING_REPORT.md`.
+- Verification (2026-09-29): `vitest run transferee-validation` 21/21; full backend suite
+  422 passed / 3 env-dependent live-server failures (pre-existing, `external-records-api` 403s);
+  server + root builds clean; no new lint errors. Live check on SY 2022-2023 (EP year id 1):
+  feed returns all v1.1 fields for 10/10 transferees except `transferCertificateNo` (null — EnrollPro
+  has not stored TCs for these records); sync filled real previous-school values after clearing
+  seed fakes.
 
 ---
 

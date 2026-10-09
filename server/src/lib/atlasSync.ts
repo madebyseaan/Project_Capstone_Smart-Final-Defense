@@ -20,13 +20,16 @@ import { syncAdvisoryWorkloadEntry } from './workload';
 import { setCachedAtlasFaculty, setCachedEffectiveTeachingLoad } from './syncCache';
 import {
   atlasGet,
-  ATLAS_BASE,
   ATLAS_SCHOOL_ID,
-  HttpError,
   resolveAtlasSchoolYear,
   fetchEffectiveTeachingLoad,
   invalidateAtlasSchoolYearCache,
 } from './sync/httpClient';
+import {
+  syncAtlasPublishedSchedule,
+  getAtlasScheduleSyncState,
+  type AtlasFacultyIndex,
+} from './atlasScheduleSync';
 import {
   mapGradeLevel,
   resolveSubjectCode,
@@ -161,37 +164,11 @@ function markTeachingLoadSuccess(
 }
 
 // -- Schedule sync state ----------------------------------------------------
+// Published-schedule fetch/persist state lives in atlasScheduleSync.ts
+// (term-aware contract pin 70a51608). Re-exported here for getSyncStatus().
 
-export interface AtlasScheduleSyncState {
-  activeTermIndex: number | null;
-  orderedTerms: Array<{ order: number; identity: string; displayLabel: string }>;
-  terms: Array<{ termIndex: number; displayLabel: string | null; revisionMarker: string | null; entries: number }>;
-  snapshotGaps: string[];
-}
-
-let lastScheduleSync: AtlasScheduleSyncState | null = null;
-
-export function getAtlasScheduleSyncState(): AtlasScheduleSyncState | null {
-  if (!lastScheduleSync) return null;
-  return {
-    ...lastScheduleSync,
-    orderedTerms: lastScheduleSync.orderedTerms.map(t => ({ ...t })),
-    terms: lastScheduleSync.terms.map(t => ({ ...t })),
-    snapshotGaps: [...lastScheduleSync.snapshotGaps],
-  };
-}
-
-/**
- * Human-readable description for ATLAS schedule-read failures.
- * `409 ACTIVE_SCHOOL_YEAR_AMBIGUOUS` is not retryable — it means a human must
- * choose the active year (ATLAS contract §5).
- */
-function describeAtlasError(err: unknown): string {
-  if (err instanceof HttpError && err.statusCode === 409) {
-    return 'ACTIVE_SCHOOL_YEAR_AMBIGUOUS — ATLAS has more than one active school year; a human must resolve which year is current';
-  }
-  return err instanceof Error ? err.message : String(err);
-}
+export { getAtlasScheduleSyncState };
+export type { AtlasScheduleSyncState } from './atlasScheduleSync';
 
 // -- Core sync logic --------------------------------------------------------
 export async function runAtlasSync(): Promise<typeof lastSyncResult> {
@@ -292,6 +269,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
 
     // Match ATLAS faculty by externalId first, then fallback to email.
     const atlasIdToSmartTeacherId = new Map<number, string>();
+    const atlasExternalIdToSmartTeacherId = new Map<number, string>();
     for (const af of atlasFaculty) {
       const externalId = Number(af.externalId ?? NaN);
       const externalMatch = Number.isFinite(externalId)
@@ -307,9 +285,18 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       const tid = externalTeacherId ?? directEmployeeIdMatch ?? emailMatch;
       if (tid) {
         atlasIdToSmartTeacherId.set(af.id, tid);
+        // §7.3 of the term-aware schedule contract: faculty.externalId /
+        // employeeId are the preferred join keys over the ATLAS surrogate id.
+        if (Number.isFinite(externalId)) atlasExternalIdToSmartTeacherId.set(externalId, tid);
         matched++;
       }
     }
+
+    const facultyIndex: AtlasFacultyIndex = {
+      byAtlasId: atlasIdToSmartTeacherId,
+      byExternalId: atlasExternalIdToSmartTeacherId,
+      byEmployeeId: smartTeacherIdByEmployeeId,
+    };
 
     // 3.1 Build EnrollPro sectionId → section details map for ATLAS assignments
     // Contract: scoped sections only — unscoped fallback removed from ownership path.
@@ -567,109 +554,6 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         desiredAssignmentPairs.add(`${load.smartTeacherId}:${subject.id}:${section.id}`);
       }
     }
-
-    type PublishedTermPayload = {
-      termIndex: number | null;
-      revisionMarker: string | null;
-      entries: any[];
-      orderedTerms: any[];
-      snapshotGaps: string[];
-    };
-
-    // 5.2 Fetch published schedules (ATLAS term-aware contract).
-    // ATLAS requires an explicit termIndex — omitting it resolves to the ACTIVE
-    // term, never an all-term read. We read the ordered-term list from `source`
-    // and fetch every term we display, so the teacher view is correct no matter
-    // which term the local resolver reports. Published schedule is timetable
-    // truth (dates/times/rooms) — ownership still comes from the effective load.
-    const fetchPublishedTerm = async (term: number | 'active'): Promise<PublishedTermPayload> => {
-      const data = await atlasGet(
-        `/schools/${ATLAS_SCHOOL_ID}/school-years/${atlasSchoolYearId}/schedules/published?termIndex=${term}`,
-      );
-      const source = data?.source ?? {};
-      const termIndex = Number(source.termIndex);
-      return {
-        termIndex: Number.isFinite(termIndex) ? termIndex : null,
-        revisionMarker: typeof source.revisionMarker === 'string' ? source.revisionMarker : null,
-        entries: Array.isArray(data?.entries) ? data.entries : [],
-        orderedTerms: Array.isArray(source.orderedTerms) ? source.orderedTerms : [],
-        snapshotGaps: Array.isArray(source.snapshotGaps) ? source.snapshotGaps.map(String) : [],
-      };
-    };
-
-    const publishedScheduleTerms: Array<{ termIndex: number; revisionMarker: string | null; entries: any[] }> = [];
-    let orderedTerms: Array<{ order: number; identity: string; displayLabel: string }> = [];
-    let scheduleActiveTermIndex: number | null = null;
-    let scheduleSnapshotGaps: string[] = [];
-
-    try {
-      const activePayload = await fetchPublishedTerm('active');
-      scheduleActiveTermIndex = activePayload.termIndex;
-      orderedTerms = activePayload.orderedTerms
-        .filter((t: any) => Number.isFinite(Number(t?.order)))
-        .map((t: any) => ({
-          order: Number(t.order),
-          identity: String(t.identity ?? t.order),
-          displayLabel: String(t.displayLabel ?? `TERM ${t.order}`),
-        }));
-      scheduleSnapshotGaps = activePayload.snapshotGaps;
-      if (activePayload.termIndex != null) {
-        publishedScheduleTerms.push({
-          termIndex: activePayload.termIndex,
-          revisionMarker: activePayload.revisionMarker,
-          entries: activePayload.entries,
-        });
-      }
-    } catch (err: any) {
-      const message = describeAtlasError(err);
-      errors.push(`ATLAS published schedule (active term) fetch failed: ${message}`);
-      logger.warn(`[AtlasSync] Published schedule active-term fetch failed: ${message}`);
-    }
-
-    if (scheduleSnapshotGaps.length > 0) {
-      logger.warn(
-        `[AtlasSync] ATLAS snapshot gaps for published schedule: ${scheduleSnapshotGaps.join(', ')} — payload may be incomplete`,
-      );
-    }
-
-    const scheduleTermOrders = orderedTerms.length > 0
-      ? orderedTerms.map(t => t.order)
-      : [1, 2, 3];
-    const labelByOrder = new Map(orderedTerms.map(t => [t.order, t.displayLabel]));
-
-    for (const term of scheduleTermOrders) {
-      if (term === scheduleActiveTermIndex) continue;
-      try {
-        const payload = await fetchPublishedTerm(term);
-        publishedScheduleTerms.push({
-          termIndex: payload.termIndex ?? term,
-          revisionMarker: payload.revisionMarker,
-          entries: payload.entries,
-        });
-      } catch (err: any) {
-        const message = describeAtlasError(err);
-        errors.push(`ATLAS published schedule term ${term} fetch failed: ${message}`);
-        logger.warn(`[AtlasSync] Published schedule term ${term} fetch failed: ${message}`);
-      }
-    }
-
-    lastScheduleSync = {
-      activeTermIndex: scheduleActiveTermIndex,
-      orderedTerms,
-      terms: publishedScheduleTerms.map(t => ({
-        termIndex: t.termIndex,
-        displayLabel: labelByOrder.get(t.termIndex) ?? null,
-        revisionMarker: t.revisionMarker,
-        entries: t.entries.length,
-      })),
-      snapshotGaps: scheduleSnapshotGaps,
-    };
-
-    logger.debug(
-      `[AtlasSync] Published schedule terms: ${publishedScheduleTerms
-        .map(t => `${t.termIndex}=${t.entries.length}`)
-        .join(', ') || 'none'} (orderedTerms=${orderedTerms.map(t => t.identity).join('/') || 'fallback 1-3'})`,
-    );
 
     // 6. Upsert loads from effective endpoint into ClassAssignment
     // Run BEFORE stale-check so desiredAssignmentPairs is fully populated
@@ -1031,183 +915,18 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       }
     }
 
-    // 6.6 Persist published schedule entries as ScheduleEntry records
-    // Published schedule is timetable truth (dates/times/rooms) — NOT ownership.
-    // Name-based section fallback is acceptable here (not an ownership path).
-    {
-      // Build name-based section lookup for schedule resolution (local to this block)
-      const epSectionByName = new Map<string, any>();
-      for (const [, s] of epSectionById) {
-        if (s?.name) epSectionByName.set(s.name.trim().toLowerCase(), s);
-      }
-
-      const allScheduleEntries: Array<{
-        teacherId: string; subjectCode: string; sectionName: string;
-        gradeLevel: GradeLevel; day: string; startTime: string; endTime: string; roomId: number | null;
-        termIndex: number | null;
-      }> = [];
-      let totalPubEntries = 0;
-      let skippedNoDay = 0;
-      let skippedNoSubject = 0;
-      let skippedNoSection = 0;
-      let skippedNoFaculty = 0;
-      for (const term of publishedScheduleTerms) {
-        totalPubEntries += term.entries.length;
-        for (const entry of term.entries) {
-          const day = entry?.day;
-          const startTime = entry?.startTime;
-          const endTime = entry?.endTime;
-          if (!day || !startTime || !endTime) { skippedNoDay++; continue; }
-          if (entry?.faculty?.isPlaceholder) continue;
-          const atlasFacultyId = Number(entry?.faculty?.id ?? entry?.faculty?.atlasId ?? entry?.facultyId);
-          const smartTeacherId = Number.isFinite(atlasFacultyId)
-            ? atlasIdToSmartTeacherId.get(atlasFacultyId)
-            : undefined;
-          if (!smartTeacherId) { skippedNoFaculty++; continue; }
-          const subjectCode = normalizeAtlasSubjectCode(entry?.subject?.code ?? entry?.subjectCode);
-          if (!subjectCode) {
-            skippedNoSubject++;
-            continue;
-          }
-          const sectionId = Number(entry?.section?.externalId ?? entry?.section?.id ?? entry?.sectionId);
-          if (!Number.isFinite(sectionId)) {
-            skippedNoSection++;
-            continue;
-          }
-          let epSection = epSectionById.get(sectionId);
-          if (!epSection?.name) {
-            const atlasSectionName = entry?.section?.name ?? entry?.sectionName;
-            if (atlasSectionName) {
-              epSection = epSectionByName.get(atlasSectionName.trim().toLowerCase()) ?? null;
-            }
-          }
-          if (!epSection?.name) { skippedNoSection++; continue; }
-          const gradeLevelRaw = epSection.gradeLevel?.name ?? epSection.gradeLevelName ?? epSection.name;
-          const gradeLevel = mapGradeLevel(gradeLevelRaw);
-          if (!gradeLevel) continue;
-          const roomId = entry?.room?.id ?? entry?.roomId ?? null;
-          const entryTermIndex = Number(entry?.termIndex);
-          allScheduleEntries.push({
-            teacherId: smartTeacherId, subjectCode, sectionName: epSection.name,
-            gradeLevel, day, startTime, endTime, roomId: Number.isFinite(Number(roomId)) ? Number(roomId) : null,
-            termIndex: Number.isFinite(entryTermIndex) ? entryTermIndex : term.termIndex,
-          });
-        }
-      }
-
-      const hgScheduleSkipped = allScheduleEntries.filter(e => e.subjectCode.toUpperCase().startsWith('HG')).length;
-      const filteredScheduleEntries = allScheduleEntries.filter(e => !e.subjectCode.toUpperCase().startsWith('HG'));
-      if (hgScheduleSkipped > 0) logger.info(`[AtlasSync] Skipped ${hgScheduleSkipped} HG schedule entries`);
-      if (filteredScheduleEntries.length > 0) {
-        let scheduleCreated = 0;
-        let scheduleCleaned = 0;
-        const teacherIdsWithSchedule = new Set(filteredScheduleEntries.map(e => e.teacherId));
-
-        // A class that repeats identically across terms (year-long subjects) collapses
-        // onto one row: store termIndex=null so it is treated as term-agnostic.
-        const classKeyOf = (e: (typeof filteredScheduleEntries)[number]) =>
-          `${e.teacherId}:${e.subjectCode}:${e.gradeLevel}:${e.sectionName.trim()}:${e.day}:${e.startTime}`;
-        const termIndexesByClassKey = new Map<string, Set<number | null>>();
-        for (const entry of filteredScheduleEntries) {
-          const key = classKeyOf(entry);
-          const terms = termIndexesByClassKey.get(key) ?? new Set<number | null>();
-          terms.add(entry.termIndex);
-          termIndexesByClassKey.set(key, terms);
-        }
-        const writtenClassKeys = new Set<string>();
-
-        const existingEntries = await prisma.scheduleEntry.findMany({
-          where: { teacherId: { in: Array.from(teacherIdsWithSchedule) }, schoolYear: schoolYearLabel },
-          select: { id: true, teacherId: true, subjectId: true, sectionId: true, day: true, startTime: true, termIndex: true },
-        });
-        const existingByKey = new Map(
-          existingEntries.map(e => [`${e.teacherId}:${e.subjectId}:${e.sectionId}:${e.day}:${e.startTime}`, e]),
-        );
-
-        for (const entry of filteredScheduleEntries) {
-          const classKey = classKeyOf(entry);
-          if (writtenClassKeys.has(classKey)) continue;
-          writtenClassKeys.add(classKey);
-          const termIndexes = termIndexesByClassKey.get(classKey);
-          const storedTermIndex = termIndexes && termIndexes.size > 1 ? null : entry.termIndex;
-
-          const smartSubjectCode = resolveSubjectCode(entry.subjectCode, entry.gradeLevel);
-          let subject = subjectByCode.get(smartSubjectCode);
-          if (!subject) {
-            try {
-              subject = await prisma.subject.upsert({
-                where: { code: smartSubjectCode },
-                update: {},
-                create: { code: smartSubjectCode, name: resolveSubjectName(smartSubjectCode, entry.gradeLevel), displayName: computeDisplayName(smartSubjectCode, resolveSubjectName(smartSubjectCode, entry.gradeLevel)), type: inferSubjectTypeFromCode(smartSubjectCode) },
-              });
-              subjectByCode.set(smartSubjectCode, subject);
-            } catch { continue; }
-          }
-          if (!subject) continue;
-          const section = sectionByKey.get(`${entry.sectionName.trim()}:${entry.gradeLevel}`);
-          if (!section) continue;
-
-          const dedupKey = `${entry.teacherId}:${subject.id}:${section.id}:${entry.day}:${entry.startTime}`;
-          const existing = existingByKey.get(dedupKey);
-          if (existing) {
-            existingByKey.delete(dedupKey);
-            if (existing.termIndex === storedTermIndex) continue;
-            try {
-              await prisma.scheduleEntry.update({
-                where: { id: existing.id },
-                data: { termIndex: storedTermIndex, endTime: entry.endTime, roomId: entry.roomId },
-              });
-              scheduleCreated++;
-            } catch (err: any) {
-              logger.warn(`[AtlasSync] Schedule entry term update failed: ${err.message}`);
-            }
-            continue;
-          }
-
-          try {
-            await prisma.scheduleEntry.upsert({
-              where: {
-                teacherId_subjectId_sectionId_schoolYear_day_startTime: {
-                  teacherId: entry.teacherId, subjectId: subject.id,
-                  sectionId: section.id, schoolYear: schoolYearLabel,
-                  day: entry.day, startTime: entry.startTime,
-                },
-              },
-              update: { endTime: entry.endTime, roomId: entry.roomId, termIndex: storedTermIndex },
-              create: {
-                teacherId: entry.teacherId, subjectId: subject.id,
-                sectionId: section.id, schoolYear: schoolYearLabel,
-                termIndex: storedTermIndex,
-                day: entry.day, startTime: entry.startTime,
-                endTime: entry.endTime, roomId: entry.roomId,
-              },
-            });
-            scheduleCreated++;
-          } catch (err: any) {
-            logger.warn(`[AtlasSync] Schedule entry upsert failed: ${err.message}`);
-          }
-        }
-
-        const staleIds = Array.from(existingByKey.values()).map(e => e.id);
-        if (staleIds.length > 0 && epSectionById.size > 0) {
-          await prisma.scheduleEntry.deleteMany({ where: { id: { in: staleIds } } });
-          scheduleCleaned = staleIds.length;
-        } else if (staleIds.length > 0) {
-          logger.warn(
-            `[AtlasSync] Schedule cleanup skipped — EnrollPro sections unavailable (fail-closed, ${staleIds.length} stale entr(ies) preserved)`,
-          );
-        }
-
-        if (scheduleCreated > 0 || scheduleCleaned > 0) {
-          console.log(`[AtlasSync] Schedule entries: created=${scheduleCreated}, cleaned=${scheduleCleaned}`);
-        }
-      }
-      if (totalPubEntries > 0) {
-        console.log(`[AtlasSync] Schedule diag: totalPub=${totalPubEntries}, terms=${publishedScheduleTerms.map(t => `${t.termIndex}:${t.entries.length}`).join('|')}, skippedNoDay=${skippedNoDay}, skippedNoSubject=${skippedNoSubject}, skippedNoSection=${skippedNoSection}, skippedNoFaculty=${skippedNoFaculty}, resolved=${allScheduleEntries.length}, atlasSY=${atlasSchoolYearId}`);
-      } else {
-        console.log(`[AtlasSync] Schedule diag: no published schedule entries found from ATLAS (atlasSY=${atlasSchoolYearId}, activeTerm=${scheduleActiveTermIndex ?? 'unknown'})`);
-      }
-    }
+    // 5.2 + 6.6 ATLAS term-aware published schedule (contract pin 70a51608):
+    // explicit per-term fetch + ScheduleEntry persistence + companion contract
+    // state (AtlasCrosswalk, revisionMarker change detection, specialEvents).
+    const scheduleOutcome = await syncAtlasPublishedSchedule({
+      schoolYearLabel,
+      atlasSchoolYearId,
+      facultyIndex,
+      epSectionById,
+      sectionByKey,
+      subjectByCode,
+    });
+    errors.push(...scheduleOutcome.errors);
 
     // 7. Sync section advisers from ATLAS /faculty/advisers
     try {

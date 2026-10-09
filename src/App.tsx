@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { ThemeProvider } from './contexts/ThemeContext'
 
 // Layouts are small and always needed — keep eager
@@ -61,6 +61,36 @@ function PageLoader() {
   )
 }
 
+function NotFound() {
+  const location = useLocation()
+  const signInPath = location.pathname.startsWith('/admin')
+    ? '/login/admin'
+    : location.pathname.startsWith('/registrar')
+      ? '/login/registrar'
+      : '/login'
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6 text-center">
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Page not found</h1>
+      <p className="text-sm text-muted-foreground">The page you are looking for does not exist.</p>
+      <a className="text-sm font-medium text-primary underline" href={signInPath}>
+        Go to sign in
+      </a>
+    </div>
+  )
+}
+
+function AdminUnknownRoute() {
+  let isAdmin = false
+  try {
+    const raw = sessionStorage.getItem('user_admin')
+    if (raw) isAdmin = JSON.parse(raw)?.role === 'ADMIN'
+  } catch {
+    isAdmin = false
+  }
+  return <Navigate to={isAdmin ? '/admin' : '/login/admin'} replace />
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -119,22 +149,12 @@ function App() {
         <Route path="health" element={<SystemHealth />} />
         <Route path="assignments" element={<ClassAssignments />} />
         <Route path="edit-requests" element={<EditRequests />} />
+        <Route path="*" element={<AdminUnknownRoute />} />
       </Route>
 
       {/* Default redirect */}
       <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route
-        path="*"
-        element={
-          <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6 text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Page not found</h1>
-            <p className="text-sm text-muted-foreground">The page you are looking for does not exist.</p>
-            <a className="text-sm font-medium text-primary underline" href="/login">
-              Go to sign in
-            </a>
-          </div>
-        }
-      />
+      <Route path="*" element={<NotFound />} />
     </Routes>
       </Suspense>
     </ThemeProvider>

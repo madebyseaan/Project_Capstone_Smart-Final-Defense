@@ -56,7 +56,7 @@ export function detectSfSheetMappings(filePath: string): Array<{ formType: strin
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, "../../uploads");
+    const uploadDir = path.join(__dirname, "../../../uploads");
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }

@@ -287,7 +287,7 @@ export default function GradingConfig() {
       />
 
       {saveSuccess && (
-        <div className="flex items-center gap-3 p-4 rounded-xl border-2 bg-primary/5 border-primary/20 text-primary">
+        <div className="flex items-center gap-3 p-4 rounded-xl border-2 bg-primary-subtle border-primary/20 text-primary">
           <CheckCircle2 className="w-5 h-5" />
           <p className="text-sm font-medium">Grading configuration saved successfully!</p>
         </div>
@@ -301,7 +301,7 @@ export default function GradingConfig() {
       )}
 
       {/* DepEd Guidelines Info Banner */}
-      <Card className="p-0 gap-0 border border-border shadow-sm overflow-hidden bg-primary/5 rounded-xl">
+      <Card className="p-0 gap-0 border border-border shadow-sm overflow-hidden bg-primary-subtle rounded-xl">
         <CardContent className="p-5">
           <div className="flex items-start gap-4">
             <div className="p-2.5 rounded-xl shrink-0 bg-primary/10">
@@ -328,7 +328,7 @@ export default function GradingConfig() {
       </Card>
 
       {/* Term Display Labels */}
-      <Card className="p-0 gap-0 border border-border shadow-sm overflow-hidden bg-primary/5 rounded-xl">
+      <Card className="p-0 gap-0 border border-border shadow-sm overflow-hidden bg-primary-subtle rounded-xl">
         <CardContent className="p-5">
           <div className="flex items-start gap-4">
             <div className="p-2.5 rounded-xl shrink-0 bg-primary/10">

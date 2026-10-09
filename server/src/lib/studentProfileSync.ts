@@ -15,6 +15,7 @@ import { isExternalDown } from './externalState';
 import {
   getAllIntegrationV1Learners,
   getEnrollProStudentDetail,
+  runWithSyncTimeout,
 } from './enrollproClient';
 
 const CONCURRENCY_LIMIT = 10;
@@ -39,6 +40,7 @@ function extractDetailFields(incoming: any): Record<string, any> {
     || null;
 
   const guardianName = incoming.parentGuardianName
+    || incoming.guardianName
     || (incoming.guardianInfo ? `${incoming.guardianInfo.firstName ?? ''} ${incoming.guardianInfo.lastName ?? ''}`.trim() : null)
     || null;
 
@@ -95,8 +97,16 @@ function extractDetailFields(incoming: any): Record<string, any> {
 /**
  * Run the student profile enrichment sync.
  * Fetches all learners from EnrollPro, then fetches detail for each.
+ *
+ * Always runs with the background sync timeout (20s) instead of the
+ * request-path fast-fail timeout (3s) — the EnrollPro login + per-student
+ * detail fetches routinely exceed 3s and would otherwise be skipped.
  */
 export async function runStudentProfileSync(): Promise<StudentProfileSyncResult> {
+  return runWithSyncTimeout(runStudentProfileSyncInternal);
+}
+
+async function runStudentProfileSyncInternal(): Promise<StudentProfileSyncResult> {
   const result: StudentProfileSyncResult = { enriched: 0, skipped: 0, errors: [] };
   const startTime = Date.now();
 

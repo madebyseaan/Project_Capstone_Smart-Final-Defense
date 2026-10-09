@@ -4,6 +4,7 @@ import {
   ArrowLeftRight,
   AlertTriangle,
   ClipboardCheck,
+  FileText,
   Loader2,
   CloudDownload,
   RefreshCw,
@@ -38,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { registrarApi, type TransfereeRow, type TransfereesResponse } from "@/lib/api";
+import { registrarApi, type TransfereeRow, type TransfereesResponse, type Sf9EligibilityStatus } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSyncStream } from "@/hooks/useSyncStream";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -62,6 +63,87 @@ const formatDate = (iso?: string | null): string => {
   if (!y || !m || !d) return "";
   return `${m}/${d}/${y}`;
 };
+
+// EnrollPro transferee-details feed (contract v1.1) — badges are feed signals,
+// not a registrar-verified document audit trail.
+const eligibilityStyles: Record<Sf9EligibilityStatus, string> = {
+  PROMOTED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  CONDITIONALLY_PROMOTED: "bg-amber-50 text-amber-700 border-amber-200",
+  RETAINED: "bg-destructive/10 text-destructive border-destructive/20",
+};
+
+const eligibilityLabels: Record<Sf9EligibilityStatus, string> = {
+  PROMOTED: "SF9: Promoted",
+  CONDITIONALLY_PROMOTED: "SF9: Conditional",
+  RETAINED: "SF9: Retained",
+};
+
+const docBadgeStyle = (onFile: boolean) =>
+  onFile
+    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+    : "bg-muted text-muted-foreground border-border";
+
+function EnrollproSignalBadges({ enrollpro }: { enrollpro: TransfereeRow["enrollpro"] }) {
+  const eligibility = enrollpro.sf9EligibilityStatus;
+  const backSubjects = enrollpro.conditionalSubjectCodes ?? [];
+  const hasSignal =
+    !!eligibility ||
+    enrollpro.hasSf9 != null ||
+    enrollpro.hasPsa != null ||
+    enrollpro.isTemporarilyEnrolled === true;
+  if (!hasSignal) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {eligibility && (
+        <Badge
+          variant="outline"
+          title="SF9 eligibility decision from EnrollPro"
+          className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${eligibilityStyles[eligibility]}`}
+        >
+          {eligibilityLabels[eligibility]}
+          {eligibility === "CONDITIONALLY_PROMOTED" && backSubjects.length > 0
+            ? ` · ${backSubjects.join(", ")}`
+            : ""}
+        </Badge>
+      )}
+      {enrollpro.hasSf9 != null && (
+        <Badge
+          variant="outline"
+          title={
+            enrollpro.hasSf9
+              ? "SF9 on file according to EnrollPro (not a document verification)"
+              : "No SF9 on file according to EnrollPro"
+          }
+          className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${docBadgeStyle(enrollpro.hasSf9)}`}
+        >
+          {enrollpro.hasSf9 ? "SF9 ✓" : "No SF9"}
+        </Badge>
+      )}
+      {enrollpro.hasPsa != null && (
+        <Badge
+          variant="outline"
+          title={
+            enrollpro.hasPsa
+              ? "PSA birth certificate on file according to EnrollPro (not a document verification)"
+              : "No PSA birth certificate according to EnrollPro"
+          }
+          className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${docBadgeStyle(enrollpro.hasPsa)}`}
+        >
+          {enrollpro.hasPsa ? "PSA ✓" : "No PSA"}
+        </Badge>
+      )}
+      {enrollpro.isTemporarilyEnrolled === true && (
+        <Badge
+          variant="outline"
+          title="EnrollPro flags this learner as temporarily enrolled"
+          className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-primary/5 text-primary border-primary/20 whitespace-nowrap"
+        >
+          Temporary
+        </Badge>
+      )}
+    </div>
+  );
+}
 
 export default function Transferees() {
   const navigate = useNavigate();
@@ -123,6 +205,16 @@ export default function Transferees() {
     ...availableYears.filter((y) => y.label !== currentSchoolYear).map((y) => ({ value: y.label, label: y.label })),
   ];
 
+  const colWidths = {
+    lrn: allYears ? "w-[11%]" : "w-[12%]",
+    name: allYears ? "w-[22%]" : "w-[26%]",
+    section: allYears ? "w-[13%]" : "w-[16%]",
+    sy: "w-[11%]",
+    transferred: allYears ? "w-[11%]" : "w-[12%]",
+    status: allYears ? "w-[13%]" : "w-[16%]",
+    action: "w-[240px]",
+  };
+
   const handleSync = async () => {
     setSyncModalOpen(true);
     setSyncStatus("syncing");
@@ -140,6 +232,8 @@ export default function Transferees() {
   const isIncompleteRow = (t: TransfereeRow) =>
     t.completeness.missingBirthDate || t.completeness.missingGender ||
     t.completeness.missingPreviousSchool || t.completeness.missingTransferCertNo;
+
+  const hasPriorJhsLevels = (t: TransfereeRow) => t.priorRecords.expectedGradeLevels.length > 0;
 
   const filtered = transferees.filter((t) => {
     if (incompleteOnly && !isIncompleteRow(t)) return false;
@@ -406,6 +500,7 @@ export default function Transferees() {
                         </Badge>
                       )
                     )}
+                    <EnrollproSignalBadges enrollpro={row.enrollpro} />
                     {isPastRow ? (
                       <p className="text-[11px] text-muted-foreground">View only</p>
                     ) : (
@@ -428,7 +523,12 @@ export default function Transferees() {
                           }
                           className="h-8 text-xs border-border/70"
                         >
-                          <History className="h-3.5 w-3.5 mr-1.5" /> Prior SF10
+                          {hasPriorJhsLevels(row) ? (
+                            <History className="h-3.5 w-3.5 mr-1.5" />
+                          ) : (
+                            <FileText className="h-3.5 w-3.5 mr-1.5" />
+                          )}
+                          {hasPriorJhsLevels(row) ? "Prior SF10" : "View SF10"}
                         </Button>
                       </div>
                     )}
@@ -443,15 +543,15 @@ export default function Transferees() {
             <Table className="w-full table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-muted/50 border-b border-border/30 bg-muted/50">
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[13%] text-left">LRN</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[28%] text-left">Learner Name</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[18%] text-left">Section</TableHead>
+                  <TableHead className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 ${colWidths.lrn} text-left`}>LRN</TableHead>
+                  <TableHead className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 ${colWidths.name} text-left`}>Learner Name</TableHead>
+                  <TableHead className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 ${colWidths.section} text-left`}>Section</TableHead>
                   {allYears && (
-                    <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[13%] text-left whitespace-nowrap">School Year</TableHead>
+                    <TableHead className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 ${colWidths.sy} text-left whitespace-nowrap`}>School Year</TableHead>
                   )}
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left whitespace-nowrap">Transferred In</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[15%] text-left">Status</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">Action</TableHead>
+                  <TableHead className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 ${colWidths.transferred} text-left whitespace-nowrap`}>Transferred In</TableHead>
+                  <TableHead className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 ${colWidths.status} text-left`}>Status</TableHead>
+                  <TableHead className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 ${colWidths.action} text-left`}>Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -546,20 +646,21 @@ export default function Transferees() {
                                 </Badge>
                               )
                             )}
+                            <EnrollproSignalBadges enrollpro={row.enrollpro} />
                           </div>
                         </TableCell>
                         <TableCell className="py-3.5 px-4 text-left align-middle">
                           {isPastRow ? (
                             <span className="text-[11px] text-muted-foreground whitespace-nowrap">View only</span>
                           ) : (
-                            <div className="flex items-center gap-1 -ml-2.5">
+                            <div className="flex items-center gap-2 -ml-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openDialog(row)}
                                 className="h-8 px-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap"
                               >
-                                <ClipboardCheck className="h-3.5 w-3.5 mr-1.5" />
+                                <ClipboardCheck className="h-3.5 w-3.5 mr-1.5 shrink-0" />
                                 Complete details
                               </Button>
                               <Button
@@ -572,8 +673,12 @@ export default function Transferees() {
                                 }
                                 className="h-8 px-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap"
                               >
-                                <History className="h-3.5 w-3.5 mr-1.5" />
-                                Prior SF10
+                                {hasPriorJhsLevels(row) ? (
+                                  <History className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                                ) : (
+                                  <FileText className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                                )}
+                                {hasPriorJhsLevels(row) ? "Prior SF10" : "View SF10"}
                               </Button>
                             </div>
                           )}
@@ -680,6 +785,71 @@ export default function Transferees() {
                   onChange={(e) => setTransferInDate(e.target.value)}
                   disabled={saving}
                 />
+              </div>
+              <div className="sm:col-span-2 rounded-lg border border-border/60 bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-semibold text-foreground">EnrollPro transfer details</p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Originating school ID</p>
+                    <p className="text-foreground font-medium">{selected.details.originatingSchoolId || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Previous general average</p>
+                    <p className="text-foreground font-medium">{selected.details.previousGenAve ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">SF9 eligibility</p>
+                    <p className="text-foreground font-medium">
+                      {selected.enrollpro.sf9EligibilityStatus
+                        ? eligibilityLabels[selected.enrollpro.sf9EligibilityStatus]
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Back subjects</p>
+                    <p className="text-foreground font-medium">
+                      {selected.enrollpro.conditionalSubjectCodes?.length
+                        ? selected.enrollpro.conditionalSubjectCodes.join(", ")
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Documents</p>
+                    <p className="text-foreground font-medium">
+                      {[
+                        selected.enrollpro.hasSf9 != null
+                          ? selected.enrollpro.hasSf9
+                            ? "SF9 ✓"
+                            : "No SF9"
+                          : null,
+                        selected.enrollpro.hasPsa != null
+                          ? selected.enrollpro.hasPsa
+                            ? "PSA ✓"
+                            : "No PSA"
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Temporary enrolment</p>
+                    <p className="text-foreground font-medium">
+                      {selected.enrollpro.isTemporarilyEnrolled == null
+                        ? "—"
+                        : selected.enrollpro.isTemporarilyEnrolled
+                          ? "Yes"
+                          : "No"}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  From EnrollPro
+                  {selected.enrollpro.detailsSyncedAt
+                    ? ` · synced ${formatDate(selected.enrollpro.detailsSyncedAt)}`
+                    : ""}
+                  . Feed flags are not document verification.
+                </p>
               </div>
             </div>
           )}

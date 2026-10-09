@@ -97,14 +97,19 @@ export function useAssessmentMeta(opts: {
   }, [classRecord, selectedTerm, wwCount, ptCount]);
 
   const openMetaEditor = useCallback((type: "WW" | "PT" | "QA", index: number) => {
-    setSelectedColumn({ type, number: index + 1 });
-    if (type === "WW") {
-      setMetaEditorDraft({ description: wwMeta[index]?.description || `WW ${index + 1}`, date: wwMeta[index]?.date || "" });
-    } else if (type === "PT") {
-      setMetaEditorDraft({ description: ptMeta[index]?.description || `PT ${index + 1}`, date: ptMeta[index]?.date || "" });
-    } else {
-      setMetaEditorDraft({ description: qaMeta.description || "Term Assessment", date: qaMeta.date || "" });
-    }
+    const nextColumn = { type, number: index + 1 };
+    setSelectedColumn((prev) =>
+      prev && prev.type === nextColumn.type && prev.number === nextColumn.number ? prev : nextColumn
+    );
+    const nextDraft =
+      type === "WW"
+        ? { description: wwMeta[index]?.description || `WW ${index + 1}`, date: wwMeta[index]?.date || "" }
+        : type === "PT"
+          ? { description: ptMeta[index]?.description || `PT ${index + 1}`, date: ptMeta[index]?.date || "" }
+          : { description: qaMeta.description || "Term Assessment", date: qaMeta.date || "" };
+    setMetaEditorDraft((prev) =>
+      prev.description === nextDraft.description && prev.date === nextDraft.date ? prev : nextDraft
+    );
   }, [wwMeta, ptMeta, qaMeta]);
 
   const saveColumnMeta = useCallback(async () => {

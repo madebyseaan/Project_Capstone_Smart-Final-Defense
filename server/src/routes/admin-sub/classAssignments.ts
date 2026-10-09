@@ -80,7 +80,7 @@ export default function (router: Router) {
       };
 
       if (includeSf) {
-        const sfDir = path.join(__dirname, "../../uploads/templates");
+        const sfDir = path.join(__dirname, "../../../uploads/templates");
         if (fs.existsSync(sfDir)) {
           const sfFiles = fs
             .readdirSync(sfDir)

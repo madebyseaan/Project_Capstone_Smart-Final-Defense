@@ -20,6 +20,8 @@
     "prisma:studio": "prisma studio",
     "test": "node scripts/require-test-db.js && ts-node --transpile-only scripts/seed-test-base.ts && vitest run",
     "test:watch": "vitest",
+    "profile:sync": "ts-node scripts/trigger-profile-sync.ts",
+    "db:backup": "ts-node scripts/backup.ts",
     "db:wipe": "ts-node scripts/wipe.ts"
   },
   "prisma": {

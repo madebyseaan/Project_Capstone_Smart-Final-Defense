@@ -15,8 +15,9 @@ import path from "path";
 import fs from "fs";
 import https from "https";
 import http from "http";
+import { createHash } from "crypto";
 import { prisma } from "./prisma";
-import { getEnrollProPublicSettings, getIntegrationV1ActiveTerm, getIntegrationV1ActiveSchoolYear, getEnrollProSchoolYearWithTerms } from "./enrollproClient";
+import { getEnrollProPublicSettings, getIntegrationV1ActiveTerm, getIntegrationV1ActiveSchoolYear, getEnrollProSchoolYearWithTerms, getEnrollProEffectiveBaseUrl } from "./enrollproClient";
 import { ensureSchoolYearFromEnrollPro, invalidateSchoolYearCache } from "./schoolYearResolver";
 import { broadcastSettingsUpdate } from "./sseManager";
 import { syncActiveYearSnapshot } from "./schoolSettingsSnapshot";
@@ -47,29 +48,51 @@ export function pickColorsFromPalette(
   };
 }
 
-/** Download the school logo from EnrollPro and save it locally. */
+/** Remove previously synced EnrollPro logo files, optionally keeping one. */
+export function cleanupSyncedLogoFiles(uploadDir: string, keepFilename?: string): void {
+  try {
+    if (!fs.existsSync(uploadDir)) return;
+    for (const entry of fs.readdirSync(uploadDir)) {
+      if (!entry.startsWith("logo-enrollpro-sync")) continue;
+      if (keepFilename && entry === keepFilename) continue;
+      try {
+        fs.unlinkSync(path.join(uploadDir, entry));
+      } catch (err) {
+        console.warn("[BrandingSync] Failed to remove stale synced logo:", err instanceof Error ? err.message : err);
+      }
+    }
+  } catch (err) {
+    console.warn("[BrandingSync] Failed to scan for stale synced logos:", err instanceof Error ? err.message : err);
+  }
+}
+
+/** Download the school logo from EnrollPro and save it locally with a content-hashed name. */
 export async function downloadLogoFromEnrollPro(
   logoRelativePath: string,
   uploadDir: string
 ): Promise<string | null> {
   try {
-    const baseHost = (
-      process.env.ENROLLPRO_BASE_URL ?? "https://dev-jegs.buru-degree.ts.net/api"
-    ).replace(/\/api$/, "");
-    const imageUrl = `${baseHost}${logoRelativePath}`;
-    const ext = path.extname(logoRelativePath) || ".png";
-    const filename = `logo-enrollpro-sync${ext}`;
-    const filepath = path.join(uploadDir, filename);
+    // Resolve the same EnrollPro base the settings were fetched from (DB
+    // credentials first, env fallback) so the relative logo path always
+    // downloads from the correct host.
+    const base = await getEnrollProEffectiveBaseUrl().catch(
+      () => process.env.ENROLLPRO_BASE_URL ?? "https://dev-jegs.buru-degree.ts.net/api"
+    );
+    const baseHost = base.replace(/\/api$/, "");
+    const imageUrl = /^https?:\/\//i.test(logoRelativePath)
+      ? logoRelativePath
+      : `${baseHost}${logoRelativePath}`;
+    const ext = path.extname(new URL(imageUrl).pathname) || ".png";
 
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-    await new Promise<void>((resolve, reject) => {
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
       const parsed = new URL(imageUrl);
       const lib = parsed.protocol === "https:" ? https : http;
       const reqOpts: Record<string, any> = {
         hostname: parsed.hostname,
         port: parsed.port ? parseInt(parsed.port) : parsed.protocol === "https:" ? 443 : 80,
-        path: parsed.pathname,
+        path: parsed.pathname + parsed.search,
         method: "GET",
         rejectUnauthorized: false, // Allow Tailscale internal certs
       };
@@ -78,10 +101,10 @@ export async function downloadLogoFromEnrollPro(
           reject(new Error(`Logo download failed: HTTP ${res.statusCode}`));
           return;
         }
-        const ws = fs.createWriteStream(filepath);
-        res.pipe(ws);
-        ws.on("finish", resolve);
-        ws.on("error", reject);
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
+        res.on("error", reject);
       });
       req.on("error", (err: Error) => reject(err));
       req.setTimeout(20000, () => {
@@ -89,6 +112,12 @@ export async function downloadLogoFromEnrollPro(
       });
       req.end();
     });
+
+    // Content-hashed filename: a changed logo produces a new URL, so browsers
+    // and the localStorage theme cache cannot keep serving the stale image.
+    const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
+    const filename = `logo-enrollpro-sync-${hash}${ext}`;
+    fs.writeFileSync(path.join(uploadDir, filename), buffer);
 
     return `/uploads/${filename}`;
   } catch (err) {
@@ -115,9 +144,11 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
       ? pickColorsFromPalette(epSettings.colorScheme.palette)
       : { primary: "#10b981", secondary: "#34d399", accent: "#6ee7b7" };
 
-  // Download logo locally so it's served by SMART
-  const logoUrl = epSettings.logoUrl
-    ? await downloadLogoFromEnrollPro(epSettings.logoUrl, resolvedUploadDir)
+  // Download logo locally so it's served by SMART. EnrollPro is the source of
+  // truth: a removed logo (null logoUrl) must clear SMART's logo, not be skipped.
+  const hasEnrollProLogo = Boolean(epSettings.logoUrl);
+  const logoUrl = hasEnrollProLogo
+    ? await downloadLogoFromEnrollPro(epSettings.logoUrl as string, resolvedUploadDir)
     : null;
 
   const updateData: Record<string, any> = {
@@ -125,13 +156,21 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
     secondaryColor: colors.secondary,
     accentColor: colors.accent,
     lastEnrollProSync: new Date(),
+    // School identity mirrors EnrollPro exactly — including clearing fields
+    // that were emptied there (previously stale values survived forever).
+    schoolHeadName: epSettings.schoolHeadName?.trim() || null,
+    email: epSettings.depedEmail?.trim() || null,
   };
 
   if (epSettings.schoolName) updateData.schoolName = epSettings.schoolName;
-  if (epSettings.schoolHeadName) updateData.schoolHeadName = epSettings.schoolHeadName;
-  if (logoUrl) updateData.logoUrl = logoUrl;
+  if (hasEnrollProLogo) {
+    // Only replace the stored logo when the download succeeded — a transient
+    // EnrollPro/network failure must not blank the branding.
+    if (logoUrl) updateData.logoUrl = logoUrl;
+  } else {
+    updateData.logoUrl = null;
+  }
   if (epSettings.activeSchoolYearLabel) updateData.currentSchoolYear = epSettings.activeSchoolYearLabel;
-  if (epSettings.depedEmail) updateData.email = epSettings.depedEmail;
 
   // ── Sync term dates from EnrollPro (3-tier fallback) ───────────────────────
   // Tier 1: Fetch from /api/school-years/:id (admin auth) — most reliable source
@@ -247,6 +286,13 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
     update: updateData,
     create: { id: "main", ...updateData },
   });
+
+  // Drop stale synced logo files (old content hashes, or every synced copy when
+  // the logo was removed in EnrollPro). Manual admin uploads are untouched.
+  const keepLogoFilename = settings.logoUrl?.startsWith("/uploads/")
+    ? settings.logoUrl.slice("/uploads/".length)
+    : undefined;
+  cleanupSyncedLogoFiles(resolvedUploadDir, keepLogoFilename);
 
   // Now align SchoolYear record to EnrollPro (source of truth) — AFTER the upsert
   // so the snapshot captures the CURRENT year's branding, not the previous year's.

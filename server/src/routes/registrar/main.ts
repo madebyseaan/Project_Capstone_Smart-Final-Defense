@@ -16,7 +16,7 @@ import { maskId } from "../../lib/redact";
 import { withSectionLock } from "../../lib/sectionLock";
 import { validate } from "../../middleware/validate";
 import { enrollmentStatusSchema, finalizeGradesSchema } from "../../schemas/registrar";
-import { listUnfinalizedSections, finalizeSectionEosy } from "../../lib/promotion";
+import { listUnfinalizedSections, finalizeSectionEosy, PASSING_GRADE } from "../../lib/promotion";
 import { findSnapshotGapSections } from "../../lib/rollover";
 import {
   resolveCurrentSchoolYearLabel,
@@ -246,7 +246,12 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
       .map((b) => ({ label: `${MONTH_ABBR[b.start.getMonth()]} ${b.start.getDate()}`, count: b.count }));
 
     // Grade performance stats: average grade and passing rate per section (current term)
+    // "Failing" follows DepEd promotion rules — a learner fails when a subject
+    // grade is below PASSING_GRADE, not when their term average is. A retained
+    // learner averaging ≥75 can still have 3–4 failing subjects, so an average
+    // check reports 100% passing while retention counts disagree.
     let gradePerformance: {
+      term: string;
       overallPassingRate: number;
       overallAvgGrade: number;
       totalGraded: number;
@@ -257,6 +262,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         sectionName: string;
         gradeLevel: string;
         average: number;
+        failingSubjects: number;
       }>;
       bySection: Array<{
         sectionId: string;
@@ -266,9 +272,9 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         passingRate: number;
         totalStudents: number;
         failingCount: number;
-        failingStudents: Array<{ studentName: string; average: number }>;
+        failingStudents: Array<{ studentName: string; average: number; failingSubjects: number }>;
       }>;
-    } = { overallPassingRate: 0, overallAvgGrade: 0, totalGraded: 0, totalPassing: 0, totalFailing: 0, failingStudents: [], bySection: [] };
+    } = { term: "", overallPassingRate: 0, overallAvgGrade: 0, totalGraded: 0, totalPassing: 0, totalFailing: 0, failingStudents: [], bySection: [] };
 
     try {
       const settingsRow = await prisma.systemSettings.findUnique({ where: { id: "main" } });
@@ -331,25 +337,28 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         sectionName: string;
         gradeLevel: string;
         average: number;
+        failingSubjects: number;
       }> = [];
 
       const bySection = Array.from(sectionStudentGrades.entries()).map(([secId, data]) => {
         const studentAverages: number[] = [];
         let failingStudents = 0;
-        const sectionFailingList: Array<{ studentName: string; average: number }> = [];
+        const sectionFailingList: Array<{ studentName: string; average: number; failingSubjects: number }> = [];
 
         for (const [, studentData] of data.studentGrades) {
           const avg = Math.round(studentData.grades.reduce((s, g) => s + g, 0) / studentData.grades.length);
+          const failingSubjects = studentData.grades.filter((g) => g < PASSING_GRADE).length;
           studentAverages.push(avg);
-          if (avg < 75) {
+          if (failingSubjects > 0) {
             failingStudents++;
             const name = `${studentData.lastName}, ${studentData.firstName}`;
-            sectionFailingList.push({ studentName: name, average: avg });
+            sectionFailingList.push({ studentName: name, average: avg, failingSubjects });
             allFailingStudents.push({
               studentName: name,
               sectionName: data.sectionName,
               gradeLevel: data.gradeLevel,
               average: avg,
+              failingSubjects,
             });
           }
         }
@@ -368,27 +377,30 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
           passingRate: totalStudents > 0 ? Math.round((passingStudents / totalStudents) * 100) : 0,
           totalStudents,
           failingCount: failingStudents,
-          failingStudents: sectionFailingList.sort((a, b) => a.studentName.localeCompare(b.studentName)),
+          failingStudents: sectionFailingList.sort((a, b) => b.failingSubjects - a.failingSubjects || a.studentName.localeCompare(b.studentName)),
         };
       }).sort((a, b) => a.sectionName.localeCompare(b.sectionName));
 
-      // Overall stats: unique students across all sections
-      const allStudentAverages = Array.from(sectionStudentGrades.values()).flatMap((data) =>
-        Array.from(data.studentGrades.values()).map((studentData) =>
-          Math.round(studentData.grades.reduce((s, g) => s + g, 0) / studentData.grades.length)
-        )
+      // Overall stats: unique students across all sections. A learner is failing
+      // when any subject grade is below PASSING_GRADE (matches promotion rules).
+      const gradedStudents = Array.from(sectionStudentGrades.values()).flatMap((data) =>
+        Array.from(data.studentGrades.values()).map((studentData) => ({
+          average: Math.round(studentData.grades.reduce((s, g) => s + g, 0) / studentData.grades.length),
+          failingSubjects: studentData.grades.filter((g) => g < PASSING_GRADE).length,
+        }))
       );
-      const totalGraded = allStudentAverages.length;
-      const totalPassing = allStudentAverages.filter((g) => g >= 75).length;
+      const totalGraded = gradedStudents.length;
+      const totalPassing = gradedStudents.filter((s) => s.failingSubjects === 0).length;
       const totalFailing = totalGraded - totalPassing;
 
       gradePerformance = {
+        term: currentTerm,
         overallPassingRate: totalGraded > 0 ? Math.round((totalPassing / totalGraded) * 100) : 0,
-        overallAvgGrade: totalGraded > 0 ? Math.round(allStudentAverages.reduce((s, g) => s + g, 0) / totalGraded) : 0,
+        overallAvgGrade: totalGraded > 0 ? Math.round(gradedStudents.reduce((s, st) => s + st.average, 0) / totalGraded) : 0,
         totalGraded,
         totalPassing,
         totalFailing,
-        failingStudents: allFailingStudents.sort((a, b) => a.studentName.localeCompare(b.studentName)),
+        failingStudents: allFailingStudents.sort((a, b) => b.failingSubjects - a.failingSubjects || a.studentName.localeCompare(b.studentName)),
         bySection,
       };
     } catch (gradeErr) {
