@@ -1,41 +1,76 @@
-// Generated from server/prisma/schema.prisma
-// Paste this file into dbdiagram.io
+// SMART — Student Management and Records Tracking
+// Updated ERD generated from server/prisma/schema.prisma
+// Paste this whole file into https://dbdiagram.io/d
 
 Enum Role {
   TEACHER
   ADMIN
   REGISTRAR
 }
-Enum Quarter {
-  Q1
-  Q2
-  Q3
-  Q4
+
+Enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
 }
+
+Enum Term {
+  T1
+  T2
+  T3
+}
+
 Enum GradeLevel {
   GRADE_7
   GRADE_8
   GRADE_9
   GRADE_10
 }
+
 Enum SubjectType {
   CORE
   MAPEH
   TLE
   MATH_SCIENCE
 }
+
+Enum WorkloadType {
+  ADVISORY_ROLE
+}
+
 Enum AttendanceStatus {
   PRESENT
   ABSENT
   LATE
   EXCUSED
 }
+
 Enum EnrollmentStatus {
   ENROLLED
   PENDING
   DROPPED
   TRANSFERRED
 }
+
+Enum PromotionStatus {
+  PROMOTED
+  CONDITIONALLY_PROMOTED
+  RETAINED
+  JHS_COMPLETER
+}
+
+Enum Sf9EligibilityStatus {
+  PROMOTED
+  CONDITIONALLY_PROMOTED
+  RETAINED
+}
+
+Enum GradeStatus {
+  DRAFT
+  FINALIZED
+  LOCKED
+}
+
 Enum AuditAction {
   CREATE
   UPDATE
@@ -44,11 +79,13 @@ Enum AuditAction {
   LOGOUT
   CONFIG
 }
+
 Enum AuditSeverity {
   INFO
   WARNING
   CRITICAL
 }
+
 Enum FormType {
   SF1
   SF2
@@ -62,28 +99,85 @@ Enum FormType {
   SF7
 }
 
+Enum ExternalRecordSource {
+  MANUAL
+  SF10_SCAN
+  SF9_SCAN
+  SF10_XLSX
+}
+
+Enum EditRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
 Table User {
   id varchar [pk]
   username varchar [not null, unique]
   password varchar [not null]
   role Role [not null]
+  status UserStatus [not null, default: 'ACTIVE']
+  enrollproSubject varchar [unique]
   firstName varchar
   lastName varchar
   email varchar
-  createdAt timestamp
+  suspendedAt timestamp
+  suspendedBy varchar
+  suspensionReason varchar
+  deactivatedAt timestamp
+  deactivatedBy varchar
+  deactivationReason varchar
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 }
+
 Table Teacher {
   id varchar [pk]
   userId varchar [not null, unique]
   employeeId varchar [not null, unique]
   specialization varchar
-  createdAt timestamp
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 }
+
+Table RefreshToken {
+  id varchar [pk]
+  token varchar [not null, unique]
+  userId varchar [not null]
+  familyId varchar [not null]
+  expiresAt timestamp [not null]
+  revokedAt timestamp
+  createdAt timestamp [not null]
+
+  indexes {
+    (userId)
+    (familyId)
+    (expiresAt)
+  }
+}
+
+Table CompanionSsoCode {
+  id varchar [pk]
+  codeHash varchar [not null, unique]
+  userId varchar [not null]
+  audience varchar [not null]
+  redirectUri varchar [not null]
+  expiresAt timestamp [not null]
+  consumedAt timestamp
+  createdAt timestamp [not null]
+
+  indexes {
+    (userId)
+    (expiresAt)
+  }
+}
+
 Table Student {
   id varchar [pk]
   lrn varchar [not null, unique]
+  enrollproId int [unique]
   firstName varchar [not null]
   middleName varchar
   lastName varchar [not null]
@@ -93,20 +187,50 @@ Table Student {
   address varchar
   guardianName varchar
   guardianContact varchar
-  createdAt timestamp
+  religion varchar
+  motherTongue varchar
+  barangay varchar
+  city varchar
+  province varchar
+  fatherName varchar
+  fatherContact varchar
+  motherName varchar
+  motherContact varchar
+  ipCommunity boolean [default: false]
+  is4PsBeneficiary boolean [default: false]
+  disability varchar
+  isBalikAral boolean [default: false]
+  previousSchool varchar
+  lastGradeCompleted varchar
+  transferCertNo varchar
+  originatingSchoolId varchar
+  previousGenAve float
+  hasPsa boolean
+  elementarySchoolCompleter boolean [default: false]
+  elementarySchoolName varchar
+  elementaryGeneralAverage float
+  peptPasser boolean [default: false]
+  peptRating float
+  peptExamDate timestamp
+  alsAePasser boolean [default: false]
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 
   indexes {
     (lastName, firstName)
   }
 }
+
 Table Section {
   id varchar [pk]
   name varchar [not null]
   gradeLevel GradeLevel [not null]
   schoolYear varchar [not null]
   adviserId varchar
-  createdAt timestamp
+  program varchar [not null, default: 'REGULAR']
+  status varchar [not null, default: 'ACTIVE']
+  archivedAt timestamp
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 
   indexes {
@@ -114,41 +238,125 @@ Table Section {
     (gradeLevel, schoolYear)
   }
 }
+
 Table Subject {
   id varchar [pk]
   code varchar [not null, unique]
   name varchar [not null]
+  displayName varchar
   description varchar
-  type SubjectType
-  writtenWorkWeight int [default: 30]
-  perfTaskWeight int [default: 50]
-  quarterlyAssessWeight int [default: 20]
-  createdAt timestamp
+  type SubjectType [not null, default: 'CORE']
+  writtenWorkWeight int
+  perfTaskWeight int
+  quarterlyAssessWeight int
+  isNonPromotional boolean [not null, default: false]
+  rotationTermGroupId varchar
+  rotationTermRank int
+  rotationOutputLabel varchar
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 }
+
 Table ClassAssignment {
   id varchar [pk]
   teacherId varchar [not null]
   subjectId varchar [not null]
   sectionId varchar [not null]
   schoolYear varchar [not null]
-  createdAt timestamp
+  teachingMinutes int
+  isActive boolean [not null, default: true]
+  archivedAt timestamp
+  archivedReason varchar
+  successorTeacherId varchar
+  source varchar [not null, default: 'SYNC']
+  aimsCourseId varchar
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
-  ecrFileName varchar
-  ecrLastSyncedAt timestamp
 
   indexes {
     (teacherId, subjectId, sectionId, schoolYear) [unique]
     (schoolYear)
+    (teacherId)
+    (sectionId)
+    (subjectId)
   }
 }
+
+Table ScheduleEntry {
+  id varchar [pk]
+  teacherId varchar [not null]
+  subjectId varchar [not null]
+  sectionId varchar [not null]
+  schoolYear varchar [not null]
+  termIndex int
+  day varchar [not null]
+  startTime varchar [not null]
+  endTime varchar [not null]
+  roomId int
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (teacherId, subjectId, sectionId, schoolYear, day, startTime) [unique]
+    (teacherId, schoolYear)
+    (sectionId)
+  }
+}
+
+Table AtlasCrosswalk {
+  id varchar [pk]
+  kind varchar [not null]
+  atlasId int [not null]
+  schoolYear varchar [not null]
+  label varchar [not null]
+  detail varchar
+  smartId varchar
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (kind, atlasId, schoolYear) [unique]
+    (schoolYear)
+  }
+}
+
+Table AtlasScheduleMeta {
+  id int [pk, increment]
+  schoolYear varchar [not null, unique]
+  source json
+  terms json
+  specialEvents json
+  timeSlots json
+  activeTermIndex int
+  conflict varchar
+  syncedAt timestamp [not null]
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+}
+
 Table Enrollment {
   id varchar [pk]
   studentId varchar [not null]
   sectionId varchar [not null]
   schoolYear varchar [not null]
-  status EnrollmentStatus
-  createdAt timestamp
+  status EnrollmentStatus [not null, default: 'ENROLLED']
+  isArchived boolean [not null, default: false]
+  archivedAt timestamp
+  archivedReason varchar
+  dropOutDate timestamp
+  transferOutDate timestamp
+  dropOutReason varchar
+  transferInDate timestamp
+  enrollproApplicationId varchar
+  sf9EligibilityStatus Sf9EligibilityStatus
+  conditionalSubjectCodes varchar[] [not null]
+  hasSf9 boolean
+  isTemporarilyEnrolled boolean
+  transfereeDetailsSyncedAt timestamp
+  profileSnapshot json
+  promotionStatus PromotionStatus
+  promotedToGradeLevel GradeLevel
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 
   indexes {
@@ -158,37 +366,122 @@ Table Enrollment {
     (studentId, schoolYear)
   }
 }
+
+Table ExternalSchoolRecord {
+  id varchar [pk]
+  studentId varchar [not null]
+  schoolYear varchar [not null]
+  gradeLevel GradeLevel [not null]
+  schoolName varchar [not null]
+  schoolId varchar
+  sectionName varchar
+  adviserName varchar
+  generalAverage float
+  promotionStatus varchar
+  formType varchar [not null, default: 'SF10']
+  isPartialYear boolean [not null, default: false]
+  source ExternalRecordSource [not null, default: 'MANUAL']
+  ocrRawText varchar
+  ocrParserVersion varchar
+  confidence float
+  verifiedById varchar
+  verifiedAt timestamp
+  locked boolean [not null, default: false]
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (studentId, schoolYear, gradeLevel, schoolName) [unique]
+    (studentId)
+  }
+}
+
+Table ExternalSubjectRecord {
+  id varchar [pk]
+  recordId varchar [not null]
+  subjectCode varchar
+  subjectName varchar [not null]
+  terms json
+  finalRating float
+  remarks varchar
+  isNonPromotional boolean [not null, default: false]
+  confidence float
+  needsReview boolean [not null, default: false]
+
+  indexes {
+    (recordId)
+  }
+}
+
 Table Grade {
   id varchar [pk]
   studentId varchar [not null]
   classAssignmentId varchar [not null]
-  quarter Quarter [not null]
+  term Term [not null]
   writtenWorkScores json
   perfTaskScores json
+  examScores json
   quarterlyAssessScore float
   quarterlyAssessMax float [default: 100]
+  qaDescription varchar
+  qaDate varchar
   writtenWorkPS float
   perfTaskPS float
   quarterlyAssessPS float
   initialGrade float
   quarterlyGrade float
   remarks varchar
-  createdAt timestamp
+  qualitativeDescriptor varchar
+  isArchived boolean [not null, default: false]
+  archivedAt timestamp
+  archivedReason varchar
+  status GradeStatus [not null, default: 'DRAFT']
+  finalizedBy varchar
+  finalizedAt timestamp
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 
   indexes {
-    (studentId, classAssignmentId, quarter) [unique]
+    (studentId, classAssignmentId, term) [unique]
+    (studentId)
+    (classAssignmentId)
+    (status)
   }
 }
+
+// gradeId is a soft reference to Grade (no FK constraint in Prisma)
+Table GradeSnapshot {
+  id varchar [pk]
+  gradeId varchar
+  studentId varchar [not null]
+  classAssignmentId varchar [not null]
+  teacherId varchar [not null]
+  subjectCode varchar [not null]
+  subjectName varchar [not null]
+  sectionId varchar [not null]
+  sectionName varchar [not null]
+  schoolYear varchar [not null]
+  term Term [not null]
+  snapshot json [not null]
+  createdAt timestamp [not null]
+
+  indexes {
+    (studentId, classAssignmentId, term)
+    (classAssignmentId, term)
+    (teacherId, createdAt)
+    (gradeId)
+  }
+}
+
 Table Attendance {
   id varchar [pk]
   studentId varchar [not null]
   sectionId varchar [not null]
-  date timestamp [not null]
-  status AttendanceStatus
+  date date [not null]
+  status AttendanceStatus [not null, default: 'PRESENT']
   remarks varchar
   recordedBy varchar
-  createdAt timestamp
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 
   indexes {
@@ -198,6 +491,26 @@ Table Attendance {
     (date)
   }
 }
+
+Table WorkloadEntry {
+  id varchar [pk]
+  teacherId varchar [not null]
+  sectionId varchar
+  classAssignmentId varchar
+  schoolYear varchar [not null]
+  type WorkloadType [not null]
+  minutes int [not null]
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (teacherId, sectionId, schoolYear, type) [unique]
+    (teacherId, schoolYear)
+    (type, schoolYear)
+    (sectionId)
+  }
+}
+
 Table AuditLog {
   id varchar [pk]
   action AuditAction [not null]
@@ -209,59 +522,169 @@ Table AuditLog {
   targetId varchar
   details varchar [not null]
   ipAddress varchar
-  severity AuditSeverity
+  severity AuditSeverity [not null, default: 'INFO']
   metadata json
-  createdAt timestamp
+  userAgent varchar
+  browser varchar
+  os varchar
+  deviceType varchar
+  network varchar
+  outcome varchar
+  requestMethod varchar
+  requestPath varchar
+  createdAt timestamp [not null]
 
   indexes {
     (createdAt)
     (userId)
     (action)
     (targetType)
+    (network)
+    (deviceType)
+    (outcome)
+    (createdAt, action)
   }
 }
+
+Table SyncHistory {
+  id varchar [pk]
+  source varchar [not null]
+  status varchar [not null]
+  durationMs int [not null]
+  startedAt timestamp [not null]
+  completedAt timestamp [not null]
+  enrollpro json
+  atlas json
+  branding boolean [not null, default: false]
+  error varchar
+  metadata json
+  createdAt timestamp [not null]
+
+  indexes {
+    (createdAt)
+    (status)
+    (source)
+  }
+}
+
+Table SchoolYear {
+  id varchar [pk]
+  label varchar [not null, unique]
+  externalId int [unique]
+  status varchar [not null, default: 'ACTIVE']
+  termLabelT1 varchar [not null, default: 'Term 1']
+  termLabelT2 varchar [not null, default: 'Term 2']
+  termLabelT3 varchar [not null, default: 'Term 3']
+  startDate timestamp
+  endDate timestamp
+  archivedAt timestamp
+  schoolSettingsSnapshot json
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+}
+
+Table YearGradeLock {
+  id varchar [pk]
+  schoolYearId varchar [not null, unique]
+  isLocked boolean [not null, default: false]
+  lockedBy varchar
+  lockedAt timestamp
+  unlockedBy varchar
+  unlockedAt timestamp
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+}
+
+Table TermGradeLock {
+  id varchar [pk]
+  schoolYearId varchar [not null]
+  term Term [not null]
+  isLocked boolean [not null, default: false]
+  lockedBy varchar
+  lockedAt timestamp
+  unlockedBy varchar
+  unlockedAt timestamp
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (schoolYearId, term) [unique]
+  }
+}
+
 Table SystemSettings {
-  id varchar [pk, default: "main"]
-  schoolName varchar [default: "Sample High School"]
-  schoolId varchar [default: "123456"]
-  division varchar [default: "Division of Sample City"]
-  region varchar [default: "Region IV-A CALABARZON"]
+  id varchar [pk, default: 'main']
+  schoolName varchar [not null, default: 'Sample High School']
+  schoolId varchar [not null, default: '123456']
+  division varchar [not null, default: 'Division of Sample City']
+  region varchar [not null, default: 'Region IV-A CALABARZON']
+  schoolHeadName varchar
   address varchar
   contactNumber varchar
   email varchar
-  currentSchoolYear varchar [default: "2025-2026"]
-  currentQuarter Quarter
+  currentSchoolYear varchar [not null, default: '2025-2026']
+  schoolYearId varchar
+  currentTerm Term [not null, default: 'T1']
   logoUrl varchar
-  primaryColor varchar [default: "#6366f1"]
-  secondaryColor varchar [default: "#8b5cf6"]
-  accentColor varchar [default: "#06b6d4"]
-  sessionTimeout int [default: 30]
-  maxLoginAttempts int [default: 5]
-  passwordMinLength int [default: 8]
-  requireSpecialChar boolean [default: true]
-  createdAt timestamp
-  updatedAt timestamp [not null]
-  autoAdvanceQuarter boolean [default: false]
+  primaryColor varchar [not null, default: '#6366f1']
+  secondaryColor varchar [not null, default: '#8b5cf6']
+  accentColor varchar [not null, default: '#06b6d4']
+  sessionTimeout int [not null, default: 30]
+  maxLoginAttempts int [not null, default: 5]
+  passwordMinLength int [not null, default: 8]
+  requireSpecialChar boolean [not null, default: true]
+  autoAdvanceTerm boolean [not null, default: false]
+  t1StartDate timestamp
+  t1EndDate timestamp
+  t2StartDate timestamp
+  t2EndDate timestamp
+  t3StartDate timestamp
+  t3EndDate timestamp
+  termDatesDerived boolean [not null, default: false]
   lastEnrollProSync timestamp
-  q1EndDate timestamp
-  q1StartDate timestamp
-  q2EndDate timestamp
-  q2StartDate timestamp
-  q3EndDate timestamp
-  q3StartDate timestamp
-  q4EndDate timestamp
-  q4StartDate timestamp
+  gradeLock boolean [not null, default: false]
+  transitionLock boolean [not null, default: false]
+  transitionNote varchar
+  auditLogRetentionDays int [not null, default: 365]
+  syncHistoryRetentionDays int [not null, default: 90]
+  gradeSnapshotRetentionDays int [not null, default: 0]
+  enrollproUrl varchar
+  enrollproAccountName varchar
+  enrollproPassword varchar
+  enrollproIntegrationKey varchar
+  atlasEmptyLoadSeenAt timestamp
+  atlasAppliedVersion int
+  atlasAppliedScope varchar
+  atlasAppliedAt timestamp
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
 }
+
 Table GradingConfig {
   id varchar [pk]
   subjectType SubjectType [not null, unique]
   writtenWorkWeight int [not null]
   performanceTaskWeight int [not null]
   quarterlyAssessWeight int [not null]
-  isDepEdDefault boolean [default: true]
-  createdAt timestamp
+  isDepEdDefault boolean [not null, default: true]
+  createdAt timestamp [not null]
   updatedAt timestamp [not null]
 }
+
+Table TransmutationEntry {
+  id varchar [pk]
+  minGrade float [not null]
+  maxGrade float [not null]
+  transmutedGrade int [not null]
+  isDefault boolean [not null, default: false]
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (minGrade)
+  }
+}
+
 Table ExcelTemplate {
   id varchar [pk]
   formType FormType [not null, unique]
@@ -272,12 +695,12 @@ Table ExcelTemplate {
   fileSize int [not null]
   placeholders json
   instructions varchar
-  isActive boolean [default: true]
+  isActive boolean [not null, default: true]
   uploadedBy varchar [not null]
   uploadedByName varchar [not null]
-  createdAt timestamp
-  updatedAt timestamp [not null]
   sheetName varchar
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
 
   indexes {
     (formType)
@@ -285,40 +708,124 @@ Table ExcelTemplate {
     (filePath)
   }
 }
-Table ECRTemplate {
+
+Table AimsScore {
   id varchar [pk]
-  subjectName varchar [not null]
-  description varchar
-  filePath varchar [not null]
-  fileName varchar [not null]
-  fileSize int [not null]
-  placeholders json
-  instructions varchar
-  isActive boolean [default: true]
-  uploadedBy varchar [not null]
-  uploadedByName varchar [not null]
-  createdAt timestamp
-  updatedAt timestamp [not null]
-  subjectType SubjectType
+  classAssignmentId varchar [not null]
+  studentId varchar [not null]
+  term Term [not null]
+  assessmentId varchar [not null]
+  assessmentTitle varchar [not null]
+  type varchar [not null]
+  category varchar [not null]
+  score float [not null]
+  pointsEarned float [not null]
+  maxPoints float [not null]
+  isRemedial boolean [not null, default: false]
+  attemptNumber int [not null, default: 1]
+  gradedAt timestamp
+  syncedAt timestamp [not null]
+  importedAt timestamp
 
   indexes {
-    (subjectName)
-    (isActive)
-    (filePath)
+    (classAssignmentId, studentId, assessmentId) [unique]
+    (classAssignmentId, term)
+    (studentId)
+  }
+}
+
+Table EcrSync {
+  id varchar [pk]
+  classAssignmentId varchar [not null]
+  term Term [not null]
+  lastSyncedAt timestamp [not null]
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (classAssignmentId, term) [unique]
+  }
+}
+
+Table RemedialClass {
+  id varchar [pk]
+  enrollmentId varchar [not null]
+  schoolYear varchar [not null]
+  gradeLevel GradeLevel [not null]
+  subjectCode varchar [not null]
+  subjectName varchar [not null]
+  originalGrade float [not null]
+  remedialMark float
+  recomputedGrade float
+  outcome varchar
+  conductedFrom timestamp
+  conductedTo timestamp
+  status varchar [not null, default: 'PENDING']
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (enrollmentId, subjectCode) [unique]
+    (status)
+    (schoolYear)
+  }
+}
+
+Table GradeEditRequest {
+  id varchar [pk]
+  teacherId varchar [not null]
+  teacherName varchar [not null]
+  term varchar [not null]
+  schoolYear varchar [not null]
+  gradeLevel varchar
+  section varchar
+  subject varchar
+  classAssignmentId varchar
+  reason varchar [not null]
+  status EditRequestStatus [not null, default: 'PENDING']
+  approvedById varchar
+  approvedByName varchar
+  expiresAt timestamp
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+
+  indexes {
+    (status)
+    (teacherId)
+    (createdAt)
   }
 }
 
 Ref: Teacher.userId - User.id
-Ref: Section.adviserId > Teacher.id
-Ref: ClassAssignment.sectionId > Section.id
-Ref: ClassAssignment.subjectId > Subject.id
-Ref: ClassAssignment.teacherId > Teacher.id
-Ref: Enrollment.sectionId > Section.id
-Ref: Enrollment.studentId > Student.id
-Ref: Grade.classAssignmentId > ClassAssignment.id
-Ref: Grade.studentId > Student.id
-Ref: Attendance.sectionId > Section.id
-Ref: Attendance.studentId > Student.id
+Ref: RefreshToken.userId > User.id
+Ref: CompanionSsoCode.userId > User.id
 Ref: AuditLog.userId > User.id
 Ref: ExcelTemplate.uploadedBy > User.id
-Ref: ECRTemplate.uploadedBy > User.id
+Ref: GradeEditRequest.teacherId > User.id
+Ref: GradeEditRequest.approvedById > User.id
+Ref: Grade.finalizedBy > User.id
+Ref: Section.adviserId > Teacher.id
+Ref: ClassAssignment.teacherId > Teacher.id
+Ref: ClassAssignment.subjectId > Subject.id
+Ref: ClassAssignment.sectionId > Section.id
+Ref: ScheduleEntry.teacherId > Teacher.id
+Ref: ScheduleEntry.subjectId > Subject.id
+Ref: ScheduleEntry.sectionId > Section.id
+Ref: Enrollment.studentId > Student.id
+Ref: Enrollment.sectionId > Section.id
+Ref: ExternalSchoolRecord.studentId > Student.id
+Ref: ExternalSubjectRecord.recordId > ExternalSchoolRecord.id
+Ref: Grade.studentId > Student.id
+Ref: Grade.classAssignmentId > ClassAssignment.id
+Ref: Attendance.studentId > Student.id
+Ref: Attendance.sectionId > Section.id
+Ref: WorkloadEntry.teacherId > Teacher.id
+Ref: WorkloadEntry.sectionId > Section.id
+Ref: WorkloadEntry.classAssignmentId > ClassAssignment.id
+Ref: YearGradeLock.schoolYearId - SchoolYear.id
+Ref: TermGradeLock.schoolYearId > SchoolYear.id
+Ref: SystemSettings.schoolYearId > SchoolYear.id
+Ref: AimsScore.classAssignmentId > ClassAssignment.id
+Ref: AimsScore.studentId > Student.id
+Ref: EcrSync.classAssignmentId > ClassAssignment.id
+Ref: RemedialClass.enrollmentId > Enrollment.id

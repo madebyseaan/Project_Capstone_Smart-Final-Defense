@@ -1,4 +1,4 @@
-import { Eye } from "lucide-react";
+import { FileText, FolderOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { LoadingSkeleton, EmptyState } from "@/components/data-table";
 import { Dash } from "@/components/data-table/Dash";
+import type { VaultTab } from "./records/types";
 
 interface StudentWithEnrollment {
   id: string;
@@ -43,7 +44,7 @@ interface StudentRecordsTableProps {
   loading: boolean;
   searchQuery: string;
   hasActiveFilters: boolean;
-  onViewStudent: (student: StudentWithEnrollment) => void;
+  onOpenVault: (student: StudentWithEnrollment, tab: VaultTab) => void;
   primaryColor: string;
 }
 
@@ -52,7 +53,7 @@ export function StudentRecordsTable({
   loading,
   searchQuery,
   hasActiveFilters,
-  onViewStudent,
+  onOpenVault,
   primaryColor,
 }: StudentRecordsTableProps) {
   const isEmpty = students.length === 0;
@@ -201,16 +202,29 @@ export function StudentRecordsTable({
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="py-3.5 px-4 text-left align-middle">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onViewStudent(student)}
-                      className="h-8 px-3 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground whitespace-nowrap -ml-2.5"
-                    >
-                      <Eye className="w-3.5 h-3.5 mr-1.5" />
-                      View
-                    </Button>
+                  <TableCell className="text-left py-3.5 px-4 align-middle">
+                    <div className="flex items-center gap-1 -ml-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onOpenVault(student, "sf10")}
+                        className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                        title="Open SF10"
+                        aria-label={`Open SF10 for ${student.lastName}, ${student.firstName}`}
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onOpenVault(student, "overview")}
+                        className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                        title="All documents"
+                        aria-label={`Open all documents for ${student.lastName}, ${student.firstName}`}
+                      >
+                        <FolderOpen className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );

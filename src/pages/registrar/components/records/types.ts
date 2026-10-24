@@ -17,6 +17,10 @@ export interface VaultStudent {
   lastSchoolYear: string;
   lastProgram: string;
   enrollmentStatus: string;
+  /** Optional identity fields — used by the School Forms Readiness checker. */
+  birthDate?: string | null;
+  homeAddress?: string | null;
+  guardianName?: string | null;
 }
 
 export type VaultTab = "overview" | "sf10" | "sf9" | "prior" | "remedial";
@@ -26,6 +30,7 @@ export const EMPTY_INDEX_ENTRY: StudentDocumentsIndexEntry = {
   reportCardYears: [],
   priorRecords: 0,
   remedial: false,
+  attendance: false,
 };
 
 export const isSyntheticStudentId = (id: string): boolean => id.startsWith("ep-");

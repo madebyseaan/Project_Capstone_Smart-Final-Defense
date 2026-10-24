@@ -906,6 +906,7 @@ export interface RegistrarDashboard {
       gradeLevel: string;
       average: number;
       failingSubjects: number;
+      totalSubjects: number;
     }>;
     bySection: Array<{
       sectionId: string;
@@ -915,7 +916,7 @@ export interface RegistrarDashboard {
       passingRate: number;
       totalStudents: number;
       failingCount: number;
-      failingStudents: Array<{ studentName: string; average: number; failingSubjects: number }>;
+      failingStudents: Array<{ studentName: string; average: number; failingSubjects: number; totalSubjects: number }>;
     }>;
   };
 }
@@ -1099,6 +1100,7 @@ export interface StudentDocumentsIndexEntry {
   reportCardYears: string[];
   priorRecords: number;
   remedial: boolean;
+  attendance: boolean;
 }
 
 export interface StudentDocumentsIndexResponse {
@@ -1610,11 +1612,13 @@ export const registrarApi = {
   getEosySchoolYears: () =>
     api.get("/registrar/eosy/school-years"),
 
-  getEosySections: (schoolYearId?: number) =>
-    api.get("/registrar/eosy/sections", { params: schoolYearId ? { schoolYearId } : {} }),
+  getEosySections: (schoolYearId?: number, force?: boolean) =>
+    api.get("/registrar/eosy/sections", {
+      params: { ...(schoolYearId ? { schoolYearId } : {}), ...(force ? { force: 1 } : {}) },
+    }),
 
-  getEosySectionRecords: (sectionId: number) =>
-    api.get(`/registrar/eosy/sections/${sectionId}/records`),
+  getEosySectionRecords: (sectionId: number, force?: boolean) =>
+    api.get(`/registrar/eosy/sections/${sectionId}/records`, { params: force ? { force: 1 } : {} }),
 
   getEosySF5: (sectionId: number) =>
     api.get(`/registrar/eosy/sections/${sectionId}/sf5`),
@@ -1840,6 +1844,8 @@ export interface AdminAuditLog {
   user: string;
   userRole: string;
   userId?: string | null;
+  /** Employee ID (User.username) of the actor, when resolvable. */
+  username?: string | null;
   target: string;
   targetType: string;
   details: string;
@@ -2101,6 +2107,14 @@ export const adminApi = {
       summary?: string;
       cleared?: { grades: number; snapshots: number; remedial: number; promotionStatus: number };
     }>("/admin/dev/seed-scores", body),
+
+  seedAttendance: (body: { action: "seed" | "clear"; clearFirst?: boolean }) =>
+    api.post<{
+      message: string;
+      output?: string;
+      summary?: string;
+      cleared?: { attendance: number };
+    }>("/admin/dev/seed-attendance", body),
 
   // User Management
   getUsers: (params?: { search?: string; role?: string; status?: string }) =>

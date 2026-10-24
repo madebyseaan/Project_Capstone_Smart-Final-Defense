@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowLeft,
   Printer,
@@ -16,7 +16,7 @@ import SF9Inspector from "./components/SF9Inspector";
 import SF10Inspector from "./components/SF10Inspector";
 import SF10Editor from "./components/SF10Editor";
 import { BulkSF9View, BulkSF10View } from "./components/BulkFormsView";
-import SFListView from "./components/SFListView";
+import SFListView, { type ClassFormId, type Sf9Term, type StudentFormId } from "./components/SFListView";
 import SF2Form from "./components/SF2Form";
 import SF6Form from "./components/SF6Form";
 
@@ -65,6 +65,11 @@ function RightDrawer({
 
 export default function SchoolForms() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [printIntent, setPrintIntent] = useState<"sf1" | "sf2" | "sf5" | null>(null);
+  const [formsTab, setFormsTab] = useState<"class" | "student">("class");
+  const [activeClassForm, setActiveClassForm] = useState<ClassFormId>("sf1");
+  const [studentForm, setStudentForm] = useState<StudentFormId>("sf9");
+  const [sf9Term, setSf9Term] = useState<Sf9Term>("T1");
   const [, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [schoolYear, setSchoolYear] = useState("");
@@ -73,6 +78,7 @@ export default function SchoolForms() {
   const [selectedGrade, setSelectedGrade] = useState<string>("ALL");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [students, setStudents] = useState<FormStudent[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -88,7 +94,7 @@ export default function SchoolForms() {
     ? sections 
     : sections.filter(s => s.gradeLevel === selectedGrade);
 
-  const { colors: themeColors, schoolName, logoUrl } = useTheme();
+  const { schoolName, logoUrl } = useTheme();
   const fullLogoUrl = logoUrl ? (logoUrl.startsWith("http") ? logoUrl : `${SERVER_URL}${logoUrl}`) : null;
   
   // Selection state
@@ -160,24 +166,38 @@ export default function SchoolForms() {
 
   // Load students when section changes
   useEffect(() => {
+    let cancelled = false;
+
     const loadStudents = async () => {
       if (!selectedSection) {
         setStudents([]);
+        setStudentsLoading(false);
         return;
       }
+
+      setStudentsLoading(true);
       try {
         const response = await registrarApi.getStudents({ sectionId: selectedSection, schoolYear });
+        if (cancelled) return;
         const studentsData = response.data.students || response.data;
         setStudents(Array.isArray(studentsData) ? studentsData : []);
       } catch (error) {
+        if (cancelled) return;
         console.error("Error loading students:", error);
         setStudents([]);
+      } finally {
+        if (!cancelled) setStudentsLoading(false);
       }
     };
-    loadStudents();
+
+    void loadStudents();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedSection, schoolYear]);
 
-  const executePrint = (ref: React.RefObject<HTMLDivElement | null>, styleId: string, orientation: "portrait" | "landscape" = "portrait") => {
+  const executePrint = useCallback((ref: React.RefObject<HTMLDivElement | null>, styleId: string, orientation: "portrait" | "landscape" = "portrait") => {
     const formNode = ref.current;
     if (!formNode) return;
 
@@ -215,11 +235,39 @@ export default function SchoolForms() {
     window.addEventListener("afterprint", cleanup, { once: true });
     window.setTimeout(cleanup, 60000);
     window.print();
-  };
+  }, []);
 
-  const handleViewSF9 = async (studentId?: string) => {
+  useEffect(() => {
+    if (!printIntent) return;
+
+    const ref =
+      printIntent === "sf1"
+        ? sf1PrintRef
+        : printIntent === "sf2"
+          ? sf2PrintRef
+          : sf5PrintRef;
+
+    if (!ref.current) {
+      const fallback = window.setTimeout(() => setPrintIntent(null), 4000);
+      return () => window.clearTimeout(fallback);
+    }
+
+    const timer = window.setTimeout(() => {
+      executePrint(
+        ref,
+        `${printIntent}-print-style`,
+        printIntent === "sf2" ? "landscape" : "portrait"
+      );
+      setPrintIntent(null);
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [printIntent, viewMode, sf1Data, sf2Data, sf5Data, executePrint]);
+
+  const handleViewSF9 = async (studentId?: string, term?: Sf9Term) => {
     const id = studentId || selectedStudent;
     if (!id) return;
+    if (term) setSf9Term(term);
     setLoading(true);
     try {
       const response = await registrarApi.getSF9(id, schoolYear);
@@ -312,8 +360,20 @@ export default function SchoolForms() {
     }
   };
 
+  const handlePrintForm = (form: "sf1" | "sf2" | "sf5") => {
+    setPrintIntent(form);
+    if (form === "sf1") void handleViewSF1();
+    else if (form === "sf2") void handleViewSF2();
+    else void handleViewSF5();
+  };
+
+  const handleClearSelection = () => {
+    setSelectedStudentIds([]);
+  };
+
   const handleBack = () => {
     setViewMode("list");
+    setPrintIntent(null);
     setSf1Data(null);
     setSf2Data(null);
     setSf5Data(null);
@@ -328,10 +388,18 @@ export default function SchoolForms() {
   };
 
   const handleToggleAll = () => {
-    if (selectedStudentIds.length === filteredStudents.length && filteredStudents.length > 0) {
-      setSelectedStudentIds([]);
+    if (filteredStudents.length === 0) return;
+    const allSelected = filteredStudents.every((student) =>
+      selectedStudentIds.includes(student.id)
+    );
+    if (allSelected) {
+      setSelectedStudentIds((prev) =>
+        prev.filter((id) => !filteredStudents.some((student) => student.id === id))
+      );
     } else {
-      setSelectedStudentIds(filteredStudents.map(s => s.id));
+      setSelectedStudentIds((prev) =>
+        Array.from(new Set([...prev, ...filteredStudents.map((student) => student.id)]))
+      );
     }
   };
 
@@ -514,41 +582,60 @@ export default function SchoolForms() {
     return (
       <SFListView
         error={error}
+        activeTab={formsTab}
+        onTabChange={setFormsTab}
+        activeClassForm={activeClassForm}
+        onActiveClassFormChange={setActiveClassForm}
+        studentForm={studentForm}
+        onStudentFormChange={setStudentForm}
+        sf9Term={sf9Term}
+        onSf9TermChange={setSf9Term}
         schoolYear={schoolYear}
         schoolYears={schoolYears}
-        onSchoolYearChange={setSchoolYear}
+        onSchoolYearChange={(value) => {
+          setSchoolYear(value);
+          setStudents([]);
+          setSelectedStudent("");
+          setSelectedStudentIds([]);
+        }}
         selectedGrade={selectedGrade}
         onGradeChange={(v) => {
           setSelectedGrade(v);
           setSelectedSection("");
           setStudents([]);
           setSelectedStudent("");
+          setSelectedStudentIds([]);
         }}
         uniqueGradeLevels={uniqueGradeLevels}
         selectedSection={selectedSection}
-        selectedStudent={selectedStudent}
         onSectionChange={(v) => {
           setSelectedSection(v);
+          setStudents([]);
           setSelectedStudent("");
+          setSelectedStudentIds([]);
         }}
         sections={sections}
         filteredSectionsForDropdown={filteredSectionsForDropdown}
         students={students}
+        studentsLoading={studentsLoading}
         filteredStudents={filteredStudents}
         selectedStudentIds={selectedStudentIds}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onToggleAll={handleToggleAll}
         onToggleStudent={handleToggleStudent}
+        onClearSelection={handleClearSelection}
         onViewSF1={handleViewSF1}
         onViewSF2={handleViewSF2}
         onViewSF5={handleViewSF5}
         onViewSF6={handleViewSF6}
+        onPrintSF1={() => handlePrintForm("sf1")}
+        onPrintSF2={() => handlePrintForm("sf2")}
+        onPrintSF5={() => handlePrintForm("sf5")}
         onViewSF9={handleViewSF9}
         onViewSF10={handleViewSF10}
         onBulkPrint={(formType) => handleBulkPrint(formType)}
         onBulkPrintAll={(formType) => handleBulkPrint(formType, true)}
-        themeColors={themeColors}
       />
     );
   }
@@ -767,7 +854,8 @@ export default function SchoolForms() {
             <div>
               <h2 className="text-xl font-bold text-foreground">SF9 - Learner&apos;s Progress Report Card</h2>
               <p className="text-sm text-muted-foreground">
-                {sf9Data.student.name} · {sf9Data.student.section} · {sf9Data.student.schoolYear}
+                {sf9Data.student.name} · {sf9Data.student.section} · {sf9Data.student.schoolYear} · Term{" "}
+                {sf9Term.replace("T", "")}
               </p>
             </div>
           </div>
@@ -781,7 +869,12 @@ export default function SchoolForms() {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
           <div className="min-w-0 max-w-[860px]">
             <div ref={sf9PrintRef}>
-              <SF9Form data={sf9Data} fullLogoUrl={fullLogoUrl} highlightSubject={sf9Highlight} />
+              <SF9Form
+                data={sf9Data}
+                fullLogoUrl={fullLogoUrl}
+                highlightSubject={sf9Highlight}
+                focusTerm={sf9Term}
+              />
             </div>
           </div>
           <aside className="lg:sticky lg:top-20 print-hide">

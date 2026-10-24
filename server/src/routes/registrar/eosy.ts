@@ -12,57 +12,90 @@ import {
 } from "../../lib/promotion";
 import {
   resolveEnrollProSchoolYear,
-  getEnrollProEosySections,
-  getEnrollProEosySectionRecords,
   getEnrollProEosySF5,
   getEnrollProEosySF6,
-  getEnrollProSchoolYears,
 } from "../../lib/enrollproClient";
+import {
+  getEosySchoolYearsResilient,
+  getEosySectionsResilient,
+  getEosySectionRecordsResilient,
+} from "../../lib/syncCache";
 import { logger } from "../../lib/logger";
 import { withSectionLock } from "../../lib/sectionLock";
+import { prisma } from "../../lib/prisma";
 
 export default function registerEosyRoutes(router: Router): void {
 
-// GET /registrar/eosy/school-years — list school years from EnrollPro
+// GET /registrar/eosy/school-years — list school years (SWR cache + SMART DB fallback)
 router.get("/eosy/school-years", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
   try {
-    const data = await getEnrollProSchoolYears();
-    res.json(data);
+    const { years, stale, ageMs, source } = await getEosySchoolYearsResilient();
+    res.json({ schoolYears: years, stale, ageMs, source });
   } catch (err: any) {
     logger.error("[registrar/eosy/school-years]", err.message);
     res.status(502).json({ message: "Failed to fetch school years from EnrollPro" });
   }
 });
 
-// GET /registrar/eosy/sections — sections available for EOSY
+// GET /registrar/eosy/sections — sections available for EOSY (SWR cache + SMART DB fallback)
 router.get("/eosy/sections", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
+  let schoolYearId = parseInt(String(req.query.schoolYearId), 10);
   try {
-    let schoolYearId = parseInt(String(req.query.schoolYearId), 10);
     if (isNaN(schoolYearId)) {
       const sy = await resolveEnrollProSchoolYear();
       schoolYearId = sy.id;
     }
-    const data = await getEnrollProEosySections(schoolYearId);
-    res.json(data);
+    const force = String(req.query.force) === "1";
+    const { payload, stale, ageMs } = await getEosySectionsResilient(schoolYearId, force);
+    const sections = Array.isArray(payload) ? payload : (payload?.sections ?? payload?.data ?? []);
+    res.json({ sections, stale, ageMs, source: "enrollpro" });
   } catch (err: any) {
-    logger.error("[registrar/eosy/sections]", err.message);
+    logger.warn("[registrar/eosy/sections] EnrollPro unavailable, trying SMART DB fallback", err.message);
+    try {
+      if (!isNaN(schoolYearId)) {
+        const sy = await prisma.schoolYear.findFirst({ where: { externalId: schoolYearId }, select: { label: true } });
+        if (sy) {
+          const rows = await prisma.section.findMany({
+            where: { schoolYear: sy.label },
+            orderBy: [{ gradeLevel: "asc" }, { name: "asc" }],
+            select: { id: true, name: true, gradeLevel: true },
+          });
+          if (rows.length > 0) {
+            const sections = rows.map((s) => ({
+              id: s.id,
+              name: s.name,
+              gradeLevel: { name: s.gradeLevel.replace("GRADE_", "Grade ") },
+            }));
+            res.json({ sections, stale: true, ageMs: 0, source: "db" });
+            return;
+          }
+        }
+      }
+    } catch (dbErr: any) {
+      logger.error("[registrar/eosy/sections] SMART DB fallback failed", dbErr.message);
+    }
     res.status(502).json({ message: "Failed to fetch EOSY sections from EnrollPro" });
   }
 });
 
-// GET /registrar/eosy/sections/:sectionId/records — final grades for a section
+// GET /registrar/eosy/sections/:sectionId/records — final grades for a section (SWR cache)
 router.get("/eosy/sections/:sectionId/records", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const user = req.user;
   if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied." }); return; }
   try {
     const sectionId = parseInt(String(req.params.sectionId), 10);
     if (isNaN(sectionId)) { res.status(400).json({ message: "Invalid section ID" }); return; }
-    const data = await getEnrollProEosySectionRecords(sectionId);
-    res.json(data);
+    const force = String(req.query.force) === "1";
+    const { payload, stale, ageMs } = await getEosySectionRecordsResilient(sectionId, force);
+    if (Array.isArray(payload)) {
+      res.json({ records: payload, stale, ageMs });
+    } else {
+      res.json({ ...(payload ?? {}), stale, ageMs });
+    }
   } catch (err: any) {
     logger.error("[registrar/eosy/records]", err.message);
     res.status(502).json({ message: "Failed to fetch EOSY records from EnrollPro" });

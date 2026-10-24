@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
-import { Download, Calendar, Filter, FileSpreadsheet, Eye, Loader2 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Fragment, useEffect, useState } from "react";
+import { Calendar, Download, FileSpreadsheet, Loader2 } from "lucide-react";
+import api, { advisoryApi, type SF2Data } from "@/lib/api";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -12,35 +12,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { useTheme } from "@/contexts/ThemeContext";
-import { SERVER_URL, getPortalToken } from "@/lib/api";
-import axios from "axios";
 
-// ── Local date helper (fixes UTC timezone bug) ─────────────────────────────
-function getLocalDateStr(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-interface Section {
-  id: string;
-  name: string;
-  gradeLevel: string;
-}
-
-interface AttendanceSummary {
-  studentId: string;
-  lrn: string;
-  firstName: string;
-  middleName?: string;
-  lastName: string;
-  present: number;
-  absent: number;
-  late: number;
-  excused: number;
-  total: number;
-}
+const MONTH_NAMES = [
+  "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+  "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
+];
 
 const gradeLevelLabels: Record<string, string> = {
   GRADE_7: "Grade 7",
@@ -49,192 +25,110 @@ const gradeLevelLabels: Record<string, string> = {
   GRADE_10: "Grade 10",
 };
 
+interface AdvisorySection {
+  id: string;
+  name: string;
+  gradeLevel: string;
+}
+
+function MarkContent({ mark }: { mark: string }) {
+  if (mark === "x") {
+    return <span className="flex h-full w-full items-center justify-center bg-rose-50 py-2 text-rose-600">x</span>;
+  }
+  if (mark === "/") {
+    return <span className="flex h-full w-full items-center justify-center bg-amber-50 py-2 text-amber-600">/</span>;
+  }
+  if (mark === "E") {
+    return <span className="flex h-full w-full items-center justify-center bg-indigo-50 py-2 text-indigo-600">E</span>;
+  }
+  return <span className="text-emerald-500 font-normal opacity-30">•</span>;
+}
+
 export default function AttendanceReports() {
-  const { colors } = useTheme();
-  const [sections, setSections] = useState<Section[]>([]);
-  const [selectedSection, setSelectedSection] = useState<string>("");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>(getLocalDateStr());
-  const [summary, setSummary] = useState<AttendanceSummary[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [studentGenders, setStudentGenders] = useState<Record<string, string>>({});
-  const [dailyRecords, setDailyRecords] = useState<Record<string, any[]>>({});
-  const [loadingDaily, setLoadingDaily] = useState(false);
+  const currentYear = new Date().getFullYear();
+  const [section, setSection] = useState<AdvisorySection | null>(null);
+  const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
+  const [year, setYear] = useState<number>(currentYear);
+  const [data, setData] = useState<SF2Data | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const getDatesInRange = (startStr: string, endStr: string) => {
-    const dates: string[] = [];
-    const curr = new Date(startStr + "T00:00:00");
-    const end = new Date(endStr + "T00:00:00");
-    while (curr <= end) {
-      const day = curr.getDay();
-      if (day >= 1 && day <= 5) {
-        const y = curr.getFullYear();
-        const m = String(curr.getMonth() + 1).padStart(2, "0");
-        const d = String(curr.getDate()).padStart(2, "0");
-        dates.push(`${y}-${m}-${d}`);
-      }
-      curr.setDate(curr.getDate() + 1);
-    }
-    return dates;
-  };
-
-  const fetchGenders = async (sectionId: string) => {
-    try {
-      const token = getPortalToken();
-      const gendersMap: Record<string, string> = {};
-
-      const advisoryRes = await axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (advisoryRes.data?.hasAdvisory && advisoryRes.data?.section?.id === sectionId) {
-        const students = advisoryRes.data.students || [];
-        students.forEach((s: any) => {
-          if (s.gender) {
-            gendersMap[s.id] = s.gender.toUpperCase();
-          }
-        });
-        setStudentGenders(gendersMap);
-        return;
-      }
-      setStudentGenders(gendersMap);
-    } catch (err) {
-      console.error("Error fetching genders:", err);
-    }
-  };
-
-  // Auto-load advisory section on mount
   useEffect(() => {
     let cancelled = false;
-    const fetchAdvisory = async () => {
-      try {
-        const token = getPortalToken();
-        const advisoryResponse = await axios.get(`${SERVER_URL}/api/advisory/my-advisory`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!cancelled && advisoryResponse.data?.hasAdvisory && advisoryResponse.data?.section) {
-          const advisorySection = advisoryResponse.data.section;
-          setSections([{
-            id: advisorySection.id,
-            name: advisorySection.name,
-            gradeLevel: advisorySection.gradeLevel,
-          }]);
-          setSelectedSection(advisorySection.id);
-
-          // Auto-set date range to current month
-          const now = new Date();
-          const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-          const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-          const startStr = `${firstDay.getFullYear()}-${String(firstDay.getMonth() + 1).padStart(2, "0")}-${String(firstDay.getDate()).padStart(2, "0")}`;
-          const endStr = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`;
-          setStartDate(startStr);
-          setEndDate(endStr);
+    advisoryApi
+      .getMyAdvisory()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data?.hasAdvisory && res.data.section) {
+          setSection(res.data.section);
+        } else {
+          setError("No advisory class assigned to your account.");
+          setLoading(false);
         }
-      } catch (error) {
-        if (!cancelled) console.error("Error fetching advisory section:", error);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError("Failed to load your advisory class.");
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!section) return;
+    let cancelled = false;
+
+    const loadReport = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.get<{ success: boolean; data: SF2Data }>(`/attendance/sf2/${section.id}`, {
+          params: { month, year },
+        });
+        if (!cancelled) setData(res.data.data);
+      } catch {
+        if (!cancelled) setError("Failed to load the attendance report.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchAdvisory();
-    return () => { cancelled = true; };
-  }, []);
+    void loadReport();
+    return () => {
+      cancelled = true;
+    };
+  }, [section, month, year]);
 
-  // Auto-fetch report when section and dates are ready
-  useEffect(() => {
-    if (selectedSection && startDate && endDate) {
-      fetchReport();
-    }
-  }, [selectedSection, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fetchReport = async () => {
-    if (!selectedSection || !startDate || !endDate) return;
-
-    setLoading(true);
-    setLoadingDaily(true);
+  const handleDownload = async () => {
+    if (!section || !data) return;
     try {
-      const token = getPortalToken();
-      await fetchGenders(selectedSection);
-
-      const response = await axios.get(
-        `${SERVER_URL}/api/attendance/summary/${selectedSection}`,
-        {
-          params: { startDate, endDate },
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const summaryList = response.data.data.summary || [];
-      setSummary(summaryList);
-
-      const studentRecordsMap: Record<string, any[]> = {};
-      const fetchPromises = summaryList.map(async (student: any) => {
-        try {
-          const detailRes = await axios.get(
-            `${SERVER_URL}/api/attendance/student/${student.studentId}`,
-            {
-              params: { startDate, endDate, sectionId: selectedSection },
-              headers: { Authorization: `Bearer ${token}` },
-            }
-          );
-          studentRecordsMap[student.studentId] = detailRes.data?.data?.records || [];
-        } catch (err) {
-          console.error("Error fetching student daily records:", student.studentId, err);
-          studentRecordsMap[student.studentId] = [];
-        }
+      const res = await api.get(`/attendance/export/${section.id}`, {
+        params: { month, year },
+        responseType: "blob",
       });
-      await Promise.all(fetchPromises);
-      setDailyRecords(studentRecordsMap);
-    } catch (error) {
-      console.error("Error fetching report:", error);
-    } finally {
-      setLoading(false);
-      setLoadingDaily(false);
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SF2_${section.name}_${data.monthLabel}_${year}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error downloading attendance export:", err);
     }
   };
 
-  const downloadExcel = async () => {
-    if (!selectedSection || !startDate || !endDate) return;
+  const hasReport = data !== null && data.schoolDays.length > 0;
+  const totalDays = data?.schoolDays.length ?? 0;
+  const enrolmentTotal = data?.summary.enrolmentTotal ?? 0;
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
 
-    setDownloading(true);
-    try {
-      const token = getPortalToken();
-      const d = new Date(startDate + "T00:00:00");
-      const month = d.getMonth() + 1;
-      const year = d.getFullYear();
-      
-      const response = await axios.get(
-        `${SERVER_URL}/api/attendance/export/${selectedSection}`,
-        {
-          params: { month, year },
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: "blob",
-        }
-      );
-
-      // Create download link
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      
-      const section = sections.find(s => s.id === selectedSection);
-      const sectionName = section ? `${gradeLevelLabels[section.gradeLevel]}-${section.name}` : "Attendance";
-      const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-      link.setAttribute("download", `SF2_${sectionName}_${monthNames[month - 1]}_${year}.xlsx`);
-      
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Error downloading Excel:", error);
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const getAttendanceRate = (present: number, total: number) => {
-    if (total === 0) return "0";
-    return ((present / total) * 100).toFixed(1);
+  const getAttendanceRate = (present: number) => {
+    if (totalDays === 0) return "0";
+    return ((present / totalDays) * 100).toFixed(1);
   };
 
   return (
@@ -243,128 +137,122 @@ export default function AttendanceReports() {
         title="Attendance Reports"
         description="View and download attendance summaries"
         actions={
-          <div className="p-2.5 rounded-2xl text-white shadow-xl" style={{ backgroundColor: colors.primary }}>
+          <div className="p-2.5 rounded-2xl bg-primary text-primary-foreground shadow-lg">
             <FileSpreadsheet className="w-6 h-6" />
           </div>
         }
       />
 
-      {/* Filters */}
-      <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden bg-white/90 backdrop-blur-md">
+      <Card className="border-0 shadow-xl shadow-foreground/5 rounded-[2.5rem] overflow-hidden bg-card">
         <CardContent className="p-8">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-xl text-white" style={{ backgroundColor: colors.primary }}>
-              <Filter className="w-5 h-5" />
+            <div className="p-2 rounded-xl bg-primary text-primary-foreground">
+              <Calendar className="w-5 h-5" />
             </div>
             <div>
               <p className="text-sm font-bold text-foreground tracking-tight">Attendance Report</p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Advisory section — auto-loaded for current month</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                Advisory section — auto-loaded, SF2-aligned
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
             <div className="space-y-2">
-              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Advisory Section</Label>
-              <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center px-4">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
+                Advisory Section
+              </label>
+              <div className="h-12 bg-muted/50 border border-border rounded-xl flex items-center px-4">
                 <span className="text-sm font-bold text-foreground">
-                  {sections.length > 0
-                    ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
+                  {section
+                    ? `${gradeLevelLabels[section.gradeLevel] ?? section.gradeLevel} - ${section.name}`
                     : "Loading..."}
                 </span>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="startDate" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start Date</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                max={endDate}
-                className="h-12 bg-slate-50 border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all"
-              />
+              <label htmlFor="reportMonth" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
+                Month
+              </label>
+              <select
+                id="reportMonth"
+                value={month}
+                onChange={(e) => setMonth(Number(e.target.value))}
+                className="h-12 w-full bg-background border border-border rounded-xl text-xs font-bold px-3 text-foreground"
+              >
+                {MONTH_NAMES.map((name, i) => (
+                  <option key={name} value={i + 1}>
+                    {name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="endDate" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End Date</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                min={startDate}
-                max={getLocalDateStr()}
-                className="h-12 bg-slate-50 border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all"
-              />
+              <label htmlFor="reportYear" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
+                Year
+              </label>
+              <select
+                id="reportYear"
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+                className="h-12 w-full bg-background border border-border rounded-xl text-xs font-bold px-3 text-foreground"
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="flex items-end gap-2">
-              <Button
-                onClick={fetchReport}
-                disabled={!selectedSection || !startDate || !endDate || loading}
-                className="flex-1 h-12 rounded-xl text-white shadow-xl font-bold text-[10px] tracking-widest uppercase transition-all"
-                style={{ backgroundColor: colors.primary }}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-4 h-4 mr-2" />
-                    VIEW REPORT
-                  </>
-                )}
-              </Button>
-            </div>
+            <Button
+              onClick={handleDownload}
+              disabled={!data}
+              variant="outline"
+              className="h-12 rounded-xl font-bold text-[10px] tracking-widest uppercase"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download Excel
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Summary Stats */}
-      {summary.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
+      {hasReport && data && (
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="border-0 shadow-lg shadow-foreground/5 rounded-[2rem] bg-card overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Students</p>
-                  <p className="text-2xl font-bold text-foreground">{summary.length}</p>
+                  <p className="text-2xl font-bold text-foreground">{enrolmentTotal}</p>
                 </div>
-                <div className="p-3 rounded-2xl text-white" style={{ backgroundColor: colors.primary }}>
+                <div className="p-3 rounded-2xl bg-primary text-primary-foreground">
                   <FileSpreadsheet className="w-6 h-6" />
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
+          <Card className="border-0 shadow-lg shadow-foreground/5 rounded-[2rem] bg-card overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Avg. Attendance</p>
-                  <p className="text-2xl font-bold text-emerald-600">
-                    {summary.length > 0
-                      ? (
-                          (summary.reduce((acc, s) => acc + s.present, 0) /
-                            summary.reduce((acc, s) => acc + s.total, 0)) *
-                          100
-                        ).toFixed(1)
-                      : 0}%
-                  </p>
+                  <p className="text-2xl font-bold text-emerald-600">{data.summary.percentageAttendance}%</p>
                 </div>
                 <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-500">
-                  <Eye className="w-6 h-6" />
+                  <Calendar className="w-6 h-6" />
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
+          <Card className="border-0 shadow-lg shadow-foreground/5 rounded-[2rem] bg-card overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Days</p>
-                  <p className="text-2xl font-bold text-foreground">{summary[0]?.total || 0}</p>
+                  <p className="text-2xl font-bold text-foreground">{totalDays}</p>
                 </div>
                 <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
                   <Calendar className="w-6 h-6" />
@@ -372,265 +260,176 @@ export default function AttendanceReports() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Export</p>
-                  <p className="text-sm font-bold text-foreground">SF2 Download</p>
-                </div>
-                <Button
-                  onClick={downloadExcel}
-                  disabled={downloading}
-                  className="h-10 rounded-xl text-white font-bold text-[10px] tracking-widest uppercase transition-all"
-                  style={{ backgroundColor: colors.secondary }}
-                >
-                  {downloading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
 
-      {/* Report Table */}
-      <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
-        <CardHeader className="p-8 border-b border-slate-50 bg-slate-50/30">
+      <Card className="border-0 shadow-2xl shadow-foreground/5 rounded-[2.5rem] overflow-hidden bg-card">
+        <CardHeader className="p-8 border-b border-border/60 bg-muted/30">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-xl font-bold text-foreground tracking-tight">Attendance Summary</CardTitle>
               <CardDescription className="text-muted-foreground font-sans normal-case font-medium tracking-normal mt-1">
-                {summary.length > 0
-                  ? `Showing ${summary.length} students from ${startDate} to ${endDate}`
-                  : "Select filters and click 'View Report' to see data"}
+                {hasReport && data
+                  ? `${data.monthLabel} ${data.year} — ${enrolmentTotal} students, ${totalDays} school days`
+                  : "Attendance overview for your advisory class"}
               </CardDescription>
             </div>
-            {summary.length > 0 && (
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-3 py-1.5 rounded-full bg-slate-100">
-                {summary.length} Records
+            {hasReport && data && (
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-3 py-1.5 rounded-full bg-muted">
+                {enrolmentTotal} Students
               </span>
             )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {loading || loadingDaily ? (
+          {loading ? (
             <div className="flex items-center justify-center py-24">
               <div className="text-center">
-                <div className="w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm" style={{ backgroundColor: `${colors.primary}15` }}>
-                  <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
+                <div className="w-20 h-20 rounded-[2rem] bg-muted flex items-center justify-center mx-auto mb-6 shadow-sm">
+                  <Loader2 className="w-10 h-10 animate-spin text-primary" />
                 </div>
                 <p className="text-muted-foreground font-bold text-xs uppercase tracking-widest">Compiling SF2 Daily Grid...</p>
               </div>
             </div>
-          ) : summary.length > 0 ? (
-            (() => {
-              const dateList = getDatesInRange(startDate, endDate);
-              const getIsActiveDay = (date: string) => {
-                return Object.values(dailyRecords).some((records) =>
-                  records.some((r) => r.date.split("T")[0] === date)
-                );
-              };
-              const activeSchoolDays = dateList.filter(date => getIsActiveDay(date));
-
-              const getDailyAttendanceStats = (date: string) => {
-                let presentCount = 0;
-                summary.forEach((student) => {
-                  const records = dailyRecords[student.studentId] || [];
-                  const recordForDate = records.find((r) => r.date.split("T")[0] === date);
-                  if (!recordForDate || recordForDate.status === "PRESENT" || recordForDate.status === "LATE") {
-                    presentCount++;
-                  }
-                });
-                return presentCount;
-              };
-
-              const getHasConsecutiveAbsences = (studentId: string) => {
-                const records = dailyRecords[studentId] || [];
-                const sorted = [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                let maxConsec = 0;
-                let currentConsec = 0;
-                for (const r of sorted) {
-                  if (r.status === "ABSENT") {
-                    currentConsec++;
-                    if (currentConsec > maxConsec) maxConsec = currentConsec;
-                  } else {
-                    currentConsec = 0;
-                  }
-                }
-                return maxConsec >= 5;
-              };
-
-              const males = summary.filter((s) => studentGenders[s.studentId] === "MALE").sort((a, b) => a.lastName.localeCompare(b.lastName));
-              const females = summary.filter((s) => studentGenders[s.studentId] === "FEMALE").sort((a, b) => a.lastName.localeCompare(b.lastName));
-              const unclassified = summary.filter((s) => studentGenders[s.studentId] !== "MALE" && studentGenders[s.studentId] !== "FEMALE").sort((a, b) => a.lastName.localeCompare(b.lastName));
-
-              const renderRosterRows = (studentList: AttendanceSummary[], groupLabel: string) => {
-                if (studentList.length === 0) return null;
-                return (
-                  <>
-                    {/* Gender Group Divider */}
-                    <TableRow className="bg-slate-100/60 hover:bg-slate-100/60">
-                      <TableCell colSpan={activeSchoolDays.length + 8} className="py-2.5 px-6 text-[10px] font-bold text-muted-foreground tracking-widest uppercase">
-                        {groupLabel} ({studentList.length} Learners)
-                      </TableCell>
+          ) : error ? (
+            <div className="py-32 text-center px-8">
+              <div className="w-24 h-24 bg-muted rounded-[2.5rem] flex items-center justify-center mx-auto mb-8">
+                <Calendar className="w-10 h-10 text-muted-foreground" />
+              </div>
+              <h3 className="font-bold text-foreground text-2xl mb-3">Unable to Load Report</h3>
+              <p className="text-muted-foreground font-medium leading-relaxed">{error}</p>
+            </div>
+          ) : hasReport && data ? (
+            <>
+              <div className="overflow-x-auto">
+                <Table className="border-collapse table-fixed min-w-full">
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 border-b border-border">
+                      <TableHead className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-r border-border/60 px-4">LRN</TableHead>
+                      <TableHead className="w-56 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-r border-border/60 px-4">Student Name</TableHead>
+                      {data.schoolDays.map((d) => (
+                        <TableHead
+                          key={d.date}
+                          title={d.date}
+                          className="w-10 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-border/60 p-0"
+                        >
+                          {d.dayNum}
+                        </TableHead>
+                      ))}
+                      <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-border/60 p-0">P</TableHead>
+                      <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-border/60 p-0">A</TableHead>
+                      <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-border/60 p-0">L</TableHead>
+                      <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-border/60 p-0">E</TableHead>
+                      <TableHead className="w-16 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-border/60 p-0">Total</TableHead>
+                      <TableHead className="w-20 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center px-2">Rate %</TableHead>
                     </TableRow>
-                    {studentList.map((student) => {
-                      const records = dailyRecords[student.studentId] || [];
-                      const hasConsecAbsence = getHasConsecutiveAbsences(student.studentId);
-                      
-                      return (
-                        <TableRow key={student.studentId} className="hover:bg-slate-50/50 transition-all border-slate-100 group">
-                          {/* LRN - Sticky left */}
-                          <TableCell className="font-mono text-xs text-muted-foreground font-bold group-hover:text-foreground transition-colors border-r border-slate-100 px-4">
-                            {student.lrn}
-                          </TableCell>
-                          
-                          {/* Learner Name - Sticky left */}
-                          <TableCell className="font-bold text-foreground tracking-tight border-r border-slate-100 whitespace-nowrap min-w-[200px] px-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <span>{student.lastName}, {student.firstName}</span>
-                              {hasConsecAbsence && (
-                                <span className="bg-rose-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse shrink-0">
-                                  5+ Abs
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-
-                          {/* Daily Columns */}
-                          {activeSchoolDays.map((date) => {
-                            const record = records.find((r) => r.date.split("T")[0] === date);
-                            const status = record?.status || "PRESENT";
-                            
-                            return (
-                              <TableCell 
-                                key={date} 
-                                className="text-center font-bold text-xs border-r border-slate-100 p-0 w-10 min-w-[40px] max-w-[40px]"
-                              >
-                                {status === "ABSENT" ? (
-                                  <span className="text-rose-600 bg-rose-50 w-full h-full flex items-center justify-center py-2">X</span>
-                                ) : status === "LATE" ? (
-                                  <span className="text-amber-600 bg-amber-50 w-full h-full flex items-center justify-center py-2">/</span>
-                                ) : status === "EXCUSED" ? (
-                                  <span className="text-indigo-600 bg-indigo-50 w-full h-full flex items-center justify-center py-2">E</span>
-                                ) : (
-                                  <span className="text-emerald-500 font-normal opacity-30">•</span>
-                                )}
-                              </TableCell>
-                            );
-                          })}
-
-                          {/* Right Summaries */}
-                          <TableCell className="text-center font-bold text-xs text-emerald-600 border-r border-slate-100">{student.present}</TableCell>
-                          <TableCell className="text-center font-bold text-xs text-rose-600 border-r border-slate-100">{student.absent}</TableCell>
-                          <TableCell className="text-center font-bold text-xs text-amber-600 border-r border-slate-100">{student.late}</TableCell>
-                          <TableCell className="text-center font-bold text-xs text-indigo-600 border-r border-slate-100">{student.excused}</TableCell>
-                          <TableCell className="text-center font-bold text-xs text-muted-foreground border-r border-slate-100">{student.total}</TableCell>
-                          <TableCell className="text-center border-r border-slate-100 px-3">
-                            <span
-                              className={`font-bold text-xs ${
-                                parseFloat(getAttendanceRate(student.present, student.total)) >= 90
-                                  ? "text-emerald-600"
-                                  : parseFloat(getAttendanceRate(student.present, student.total)) >= 75
-                                  ? "text-amber-600"
-                                  : "text-rose-600"
-                              }`}
-                            >
-                              {getAttendanceRate(student.present, student.total)}%
-                            </span>
+                  </TableHeader>
+                  <TableBody>
+                    {data.groups.map((group) => (
+                      <Fragment key={group.key}>
+                        <TableRow className="bg-muted/60 hover:bg-muted/60">
+                          <TableCell
+                            colSpan={data.schoolDays.length + 8}
+                            className="py-2.5 px-6 text-[10px] font-bold text-muted-foreground tracking-widest uppercase"
+                          >
+                            {group.label} ({group.students.length} Learners)
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </>
-                );
-              };
-
-              return (
-                <div className="overflow-x-auto border border-slate-150 rounded-[1.5rem]">
-                  <Table className="border-collapse table-fixed min-w-full">
-                    <TableHeader>
-                      <TableRow className="bg-slate-50 border-b border-slate-200">
-                        <TableHead className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-r border-slate-200 px-4">LRN</TableHead>
-                        <TableHead className="w-56 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-r border-slate-200 px-4">Student Name</TableHead>
-                        
-                        {/* Daily Columns Headers */}
-                        {activeSchoolDays.map((date) => (
-                          <TableHead 
-                            key={date} 
-                            className="w-10 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0"
-                            title={date}
-                          >
-                            {new Date(date).getDate()}
-                          </TableHead>
-                        ))}
-
-                        <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">P</TableHead>
-                        <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">A</TableHead>
-                        <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">L</TableHead>
-                        <TableHead className="w-12 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">E</TableHead>
-                        <TableHead className="w-16 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-slate-200 p-0">Total</TableHead>
-                        <TableHead className="w-20 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center px-2">Rate %</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {renderRosterRows(males, "Male")}
-                      {renderRosterRows(females, "Female")}
-                      {renderRosterRows(unclassified, "Unclassified")}
-
-                      {/* Bottom SF2 Stats Calculations */}
-                      {activeSchoolDays.length > 0 && (
-                        <>
-                          {/* Daily Present count */}
-                          <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 font-bold border-t-2 border-slate-200">
-                            <TableCell colSpan={2} className="text-right text-[10px] font-bold uppercase text-muted-foreground tracking-wider px-4 py-3">
-                              Daily Attendance count
-                            </TableCell>
-                            {activeSchoolDays.map((date) => {
-                              const presentCount = getDailyAttendanceStats(date);
-                              return (
-                                <TableCell key={`cnt-${date}`} className="text-center font-bold text-foreground text-xs py-3 border-r border-slate-100">
-                                  {presentCount}
+                        {group.students.map((student) => {
+                          const excused = Object.values(student.marks).filter((m) => m === "E").length;
+                          const rate = parseFloat(getAttendanceRate(student.present));
+                          return (
+                            <TableRow key={student.studentId} className="hover:bg-muted/30 transition-all border-border/60">
+                              <TableCell className="font-mono text-xs text-muted-foreground font-bold border-r border-border/60 px-4">
+                                {student.lrn}
+                              </TableCell>
+                              <TableCell className="font-bold text-foreground tracking-tight border-r border-border/60 whitespace-nowrap min-w-[200px] px-4">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span>
+                                    {student.lastName}, {student.firstName}
+                                  </span>
+                                  {student.maxConsecutiveAbsent >= 5 && (
+                                    <span className="bg-rose-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse shrink-0">
+                                      5+ Abs
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              {data.schoolDays.map((d) => (
+                                <TableCell
+                                  key={`${student.studentId}-${d.date}`}
+                                  className="text-center font-bold text-xs border-r border-border/60 p-0 w-10 min-w-[40px] max-w-[40px]"
+                                >
+                                  <MarkContent mark={student.marks[d.date] ?? ""} />
                                 </TableCell>
-                              );
-                            })}
-                            <TableCell colSpan={6} className="bg-slate-50/30" />
-                          </TableRow>
+                              ))}
+                              <TableCell className="text-center font-bold text-xs text-emerald-600 border-r border-border/60">{student.present}</TableCell>
+                              <TableCell className="text-center font-bold text-xs text-rose-600 border-r border-border/60">{student.absent}</TableCell>
+                              <TableCell className="text-center font-bold text-xs text-amber-600 border-r border-border/60">{student.tardy}</TableCell>
+                              <TableCell className="text-center font-bold text-xs text-indigo-600 border-r border-border/60">{excused}</TableCell>
+                              <TableCell className="text-center font-bold text-xs text-muted-foreground border-r border-border/60">{totalDays}</TableCell>
+                              <TableCell className="text-center border-r border-border/60 px-3">
+                                <span
+                                  className={`font-bold text-xs ${
+                                    rate >= 90 ? "text-emerald-600" : rate >= 75 ? "text-amber-600" : "text-rose-600"
+                                  }`}
+                                >
+                                  {getAttendanceRate(student.present)}%
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </Fragment>
+                    ))}
 
-                          {/* Daily Attendance Rate % */}
-                          <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 font-bold">
-                            <TableCell colSpan={2} className="text-right text-[10px] font-bold uppercase text-muted-foreground tracking-wider px-4 py-3">
-                              Daily Attendance Rate %
-                            </TableCell>
-                            {activeSchoolDays.map((date) => {
-                              const presentCount = getDailyAttendanceStats(date);
-                              const rate = summary.length > 0 ? (presentCount / summary.length) * 100 : 0;
-                              return (
-                                <TableCell key={`rate-${date}`} className="text-center font-bold text-[10px] py-3 border-r border-slate-100" style={{ color: colors.primary }}>
-                                  {rate.toFixed(0)}%
-                                </TableCell>
-                              );
-                            })}
-                            <TableCell colSpan={6} className="bg-slate-50/50" />
-                          </TableRow>
-                        </>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              );
-            })()
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 font-bold border-t-2 border-border">
+                      <TableCell colSpan={2} className="text-right text-[10px] font-bold uppercase text-muted-foreground tracking-wider px-4 py-3">
+                        Daily Attendance Count
+                      </TableCell>
+                      {data.schoolDays.map((d) => (
+                        <TableCell key={`cnt-${d.date}`} className="text-center font-bold text-foreground text-xs py-3 border-r border-border/60">
+                          {data.dailyPresent[d.date] ?? 0}
+                        </TableCell>
+                      ))}
+                      <TableCell colSpan={6} className="bg-muted/20" />
+                    </TableRow>
+
+                    <TableRow className="bg-muted/60 hover:bg-muted/60 font-bold">
+                      <TableCell colSpan={2} className="text-right text-[10px] font-bold uppercase text-muted-foreground tracking-wider px-4 py-3">
+                        Daily Attendance Rate %
+                      </TableCell>
+                      {data.schoolDays.map((d) => {
+                        const present = data.dailyPresent[d.date] ?? 0;
+                        const rate = enrolmentTotal > 0 ? (present / enrolmentTotal) * 100 : 0;
+                        return (
+                          <TableCell key={`rate-${d.date}`} className="text-center font-bold text-[10px] py-3 border-r border-border/60 text-primary">
+                            {rate.toFixed(0)}%
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell colSpan={6} className="bg-muted/30" />
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-6 py-3 border-t border-border/60 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                <span className="text-emerald-500 opacity-60">• Present</span>
+                <span className="text-rose-600">x Absent</span>
+                <span className="text-amber-600">/ Tardy</span>
+                <span className="text-indigo-600">E Excused</span>
+              </div>
+            </>
           ) : (
             <div className="py-32 text-center px-8">
-              <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-sm">
+              <div className="w-24 h-24 bg-muted rounded-[2.5rem] flex items-center justify-center mx-auto mb-8">
                 <Calendar className="w-10 h-10 text-muted-foreground" />
               </div>
               <h3 className="font-bold text-foreground text-2xl mb-3">No Attendance Data</h3>
-              <p className="text-muted-foreground font-medium text-lg leading-relaxed">Select a section and date range to view the report</p>
+              <p className="text-muted-foreground font-medium leading-relaxed">
+                {data ? `No attendance recorded for ${data.monthLabel} ${data.year}.` : "Select a month to view the report."}
+              </p>
             </div>
           )}
         </CardContent>

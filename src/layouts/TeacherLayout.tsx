@@ -19,7 +19,9 @@ import { SERVER_URL } from "@/lib/api";
 import { useSyncStream } from "@/hooks/useSyncStream";
 import IntegratedSystemsNav from "@/components/layout/IntegratedSystemsNav";
 import PixelGridBackground from "@/components/layout/PixelGridBackground";
+import AccessibilityMenu from "@/components/layout/AccessibilityMenu";
 import NotificationBell from "@/components/layout/NotificationBell";
+import { useHasAdvisory } from "@/hooks/useHasAdvisory";
 interface UserData {
   id: string;
   username: string;
@@ -53,6 +55,10 @@ const navigationGroups = [
   }
 ];
 
+// Attendance is advisory-based (SF2) — only teachers with an advisory class
+// (assigned via EnrollPro) see these entries.
+const ADVISORY_ONLY_HREFS = new Set(["/teacher/attendance", "/teacher/attendance-reports"]);
+
 export default function TeacherLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -64,6 +70,14 @@ export default function TeacherLayout() {
   });
   const { colors, logoUrl, schoolName, currentSchoolYear } = useTheme();
   const { atlasOffline, enrollproOffline } = useSyncStream();
+  const hasAdvisory = useHasAdvisory();
+
+  const visibleNavigationGroups = hasAdvisory === false
+    ? navigationGroups.map((group) => ({
+        ...group,
+        items: group.items.filter((item) => !ADVISORY_ONLY_HREFS.has(item.href)),
+      }))
+    : navigationGroups;
 
   useEffect(() => {
     localStorage.setItem("smart_active_portal", "teacher");
@@ -215,7 +229,7 @@ export default function TeacherLayout() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-2 px-3 custom-scrollbar overflow-x-hidden">
-          {navigationGroups.map((group) => (
+          {visibleNavigationGroups.map((group) => (
             <div key={group.title} className="mb-5 first:mt-2">
               {!sidebarCollapsed && (
                 <span className="px-4 mb-1 text-[0.625rem] font-bold text-[#0F1729]/60 uppercase tracking-normal block whitespace-nowrap">
@@ -341,6 +355,7 @@ export default function TeacherLayout() {
             </div>
 
             <div className="flex items-center gap-3">
+              <AccessibilityMenu userId={user.id} />
               <NotificationBell
                 portal="teacher"
                 userId={user.id}

@@ -288,7 +288,12 @@ export async function computeSectionPromotions(sectionId: string, schoolYear: st
   }
 
   const results: EnrollmentPromotion[] = enrollments.map((enrollment) => {
-    const studentGrades = grades.filter((g) => g.studentId === enrollment.studentId && g.status === "FINALIZED");
+    // Preview decisions from ALL saved grades (DRAFT included) so a section
+    // whose current-term grades are not yet finalized does not display every
+    // learner as "no grades → RETAINED". Finalization is still gated by the
+    // DRAFT blockers below, and when finalize actually runs every grade is
+    // FINALIZED, so the persisted decision is unaffected.
+    const studentGrades = grades.filter((g) => g.studentId === enrollment.studentId);
 
     const subjectMap = new Map<string, SubjectTermInput>();
     for (const ca of classAssignments) {

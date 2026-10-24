@@ -1,11 +1,13 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { TextScaleProvider } from './contexts/TextScaleContext'
 
 // Layouts are small and always needed — keep eager
 import TeacherLayout from './layouts/TeacherLayout'
 import RegistrarLayout from './layouts/RegistrarLayout'
 import AdminLayout from './layouts/AdminLayout'
+import RequireAdvisory from './components/layout/RequireAdvisory'
 
 // Login pages
 const LoginPage = lazy(() => import('./pages/LoginPage'))
@@ -94,6 +96,7 @@ function AdminUnknownRoute() {
 function App() {
   return (
     <ThemeProvider>
+      <TextScaleProvider>
       <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public routes - Login pages */}
@@ -117,8 +120,8 @@ function App() {
         <Route path="records/:classAssignmentId" element={<ClassRecordView />} />
         <Route path="advisory" element={<MyAdvisory />} />
         <Route path="advisory/student/:studentId" element={<StudentGradeProfile />} />
-        <Route path="attendance" element={<Attendance />} />
-        <Route path="attendance-reports" element={<AttendanceReports />} />
+        <Route path="attendance" element={<RequireAdvisory><Attendance /></RequireAdvisory>} />
+        <Route path="attendance-reports" element={<RequireAdvisory><AttendanceReports /></RequireAdvisory>} />
         <Route path="schedule" element={<TeacherSchedule />} />
       </Route>
 
@@ -157,6 +160,7 @@ function App() {
       <Route path="*" element={<NotFound />} />
     </Routes>
       </Suspense>
+      </TextScaleProvider>
     </ThemeProvider>
   )
 }

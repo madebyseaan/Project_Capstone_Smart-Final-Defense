@@ -173,6 +173,9 @@ export const RemedialExpandedPanel = memo(function RemedialExpandedPanel({
               <TableBody>
                 {student.remedialClasses.map((rc) => {
                   const currentMark = editMarks[rc.id] ?? rc.remedialMark ?? "";
+                  const markInvalid =
+                    typeof currentMark === "number" &&
+                    (!Number.isInteger(currentMark) || currentMark < 60 || currentMark > 100);
                   const rfg =
                     typeof currentMark === "number"
                       ? computeRfg(rc.originalGrade, currentMark)
@@ -190,16 +193,26 @@ export const RemedialExpandedPanel = memo(function RemedialExpandedPanel({
                             {rc.remedialMark}
                           </span>
                         ) : (
-                          <Input
-                            type="number"
-                            min={60}
-                            max={100}
-                            step={0.1}
-                            className="w-20 text-center mx-auto h-8 rounded-md text-xs"
-                            placeholder="--"
-                            value={editMarks[rc.id] ?? rc.remedialMark ?? ""}
-                            onChange={(e) => onMarkChange(rc.id, e.target.value)}
-                          />
+                          <div className="flex flex-col items-center gap-1">
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={3}
+                              autoComplete="off"
+                              aria-label={`Remedial class mark for ${rc.subjectName}`}
+                              aria-invalid={markInvalid}
+                              className={`w-20 text-center mx-auto h-8 rounded-md text-xs tabular-nums ${
+                                markInvalid ? "border-destructive focus-visible:ring-destructive" : ""
+                              }`}
+                              placeholder="--"
+                              value={editMarks[rc.id] ?? rc.remedialMark ?? ""}
+                              onChange={(e) => onMarkChange(rc.id, e.target.value)}
+                            />
+                            {markInvalid && (
+                              <span className="text-[10px] font-medium text-destructive leading-none">60–100</span>
+                            )}
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="text-center font-bold text-foreground py-3 px-4 tabular-nums">

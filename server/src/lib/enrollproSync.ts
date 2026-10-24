@@ -37,6 +37,7 @@ import { snapshotForDb } from './studentSnapshot';
 import { createAuditLog } from './audit';
 import { isConfidentData, exceedsRatio, MAX_DEACTIVATION_RATIO } from './syncGuard';
 import { isValidLrn, normalizeLrn, isOfficiallyEnrolled, mapGradeLevelToEnum, sanitizeSf9EligibilityStatus, sanitizeConditionalSubjectCodes, sanitizeOptionalBoolean, sanitizeOptionalNumber, sanitizeOptionalText, type Sf9EligibilityStatusValue } from './transfereeValidation';
+import { normalizeProgramCode } from './programCode';
 import { createHash } from 'crypto';
 
 // ---------------------------------------------------------------------------
@@ -49,14 +50,6 @@ function mapGradeLevel(name: string | null | undefined): GradeLevel | null {
   if (n.includes('8'))  return 'GRADE_8';
   if (n.includes('9'))  return 'GRADE_9';
   return null;
-}
-
-function mapProgramType(programType: string | null | undefined): string {
-  const pt = (programType ?? '').toUpperCase();
-  if (pt.includes('ARTS')) return 'SPA';
-  if (pt.includes('SPORT')) return 'SPS';
-  if (pt.includes('SCIENCE') || pt.includes('ENGINEERING') || pt.includes('STE')) return 'STE';
-  return 'REGULAR';
 }
 
 // ---------------------------------------------------------------------------
@@ -427,13 +420,13 @@ export async function runEnrollProSync() {
               schoolYear: schoolYearLabel,
             },
           },
-          update: { adviserId: teacherId, program: mapProgramType(epSection.programType) },
+          update: { adviserId: teacherId, program: normalizeProgramCode(epSection.programType) },
           create: {
             name: epSection.name,
             gradeLevel,
             schoolYear: schoolYearLabel,
             adviserId: teacherId,
-            program: mapProgramType(epSection.programType),
+            program: normalizeProgramCode(epSection.programType),
           },
         });
 

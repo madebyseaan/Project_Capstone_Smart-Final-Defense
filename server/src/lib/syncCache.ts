@@ -18,8 +18,13 @@ import {
   resolveEnrollProSchoolYear,
   getEnrollProSectionRoster,
   getIntegrationV1LearnersPage,
+  getEnrollProSchoolYears,
+  getEnrollProEosySections,
+  getEnrollProEosySectionRecords,
   type EnrollProTeacher,
+  type EnrollProSchoolYear,
 } from './enrollproClient';
+import { prisma } from './prisma';
 import type { AtlasEffectiveTeachingLoadResponse } from './sync/httpClient';
 import { logger } from './logger';
 
@@ -365,4 +370,87 @@ export async function getCachedLearnersPage(
     `enrollpro:learners:${schoolYearId}:${page}:${limit}`,
     () => getIntegrationV1LearnersPage(schoolYearId, page, limit),
   );
+}
+
+// ---------------------------------------------------------------------------
+// EOSY (registrar) — school years / sections / records
+// ---------------------------------------------------------------------------
+// Same SWR contract as rosters: fresh → instant, stale → serve now + background
+// refresh, outage with nothing cached → throw so the route can 502 (or, for
+// school years, fall back to the SMART DB mirror).
+
+const EOSY_SCHOOL_YEARS_KEY = 'enrollpro:eosy:school-years';
+const eosySectionsKey = (schoolYearId?: number) => `enrollpro:eosy:sections:${schoolYearId ?? 'default'}`;
+const eosyRecordsKey = (sectionId: number) => `enrollpro:eosy:records:${sectionId}`;
+
+async function forceFetchThenCache<T>(key: string, fetcher: () => Promise<T>): Promise<{ payload: T; stale: boolean; ageMs: number }> {
+  try {
+    const fresh = await fetcher();
+    syncCache.set(key, fresh);
+    return { payload: fresh, stale: false, ageMs: 0 };
+  } catch {
+    const payload = await syncCache.getOrFetch(key, fetcher);
+    const status = syncCache.getWithStatus<T>(key);
+    return { payload, stale: status?.stale ?? false, ageMs: status?.ageMs ?? 0 };
+  }
+}
+
+/**
+ * EOSY school years. `getEnrollProSchoolYears()` resolves to `[]` only when
+ * every EnrollPro lookup failed, so an empty result is treated as an outage:
+ * serve stale cache, else fall back to the SMART SchoolYear mirror.
+ */
+export async function getEosySchoolYearsResilient(): Promise<{
+  years: EnrollProSchoolYear[];
+  stale: boolean;
+  ageMs: number;
+  source: 'enrollpro' | 'db';
+}> {
+  try {
+    const years = await syncCache.getOrFetch(EOSY_SCHOOL_YEARS_KEY, async () => {
+      const fresh = await getEnrollProSchoolYears();
+      if (fresh.length === 0) throw new Error('EnrollPro returned no school years');
+      return fresh;
+    });
+    const status = syncCache.getWithStatus<EnrollProSchoolYear[]>(EOSY_SCHOOL_YEARS_KEY);
+    return { years, stale: status?.stale ?? false, ageMs: status?.ageMs ?? 0, source: 'enrollpro' };
+  } catch {
+    const rows = await prisma.schoolYear.findMany({
+      where: { externalId: { not: null } },
+      orderBy: { label: 'desc' },
+      select: { externalId: true, label: true, status: true },
+    });
+    const years: EnrollProSchoolYear[] = rows.map((row) => ({
+      id: row.externalId as number,
+      yearLabel: row.label,
+      status: row.status === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED',
+    }));
+    return { years, stale: true, ageMs: 0, source: 'db' };
+  }
+}
+
+/** EOSY sections for a school year with SWR. Throws when EnrollPro is down and nothing is cached. */
+export async function getEosySectionsResilient(
+  schoolYearId?: number,
+  force = false,
+): Promise<{ payload: any; stale: boolean; ageMs: number }> {
+  const key = eosySectionsKey(schoolYearId);
+  const fetcher = () => getEnrollProEosySections(schoolYearId);
+  if (force) return forceFetchThenCache(key, fetcher);
+  const payload = await syncCache.getOrFetch(key, fetcher);
+  const status = syncCache.getWithStatus<any>(key);
+  return { payload, stale: status?.stale ?? false, ageMs: status?.ageMs ?? 0 };
+}
+
+/** EOSY section records with SWR. Throws when EnrollPro is down and nothing is cached. */
+export async function getEosySectionRecordsResilient(
+  sectionId: number,
+  force = false,
+): Promise<{ payload: any; stale: boolean; ageMs: number }> {
+  const key = eosyRecordsKey(sectionId);
+  const fetcher = () => getEnrollProEosySectionRecords(sectionId);
+  if (force) return forceFetchThenCache(key, fetcher);
+  const payload = await syncCache.getOrFetch(key, fetcher);
+  const status = syncCache.getWithStatus<any>(key);
+  return { payload, stale: status?.stale ?? false, ageMs: status?.ageMs ?? 0 };
 }

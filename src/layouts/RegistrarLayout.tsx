@@ -19,6 +19,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
 import IntegratedSystemsNav from "@/components/layout/IntegratedSystemsNav";
 import PixelGridBackground from "@/components/layout/PixelGridBackground";
+import AccessibilityMenu from "@/components/layout/AccessibilityMenu";
 import NotificationBell from "@/components/layout/NotificationBell";
 import { useSyncStream } from "@/hooks/useSyncStream";
 interface UserData {
@@ -363,6 +364,7 @@ export default function RegistrarLayout() {
             </div>
 
             <div className="flex items-center gap-3">
+              <AccessibilityMenu userId={user.id} />
               <NotificationBell
                 portal="registrar"
                 userId={user.id}

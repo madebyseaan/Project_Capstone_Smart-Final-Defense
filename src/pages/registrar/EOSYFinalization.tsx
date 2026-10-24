@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { GraduationCap, Loader2, AlertTriangle, RefreshCw, Download } from "lucide-react";
+import { GraduationCap, Loader2, AlertTriangle, RefreshCw, Download, LayoutDashboard, Lock, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TabsContent } from "@/components/ui/tabs";
+import { FilterTabs } from "@/components/layout/FilterTabs";
+import type { FilterTabItem } from "@/components/layout/FilterTabs";
 import { registrarApi } from "@/lib/api";
 
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -18,6 +20,17 @@ import EOSYConfirmDialog from "./components/EOSYConfirmDialog";
 // in SMART. All EnrollPro finalization must be performed directly in EnrollPro.
 // SMART's own finalize actions (grade locking, promotion snapshots) are performed here.
 
+const EOSY_TAB_ITEMS: FilterTabItem[] = [
+  { value: "overview", label: "Overview", icon: LayoutDashboard },
+  { value: "grade-locking", label: "Grade Locking", icon: Lock },
+  { value: "learner-records", label: "Learner Records", icon: Users },
+];
+
+function formatStaleNotice(ageMs: number) {
+  const mins = Math.max(1, Math.round(ageMs / 60000));
+  return `Cached data — about ${mins} min old (EnrollPro unreachable).`;
+}
+
 export default function EOSYFinalization() {
 
   // ── Filters ──
@@ -30,6 +43,7 @@ export default function EOSYFinalization() {
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [localSections, setLocalSections] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("overview");
+  const [cacheNotice, setCacheNotice] = useState<string | null>(null);
 
   // ── Data ──
   const [recordsLoading, setRecordsLoading] = useState(false);
@@ -72,8 +86,14 @@ export default function EOSYFinalization() {
     setSchoolYearsLoading(true);
     try {
       const res = await registrarApi.getEosySchoolYears();
-      const years = (res.data as any) || [];
+      const payload = res.data as any;
+      const years: any[] = Array.isArray(payload) ? payload : (payload?.schoolYears ?? []);
       setSchoolYears(years);
+      if (payload?.source === "db") {
+        setCacheNotice("EnrollPro is unreachable — showing last known school years from the SMART database.");
+      } else if (payload?.stale) {
+        setCacheNotice(formatStaleNotice(payload.ageMs ?? 0));
+      }
       const active = years.find((y: any) => y.status === "ACTIVE");
       if (active) {
         setSelectedSchoolYearId(String(active.id));
@@ -82,12 +102,13 @@ export default function EOSYFinalization() {
       }
     } catch (err: any) {
       console.error("Failed to load school years", err);
+      setCacheNotice("EnrollPro is unreachable and no cached school years are available.");
     } finally {
       setSchoolYearsLoading(false);
     }
   };
 
-  const loadSections = async (syId?: string) => {
+  const loadSections = async (syId?: string, force = false) => {
     const targetSyId = syId || selectedSchoolYearId;
     if (!targetSyId) return;
     setSectionsLoading(true);
@@ -95,9 +116,16 @@ export default function EOSYFinalization() {
     setSelectedSectionId("");
     setRecords([]);
     try {
-      const res = await registrarApi.getEosySections(parseInt(targetSyId, 10));
+      const res = await registrarApi.getEosySections(parseInt(targetSyId, 10), force);
       const payload = res.data as any;
       setSections(payload.sections ?? payload.data ?? payload ?? []);
+      if (payload?.source === "db") {
+        setCacheNotice("EnrollPro is unreachable — showing last known sections from the SMART database. Grade Locking still works; live grades are unavailable.");
+      } else if (payload?.stale) {
+        setCacheNotice(formatStaleNotice(payload.ageMs ?? 0));
+      } else {
+        setCacheNotice(null);
+      }
     } catch (err: any) {
       setSectionsError(err?.response?.data?.message ?? "Failed to load EOSY sections from EnrollPro.");
     } finally {
@@ -105,14 +133,21 @@ export default function EOSYFinalization() {
     }
   };
 
-  const loadRecords = async (sectionId: string) => {
+  const loadRecords = async (sectionId: string, force = false) => {
+    if (!/^\d+$/.test(sectionId)) {
+      setRecords([]);
+      setRecordsError("EnrollPro is unreachable — live EOSY grades are unavailable right now. Grade Locking still works.");
+      return;
+    }
     setRecordsLoading(true);
     setRecordsError(null);
     setRecords([]);
     setSectionMeta(null);
     try {
-      const res = await registrarApi.getEosySectionRecords(parseInt(sectionId, 10));
+      const res = await registrarApi.getEosySectionRecords(parseInt(sectionId, 10), force);
       const payload = res.data as any;
+      if (payload?.stale) setCacheNotice(formatStaleNotice(payload.ageMs ?? 0));
+      else setCacheNotice(null);
       const rawRecords: any[] = payload.records ?? payload.learners ?? payload.data ?? [];
       const normalized = rawRecords.map((rec: any) => {
         const l = rec.enrollmentApplication?.learner ?? rec.learner ?? rec;
@@ -513,6 +548,7 @@ export default function EOSYFinalization() {
   });
 
   const hasSectionSelected = !!selectedSectionId;
+  const schoolYearsUnavailable = !schoolYearsLoading && schoolYears.length === 0;
 
   // "Grades locked but EOSY promotion not finalized" — the exact state that
   // previously blocked rollover silently. Surfaced as a warning in Grade Locking.
@@ -533,7 +569,7 @@ export default function EOSYFinalization() {
         actions={
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => void loadSections()}
+              onClick={() => { void loadSchoolYears(); void loadSections(undefined, true); }}
               variant="outline"
               size="sm"
               className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
@@ -576,9 +612,11 @@ export default function EOSYFinalization() {
                   ? "Loading EOSY data..."
                   : sectionsError
                     ? sectionsError
-                    : sections.length > 0
-                      ? `${sections.length} section${sections.length !== 1 ? "s" : ""} available`
-                      : "Select a school year and section to begin"}
+                    : cacheNotice
+                      ? cacheNotice
+                      : sections.length > 0
+                        ? `${sections.length} section${sections.length !== 1 ? "s" : ""} available`
+                        : "Select a school year and section to begin"}
               </p>
             </div>
 
@@ -622,8 +660,13 @@ export default function EOSYFinalization() {
                 </SelectContent>
               </Select>
 
-              {sectionsError && (
-                <Button onClick={() => void loadSections()} variant="outline" size="sm" className="h-9 rounded-lg">
+              {(sectionsError || schoolYearsUnavailable) && (
+                <Button
+                  onClick={() => { void loadSchoolYears(); if (selectedSchoolYearId) void loadSections(undefined, true); }}
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-lg"
+                >
                   Retry
                 </Button>
               )}
@@ -633,16 +676,13 @@ export default function EOSYFinalization() {
 
         <CardContent className="p-0">
           {hasSectionSelected ? (
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <div className="px-6 pt-4 border-b border-border">
-                <TabsList variant="line" className="w-full justify-start">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="grade-locking">Grade Locking</TabsTrigger>
-                  <TabsTrigger value="learner-records">Learner Records</TabsTrigger>
-                </TabsList>
-              </div>
-
-              <div className="p-6">
+            <FilterTabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              items={EOSY_TAB_ITEMS}
+              className="px-6 pt-4"
+            >
+              <div className="p-6 pt-4">
                 <TabsContent value="overview">
                   {recordsLoading ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -727,7 +767,7 @@ export default function EOSYFinalization() {
                   )}
                 </TabsContent>
               </div>
-            </Tabs>
+            </FilterTabs>
           ) : (
             /* ── Empty State ── */
             <div className="flex flex-col items-center justify-center py-24 text-center px-4">

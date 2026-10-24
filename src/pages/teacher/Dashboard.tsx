@@ -703,8 +703,8 @@ export default function TeacherDashboard() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-8 pt-0 flex-1">
-            <div className="h-[320px] w-full mt-6">
+          <CardContent className="p-8 pt-6 flex-1">
+            <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 800, height: 320 }}>
                 <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                   <defs>
@@ -771,7 +771,7 @@ export default function TeacherDashboard() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-8 pt-0">
+            <CardContent className="p-8 pt-6">
               {classStats.length > 0 ? (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1031,7 +1031,7 @@ export default function TeacherDashboard() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-8 pt-0">
+            <CardContent className="p-8 pt-6">
               {filteredStudentsAtRisk && filteredStudentsAtRisk.length > 0 ? (
                 <ScrollArea className="h-[350px] pr-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">

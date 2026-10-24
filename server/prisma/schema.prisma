@@ -139,7 +139,7 @@ model Section {
   gradeLevel       GradeLevel
   schoolYear       String
   adviserId        String?
-  program          String            @default("REGULAR") // REGULAR, SPA, SPS, STE
+  program          String            @default("REGULAR") // REGULAR, SPA, SPS, STE, ... (free-form upstream code)
   status           String            @default("ACTIVE") // ACTIVE, ARCHIVED, COMPLETED
   archivedAt       DateTime?
   createdAt        DateTime          @default(now())

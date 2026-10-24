@@ -62,12 +62,15 @@ export default function EOSYLearnerRecordsTab({
     `${r.firstName} ${r.lastName} ${r.lrn}`.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const promotedCount = records.filter(
-    (r) => r.smart?.decision?.promotionStatus === "PROMOTED" || r.promoted || r.finalStatus === "PROMOTED"
-  ).length;
+  const promotedCount = records.filter((r) => {
+    const s = r.smart?.decision?.promotionStatus;
+    if (s) return s === "PROMOTED" || s === "JHS_COMPLETER";
+    return r.promoted || r.finalStatus === "PROMOTED";
+  }).length;
   const heldCount = records.filter((r) => {
     const s = r.smart?.decision?.promotionStatus;
-    return s === "RETAINED" || s === "CONDITIONALLY_PROMOTED";
+    if (s) return s === "RETAINED" || s === "CONDITIONALLY_PROMOTED";
+    return r.finalStatus === "RETAINED" || r.finalStatus === "CONDITIONALLY_PROMOTED";
   }).length;
 
   const renderExpandedGrades = (lrn: string) => {

@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { Calendar as CalendarIcon, Users, FileText, Save, CheckCircle2, AlertCircle, RefreshCw, Download, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Users, Save, CheckCircle2, AlertCircle, RefreshCw, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -12,13 +11,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -46,19 +38,6 @@ function getNextSchoolDay(dateStr: string): string {
   }
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-
-function getLocalMonth(): number {
-  return new Date().getMonth() + 1;
-}
-
-function getLocalYear(): number {
-  return new Date().getFullYear();
-}
-
-const MONTH_NAMES = [
-  "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
-  "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
-];
 
 interface Student {
   studentId: string;
@@ -106,8 +85,6 @@ export default function Attendance() {
     consecutiveAbsenceFlags: Record<string, boolean>;
   } | null>(null);
   const [loadingMonthly, setLoadingMonthly] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<number>(getLocalMonth());
-  const [selectedYear, setSelectedYear] = useState<number>(getLocalYear());
   const [showConfirmClear, setShowConfirmClear] = useState(false);
 
   const fetchMonthlySF2Stats = async (sectionId: string, dateStr: string) => {
@@ -352,29 +329,6 @@ export default function Attendance() {
     setSelectedDate(getNextSchoolDay(selectedDate));
   };
 
-  const downloadExcel = async () => {
-    if (!selectedSection) return;
-    try {
-      const token = getPortalToken();
-      const response = await axios.get(
-        `${SERVER_URL}/api/attendance/export/${selectedSection}?month=${selectedMonth}&year=${selectedYear}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: "blob",
-        }
-      );
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `SF2_${MONTH_NAMES[selectedMonth - 1]}_${selectedYear}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error: any) {
-      setMessage({ type: "error", text: "Failed to download Excel" });
-    }
-  };
-
   const getStatusStats = () => {
     if (!attendanceData) return { present: 0, absent: 0, late: 0, excused: 0 };
     return {
@@ -393,77 +347,6 @@ export default function Attendance() {
         title="Daily Attendance"
         description="Manage and track student attendance records"
       />
-
-      {/* Control Panel - Refined Glass Style */}
-      <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden bg-white/90 backdrop-blur-md">
-        <CardContent className="p-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Advisory Section</Label>
-              <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center px-4">
-                <span className="text-sm font-bold text-foreground">
-                  {sections.length > 0
-                    ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
-                    : "Loading..."}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="date" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Attendance Date</Label>
-              <div className="relative">
-                <Input
-                  id="date"
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  max={getLocalDateStr()}
-                  className="h-12 bg-slate-50 border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all pl-10"
-                />
-                <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                onClick={markAllPresent}
-                variant="outline"
-                className="flex-1 h-12 rounded-xl border-slate-200 text-muted-foreground hover:bg-slate-50 font-bold transition-all"
-                disabled={!attendanceData || loading}
-              >
-                <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500" />
-                MARK ALL
-              </Button>
-              <Button
-                onClick={clearAttendance}
-                variant="outline"
-                className="h-12 rounded-xl border-slate-200 text-muted-foreground hover:bg-slate-50 font-bold transition-all px-4"
-                disabled={!attendanceData || loading}
-              >
-                CLEAR
-              </Button>
-              <Button
-                onClick={saveAndNextDay}
-                disabled={saving || !attendanceData}
-                className="flex-1 h-12 rounded-xl text-white shadow-xl font-bold text-[10px] tracking-widest uppercase transition-all"
-                style={{ backgroundColor: colors.primary }}
-              >
-                {saving ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    SAVING...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-2" />
-                    SAVE & NEXT DAY
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Messaging */}
       {message && (
@@ -536,72 +419,71 @@ export default function Attendance() {
         </div>
       )}
 
-      {/* SF2 Download Section */}
-      {attendanceData && (
-        <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
-          <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary/10 text-primary">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-foreground">SF2 Export</p>
-                  <p className="text-[10px] text-muted-foreground font-medium">Download Daily Attendance Record (Excel)</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Select value={String(selectedMonth)} onValueChange={(v) => { if (v) setSelectedMonth(parseInt(v)); }}>
-                  <SelectTrigger className="w-[140px] h-10 rounded-xl text-xs font-bold">
-                    <SelectValue>{MONTH_NAMES[selectedMonth - 1]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MONTH_NAMES.map((name, i) => (
-                      <SelectItem key={i + 1} value={String(i + 1)} className="text-xs font-bold">
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={String(selectedYear)} onValueChange={(v) => { if (v) setSelectedYear(parseInt(v)); }}>
-                  <SelectTrigger className="w-[100px] h-10 rounded-xl text-xs font-bold">
-                    <SelectValue>{selectedYear}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[selectedYear - 1, selectedYear, selectedYear + 1].map((y) => (
-                      <SelectItem key={y} value={String(y)} className="text-xs font-bold">
-                        {y}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  onClick={downloadExcel}
-                  className="h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-[10px] tracking-widest uppercase transition-all"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  DOWNLOAD SF2
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Main Table - Modern Corporate List */}
       <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
         <CardHeader className="p-8 border-b border-slate-50 bg-slate-50/30">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
             <div>
               <CardTitle className="text-xl font-bold text-foreground tracking-tight">
                 {attendanceData?.section 
                   ? `${gradeLevelLabels[attendanceData.section.gradeLevel]} - ${attendanceData.section.name}`
-                  : "Attendance Roster"
+                  : sections.length > 0
+                    ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
+                    : "Attendance Roster"
                 }
               </CardTitle>
               <CardDescription className="text-muted-foreground font-sans normal-case font-medium tracking-normal mt-1">
                 {attendanceData ? `${attendanceData.attendance.length} Learners Enrolled` : "Select filters to view list"}
               </CardDescription>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+              <div className="relative sm:w-[200px]">
+                <Input
+                  type="date"
+                  aria-label="Attendance date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  max={getLocalDateStr()}
+                  className="h-12 bg-white border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all pl-10"
+                />
+                <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              </div>
+              <Button
+                onClick={markAllPresent}
+                variant="outline"
+                className="h-12 rounded-xl border-slate-200 text-muted-foreground hover:bg-white font-bold transition-all"
+                disabled={!attendanceData || loading}
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500" />
+                MARK ALL
+              </Button>
+              <Button
+                onClick={clearAttendance}
+                variant="outline"
+                className="h-12 rounded-xl border-slate-200 text-muted-foreground hover:bg-white font-bold transition-all px-4"
+                disabled={!attendanceData || loading}
+              >
+                CLEAR
+              </Button>
+              <Button
+                onClick={saveAndNextDay}
+                disabled={saving || !attendanceData}
+                className="h-12 rounded-xl text-white shadow-xl font-bold text-[10px] tracking-widest uppercase transition-all px-6"
+                style={{ backgroundColor: colors.primary }}
+              >
+                {saving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    SAVING...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    SAVE & NEXT DAY
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </CardHeader>

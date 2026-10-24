@@ -23,6 +23,8 @@ export async function createAuditLog(
   const ctx = getAuditContext();
 
   const userId = user.id && user.id !== "unknown" ? user.id : undefined;
+  // Employee ID — req.user carries username; constructed user objects may not.
+  const username = (user as { username?: string | null }).username ?? null;
   const data = {
     action,
     userId,
@@ -77,6 +79,8 @@ export async function createAuditLog(
       action: log.action.toLowerCase(),
       user: log.userName,
       userRole: log.userRole,
+      userId: log.userId,
+      username,
       target: log.target,
       targetType: log.targetType,
       details: log.details,

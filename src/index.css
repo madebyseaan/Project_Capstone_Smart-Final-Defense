@@ -43,10 +43,27 @@
   --ledger-aims: #0e7490;
   --ledger-aims-bg: #ecfeff;
 
+  /* Program badge tokens — fixed colors for known programs, hash fallback for new ones */
+  --program-reg: #64748b; --program-reg-bg: #f1f5f9;
+  --program-1: #2563eb;  --program-1-bg: #eff6ff;
+  --program-2: #7c3aed;  --program-2-bg: #f5f3ff;
+  --program-3: #059669;  --program-3-bg: #ecfdf5;
+  --program-4: #b45309;  --program-4-bg: #fffbeb;
+  --program-5: #be123c;  --program-5-bg: #fff1f2;
+  --program-6: #0e7490;  --program-6-bg: #ecfeff;
+  --program-7: #4f46e5;  --program-7-bg: #eef2ff;
+  --program-8: #c2410c;  --program-8-bg: #fff7ed;
+  --program-9: #0f766e;  --program-9-bg: #f0fdfa;
+  --program-10: #be185d; --program-10-bg: #fdf2f8;
+
   --sans: 'DM Sans', system-ui, -apple-system, sans-serif;
   --mono: 'SF Mono', ui-monospace, Consolas, monospace;
 
+  /* Accessibility text scale (1 = 100%) — driven by TextScaleContext / AccessibilityMenu */
+  --text-scale: 1;
+
   font: 16px/1.6 var(--sans);
+  font-size: calc(16px * var(--text-scale));
   letter-spacing: -0.011em;
   color-scheme: light;
   color: var(--text);
@@ -58,7 +75,7 @@
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 
   @media (max-width: 640px) {
-    font-size: 15px;
+    font-size: calc(15px * var(--text-scale));
   }
 
   --background: oklch(0.99 0 0);
@@ -521,6 +538,19 @@ code {
   --ledger-grade-bg: rgba(16, 185, 129, 0.15);
   --ledger-aims: #22d3ee;
   --ledger-aims-bg: rgba(6, 182, 212, 0.15);
+
+  /* Program badge tokens — dark mode */
+  --program-reg: #94a3b8; --program-reg-bg: rgba(148, 163, 184, 0.15);
+  --program-1: #93c5fd;  --program-1-bg: rgba(59, 130, 246, 0.15);
+  --program-2: #c4b5fd;  --program-2-bg: rgba(139, 92, 246, 0.15);
+  --program-3: #6ee7b7;  --program-3-bg: rgba(16, 185, 129, 0.15);
+  --program-4: #fcd34d;  --program-4-bg: rgba(245, 158, 11, 0.15);
+  --program-5: #fda4af;  --program-5-bg: rgba(244, 63, 94, 0.15);
+  --program-6: #67e8f9;  --program-6-bg: rgba(6, 182, 212, 0.15);
+  --program-7: #a5b4fc;  --program-7-bg: rgba(99, 102, 241, 0.15);
+  --program-8: #fdba74;  --program-8-bg: rgba(249, 115, 22, 0.15);
+  --program-9: #5eead4;  --program-9-bg: rgba(20, 184, 166, 0.15);
+  --program-10: #f9a8d4; --program-10-bg: rgba(236, 72, 153, 0.15);
 }
 
 @layer base {
@@ -538,6 +568,11 @@ code {
 
 /* Print Styles for School Forms */
 @media print {
+  /* Official form printouts stay at a fixed size — the on-screen text scale never affects print */
+  :root {
+    --text-scale: 1 !important;
+  }
+
   body {
     background: white !important;
     -webkit-print-color-adjust: exact !important;

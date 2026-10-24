@@ -1,22 +1,10 @@
-import {
-  Users,
-  Printer,
-  ChevronRight,
-  MoreVertical,
-  FileText,
-  FolderOpen,
-  Search,
-} from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useEffect, useRef } from "react";
+import { Eye, Printer, Search, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -45,13 +33,20 @@ interface StudentSelectionTableProps {
   onSearchChange: (value: string) => void;
   onToggleAll: () => void;
   onToggleStudent: (id: string) => void;
-  onViewSF9: (studentId: string) => void;
-  onViewSF10: (studentId: string) => void;
+  onClearSelection: () => void;
+  studentForm: "sf9" | "sf10";
+  sf9Term?: "T1" | "T2" | "T3";
+  onPreview: (studentId: string) => void;
   onBulkPrint: (formType: "sf9" | "sf10") => void;
   onBulkPrintAll: (formType: "sf9" | "sf10") => void;
-  themeColors: { primary: string };
+  totalStudents: number;
   isLoading?: boolean;
 }
+
+const FORM_LABELS = {
+  sf9: { code: "SF9", name: "SF9 Report Card" },
+  sf10: { code: "SF10", name: "SF10 Permanent Record" },
+} as const;
 
 export function StudentSelectionTable({
   filteredStudents,
@@ -60,249 +55,222 @@ export function StudentSelectionTable({
   onSearchChange,
   onToggleAll,
   onToggleStudent,
-  onViewSF9,
-  onViewSF10,
+  onClearSelection,
+  studentForm,
+  sf9Term,
+  onPreview,
   onBulkPrint,
   onBulkPrintAll,
-  themeColors,
+  totalStudents,
   isLoading = false,
 }: StudentSelectionTableProps) {
   const columnCount = 5;
+  const form = FORM_LABELS[studentForm];
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+
+  const allSelected =
+    filteredStudents.length > 0 &&
+    filteredStudents.every((student) => selectedStudentIds.includes(student.id));
+  const someSelected =
+    !allSelected &&
+    filteredStudents.some((student) => selectedStudentIds.includes(student.id));
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
 
   return (
-    <Card className="border border-border shadow-sm bg-card overflow-hidden rounded-xl p-0">
-      <div className="px-6 py-4 border-b border-border">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                <Users className="w-4 h-4 text-muted-foreground" />
-                Students
-                <span className="text-sm font-normal text-muted-foreground">
-                  ({filteredStudents.length})
-                </span>
-              </h2>
-              {selectedStudentIds.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {selectedStudentIds.length} selected
-                </p>
-              )}
-            </div>
-            {selectedStudentIds.length > 0 && (
-              <span
-                className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full"
-                style={{
-                  backgroundColor: `${themeColors.primary}10`,
-                  color: themeColors.primary,
-                  border: `1px solid ${themeColors.primary}25`,
-                }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: themeColors.primary }} />
-                {selectedStudentIds.length} selected
-              </span>
-            )}
+    <>
+      <Card className="border-border p-0">
+        <div className="flex flex-col gap-2 border-b border-border px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <div className="text-sm font-semibold text-foreground">Students</div>
+            <span className="text-xs text-muted-foreground">
+              ({filteredStudents.length}
+              {searchQuery ? ` of ${totalStudents}` : ""})
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            {selectedStudentIds.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      size="sm"
-                      className="rounded-lg h-9 text-white gap-1.5"
-                      style={{ backgroundColor: themeColors.primary }}
-                    />
-                  }
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Print&nbsp;Selected
-                  <ChevronRight className="w-3.5 h-3.5 rotate-90 opacity-70" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuItem onClick={() => onBulkPrint("sf9")}>
-                    <FileText className="w-4 h-4 mr-2" />
-                    SF9 — Report Cards
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onBulkPrint("sf10")}>
-                    <FolderOpen className="w-4 h-4 mr-2" />
-                    SF10 — Permanent Records
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-lg h-9 gap-1.5"
-                  />
-                }
-              >
-                <Printer className="w-3.5 h-3.5" />
-                Print All
-                <ChevronRight className="w-3.5 h-3.5 rotate-90 opacity-50" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={() => onBulkPrintAll("sf9")}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  SF9 — Report Cards
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onBulkPrintAll("sf10")}>
-                  <FolderOpen className="w-4 h-4 mr-2" />
-                  SF10 — Permanent Records
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <div className="relative w-48">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-56">
+              <Search
+                className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
               <Input
-                placeholder="Search students…"
+                placeholder="Search students..."
                 value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
-                className="pl-8 h-9 rounded-lg text-xs"
+                onChange={(event) => onSearchChange(event.target.value)}
+                aria-label="Search students"
+                className="h-8 rounded-lg pl-8 text-xs"
               />
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => onBulkPrintAll(studentForm)}
+              disabled={totalStudents === 0}
+            >
+              <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+              Print all {form.code}
+            </Button>
           </div>
         </div>
-      </div>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table className="w-full">
-            <TableHeader>
-              <TableRow className="hover:bg-muted/50 border-b border-border bg-muted">
-                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-10">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 rounded border-border cursor-pointer"
-                    checked={
-                      selectedStudentIds.length === filteredStudents.length &&
-                      filteredStudents.length > 0
-                    }
-                    onChange={onToggleAll}
-                    title="Select all"
+
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table className="w-full">
+              <TableHeader>
+                <TableRow className="border-b border-border bg-muted hover:bg-muted">
+                  <TableHead className="w-10 px-3 py-2">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={onToggleAll}
+                      aria-label="Select all students"
+                      className="h-4 w-4 shrink-0 cursor-pointer rounded border border-input bg-transparent accent-primary outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50"
+                    />
+                  </TableHead>
+                  <TableHead className="hidden w-[18%] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:table-cell">
+                    LRN
+                  </TableHead>
+                  <TableHead className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Name
+                  </TableHead>
+                  <TableHead className="hidden w-[14%] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:table-cell">
+                    Gender
+                  </TableHead>
+                  <TableHead className="w-[112px] px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <LoadingSkeleton columnCount={columnCount} rowCount={8} />
+                ) : filteredStudents.length === 0 ? (
+                  <EmptyState
+                    columnCount={columnCount}
+                    searchTerm={searchQuery}
+                    title="No students found"
+                    hint="This section has no enrolled learners for the selected school year."
                   />
-                </TableHead>
-                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[18%]">LRN</TableHead>
-                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4">Name</TableHead>
-                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%]">Gender</TableHead>
-                <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <LoadingSkeleton
-                  columnCount={columnCount}
-                  rowCount={8}
-                />
-              ) : filteredStudents.length === 0 ? (
-                <EmptyState
-                  columnCount={columnCount}
-                  searchTerm={searchQuery}
-                />
-              ) : (
-                filteredStudents.map((student) => {
-                  const isSelected = selectedStudentIds.includes(student.id);
-                  const genderUpper = (student.gender ?? "").toUpperCase();
-                  const isMale = genderUpper === "MALE" || genderUpper === "M";
-                  return (
-                    <TableRow
-                      key={student.id}
-                      className={`border-b border-border cursor-pointer transition-colors ${
-                        isSelected
-                          ? "bg-muted/50 hover:bg-muted"
-                          : "hover:bg-muted/50"
-                      }`}
-                      onClick={() => onToggleStudent(student.id)}
-                    >
-                      <TableCell
-                        className="py-3.5 px-4"
-                        onClick={(e) => e.stopPropagation()}
+                ) : (
+                  filteredStudents.map((student) => {
+                    const isSelected = selectedStudentIds.includes(student.id);
+                    return (
+                      <TableRow
+                        key={student.id}
+                        className={`cursor-pointer border-b border-border transition-colors ${
+                          isSelected ? "bg-muted/60 hover:bg-muted" : "hover:bg-muted/40"
+                        }`}
+                        onClick={() => onToggleStudent(student.id)}
                       >
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 rounded border-border cursor-pointer"
-                          checked={isSelected}
-                          onChange={() => onToggleStudent(student.id)}
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-[13px] text-muted-foreground py-3.5 px-4 tabular-nums">
-                        {student.lrn || <Dash />}
-                      </TableCell>
-                      <TableCell className="py-3.5 px-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs shrink-0"
-                            style={{ backgroundColor: themeColors.primary }}
-                            aria-hidden="true"
-                          >
-                            {(student.lastName || "?").charAt(0)}
+                        <TableCell
+                          className="px-3 py-2"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => onToggleStudent(student.id)}
+                            aria-label={`Select ${student.lastName}, ${student.firstName}`}
+                          />
+                        </TableCell>
+                        <TableCell className="hidden px-3 py-2 font-mono text-[13px] tabular-nums text-muted-foreground sm:table-cell">
+                          {student.lrn || <Dash />}
+                        </TableCell>
+                        <TableCell className="px-3 py-2">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <div
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground"
+                              aria-hidden="true"
+                            >
+                              {(student.lastName || "?").charAt(0)}
+                            </div>
+                            <span className="truncate text-sm font-semibold text-foreground">
+                              {student.lastName}, {student.firstName}{" "}
+                              {student.middleName || ""} {student.suffix || ""}
+                            </span>
                           </div>
-                          <span className="font-semibold text-foreground text-sm">
-                            {student.lastName}, {student.firstName}{" "}
-                            {student.middleName || ""} {student.suffix || ""}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3.5 px-4">
-                        {student.gender ? (
-                          <Badge
+                        </TableCell>
+                        <TableCell className="hidden px-3 py-2 sm:table-cell">
+                          {student.gender ? (
+                            <Badge variant="outline" className="text-[11px] font-medium">
+                              {student.gender}
+                            </Badge>
+                          ) : (
+                            <Dash />
+                          )}
+                        </TableCell>
+                        <TableCell
+                          className="px-3 py-2 text-right"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Button
                             variant="outline"
-                            className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${
-                              isMale
-                                ? "bg-blue-50 text-blue-700 border-blue-200"
-                                : "bg-pink-50 text-pink-700 border-pink-200"
-                            }`}
-                          >
-                            {student.gender}
-                          </Badge>
-                        ) : (
-                          <Dash />
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                              />
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => onPreview(student.id)}
+                            aria-label={`Preview ${form.code} for ${student.lastName}, ${student.firstName}`}
+                            title={
+                              studentForm === "sf9" && sf9Term
+                                ? `Preview ${form.code} · Term ${sf9Term.replace("T", "")}`
+                                : `Preview ${form.code}`
                             }
                           >
-                            <MoreVertical className="w-4 h-4" />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem
-                              onClick={() => onViewSF9(student.id)}
-                              className="gap-2"
-                            >
-                              <FileText className="w-4 h-4 text-blue-500" />
-                              <span>View SF9</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => onViewSF10(student.id)}
-                              className="gap-2"
-                            >
-                              <FolderOpen className="w-4 h-4 text-emerald-500" />
-                              <span>View SF10</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+                            <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                            Preview
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {selectedStudentIds.length > 0 && (
+        <div
+          className="fixed bottom-4 left-1/2 z-40 w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 print-hide lg:left-[calc(50%+140px)]"
+          role="region"
+          aria-label="Bulk print actions"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card/95 px-3 py-2 shadow-xl backdrop-blur">
+            <p className="px-1 text-sm font-semibold text-foreground">
+              {selectedStudentIds.length} selected
+            </p>
+
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => onBulkPrint(studentForm)}
+                disabled={selectedStudentIds.length === 0}
+              >
+                <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+                Print {form.code} ({selectedStudentIds.length})
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={onClearSelection}
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+                Clear
+              </Button>
+            </div>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </>
   );
 }

@@ -20,10 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/layout/StatCard";
 import { SearchInput } from "@/components/layout/SearchInput";
+import { FilterTabs } from "@/components/layout/FilterTabs";
+import type { FilterTabItem } from "@/components/layout/FilterTabs";
 import { PageError } from "@/components/layout/PageError";
 import { DataTable, TablePagination, usePagination } from "@/components/data-table";
 import type { TableColumn } from "@/components/data-table";
@@ -38,6 +40,11 @@ interface SchoolYearOption {
   label: string;
   status: string;
 }
+
+const CLASS_TAB_ITEMS: FilterTabItem[] = [
+  { value: "load", label: "Teaching Load", icon: Users },
+  { value: "workload", label: "Workload Summary", icon: ClipboardList },
+];
 
 interface TeacherOption {
   id: string;
@@ -411,18 +418,19 @@ export default function ClassAssignments() {
       ) : (
         <>
           {/* Tabs + search */}
-          <Tabs value={tab} onValueChange={setTab}>
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-              <TabsList variant="line" className="justify-start gap-1 border-b border-border pb-0">
-                <TabsTrigger value="load" className="px-4 text-xs font-semibold uppercase tracking-wider">Teaching Load</TabsTrigger>
-                <TabsTrigger value="workload" className="px-4 text-xs font-semibold uppercase tracking-wider">Workload Summary</TabsTrigger>
-              </TabsList>
+          <FilterTabs
+            value={tab}
+            onValueChange={setTab}
+            items={CLASS_TAB_ITEMS}
+            listClassName="w-fit"
+            header={
               <SearchInput
                 value={search}
                 onChange={setSearch}
                 placeholder={tab === "load" ? "Search teacher, subject, section..." : "Search workload..."}
               />
-            </div>
+            }
+          >
 
             <TabsContent value="load">
               <Card className="border border-border shadow-sm rounded-xl bg-card p-0 overflow-hidden">
@@ -528,7 +536,7 @@ export default function ClassAssignments() {
                 pagination={workloadPagination}
               />
             </TabsContent>
-          </Tabs>
+          </FilterTabs>
 
           {/* Transfers / Archived */}
           {archivedAssignments.length > 0 && (

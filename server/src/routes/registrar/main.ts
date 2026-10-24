@@ -16,7 +16,7 @@ import { maskId } from "../../lib/redact";
 import { withSectionLock } from "../../lib/sectionLock";
 import { validate } from "../../middleware/validate";
 import { enrollmentStatusSchema, finalizeGradesSchema } from "../../schemas/registrar";
-import { listUnfinalizedSections, finalizeSectionEosy, PASSING_GRADE } from "../../lib/promotion";
+import { listUnfinalizedSections, finalizeSectionEosy, canonicalSubjectKey, PASSING_GRADE } from "../../lib/promotion";
 import { findSnapshotGapSections } from "../../lib/rollover";
 import {
   resolveCurrentSchoolYearLabel,
@@ -27,6 +27,7 @@ import {
   studentsByGrace,
 } from "./helpers";
 import { getSectionRosterWithStatus, getCachedLearnersPage } from "../../lib/syncCache";
+import { normalizeProgramCode } from "../../lib/programCode";
 
 export default function registerMainRoutes(router: Router): void {
 
@@ -137,7 +138,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         id: String(section?.id ?? ''),
         name: String(section?.name ?? ''),
         gradeLevel: normalizeGradeLevel(section?.gradeLevel?.name) ?? "GRADE_7",
-        program: (() => { const pt = (section?.programType ?? '').toUpperCase(); if (pt.includes('ARTS')) return 'SPA'; if (pt.includes('SPORT')) return 'SPS'; if (pt.includes('SCIENCE') || pt.includes('ENGINEERING') || pt.includes('STE')) return 'STE'; return 'REGULAR'; })(),
+        program: normalizeProgramCode(section?.programType),
         studentCount: Number(section?.enrolledCount ?? 0),
         adviser: section?.advisingTeacher
           ? (
@@ -250,6 +251,10 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
     // grade is below PASSING_GRADE, not when their term average is. A retained
     // learner averaging ≥75 can still have 3–4 failing subjects, so an average
     // check reports 100% passing while retention counts disagree.
+    // Counting mirrors lib/promotion.ts: ONE row per subject — non-promotional
+    // and homeroom (HG*) subjects excluded, rotation groups (e.g. Science/TLE
+    // components rotating per term) collapse to the component matching the
+    // current term, and duplicate class assignments never count twice.
     let gradePerformance: {
       term: string;
       overallPassingRate: number;
@@ -263,6 +268,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         gradeLevel: string;
         average: number;
         failingSubjects: number;
+        totalSubjects: number;
       }>;
       bySection: Array<{
         sectionId: string;
@@ -272,7 +278,7 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         passingRate: number;
         totalStudents: number;
         failingCount: number;
-        failingStudents: Array<{ studentName: string; average: number; failingSubjects: number }>;
+        failingStudents: Array<{ studentName: string; average: number; failingSubjects: number; totalSubjects: number }>;
       }>;
     } = { term: "", overallPassingRate: 0, overallAvgGrade: 0, totalGraded: 0, totalPassing: 0, totalFailing: 0, failingStudents: [], bySection: [] };
 
@@ -297,37 +303,69 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
             select: {
               sectionId: true,
               section: { select: { id: true, name: true, gradeLevel: true } },
+              subject: {
+                select: {
+                  code: true,
+                  name: true,
+                  isNonPromotional: true,
+                  rotationTermGroupId: true,
+                  rotationTermRank: true,
+                },
+              },
             },
           },
         },
       });
 
-      // Group grades by section, then by student to compute per-student averages
-      const sectionStudentGrades = new Map<string, {
+      // Group grades by section, then by student. Each student keeps ONE grade
+      // per subject, matching the promotion engine (lib/promotion.ts).
+      const sectionStudentSubjects = new Map<string, {
         sectionName: string;
         gradeLevel: string;
-        studentGrades: Map<string, { grades: number[]; firstName: string; lastName: string }>;
+        studentSubjects: Map<string, { subjectGrades: Map<string, number>; firstName: string; lastName: string }>;
       }>();
 
+      // T1 → 1, T2 → 2, T3 → 3; rotation groups contribute only the component
+      // whose rotationTermRank matches the current term.
+      const termRank = Number(currentTerm.replace("T", ""));
+
       for (const rec of gradedEnrollments) {
+        const subject = rec.classAssignment.subject;
+        // Mirror the EOSY/promotion engine: non-promotional and homeroom (HG*)
+        // subjects never count toward failing-subject totals.
+        if (subject.isNonPromotional) continue;
+        if ((subject.code ?? "").toUpperCase().startsWith("HG")) continue;
+
+        // Rotation groups collapse to one subject per term (mergeRotationSubjects).
+        const subjectKey = subject.rotationTermGroupId
+          ? subject.rotationTermRank === termRank
+            ? `rotation:${subject.rotationTermGroupId}`
+            : null
+          : canonicalSubjectKey(subject.code, subject.name);
+        if (!subjectKey) continue;
+
         const secId = rec.classAssignment.sectionId;
-        if (!sectionStudentGrades.has(secId)) {
-          sectionStudentGrades.set(secId, {
+        if (!sectionStudentSubjects.has(secId)) {
+          sectionStudentSubjects.set(secId, {
             sectionName: rec.classAssignment.section.name,
             gradeLevel: rec.classAssignment.section.gradeLevel,
-            studentGrades: new Map(),
+            studentSubjects: new Map(),
           });
         }
-        const section = sectionStudentGrades.get(secId)!;
-        const existing = section.studentGrades.get(rec.studentId);
-        if (existing) {
-          existing.grades.push(rec.quarterlyGrade!);
-        } else {
-          section.studentGrades.set(rec.studentId, {
-            grades: [rec.quarterlyGrade!],
+        const section = sectionStudentSubjects.get(secId)!;
+        let student = section.studentSubjects.get(rec.studentId);
+        if (!student) {
+          student = {
+            subjectGrades: new Map(),
             firstName: rec.student.firstName,
             lastName: rec.student.lastName,
-          });
+          };
+          section.studentSubjects.set(rec.studentId, student);
+        }
+        // One row per subject — a subject with duplicate class assignments
+        // must not count twice (lib/promotion.ts takes the first non-null).
+        if (!student.subjectGrades.has(subjectKey)) {
+          student.subjectGrades.set(subjectKey, rec.quarterlyGrade!);
         }
       }
 
@@ -338,27 +376,30 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
         gradeLevel: string;
         average: number;
         failingSubjects: number;
+        totalSubjects: number;
       }> = [];
 
-      const bySection = Array.from(sectionStudentGrades.entries()).map(([secId, data]) => {
+      const bySection = Array.from(sectionStudentSubjects.entries()).map(([secId, data]) => {
         const studentAverages: number[] = [];
         let failingStudents = 0;
-        const sectionFailingList: Array<{ studentName: string; average: number; failingSubjects: number }> = [];
+        const sectionFailingList: Array<{ studentName: string; average: number; failingSubjects: number; totalSubjects: number }> = [];
 
-        for (const [, studentData] of data.studentGrades) {
-          const avg = Math.round(studentData.grades.reduce((s, g) => s + g, 0) / studentData.grades.length);
-          const failingSubjects = studentData.grades.filter((g) => g < PASSING_GRADE).length;
+        for (const [, studentData] of data.studentSubjects) {
+          const grades = Array.from(studentData.subjectGrades.values());
+          const avg = Math.round(grades.reduce((s, g) => s + g, 0) / grades.length);
+          const failingSubjects = grades.filter((g) => g < PASSING_GRADE).length;
           studentAverages.push(avg);
           if (failingSubjects > 0) {
             failingStudents++;
             const name = `${studentData.lastName}, ${studentData.firstName}`;
-            sectionFailingList.push({ studentName: name, average: avg, failingSubjects });
+            sectionFailingList.push({ studentName: name, average: avg, failingSubjects, totalSubjects: grades.length });
             allFailingStudents.push({
               studentName: name,
               sectionName: data.sectionName,
               gradeLevel: data.gradeLevel,
               average: avg,
               failingSubjects,
+              totalSubjects: grades.length,
             });
           }
         }
@@ -383,11 +424,14 @@ router.get("/dashboard", authenticateToken, async (req: AuthRequest, res: Respon
 
       // Overall stats: unique students across all sections. A learner is failing
       // when any subject grade is below PASSING_GRADE (matches promotion rules).
-      const gradedStudents = Array.from(sectionStudentGrades.values()).flatMap((data) =>
-        Array.from(data.studentGrades.values()).map((studentData) => ({
-          average: Math.round(studentData.grades.reduce((s, g) => s + g, 0) / studentData.grades.length),
-          failingSubjects: studentData.grades.filter((g) => g < PASSING_GRADE).length,
-        }))
+      const gradedStudents = Array.from(sectionStudentSubjects.values()).flatMap((data) =>
+        Array.from(data.studentSubjects.values()).map((studentData) => {
+          const grades = Array.from(studentData.subjectGrades.values());
+          return {
+            average: Math.round(grades.reduce((s, g) => s + g, 0) / grades.length),
+            failingSubjects: grades.filter((g) => g < PASSING_GRADE).length,
+          };
+        })
       );
       const totalGraded = gradedStudents.length;
       const totalPassing = gradedStudents.filter((s) => s.failingSubjects === 0).length;
@@ -1080,6 +1124,9 @@ router.get("/alumni", authenticateToken, async (req: AuthRequest, res: Response)
         lastSchoolYear: enr.schoolYear,
         lastProgram: enr.section.program || 'REGULAR',
         enrollmentStatus: enr.status,
+        birthDate: enr.student.birthDate,
+        homeAddress: enr.student.address,
+        guardianName: enr.student.guardianName,
       }));
 
     logger.info(`[Alumni] DB query: ${students.length} alumni from ${allEnrollments.length} total enrollments, ${currentlyEnrolled.size} currently enrolled, schoolYear=${currentSchoolYear}`);
@@ -1115,6 +1162,9 @@ router.get("/alumni", authenticateToken, async (req: AuthRequest, res: Response)
           lastSchoolYear: currentSchoolYear,
           lastProgram: l.program ?? 'REGULAR',
           enrollmentStatus: smartStatus,
+          birthDate: l.birthdate ?? null,
+          homeAddress: null,
+          guardianName: null,
         });
         existingLrns.add(lrn);
       }
@@ -1150,6 +1200,9 @@ router.get("/alumni", authenticateToken, async (req: AuthRequest, res: Response)
             lastSchoolYear: s.schoolYear?.yearLabel ?? currentSchoolYear,
             lastProgram: s.section?.programType ?? 'REGULAR',
             enrollmentStatus: smartStatus,
+            birthDate: null,
+            homeAddress: null,
+            guardianName: null,
           });
           existingLrns.add(lrn);
         }
@@ -1188,6 +1241,9 @@ router.get("/alumni", authenticateToken, async (req: AuthRequest, res: Response)
             lastSchoolYear: record.schoolYear?.yearLabel ?? currentSchoolYear,
             lastProgram: record.section?.programType ?? 'REGULAR',
             enrollmentStatus: smartStatus,
+            birthDate: l.birthdate ?? null,
+            homeAddress: null,
+            guardianName: null,
           });
           existingLrns.add(lrn);
         }

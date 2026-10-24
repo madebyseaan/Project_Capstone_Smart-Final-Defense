@@ -54,8 +54,9 @@ export function AuditLogDetailDialog({ log, open, onOpenChange }: AuditLogDetail
           <ModalSection title="Identity">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4">
               <Field label="User" value={log.user} />
+              <Field label="Employee ID" value={log.username} />
               <Field label="Role" value={log.userRole} />
-              <Field label="User ID" value={log.userId} />
+              <Field label="System ID" value={log.userId} />
             </div>
           </ModalSection>
 

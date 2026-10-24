@@ -24,6 +24,8 @@ export interface DocumentsIndexEntry {
   priorRecords: number;
   /** Any remedial record attached to the learner's enrollments. */
   remedial: boolean;
+  /** Any attendance on file (SF2 readiness). */
+  attendance: boolean;
 }
 
 export default function registerDocumentRoutes(router: Router): void {
@@ -47,11 +49,11 @@ export default function registerDocumentRoutes(router: Router): void {
 
         const index: Record<string, DocumentsIndexEntry> = {};
         for (const id of unique) {
-          index[id] = { sf10: false, reportCardYears: [], priorRecords: 0, remedial: false };
+          index[id] = { sf10: false, reportCardYears: [], priorRecords: 0, remedial: false, attendance: false };
         }
 
         if (smartIds.length > 0) {
-          const [students, enrollments, externalCounts, remedialRows] = await Promise.all([
+          const [students, enrollments, externalCounts, remedialRows, attendanceCounts] = await Promise.all([
             prisma.student.findMany({
               where: { id: { in: smartIds } },
               select: { id: true },
@@ -69,6 +71,11 @@ export default function registerDocumentRoutes(router: Router): void {
               where: { enrollment: { studentId: { in: smartIds } } },
               select: { enrollment: { select: { studentId: true } } },
             }),
+            prisma.attendance.groupBy({
+              by: ["studentId"],
+              where: { studentId: { in: smartIds } },
+              _count: { _all: true },
+            }),
           ]);
 
           const studentSet = new Set(students.map((s) => s.id));
@@ -80,6 +87,7 @@ export default function registerDocumentRoutes(router: Router): void {
           }
           const priorByStudent = new Map(externalCounts.map((c) => [c.studentId, c._count._all]));
           const remedialSet = new Set(remedialRows.map((r) => r.enrollment.studentId));
+          const attendanceSet = new Set(attendanceCounts.map((c) => c.studentId));
 
           for (const id of smartIds) {
             index[id] = {
@@ -87,6 +95,7 @@ export default function registerDocumentRoutes(router: Router): void {
               reportCardYears: Array.from(yearsByStudent.get(id) ?? []).sort(),
               priorRecords: priorByStudent.get(id) ?? 0,
               remedial: remedialSet.has(id),
+              attendance: attendanceSet.has(id),
             };
           }
         }

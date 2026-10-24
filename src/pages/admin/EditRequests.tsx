@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { FileText, Clock, CheckCircle, XCircle, Timer, BookOpen, GraduationCap, Layers, Ban } from "lucide-react";
+import { FileText, Clock, CheckCircle, XCircle, Timer, BookOpen, GraduationCap, Layers, Ban, List } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { gradesApi } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SearchInput } from "@/components/layout/SearchInput";
+import { FilterTabs } from "@/components/layout/FilterTabs";
+import type { FilterTabItem } from "@/components/layout/FilterTabs";
 import { AppModal } from "@/components/app-modal";
 import { DataTable, usePagination } from "@/components/data-table";
 import type { TableColumn } from "@/components/data-table";
@@ -52,8 +53,15 @@ const StatusBadge = function StatusBadge({ status }: { status: EditRequest["stat
   }
 };
 
-const FILTERS = ["ALL", "PENDING", "APPROVED", "REJECTED", "EXPIRED"] as const;
-type Filter = (typeof FILTERS)[number];
+type Filter = "ALL" | "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+
+const FILTER_TABS: FilterTabItem[] = [
+  { value: "ALL", label: "All", icon: List },
+  { value: "PENDING", label: "Pending", icon: Clock },
+  { value: "APPROVED", label: "Approved", icon: CheckCircle },
+  { value: "REJECTED", label: "Rejected", icon: XCircle },
+  { value: "EXPIRED", label: "Expired", icon: Timer },
+];
 
 export default function EditRequests() {
   const [requests, setRequests] = useState<EditRequest[]>([]);
@@ -228,15 +236,11 @@ export default function EditRequests() {
         description="Review and manage teacher requests to edit past-term grades"
       />
 
-      <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-        <TabsList variant="line" className="w-full justify-start gap-1 border-b border-border pb-0">
-          {FILTERS.map((f) => (
-            <TabsTrigger key={f} value={f} className="px-4 text-xs font-semibold uppercase tracking-wider">
-              {f}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <FilterTabs
+        value={filter}
+        onValueChange={(v) => setFilter(v as Filter)}
+        items={FILTER_TABS}
+      />
 
       <DataTable
         columns={columns}

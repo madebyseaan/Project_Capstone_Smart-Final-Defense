@@ -45,6 +45,8 @@ import { Dash } from "@/components/data-table/Dash";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/layout/StatCard";
 import { SyncProgressModal } from "@/components/common/SyncProgressModal";
+import { ProgramBadge } from "@/components/ProgramBadge";
+import { normalizeProgram, REGULAR_PROGRAM } from "@/lib/programColor";
 
 const gradeLabel = (g: string) => g.replace("GRADE_", "Grade ");
 
@@ -162,7 +164,7 @@ export default function SectionRosterViewer() {
 
   const filteredSections = sections.filter((s) => {
     const matchesGrade = activeGrade === "all" || s.gradeLevel === activeGrade;
-    const matchesProgram = activeProgram === "all" || s.program === activeProgram;
+    const matchesProgram = activeProgram === "all" || normalizeProgram(s.program) === activeProgram;
     const matchesSection = activeSectionFilter === "all" || String(s.id) === activeSectionFilter;
     const matchesSearch = !sectionSearch ||
       s.name.toLowerCase().includes(sectionSearch.toLowerCase()) ||
@@ -190,6 +192,15 @@ export default function SectionRosterViewer() {
     male: filteredRoster.filter((l: any) => (l.sex || "").toUpperCase() === "MALE").length,
     female: filteredRoster.filter((l: any) => (l.sex || "").toUpperCase() === "FEMALE").length,
   };
+
+  const programOptions = useMemo(() => {
+    const programs = new Set(sections.map((s) => normalizeProgram(s.program)));
+    return Array.from(programs).sort((a, b) => {
+      if (a === REGULAR_PROGRAM) return -1;
+      if (b === REGULAR_PROGRAM) return 1;
+      return a.localeCompare(b);
+    });
+  }, [sections]);
 
   const stats = useMemo(() => {
     const totalLearners = sections.reduce(
@@ -311,10 +322,11 @@ export default function SectionRosterViewer() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Programs</SelectItem>
-                  <SelectItem value="REGULAR">Regular</SelectItem>
-                  <SelectItem value="SPA">SPA</SelectItem>
-                  <SelectItem value="SPS">SPS</SelectItem>
-                  <SelectItem value="STE">STE</SelectItem>
+                  {programOptions.map((program) => (
+                    <SelectItem key={program} value={program}>
+                      {program === REGULAR_PROGRAM ? "Regular" : program}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {(activeGrade !== "all" || activeProgram !== "all" || activeSectionFilter !== "all" || sectionSearch) && (
@@ -442,16 +454,7 @@ export default function SectionRosterViewer() {
                               </span>
                             </TableCell>
                             <TableCell className="py-3.5 px-4 text-left align-middle whitespace-nowrap">
-                              {s.program && s.program !== "REGULAR" ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px] font-semibold rounded-full bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap"
-                                >
-                                  {s.program}
-                                </Badge>
-                              ) : (
-                                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">REG</span>
-                              )}
+                              <ProgramBadge program={s.program} />
                             </TableCell>
                             <TableCell className="py-3.5 px-4 text-left align-middle">
                               <Button

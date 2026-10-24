@@ -76,11 +76,37 @@ router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Resp
       savedLevelsByStudent.get(r.studentId)!.add(r.gradeLevel);
     }
 
+    // First-party history: a prior grade level the learner already attended in
+    // an EARLIER school year is covered by SMART's own records (the SF10 builds
+    // those years from these enrollments), so it must not be reported as a
+    // missing prior-school record. Historical read — schoolYear only, never
+    // isArchived, so years survive rollover archiving.
+    const historyEnrollments = studentIds.length > 0
+      ? await prisma.enrollment.findMany({
+          where: { studentId: { in: studentIds } },
+          select: { studentId: true, schoolYear: true, section: { select: { gradeLevel: true } } },
+        })
+      : [];
+    const ownHistoryByStudent = new Map<string, Array<{ gradeLevel: string; schoolYear: string }>>();
+    for (const h of historyEnrollments) {
+      const list = ownHistoryByStudent.get(h.studentId) ?? [];
+      list.push({ gradeLevel: h.section.gradeLevel, schoolYear: h.schoolYear });
+      ownHistoryByStudent.set(h.studentId, list);
+    }
+
     const syncTaggedLrns = getSyncTaggedTransfereeLrns();
 
     const transferees = enrollments.map((e) => {
       const expectedLevels = expectedPriorGradeLevels(e.section.gradeLevel);
       const savedLevels = savedLevelsByStudent.get(e.studentId) ?? new Set<string>();
+      const ownHistory = ownHistoryByStudent.get(e.studentId) ?? [];
+      const coveredLevels = new Set(
+        expectedLevels.filter(
+          (g) =>
+            savedLevels.has(g) ||
+            ownHistory.some((h) => h.gradeLevel === g && h.schoolYear < e.schoolYear),
+        ),
+      );
       return {
       enrollmentId: e.id,
       studentId: e.studentId,
@@ -120,8 +146,8 @@ router.get("/transferees", authenticateToken, async (req: AuthRequest, res: Resp
       },
       priorRecords: {
         expectedGradeLevels: expectedLevels,
-        savedGradeLevels: expectedLevels.filter((g) => savedLevels.has(g)),
-        missingGradeLevels: expectedLevels.filter((g) => !savedLevels.has(g)),
+        savedGradeLevels: expectedLevels.filter((g) => coveredLevels.has(g)),
+        missingGradeLevels: expectedLevels.filter((g) => !coveredLevels.has(g)),
       },
       matchedBySync: syncTaggedLrns.has(e.student.lrn),
       };

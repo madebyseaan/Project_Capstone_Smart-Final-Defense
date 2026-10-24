@@ -16,6 +16,7 @@
     "prisma:seed-grades": "ts-node prisma/seed-grades.ts",
     "prisma:seed-teacher-scores": "ts-node prisma/seed-teacher-scores.ts",
     "grades:realign": "ts-node scripts/realign-seeded-grades.ts",
+    "grades:recompute": "ts-node prisma/recompute-stale-grades.ts",
     "grades:check-alignment": "ts-node prisma/check-grade-alignment.ts",
     "prisma:studio": "prisma studio",
     "test": "node scripts/require-test-db.js && ts-node --transpile-only scripts/seed-test-base.ts && vitest run",

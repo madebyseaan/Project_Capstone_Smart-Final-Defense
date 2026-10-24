@@ -9,7 +9,24 @@ import { getActiveTermLabels } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
 import { validate } from "../../middleware/validate";
 import { gradingConfigSchema } from "../../schemas/admin";
+import { recomputeStoredGrades } from "../../lib/gradeRecalc";
 import { requireAdmin } from "./helpers";
+
+/**
+ * Weights/transmutation changes invalidate every stored quarterlyGrade.
+ * Re-derive them from the stored category PS values so teacher and registrar
+ * surfaces stay aligned (see lib/gradeRecalc.ts).
+ */
+async function realignStoredGrades(context: string): Promise<void> {
+  try {
+    const summary = await recomputeStoredGrades();
+    logger.info(
+      `[GradingConfig] Stored grades realigned after ${context}: ${summary.updated}/${summary.scanned} updated`,
+    );
+  } catch (err: any) {
+    logger.error(`[GradingConfig] Stored grade realignment after ${context} failed:`, err.message);
+  }
+}
 
 export default function (router: Router) {
   // ── Grading Config ─────────────────────────────────────────────────────
@@ -28,6 +45,7 @@ export default function (router: Router) {
       });
 
       const existingByType = new Map(existing.map((row) => [row.subjectType, row]));
+      let normalized = false;
 
       for (const config of defaultConfigs) {
         const current = existingByType.get(config.subjectType);
@@ -56,7 +74,12 @@ export default function (router: Router) {
               isDepEdDefault: true,
             },
           });
+          normalized = true;
         }
+      }
+
+      if (normalized) {
+        await realignStoredGrades("grading-config normalization");
       }
 
       const configs = await prisma.gradingConfig.findMany({
@@ -115,6 +138,8 @@ export default function (router: Router) {
         AuditSeverity.CRITICAL
       );
 
+      await realignStoredGrades(`grading weights update (${subjectType})`);
+
       res.json({ message: "Grading configuration updated successfully", config });
     } catch (error) {
       logger.error("Error updating grading config:", error);
@@ -159,6 +184,8 @@ export default function (router: Router) {
         req.ip,
         AuditSeverity.CRITICAL
       );
+
+      await realignStoredGrades("grading weights reset");
 
       const configs = await prisma.gradingConfig.findMany({
         orderBy: { subjectType: "asc" },
@@ -226,6 +253,8 @@ export default function (router: Router) {
         `Replaced transmutation table with ${entries.length} entries`,
       );
 
+      await realignStoredGrades("transmutation table replace");
+
       const table = await getTransmutationTable();
       res.json(table);
     } catch (err: any) {
@@ -254,6 +283,7 @@ export default function (router: Router) {
       });
 
       invalidateTransmutationCache();
+      await realignStoredGrades("transmutation row add");
       res.status(201).json(row);
     } catch (err: any) {
       logger.error("Error adding transmutation row:", err);
@@ -288,6 +318,7 @@ export default function (router: Router) {
       });
 
       invalidateTransmutationCache();
+      await realignStoredGrades("transmutation row update");
       res.json(row);
     } catch (err: any) {
       if (err.code === "P2025") {
@@ -312,6 +343,7 @@ export default function (router: Router) {
 
       await prisma.transmutationEntry.delete({ where: { id } });
       invalidateTransmutationCache();
+      await realignStoredGrades("transmutation row delete");
       res.json({ message: "Deleted" });
     } catch (err: any) {
       if (err.code === "P2025") {
@@ -387,6 +419,8 @@ export default function (router: Router) {
         "Reset transmutation table to DepEd defaults (41 entries)",
       );
 
+      await realignStoredGrades("transmutation table reset");
+
       const table = await getTransmutationTable();
       res.json(table);
     } catch (err: any) {
@@ -443,6 +477,8 @@ export default function (router: Router) {
         },
       });
 
+      await realignStoredGrades(`subject weight override (${subject.code})`);
+
       res.json(subject);
     } catch (err: any) {
       if (err.code === "P2025") {
@@ -466,6 +502,8 @@ export default function (router: Router) {
           quarterlyAssessWeight: null,
         },
       });
+
+      await realignStoredGrades(`subject weight override cleared (${subject.code})`);
 
       res.json(subject);
     } catch (err: any) {
@@ -498,6 +536,8 @@ export default function (router: Router) {
           });
         }
       });
+
+      await realignStoredGrades(`subject weight bulk update (${updates.length} subjects)`);
 
       res.json({ message: `Updated ${updates.length} subjects` });
     } catch (err: any) {

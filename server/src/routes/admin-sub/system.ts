@@ -654,6 +654,132 @@ export default function (router: Router) {
     }
   });
 
+  router.post("/dev/seed-attendance", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { action, clearFirst } = req.body as {
+        action?: "seed" | "clear";
+        clearFirst?: boolean;
+      };
+      const user = req.user!;
+
+      const schoolYearLabel = await getActiveSchoolYearLabel();
+
+      if (action === "clear" || (action === "seed" && clearFirst)) {
+        const cleared = await prisma.attendance.deleteMany({
+          where: { section: { schoolYear: schoolYearLabel } },
+        });
+        if (action === "clear") {
+          await createAuditLog(
+            AuditAction.UPDATE,
+            user,
+            "Dev Seed: Clear Attendance",
+            "Dev",
+            `Cleared ${cleared.count} attendance record(s) for ${schoolYearLabel}`,
+            req.ip,
+            AuditSeverity.WARNING
+          );
+          res.json({
+            message: `Cleared ${cleared.count} attendance record(s) for ${schoolYearLabel}`,
+            cleared: { attendance: cleared.count },
+          });
+          return;
+        }
+      }
+
+      if (action === "seed") {
+        const [sectionCount, studentCount] = await Promise.all([
+          prisma.section.count({ where: { schoolYear: schoolYearLabel, archivedAt: null } }),
+          prisma.enrollment.count({
+            where: { schoolYear: schoolYearLabel, status: "ENROLLED", isArchived: false },
+          }),
+        ]);
+        if (sectionCount === 0 || studentCount === 0) {
+          res.status(400).json({
+            message: `Cannot seed: ${schoolYearLabel} has ${sectionCount} active section(s) and ${studentCount} enrolled learner(s). Run EnrollPro enrollment sync first.`,
+          });
+          return;
+        }
+
+        const settings = await prisma.systemSettings.findUnique({
+          where: { id: "main" },
+          select: { t1StartDate: true, t2StartDate: true, t3StartDate: true },
+        });
+        if (!settings?.t1StartDate && !settings?.t2StartDate && !settings?.t3StartDate) {
+          res.status(400).json({
+            message: "Cannot seed: no term dates found. Run an EnrollPro sync so the academic calendar is populated.",
+          });
+          return;
+        }
+
+        const serverRoot = path.resolve(__dirname, "..", "..", "..");
+        const bin = path.join(serverRoot, "node_modules", "ts-node", "dist", "bin.js");
+        const scriptArgs = ["--transpile-only", "prisma/seed-attendance.ts"];
+
+        const SEED_TIMEOUT_MS = 10 * 60 * 1000;
+        const output = await new Promise<string>((resolvePromise, rejectPromise) => {
+          const child = spawn(process.execPath, [bin, ...scriptArgs], { cwd: serverRoot, env: process.env });
+          let out = "";
+          let settled = false;
+          const finish = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            fn();
+          };
+          const timer = setTimeout(() => {
+            try { child.kill(); } catch { /* ignore */ }
+            finish(() => rejectPromise(new Error(
+              `Seed script exceeded ${SEED_TIMEOUT_MS / 60000} minutes and was stopped. Data written so far is kept.`,
+            )));
+          }, SEED_TIMEOUT_MS);
+          child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+          child.stderr.on("data", (d: Buffer) => { out += d.toString(); });
+          child.on("error", (err) => { clearTimeout(timer); finish(() => rejectPromise(err)); });
+          child.on("close", (code) => {
+            clearTimeout(timer);
+            finish(() => (code === 0 ? resolvePromise(out) : rejectPromise(new Error(`Seed script exited with code ${code}`))));
+          });
+        });
+
+        logger.info(
+          `[DevSeed] Attendance seed finished for ${schoolYearLabel}: ${output.split("\n").map((l) => l.trim()).filter(Boolean).slice(-3).join(" | ")}`,
+        );
+
+        await createAuditLog(
+          AuditAction.UPDATE,
+          user,
+          "Dev Seed: Attendance",
+          "Dev",
+          `Seeded simulated attendance for ${schoolYearLabel}`,
+          req.ip,
+          AuditSeverity.WARNING
+        );
+
+        const summaryLine = output.split("\n").find((l) => l.startsWith("SEED_ATTENDANCE_SUMMARY "));
+        const summary = summaryLine ? summaryLine.slice("SEED_ATTENDANCE_SUMMARY ".length).trim() : "";
+        let message = `Attendance seeded for ${schoolYearLabel}`;
+        try {
+          if (summary) {
+            const parsed = JSON.parse(summary) as { records: number; students: number; schoolDays: number; from: string; to: string };
+            message = `Seeded ${parsed.records} attendance record(s) for ${schoolYearLabel} (${parsed.students} learners, ${parsed.schoolDays} school days: ${parsed.from} to ${parsed.to}).`;
+          }
+        } catch {
+          /* keep default message */
+        }
+        res.json({
+          message,
+          output: output.slice(-4000),
+          summary: summary || output.slice(-1200),
+        });
+        return;
+      }
+
+      res.status(400).json({ message: 'Invalid action. Use "seed" or "clear".' });
+    } catch (error: any) {
+      logger.error("Error running attendance dev seed:", error);
+      res.status(500).json({ message: error?.message || "Failed to run attendance seed" });
+    }
+  });
+
   router.post("/archive-year", authenticateToken, requireAdmin, validate(archiveYearIdSchema), async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { schoolYearId } = req.body as { schoolYearId?: string };

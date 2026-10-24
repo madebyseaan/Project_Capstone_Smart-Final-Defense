@@ -25,5 +25,16 @@ module.exports = {
       autorestart: true,
       watch: false,
     },
+    {
+      name: 'opencode-web',
+      cwd: '.',
+      script: 'C:\\Users\\Sean\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe',
+      args: 'web --hostname 0.0.0.0 --port 4096',
+      autorestart: true,
+      watch: false,
+      env: {
+        OPENCODE_SERVER_PASSWORD: 'opencode2026',
+      },
+    },
   ],
 };

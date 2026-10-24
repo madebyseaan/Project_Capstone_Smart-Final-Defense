@@ -1203,26 +1203,18 @@ export async function getEnrollProRemedialPending(params?: {
 }
 
 export async function getEnrollProEosySections(schoolYearId?: number): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    const qs = schoolYearId ? `?schoolYearId=${schoolYearId}` : '';
-    return await fetchJSON(`${await getEnrollProBase()}/eosy/sections${qs}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { sections: [] };
-  }
+  const token = await getAdminToken();
+  const qs = schoolYearId ? `?schoolYearId=${schoolYearId}` : '';
+  return await fetchJSON(`${await getEnrollProBase()}/eosy/sections${qs}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export async function getEnrollProEosySectionRecords(sectionId: number): Promise<any> {
-  try {
-    const token = await getAdminToken();
-    return await fetchJSON(`${await getEnrollProBase()}/eosy/sections/${sectionId}/records`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { records: [] };
-  }
+  const token = await getAdminToken();
+  return await fetchJSON(`${await getEnrollProBase()}/eosy/sections/${sectionId}/records`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export async function getEnrollProEosySF5(sectionId: number): Promise<any> {

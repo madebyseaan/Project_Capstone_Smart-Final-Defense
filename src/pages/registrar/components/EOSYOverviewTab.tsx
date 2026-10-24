@@ -36,12 +36,16 @@ export default function EOSYOverviewTab({
 }: EOSYOverviewTabProps) {
   const { colors } = useTheme();
 
-  const promotedCount = records.filter(
-    (r) => r.promoted || r.finalStatus === "PROMOTED"
-  ).length;
-  const heldCount = records.filter(
-    (r) => !r.promoted && r.finalStatus !== "PROMOTED" && r.finalStatus
-  ).length;
+  const promotedCount = records.filter((r) => {
+    const s = r.smart?.decision?.promotionStatus;
+    if (s) return s === "PROMOTED" || s === "JHS_COMPLETER";
+    return r.promoted || r.finalStatus === "PROMOTED";
+  }).length;
+  const heldCount = records.filter((r) => {
+    const s = r.smart?.decision?.promotionStatus;
+    if (s) return s === "RETAINED" || s === "CONDITIONALLY_PROMOTED";
+    return !r.promoted && r.finalStatus !== "PROMOTED" && r.finalStatus;
+  }).length;
   const totalDraftSubjects = allTermStatus.filter((s) => s.totalDraft > 0).length;
   const totalFinalizedSubjects = allTermStatus.filter(
     (s) => s.totalDraft === 0 && s.totalGrades > 0

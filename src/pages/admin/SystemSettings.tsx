@@ -1,19 +1,30 @@
 import { useState, useEffect, useRef } from "react";
-import { Save, Loader2, RotateCcw, AlertTriangle, FlaskConical, Route } from "lucide-react";
+import { Save, Loader2, RotateCcw, AlertTriangle, FlaskConical, Route, School, CalendarDays, Lock, ShieldCheck, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TabsContent } from "@/components/ui/tabs";
 import { adminApi, getPortalToken } from "@/lib/api";
 import type { SystemSettings as SystemSettingsType } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageError } from "@/components/layout/PageError";
+import { FilterTabs } from "@/components/layout/FilterTabs";
+import type { FilterTabItem } from "@/components/layout/FilterTabs";
 import { toast } from "@/lib/toast";
 import { SchoolInformationSection } from "./components/SchoolInformationSection";
 import { GradeLockSection } from "./components/GradeLockSection";
 import { AcademicSection } from "./components/AcademicSection";
 import { SecuritySection } from "./components/SecuritySection";
 import DeveloperToolsCard from "./components/DeveloperToolsCard";
+import AttendanceToolsCard from "./components/AttendanceToolsCard";
+
+const TAB_ITEMS: FilterTabItem[] = [
+  { value: "school", label: "School", icon: School },
+  { value: "academic", label: "Academic", icon: CalendarDays },
+  { value: "locks", label: "Grade Locks", icon: Lock },
+  { value: "security", label: "Security & Retention", icon: ShieldCheck },
+  { value: "advanced", label: "Advanced", icon: Wrench },
+];
 
 export default function SystemSettings() {
   const [settings, setSettings] = useState<SystemSettingsType | null>(null);
@@ -255,14 +266,7 @@ export default function SystemSettings() {
         }
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList variant="line" className="w-full justify-start gap-1 border-b border-border pb-0 overflow-x-auto">
-          <TabsTrigger value="school" className="px-4 text-xs font-semibold uppercase tracking-wider">School</TabsTrigger>
-          <TabsTrigger value="academic" className="px-4 text-xs font-semibold uppercase tracking-wider">Academic</TabsTrigger>
-          <TabsTrigger value="locks" className="px-4 text-xs font-semibold uppercase tracking-wider">Grade Locks</TabsTrigger>
-          <TabsTrigger value="security" className="px-4 text-xs font-semibold uppercase tracking-wider">Security &amp; Retention</TabsTrigger>
-          <TabsTrigger value="advanced" className="px-4 text-xs font-semibold uppercase tracking-wider">Advanced</TabsTrigger>
-        </TabsList>
+      <FilterTabs value={tab} onValueChange={setTab} items={TAB_ITEMS} className="w-full">
 
         <TabsContent value="school" className="space-y-6 mt-4">
           <SchoolInformationSection
@@ -299,15 +303,16 @@ export default function SystemSettings() {
         <TabsContent value="advanced" className="space-y-4 mt-4">
           <div className="flex items-start gap-2 rounded-xl border-2 border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             <FlaskConical className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>Demo/testing tools. Use with caution — these modify grades for the active school year.</span>
+            <span>Demo/testing tools. Use with caution — these modify grades and attendance for the active school year.</span>
           </div>
           <div className="flex items-start gap-2 rounded-xl border-2 border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
             <Route className="w-4 h-4 mt-0.5 shrink-0" />
             <span>Server health, sync history, and diagnostics live on the <a href="/admin/system-health" className="font-medium text-primary underline-offset-2 hover:underline">System Health</a> page.</span>
           </div>
           <DeveloperToolsCard />
+          <AttendanceToolsCard />
         </TabsContent>
-      </Tabs>
+      </FilterTabs>
     </div>
   );
 }

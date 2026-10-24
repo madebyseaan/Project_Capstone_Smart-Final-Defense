@@ -64,6 +64,7 @@ export default function (router: Router) {
           take: parseInt(limit as string),
           skip: parseInt(offset as string),
           orderBy: { createdAt: "desc" },
+          include: { user: { select: { username: true } } },
         }),
         prisma.auditLog.count({ where }),
       ]);
@@ -86,6 +87,7 @@ export default function (router: Router) {
           user: log.userName,
           userRole: log.userRole,
           userId: log.userId,
+          username: log.user?.username ?? null,
           target: log.target,
           targetType: log.targetType,
           details: log.details,

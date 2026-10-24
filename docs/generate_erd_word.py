@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-SMART System – ERD Word Document Generator
+SMART System – ERD Word Document Generator (v2 – Updated from real schema.prisma)
 Generates a professional ERD .docx with:
-  1. Visual ERD diagram (matplotlib)
-  2. Entity field detail tables
-  3. Relationships summary table
-  4. Enumeration types table
+  1. Cover page with system title
+  2. Visual ERD diagram (matplotlib) split into logical groups
+  3. Entity field detail tables (all models from schema.prisma)
+  4. Relationships summary table
+  5. Enumeration types table
 """
 
-import sys, os, subprocess
+import sys, os, subprocess, math, textwrap
 
 def ensure(pkg, import_name=None):
     name = import_name or pkg.replace("-", "_")
@@ -25,877 +26,988 @@ ensure("python-docx", "docx")
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch
 
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_PATH = os.path.join(SCRIPT_DIR, "SMART_ERD.docx")
-IMG_MAIN    = os.path.join(SCRIPT_DIR, "_erd_main.png")
-IMG_CFG     = os.path.join(SCRIPT_DIR, "_erd_cfg.png")
 
-# ── Colour palette ────────────────────────────────────────────────────────────
-C_USER   = "#1e4a7a"   # User / Teacher / SystemSettings
-C_STUD   = "#1a5c8a"   # Student
-C_SEC    = "#1a6b3a"   # Section / Enrollment / ExcelTemplate / ECRTemplate
-C_SUB    = "#6b2d8b"   # Subject / Attendance / GradingConfig
-C_JUN    = "#7a6100"   # ClassAssignment / Grade
-C_AUDIT  = "#8b1a1a"   # AuditLog
+# Color palette
+C_USER   = "#1e4a8c"
+C_TEACHER= "#0f5e6e"
+C_STUD   = "#1a5c8a"
+C_SEC    = "#1a6b3a"
+C_SUB    = "#6b2d8b"
+C_JUN    = "#7a5100"
+C_AUDIT  = "#8b1a1a"
+C_ATLAS  = "#3d6b45"
+C_CONFIG = "#5c3d1e"
 
-# ── Entity definitions (diagram labels – abbreviated for readability) ─────────
-MAIN_ENTITIES = {
+ALL_ENTITIES = {
     "User": {
-        "color": C_USER,
+        "color": C_USER, "group": "Auth & Users",
         "fields": [
-            ("PK", "id",        "String"),
-            ("",   "username",  "String (unique)"),
-            ("",   "password",  "String"),
-            ("",   "role",      "Role"),
-            ("",   "firstName", "String?"),
-            ("",   "lastName",  "String?"),
-            ("",   "email",     "String?"),
+            ("PK", "id",                 "String (cuid)"),
+            ("",   "username",            "String UNIQUE"),
+            ("",   "password",            "String"),
+            ("",   "role",                "Role"),
+            ("",   "status",              "UserStatus"),
+            ("",   "enrollproSubject",    "String? UNIQUE"),
+            ("",   "firstName",           "String?"),
+            ("",   "lastName",            "String?"),
+            ("",   "email",               "String?"),
+            ("",   "suspendedAt",         "DateTime?"),
+            ("",   "deactivatedAt",       "DateTime?"),
+            ("",   "createdAt",           "DateTime"),
+            ("",   "updatedAt",           "DateTime"),
         ],
     },
     "Teacher": {
-        "color": C_USER,
+        "color": C_TEACHER, "group": "Auth & Users",
         "fields": [
-            ("PK", "id",             "String"),
-            ("FK", "userId",         "→ User"),
-            ("",   "employeeId",     "String (unique)"),
+            ("PK", "id",             "String (cuid)"),
+            ("FK", "userId",         "-> User"),
+            ("",   "employeeId",     "String UNIQUE"),
             ("",   "specialization", "String?"),
+            ("",   "createdAt",      "DateTime"),
+            ("",   "updatedAt",      "DateTime"),
+        ],
+    },
+    "RefreshToken": {
+        "color": C_USER, "group": "Auth & Users",
+        "fields": [
+            ("PK", "id",        "String (uuid)"),
+            ("",   "token",     "String UNIQUE"),
+            ("FK", "userId",    "-> User"),
+            ("",   "familyId",  "String"),
+            ("",   "expiresAt", "DateTime"),
+            ("",   "revokedAt", "DateTime?"),
+            ("",   "createdAt", "DateTime"),
+        ],
+    },
+    "CompanionSsoCode": {
+        "color": C_USER, "group": "Auth & Users",
+        "fields": [
+            ("PK", "id",          "String (cuid)"),
+            ("",   "codeHash",    "String UNIQUE"),
+            ("FK", "userId",      "-> User"),
+            ("",   "audience",    "String"),
+            ("",   "redirectUri", "String"),
+            ("",   "expiresAt",   "DateTime"),
+            ("",   "consumedAt",  "DateTime?"),
+            ("",   "createdAt",   "DateTime"),
         ],
     },
     "Student": {
-        "color": C_STUD,
+        "color": C_STUD, "group": "Students",
         "fields": [
-            ("PK", "id",              "String"),
-            ("",   "lrn",             "String (unique)"),
+            ("PK", "id",              "String (cuid)"),
+            ("",   "lrn",             "String UNIQUE"),
+            ("",   "enrollproId",     "Int? UNIQUE"),
             ("",   "firstName",       "String"),
             ("",   "middleName",      "String?"),
             ("",   "lastName",        "String"),
             ("",   "suffix",          "String?"),
             ("",   "birthDate",       "DateTime?"),
             ("",   "gender",          "String?"),
+            ("",   "address",         "String?"),
             ("",   "guardianName",    "String?"),
+            ("",   "guardianContact", "String?"),
+            ("",   "religion",        "String?"),
+            ("",   "motherTongue",    "String?"),
+            ("",   "ipCommunity",     "Boolean?"),
+            ("",   "is4PsBeneficiary","Boolean?"),
+            ("",   "disability",      "String?"),
+            ("",   "isBalikAral",     "Boolean?"),
+            ("",   "previousSchool",  "String?"),
+            ("",   "transferCertNo",  "String?"),
+            ("",   "hasPsa",          "Boolean?"),
+            ("",   "createdAt",       "DateTime"),
+            ("",   "updatedAt",       "DateTime"),
+        ],
+    },
+    "ExternalSchoolRecord": {
+        "color": C_STUD, "group": "Students",
+        "fields": [
+            ("PK", "id",              "String (cuid)"),
+            ("FK", "studentId",       "-> Student"),
+            ("",   "schoolYear",      "String"),
+            ("",   "gradeLevel",      "GradeLevel"),
+            ("",   "schoolName",      "String"),
+            ("",   "generalAverage",  "Float?"),
+            ("",   "promotionStatus", "String?"),
+            ("",   "formType",        "String"),
+            ("",   "source",          "ExternalRecordSource"),
+            ("",   "locked",          "Boolean"),
+            ("",   "createdAt",       "DateTime"),
+            ("",   "updatedAt",       "DateTime"),
+        ],
+    },
+    "ExternalSubjectRecord": {
+        "color": C_STUD, "group": "Students",
+        "fields": [
+            ("PK", "id",              "String (cuid)"),
+            ("FK", "recordId",        "-> ExternalSchoolRecord"),
+            ("",   "subjectCode",     "String?"),
+            ("",   "subjectName",     "String"),
+            ("",   "terms",           "Json?"),
+            ("",   "finalRating",     "Float?"),
+            ("",   "remarks",         "String?"),
+            ("",   "isNonPromotional","Boolean"),
         ],
     },
     "Section": {
-        "color": C_SEC,
+        "color": C_SEC, "group": "Academic Structure",
         "fields": [
-            ("PK", "id",         "String"),
+            ("PK", "id",         "String (cuid)"),
             ("",   "name",       "String"),
             ("",   "gradeLevel", "GradeLevel"),
             ("",   "schoolYear", "String"),
-            ("FK", "adviserId",  "→ Teacher"),
+            ("FK", "adviserId",  "-> Teacher?"),
+            ("",   "program",    "String (REGULAR/SPA/SPS/STE)"),
+            ("",   "status",     "String (ACTIVE/ARCHIVED)"),
+            ("",   "archivedAt", "DateTime?"),
+            ("",   "createdAt",  "DateTime"),
+            ("",   "updatedAt",  "DateTime"),
         ],
     },
     "Subject": {
-        "color": C_SUB,
+        "color": C_SUB, "group": "Academic Structure",
         "fields": [
-            ("PK", "id",               "String"),
-            ("",   "code",             "String (unique)"),
-            ("",   "name",             "String"),
-            ("",   "type",             "SubjectType"),
-            ("",   "writtenWork%",     "Int (30)"),
-            ("",   "perfTask%",        "Int (50)"),
-            ("",   "quarterlyAssess%", "Int (20)"),
-        ],
-    },
-    "ClassAssignment": {
-        "color": C_JUN,
-        "fields": [
-            ("PK", "id",             "String"),
-            ("FK", "teacherId",      "→ Teacher"),
-            ("FK", "subjectId",      "→ Subject"),
-            ("FK", "sectionId",      "→ Section"),
-            ("",   "schoolYear",     "String"),
-            ("",   "ecrFileName",    "String?"),
+            ("PK", "id",                   "String (cuid)"),
+            ("",   "code",                 "String UNIQUE"),
+            ("",   "name",                 "String"),
+            ("",   "displayName",          "String?"),
+            ("",   "description",          "String?"),
+            ("",   "type",                 "SubjectType"),
+            ("",   "writtenWorkWeight",    "Int?"),
+            ("",   "perfTaskWeight",       "Int?"),
+            ("",   "quarterlyAssessWeight","Int?"),
+            ("",   "isNonPromotional",     "Boolean"),
+            ("",   "rotationTermGroupId",  "String?"),
+            ("",   "rotationTermRank",     "Int?"),
+            ("",   "createdAt",            "DateTime"),
+            ("",   "updatedAt",            "DateTime"),
         ],
     },
     "Enrollment": {
-        "color": C_SEC,
+        "color": C_STUD, "group": "Academic Structure",
         "fields": [
-            ("PK", "id",         "String"),
-            ("FK", "studentId",  "→ Student"),
-            ("FK", "sectionId",  "→ Section"),
+            ("PK", "id",                  "String (cuid)"),
+            ("FK", "studentId",           "-> Student"),
+            ("FK", "sectionId",           "-> Section"),
+            ("",   "schoolYear",          "String"),
+            ("",   "status",              "EnrollmentStatus"),
+            ("",   "isArchived",          "Boolean"),
+            ("",   "dropOutDate",         "DateTime?"),
+            ("",   "transferOutDate",     "DateTime?"),
+            ("",   "transferInDate",      "DateTime?"),
+            ("",   "promotionStatus",     "PromotionStatus?"),
+            ("",   "promotedToGradeLevel","GradeLevel?"),
+            ("",   "sf9EligibilityStatus","Sf9EligibilityStatus?"),
+            ("",   "createdAt",           "DateTime"),
+            ("",   "updatedAt",           "DateTime"),
+        ],
+    },
+    "ClassAssignment": {
+        "color": C_JUN, "group": "Teaching",
+        "fields": [
+            ("PK", "id",                 "String (cuid)"),
+            ("FK", "teacherId",          "-> Teacher"),
+            ("FK", "subjectId",          "-> Subject"),
+            ("FK", "sectionId",          "-> Section"),
+            ("",   "schoolYear",         "String"),
+            ("",   "isActive",           "Boolean"),
+            ("",   "source",             "String (SYNC|MANUAL)"),
+            ("",   "aimsCourseId",       "String?"),
+            ("",   "successorTeacherId", "String?"),
+            ("",   "archivedAt",         "DateTime?"),
+            ("",   "createdAt",          "DateTime"),
+            ("",   "updatedAt",          "DateTime"),
+        ],
+    },
+    "ScheduleEntry": {
+        "color": C_TEACHER, "group": "Teaching",
+        "fields": [
+            ("PK", "id",         "String (cuid)"),
+            ("FK", "teacherId",  "-> Teacher"),
+            ("FK", "subjectId",  "-> Subject"),
+            ("FK", "sectionId",  "-> Section"),
             ("",   "schoolYear", "String"),
-            ("",   "status",     "String"),
+            ("",   "termIndex",  "Int?"),
+            ("",   "day",        "String"),
+            ("",   "startTime",  "String"),
+            ("",   "endTime",    "String"),
+            ("",   "roomId",     "Int?"),
+            ("",   "createdAt",  "DateTime"),
+            ("",   "updatedAt",  "DateTime"),
+        ],
+    },
+    "WorkloadEntry": {
+        "color": C_TEACHER, "group": "Teaching",
+        "fields": [
+            ("PK", "id",                "String (cuid)"),
+            ("FK", "teacherId",         "-> Teacher"),
+            ("FK", "sectionId",         "-> Section?"),
+            ("FK", "classAssignmentId", "-> ClassAssignment?"),
+            ("",   "schoolYear",        "String"),
+            ("",   "type",              "WorkloadType"),
+            ("",   "minutes",           "Int"),
+            ("",   "createdAt",         "DateTime"),
+            ("",   "updatedAt",         "DateTime"),
         ],
     },
     "Grade": {
-        "color": C_JUN,
+        "color": C_SUB, "group": "Grades",
         "fields": [
-            ("PK", "id",                  "String"),
-            ("FK", "studentId",           "→ Student"),
-            ("FK", "classAssignmentId",   "→ ClassAssignment"),
-            ("",   "quarter",             "Quarter"),
-            ("",   "writtenWorkScores",   "Json?"),
-            ("",   "perfTaskScores",      "Json?"),
-            ("",   "quarterlyAssessScore","Float?"),
-            ("",   "initialGrade",        "Float?"),
-            ("",   "quarterlyGrade",      "Float?"),
-            ("",   "remarks",             "String?"),
+            ("PK", "id",                   "String (cuid)"),
+            ("FK", "studentId",            "-> Student"),
+            ("FK", "classAssignmentId",    "-> ClassAssignment"),
+            ("",   "term",                 "Term"),
+            ("",   "writtenWorkScores",    "Json?"),
+            ("",   "perfTaskScores",       "Json?"),
+            ("",   "examScores",           "Json?"),
+            ("",   "quarterlyAssessScore", "Float?"),
+            ("",   "writtenWorkPS",        "Float?"),
+            ("",   "perfTaskPS",           "Float?"),
+            ("",   "initialGrade",         "Float?"),
+            ("",   "quarterlyGrade",       "Float?"),
+            ("",   "remarks",              "String?"),
+            ("",   "status",               "GradeStatus"),
+            ("FK", "finalizedBy",          "-> User?"),
+            ("",   "finalizedAt",          "DateTime?"),
+            ("",   "createdAt",            "DateTime"),
+            ("",   "updatedAt",            "DateTime"),
+        ],
+    },
+    "GradeSnapshot": {
+        "color": C_SUB, "group": "Grades",
+        "fields": [
+            ("PK", "id",                "String (cuid)"),
+            ("",   "gradeId",           "String?"),
+            ("FK", "studentId",         "-> Student (denorm)"),
+            ("FK", "classAssignmentId", "-> ClassAssignment (denorm)"),
+            ("",   "teacherId",         "String (denorm)"),
+            ("",   "subjectCode",       "String"),
+            ("",   "sectionId",         "String (denorm)"),
+            ("",   "schoolYear",        "String"),
+            ("",   "term",              "Term"),
+            ("",   "snapshot",          "Json"),
+            ("",   "createdAt",         "DateTime"),
+        ],
+    },
+    "AimsScore": {
+        "color": C_SUB, "group": "Grades",
+        "fields": [
+            ("PK", "id",                "String (cuid)"),
+            ("FK", "classAssignmentId", "-> ClassAssignment"),
+            ("FK", "studentId",         "-> Student"),
+            ("",   "term",              "Term"),
+            ("",   "assessmentId",      "String"),
+            ("",   "type",              "String (QUIZ|TASK)"),
+            ("",   "category",          "String (WW|PT)"),
+            ("",   "score",             "Float"),
+            ("",   "pointsEarned",      "Float"),
+            ("",   "maxPoints",         "Float"),
+            ("",   "isRemedial",        "Boolean"),
+            ("",   "gradedAt",          "DateTime?"),
+            ("",   "syncedAt",          "DateTime"),
+        ],
+    },
+    "EcrSync": {
+        "color": C_JUN, "group": "Grades",
+        "fields": [
+            ("PK", "id",                "String (cuid)"),
+            ("FK", "classAssignmentId", "-> ClassAssignment"),
+            ("",   "term",              "Term"),
+            ("",   "lastSyncedAt",      "DateTime"),
+            ("",   "createdAt",         "DateTime"),
+            ("",   "updatedAt",         "DateTime"),
+        ],
+    },
+    "GradeEditRequest": {
+        "color": C_SUB, "group": "Grades",
+        "fields": [
+            ("PK", "id",                  "String (cuid)"),
+            ("FK", "teacherId",           "-> User"),
+            ("",   "teacherName",         "String"),
+            ("",   "term",                "String"),
+            ("",   "schoolYear",          "String"),
+            ("",   "section",             "String?"),
+            ("",   "subject",             "String?"),
+            ("",   "classAssignmentId",   "String?"),
+            ("",   "reason",              "String"),
+            ("",   "status",              "EditRequestStatus"),
+            ("FK", "approvedById",        "-> User?"),
+            ("",   "expiresAt",           "DateTime?"),
+            ("",   "createdAt",           "DateTime"),
+            ("",   "updatedAt",           "DateTime"),
         ],
     },
     "Attendance": {
-        "color": C_SUB,
+        "color": C_SEC, "group": "Attendance",
         "fields": [
-            ("PK", "id",         "String"),
-            ("FK", "studentId",  "→ Student"),
-            ("FK", "sectionId",  "→ Section"),
-            ("",   "date",       "DateTime (Date)"),
+            ("PK", "id",         "String (cuid)"),
+            ("FK", "studentId",  "-> Student"),
+            ("FK", "sectionId",  "-> Section"),
+            ("",   "date",       "DateTime (Date only)"),
             ("",   "status",     "AttendanceStatus"),
             ("",   "remarks",    "String?"),
             ("",   "recordedBy", "String?"),
+            ("",   "createdAt",  "DateTime"),
+            ("",   "updatedAt",  "DateTime"),
         ],
     },
-}
-
-CFG_ENTITIES = {
-    "AuditLog": {
-        "color": C_AUDIT,
+    "RemedialClass": {
+        "color": C_STUD, "group": "Remedial",
         "fields": [
-            ("PK", "id",         "String"),
-            ("",   "action",     "AuditAction"),
-            ("",   "userId",     "String?"),
-            ("",   "userName",   "String"),
-            ("",   "userRole",   "String"),
-            ("",   "target",     "String"),
-            ("",   "targetType", "String"),
-            ("",   "severity",   "AuditSeverity"),
-            ("",   "ipAddress",  "String?"),
-            ("",   "createdAt",  "DateTime"),
+            ("PK", "id",              "String (cuid)"),
+            ("FK", "enrollmentId",    "-> Enrollment"),
+            ("",   "schoolYear",      "String"),
+            ("",   "gradeLevel",      "GradeLevel"),
+            ("",   "subjectCode",     "String"),
+            ("",   "subjectName",     "String"),
+            ("",   "originalGrade",   "Float"),
+            ("",   "remedialMark",    "Float?"),
+            ("",   "recomputedGrade", "Float?"),
+            ("",   "outcome",         "String?"),
+            ("",   "status",          "String (PENDING/PASSED/FAILED)"),
+            ("",   "createdAt",       "DateTime"),
+            ("",   "updatedAt",       "DateTime"),
+        ],
+    },
+    "SchoolYear": {
+        "color": C_AUDIT, "group": "System & Config",
+        "fields": [
+            ("PK", "id",          "String (cuid)"),
+            ("",   "label",       "String UNIQUE"),
+            ("",   "externalId",  "Int? UNIQUE"),
+            ("",   "status",      "String (DRAFT/ACTIVE/ARCHIVED)"),
+            ("",   "termLabelT1", "String"),
+            ("",   "termLabelT2", "String"),
+            ("",   "termLabelT3", "String"),
+            ("",   "startDate",   "DateTime?"),
+            ("",   "endDate",     "DateTime?"),
+            ("",   "createdAt",   "DateTime"),
+            ("",   "updatedAt",   "DateTime"),
+        ],
+    },
+    "YearGradeLock": {
+        "color": C_AUDIT, "group": "System & Config",
+        "fields": [
+            ("PK", "id",           "String (cuid)"),
+            ("FK", "schoolYearId", "-> SchoolYear"),
+            ("",   "isLocked",     "Boolean"),
+            ("",   "lockedBy",     "String?"),
+            ("",   "lockedAt",     "DateTime?"),
+            ("",   "createdAt",    "DateTime"),
+            ("",   "updatedAt",    "DateTime"),
+        ],
+    },
+    "TermGradeLock": {
+        "color": C_AUDIT, "group": "System & Config",
+        "fields": [
+            ("PK", "id",           "String (cuid)"),
+            ("FK", "schoolYearId", "-> SchoolYear"),
+            ("",   "term",         "Term"),
+            ("",   "isLocked",     "Boolean"),
+            ("",   "lockedBy",     "String?"),
+            ("",   "lockedAt",     "DateTime?"),
+            ("",   "createdAt",    "DateTime"),
+            ("",   "updatedAt",    "DateTime"),
         ],
     },
     "SystemSettings": {
-        "color": C_USER,
+        "color": C_AUDIT, "group": "System & Config",
         "fields": [
-            ("PK", "id",                "String ('main')"),
+            ("PK", "id",                "String (default: 'main')"),
             ("",   "schoolName",        "String"),
+            ("",   "schoolId",          "String"),
             ("",   "division",          "String"),
             ("",   "region",            "String"),
-            ("",   "currentSchoolYear", "String"),
-            ("",   "currentQuarter",    "Quarter"),
-            ("",   "logoUrl",           "String?"),
-            ("",   "primaryColor",      "String"),
-            ("",   "lastEnrollProSync", "DateTime?"),
+            ("FK", "schoolYearId",      "-> SchoolYear?"),
+            ("",   "currentTerm",       "Term"),
+            ("",   "gradeLock",         "Boolean"),
+            ("",   "transitionLock",    "Boolean"),
+            ("",   "enrollproUrl",      "String?"),
+            ("",   "t1StartDate",       "DateTime?"),
+            ("",   "t1EndDate",         "DateTime?"),
+            ("",   "t2StartDate",       "DateTime?"),
+            ("",   "t2EndDate",         "DateTime?"),
+            ("",   "t3StartDate",       "DateTime?"),
+            ("",   "t3EndDate",         "DateTime?"),
+            ("",   "createdAt",         "DateTime"),
+            ("",   "updatedAt",         "DateTime"),
         ],
     },
     "GradingConfig": {
-        "color": C_SUB,
+        "color": C_CONFIG, "group": "System & Config",
         "fields": [
-            ("PK", "id",                    "String"),
-            ("",   "subjectType",           "SubjectType (unique)"),
+            ("PK", "id",                    "String (cuid)"),
+            ("",   "subjectType",           "SubjectType UNIQUE"),
             ("",   "writtenWorkWeight",     "Int"),
             ("",   "performanceTaskWeight", "Int"),
             ("",   "quarterlyAssessWeight", "Int"),
             ("",   "isDepEdDefault",        "Boolean"),
+            ("",   "createdAt",             "DateTime"),
+            ("",   "updatedAt",             "DateTime"),
+        ],
+    },
+    "TransmutationEntry": {
+        "color": C_CONFIG, "group": "System & Config",
+        "fields": [
+            ("PK", "id",              "String (cuid)"),
+            ("",   "minGrade",        "Float"),
+            ("",   "maxGrade",        "Float"),
+            ("",   "transmutedGrade", "Int"),
+            ("",   "isDefault",       "Boolean"),
+            ("",   "createdAt",       "DateTime"),
+            ("",   "updatedAt",       "DateTime"),
         ],
     },
     "ExcelTemplate": {
-        "color": C_SEC,
+        "color": C_CONFIG, "group": "System & Config",
         "fields": [
-            ("PK", "id",             "String"),
-            ("",   "formType",       "FormType (unique)"),
+            ("PK", "id",             "String (cuid)"),
+            ("",   "formType",       "FormType UNIQUE"),
             ("",   "formName",       "String"),
+            ("",   "description",    "String?"),
             ("",   "filePath",       "String"),
+            ("",   "fileName",       "String"),
             ("",   "fileSize",       "Int"),
+            ("",   "placeholders",   "Json?"),
             ("",   "isActive",       "Boolean"),
-            ("",   "uploadedBy",     "String"),
+            ("FK", "uploadedBy",     "-> User"),
             ("",   "uploadedByName", "String"),
+            ("",   "sheetName",      "String?"),
+            ("",   "createdAt",      "DateTime"),
+            ("",   "updatedAt",      "DateTime"),
         ],
     },
-    "ECRTemplate": {
-        "color": C_SEC,
+    "AtlasCrosswalk": {
+        "color": C_ATLAS, "group": "Atlas Integration",
         "fields": [
-            ("PK", "id",             "String"),
-            ("",   "subjectName",    "String"),
-            ("",   "subjectType",    "SubjectType?"),
-            ("",   "filePath",       "String"),
-            ("",   "fileSize",       "Int"),
-            ("",   "isActive",       "Boolean"),
-            ("",   "uploadedBy",     "String"),
-            ("",   "uploadedByName", "String"),
+            ("PK", "id",         "String (cuid)"),
+            ("",   "kind",       "String (ROOM/SECTION/SUBJECT/FACULTY)"),
+            ("",   "atlasId",    "Int"),
+            ("",   "schoolYear", "String"),
+            ("",   "label",      "String"),
+            ("",   "detail",     "String?"),
+            ("",   "smartId",    "String?"),
+            ("",   "createdAt",  "DateTime"),
+            ("",   "updatedAt",  "DateTime"),
+        ],
+    },
+    "AtlasScheduleMeta": {
+        "color": C_ATLAS, "group": "Atlas Integration",
+        "fields": [
+            ("PK", "id",              "Int (autoincrement)"),
+            ("",   "schoolYear",      "String UNIQUE"),
+            ("",   "source",          "Json?"),
+            ("",   "terms",           "Json?"),
+            ("",   "specialEvents",   "Json?"),
+            ("",   "timeSlots",       "Json?"),
+            ("",   "activeTermIndex", "Int?"),
+            ("",   "conflict",        "String?"),
+            ("",   "syncedAt",        "DateTime"),
+            ("",   "createdAt",       "DateTime"),
+            ("",   "updatedAt",       "DateTime"),
+        ],
+    },
+    "AuditLog": {
+        "color": C_AUDIT, "group": "Audit & Sync",
+        "fields": [
+            ("PK", "id",            "String (cuid)"),
+            ("",   "action",        "AuditAction"),
+            ("FK", "userId",        "-> User?"),
+            ("",   "userName",      "String"),
+            ("",   "userRole",      "String"),
+            ("",   "target",        "String"),
+            ("",   "targetType",    "String"),
+            ("",   "targetId",      "String?"),
+            ("",   "details",       "String"),
+            ("",   "ipAddress",     "String?"),
+            ("",   "severity",      "AuditSeverity"),
+            ("",   "userAgent",     "String?"),
+            ("",   "browser",       "String?"),
+            ("",   "outcome",       "String?"),
+            ("",   "createdAt",     "DateTime"),
+        ],
+    },
+    "SyncHistory": {
+        "color": C_AUDIT, "group": "Audit & Sync",
+        "fields": [
+            ("PK", "id",          "String (cuid)"),
+            ("",   "source",      "String"),
+            ("",   "status",      "String"),
+            ("",   "durationMs",  "Int"),
+            ("",   "startedAt",   "DateTime"),
+            ("",   "completedAt", "DateTime"),
+            ("",   "enrollpro",   "Json?"),
+            ("",   "atlas",       "Json?"),
+            ("",   "branding",    "Boolean"),
+            ("",   "error",       "String?"),
+            ("",   "metadata",    "Json?"),
+            ("",   "createdAt",   "DateTime"),
         ],
     },
 }
 
-# ── Layout constants ──────────────────────────────────────────────────────────
-BOX_W    = 3.1
-ROW_H    = 0.28
-HDR_H    = 0.44
-
-def bh(entity_dict, name):
-    """Box height for a named entity."""
-    return HDR_H + ROW_H * len(entity_dict[name]["fields"])
-
-def box_edge(positions, entity_dict, name, side):
-    lx, ty = positions[name]
-    h = bh(entity_dict, name)
-    cx, cy = lx + BOX_W / 2, ty + h / 2
-    if side == "left":   return (lx,          cy)
-    if side == "right":  return (lx + BOX_W,  cy)
-    if side == "top":    return (cx,           ty)
-    if side == "bottom": return (cx,           ty + h)
-    return (cx, cy)
-
-# ── Diagram drawing ───────────────────────────────────────────────────────────
-def draw_diagram(title, entities, positions, relationships,
-                 canvas_w, canvas_h, img_path, dpi=150):
-    """Render one ERD diagram and save to img_path."""
-
-    fig, ax = plt.subplots(figsize=(canvas_w, canvas_h), dpi=dpi)
-    ax.set_xlim(0, canvas_w)
-    ax.set_ylim(0, canvas_h)
-    ax.invert_yaxis()
-    ax.axis("off")
-
-    fig.patch.set_facecolor("#f5f6fa")
-    ax.set_facecolor("#f5f6fa")
-
-    # Title bar
-    ax.add_patch(FancyBboxPatch((0.1, 0.08), canvas_w - 0.2, 0.50,
-                                boxstyle="round,pad=0.03",
-                                facecolor="#1e3a5f", edgecolor="none", zorder=1))
-    ax.text(canvas_w / 2, 0.08 + 0.25, title,
-            ha="center", va="center", fontsize=12, fontweight="bold",
-            color="white", zorder=2)
-
-    # Draw relationship lines first (behind boxes)
-    for src, dst, src_side, dst_side, card, rad, label in relationships:
-        p1 = box_edge(positions, entities, src, src_side)
-        p2 = box_edge(positions, entities, dst, dst_side)
-        ax.annotate("",
-                    xy=p2, xytext=p1,
-                    arrowprops=dict(
-                        arrowstyle="-|>",
-                        color="#7f8c8d",
-                        lw=1.2,
-                        mutation_scale=12,
-                        connectionstyle=f"arc3,rad={rad}",
-                    ), zorder=3)
-        mx = (p1[0] + p2[0]) / 2
-        my = (p1[1] + p2[1]) / 2
-        ax.text(mx, my, card,
-                ha="center", va="center", fontsize=6,
-                color="#555",
-                bbox=dict(boxstyle="round,pad=0.08",
-                          facecolor="#f5f6fa", edgecolor="none", alpha=0.9),
-                zorder=5)
-
-    # Draw entity boxes
-    for name, entity in entities.items():
-        lx, ty = positions[name]
-        h = bh(entities, name)
-        color = entity["color"]
-
-        # Shadow
-        ax.add_patch(FancyBboxPatch(
-            (lx + 0.05, ty + 0.07), BOX_W, h,
-            boxstyle="round,pad=0.02",
-            facecolor="#00000020", edgecolor="none", zorder=2))
-
-        # White body
-        ax.add_patch(FancyBboxPatch(
-            (lx, ty), BOX_W, h,
-            boxstyle="round,pad=0.02",
-            facecolor="white", edgecolor=color, linewidth=1.4, zorder=3))
-
-        # Coloured header
-        ax.add_patch(FancyBboxPatch(
-            (lx, ty), BOX_W, HDR_H,
-            boxstyle="round,pad=0.02",
-            facecolor=color, edgecolor=color, linewidth=1.4, zorder=4))
-
-        ax.text(lx + BOX_W / 2, ty + HDR_H / 2, name,
-                ha="center", va="center",
-                fontsize=8, fontweight="bold", color="white", zorder=5)
-
-        for i, (key, fname, ftype) in enumerate(entity["fields"]):
-            fy = ty + HDR_H + ROW_H * i + ROW_H / 2
-
-            # Zebra stripe
-            if i % 2 == 0:
-                ax.add_patch(FancyBboxPatch(
-                    (lx + 0.01, ty + HDR_H + ROW_H * i), BOX_W - 0.02, ROW_H,
-                    boxstyle="square,pad=0",
-                    facecolor="#eef2ff", edgecolor="none", zorder=3))
-
-            # PK / FK badge
-            if key == "PK":
-                ax.text(lx + 0.13, fy, "PK",
-                        ha="center", va="center", fontsize=5.5,
-                        color="white", fontweight="bold", zorder=6,
-                        bbox=dict(boxstyle="round,pad=0.1",
-                                  facecolor="#e67e22", edgecolor="none"))
-            elif key == "FK":
-                ax.text(lx + 0.13, fy, "FK",
-                        ha="center", va="center", fontsize=5.5,
-                        color="white", fontweight="bold", zorder=6,
-                        bbox=dict(boxstyle="round,pad=0.1",
-                                  facecolor="#2980b9", edgecolor="none"))
-
-            ax.text(lx + 0.28, fy, fname,
-                    ha="left", va="center", fontsize=6.5, zorder=6,
-                    color="#111",
-                    fontweight="bold" if key in ("PK", "FK") else "normal")
-            ax.text(lx + BOX_W - 0.07, fy, ftype,
-                    ha="right", va="center", fontsize=5.8, zorder=6,
-                    color="#666", style="italic")
-
-            # Row separator
-            if i < len(entity["fields"]) - 1:
-                ax.plot([lx + 0.05, lx + BOX_W - 0.05],
-                        [ty + HDR_H + ROW_H * (i + 1)] * 2,
-                        color="#ddd", lw=0.4, zorder=4)
-
-    # Legend
-    lx0, ly0 = canvas_w - 2.5, canvas_h - 2.2
-    ax.add_patch(FancyBboxPatch(
-        (lx0 - 0.1, ly0 - 0.1), 2.4, 1.8,
-        boxstyle="round,pad=0.05",
-        facecolor="white", edgecolor="#ccc", linewidth=0.8, zorder=6))
-    ax.text(lx0 + 1.0, ly0 + 0.05, "LEGEND",
-            ha="center", va="top", fontsize=7, fontweight="bold",
-            color="#333", zorder=7)
-    legend_items = [
-        ("PK", "#e67e22", "Primary Key"),
-        ("FK", "#2980b9", "Foreign Key"),
-        ("1:N", "#7f8c8d", "One-to-Many"),
-        ("1:1", "#7f8c8d", "One-to-One"),
-    ]
-    for j, (badge, c, desc) in enumerate(legend_items):
-        by = ly0 + 0.38 + j * 0.32
-        ax.text(lx0 + 0.18, by, badge,
-                ha="center", va="center", fontsize=6, color="white",
-                fontweight="bold", zorder=7,
-                bbox=dict(boxstyle="round,pad=0.12", facecolor=c, edgecolor="none"))
-        ax.text(lx0 + 0.42, by, desc,
-                ha="left", va="center", fontsize=6.5, color="#333", zorder=7)
-
-    plt.tight_layout(pad=0)
-    plt.savefig(img_path, dpi=dpi, bbox_inches="tight",
-                facecolor="#f5f6fa", format="png")
-    plt.close()
-    print(f"  Diagram saved → {img_path}")
-
-
-# ── Diagram 1: Core academic entities ─────────────────────────────────────────
-# Columns (x): 0.3 | 4.0 | 7.7 | 11.4
-# Rows grow downward
-MAIN_POS = {
-    #  col1
-    "User":             (0.3,  0.8),
-    "Teacher":          (0.3,  3.55),
-    "Student":          (0.3,  5.40),
-    #  col2
-    "Section":          (4.0,  0.8),
-    "ClassAssignment":  (4.0,  3.00),
-    "Enrollment":       (4.0,  5.40),
-    "Attendance":       (4.0,  7.60),
-    #  col3
-    "Subject":          (7.7,  0.8),
-    "Grade":            (7.7,  3.55),
-}
-
-# (src, dst, src_side, dst_side, card_label, arc_rad, text)
-MAIN_REL = [
-    ("User",            "Teacher",         "bottom", "top",    "1:1",  0.0,  ""),
-    ("Teacher",         "Section",         "right",  "left",   "1:N",  0.1,  ""),
-    ("Teacher",         "ClassAssignment", "right",  "left",   "1:N",  0.0,  ""),
-    ("Subject",         "ClassAssignment", "left",   "right",  "1:N",  0.0,  ""),
-    ("Section",         "ClassAssignment", "bottom", "top",    "1:N",  0.0,  ""),
-    ("Section",         "Enrollment",      "right",  "top",    "1:N", -0.3,  ""),
-    ("Section",         "Attendance",      "right",  "top",    "1:N", -0.5,  ""),
-    ("Student",         "Enrollment",      "right",  "left",   "1:N",  0.0,  ""),
-    ("Student",         "Grade",           "right",  "left",   "1:N",  0.3,  ""),
-    ("Student",         "Attendance",      "right",  "left",   "1:N",  0.1,  ""),
-    ("ClassAssignment", "Grade",           "right",  "left",   "1:N",  0.0,  ""),
-]
-
-# ── Diagram 2: Config / admin entities ────────────────────────────────────────
-CFG_POS = {
-    "AuditLog":       (0.3, 0.8),
-    "SystemSettings": (4.0, 0.8),
-    "GradingConfig":  (7.7, 0.8),
-    "ExcelTemplate":  (0.3, 5.0),
-    "ECRTemplate":    (4.0, 5.0),
-}
-CFG_REL = []   # cross-diagram links to User are documented in the summary table
-
-
-# ── Word document helpers ─────────────────────────────────────────────────────
-def set_cell_bg(cell, hex_color):
-    tc   = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    shd  = OxmlElement("w:shd")
-    shd.set(qn("w:val"),   "clear")
-    shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"),  hex_color.lstrip("#"))
-    tcPr.append(shd)
-
-def add_hdr_row(table, labels, bg_hex):
-    hdr = table.rows[0].cells
-    for i, lbl in enumerate(labels):
-        hdr[i].text = lbl
-        r = hdr[i].paragraphs[0].runs[0]
-        r.font.bold  = True
-        r.font.size  = Pt(9)
-        r.font.color.rgb = RGBColor(0xff, 0xff, 0xff)
-        set_cell_bg(hdr[i], bg_hex)
-
-def set_col_widths(table, widths_cm):
-    for row in table.rows:
-        for i, cell in enumerate(row.cells):
-            cell.width = Cm(widths_cm[i])
-
-
-# ── Full field data for entity detail tables ──────────────────────────────────
-FULL_FIELDS = {
-    "User": [
-        ("PK", "id",        "String",   "Unique identifier (CUID)"),
-        ("",   "username",  "String",   "Unique login username"),
-        ("",   "password",  "String",   "Bcrypt-hashed password"),
-        ("",   "role",      "Role",     "TEACHER | ADMIN | REGISTRAR"),
-        ("",   "firstName", "String?",  "First name"),
-        ("",   "lastName",  "String?",  "Last name"),
-        ("",   "email",     "String?",  "Email address"),
-        ("",   "createdAt", "DateTime", "Record created timestamp"),
-        ("",   "updatedAt", "DateTime", "Record last updated timestamp"),
-    ],
-    "Teacher": [
-        ("PK", "id",             "String",   "Unique identifier"),
-        ("FK", "userId",         "String",   "→ User.id  (cascade delete)"),
-        ("",   "employeeId",     "String",   "DepEd Employee ID (unique)"),
-        ("",   "specialization", "String?",  "Teaching specialization"),
-        ("",   "createdAt",      "DateTime", "Record created timestamp"),
-        ("",   "updatedAt",      "DateTime", "Record last updated timestamp"),
-    ],
-    "Student": [
-        ("PK", "id",              "String",    "Unique identifier"),
-        ("",   "lrn",             "String",    "Learner Reference Number (unique)"),
-        ("",   "firstName",       "String",    "First name"),
-        ("",   "middleName",      "String?",   "Middle name"),
-        ("",   "lastName",        "String",    "Last name"),
-        ("",   "suffix",          "String?",   "Name suffix (Jr., III, etc.)"),
-        ("",   "birthDate",       "DateTime?", "Date of birth"),
-        ("",   "gender",          "String?",   "Male / Female"),
-        ("",   "address",         "String?",   "Home address"),
-        ("",   "guardianName",    "String?",   "Parent / guardian full name"),
-        ("",   "guardianContact", "String?",   "Parent / guardian contact number"),
-        ("",   "createdAt",       "DateTime",  "Record created timestamp"),
-        ("",   "updatedAt",       "DateTime",  "Record last updated timestamp"),
-    ],
-    "Section": [
-        ("PK", "id",         "String",     "Unique identifier"),
-        ("",   "name",       "String",     "Section name (e.g. 8-3 MAKAKALIKASAN)"),
-        ("",   "gradeLevel", "GradeLevel", "GRADE_7 | GRADE_8 | GRADE_9 | GRADE_10"),
-        ("",   "schoolYear", "String",     "School year label (e.g. 2026-2027)"),
-        ("FK", "adviserId",  "String?",    "→ Teacher.id  (class adviser, nullable)"),
-        ("",   "createdAt",  "DateTime",   "Record created timestamp"),
-        ("",   "updatedAt",  "DateTime",   "Record last updated timestamp"),
-        ("",   "[unique]",   "",           "UNIQUE (name, gradeLevel, schoolYear)"),
-    ],
-    "Subject": [
-        ("PK", "id",                    "String",      "Unique identifier"),
-        ("",   "code",                  "String",      "Subject code, unique (e.g. FIL7)"),
-        ("",   "name",                  "String",      "Full subject name"),
-        ("",   "description",           "String?",     "Optional description"),
-        ("",   "type",                  "SubjectType", "CORE | MAPEH | TLE | MATH_SCIENCE"),
-        ("",   "writtenWorkWeight",     "Int",         "Written work % weight (default 30)"),
-        ("",   "perfTaskWeight",        "Int",         "Performance task % weight (default 50)"),
-        ("",   "quarterlyAssessWeight", "Int",         "Quarterly assessment % weight (default 20)"),
-        ("",   "createdAt",             "DateTime",    "Record created timestamp"),
-        ("",   "updatedAt",             "DateTime",    "Record last updated timestamp"),
-    ],
-    "ClassAssignment": [
-        ("PK", "id",              "String",    "Unique identifier"),
-        ("FK", "teacherId",       "String",    "→ Teacher.id  (cascade delete)"),
-        ("FK", "subjectId",       "String",    "→ Subject.id  (cascade delete)"),
-        ("FK", "sectionId",       "String",    "→ Section.id  (cascade delete)"),
-        ("",   "schoolYear",      "String",    "School year label (e.g. 2026-2027)"),
-        ("",   "ecrFileName",     "String?",   "Linked ECR template filename"),
-        ("",   "ecrLastSyncedAt", "DateTime?", "Last ECR template sync timestamp"),
-        ("",   "createdAt",       "DateTime",  "Record created timestamp"),
-        ("",   "updatedAt",       "DateTime",  "Record last updated timestamp"),
-        ("",   "[unique]",        "",          "UNIQUE (teacherId, subjectId, sectionId, schoolYear)"),
-    ],
-    "Enrollment": [
-        ("PK", "id",         "String",   "Unique identifier"),
-        ("FK", "studentId",  "String",   "→ Student.id  (cascade delete)"),
-        ("FK", "sectionId",  "String",   "→ Section.id  (cascade delete)"),
-        ("",   "schoolYear", "String",   "School year label (e.g. 2026-2027)"),
-        ("",   "status",     "String",   "ENROLLED | WITHDRAWN | TRANSFERRED | etc."),
-        ("",   "createdAt",  "DateTime", "Record created timestamp"),
-        ("",   "updatedAt",  "DateTime", "Record last updated timestamp"),
-        ("",   "[unique]",   "",         "UNIQUE (studentId, sectionId, schoolYear)"),
-    ],
-    "Grade": [
-        ("PK", "id",                    "String",   "Unique identifier"),
-        ("FK", "studentId",             "String",   "→ Student.id  (cascade delete)"),
-        ("FK", "classAssignmentId",     "String",   "→ ClassAssignment.id  (cascade delete)"),
-        ("",   "quarter",               "Quarter",  "Q1 | Q2 | Q3 | Q4"),
-        ("",   "writtenWorkScores",     "Json?",    "Array of {name, score, maxScore}"),
-        ("",   "perfTaskScores",        "Json?",    "Array of {name, score, maxScore}"),
-        ("",   "quarterlyAssessScore",  "Float?",   "Raw quarterly assessment score"),
-        ("",   "quarterlyAssessMax",    "Float?",   "Max score for quarterly assessment (default 100)"),
-        ("",   "writtenWorkPS",         "Float?",   "Written work percentage score"),
-        ("",   "perfTaskPS",            "Float?",   "Performance task percentage score"),
-        ("",   "quarterlyAssessPS",     "Float?",   "Quarterly assessment percentage score"),
-        ("",   "initialGrade",          "Float?",   "Calculated initial grade"),
-        ("",   "quarterlyGrade",        "Float?",   "Final quarterly grade (rounded)"),
-        ("",   "remarks",               "String?",  "Passed | Failed | Incomplete | etc."),
-        ("",   "createdAt",             "DateTime", "Record created timestamp"),
-        ("",   "updatedAt",             "DateTime", "Record last updated timestamp"),
-        ("",   "[unique]",              "",         "UNIQUE (studentId, classAssignmentId, quarter)"),
-    ],
-    "Attendance": [
-        ("PK", "id",         "String",           "Unique identifier"),
-        ("FK", "studentId",  "String",           "→ Student.id  (cascade delete)"),
-        ("FK", "sectionId",  "String",           "→ Section.id  (cascade delete)"),
-        ("",   "date",       "DateTime (Date)",  "Attendance date (date only, no time)"),
-        ("",   "status",     "AttendanceStatus", "PRESENT | ABSENT | LATE | EXCUSED"),
-        ("",   "remarks",    "String?",          "Optional remark / reason"),
-        ("",   "recordedBy", "String?",          "User ID of teacher who recorded attendance"),
-        ("",   "createdAt",  "DateTime",         "Record created timestamp"),
-        ("",   "updatedAt",  "DateTime",         "Record last updated timestamp"),
-        ("",   "[unique]",   "",                 "UNIQUE (studentId, sectionId, date)"),
-    ],
-    "AuditLog": [
-        ("PK", "id",         "String",       "Unique identifier"),
-        ("",   "action",     "AuditAction",  "CREATE | UPDATE | DELETE | LOGIN | LOGOUT | CONFIG"),
-        ("FK", "userId",     "String?",      "Optional actor user ID (FK to User.id, null for system or legacy actions)"),
-        ("",   "userName",   "String",       "Actor display name"),
-        ("",   "userRole",   "String",       "Actor role at time of action"),
-        ("",   "target",     "String",       "Human-readable description of affected entity"),
-        ("",   "targetType", "String",       "Entity type (e.g. Student, Grade, Section)"),
-        ("",   "targetId",   "String?",      "Affected record ID"),
-        ("",   "details",    "String",       "Human-readable action description"),
-        ("",   "ipAddress",  "String?",      "Client IP address"),
-        ("",   "severity",   "AuditSeverity","INFO | WARNING | CRITICAL"),
-        ("",   "metadata",   "Json?",        "Additional structured payload"),
-        ("",   "createdAt",  "DateTime",     "Event timestamp"),
-    ],
-    "SystemSettings": [
-        ("PK", "id",                 "String",    "Fixed primary key: 'main'"),
-        ("",   "schoolName",         "String",    "Official school name"),
-        ("",   "schoolId",           "String",    "DepEd school ID"),
-        ("",   "division",           "String",    "DepEd division"),
-        ("",   "region",             "String",    "DepEd region"),
-        ("",   "address",            "String?",   "School address"),
-        ("",   "contactNumber",      "String?",   "School contact number"),
-        ("",   "email",              "String?",   "School email"),
-        ("",   "currentSchoolYear",  "String",    "Active school year (e.g. 2026-2027)"),
-        ("",   "currentQuarter",     "Quarter",   "Active grading quarter (Q1–Q4)"),
-        ("",   "logoUrl",            "String?",   "Path to school logo file"),
-        ("",   "primaryColor",       "String",    "Brand primary colour (hex)"),
-        ("",   "secondaryColor",     "String",    "Brand secondary colour (hex)"),
-        ("",   "accentColor",        "String",    "Brand accent colour (hex)"),
-        ("",   "sessionTimeout",     "Int",       "Session timeout in minutes"),
-        ("",   "maxLoginAttempts",   "Int",       "Max failed login attempts before lock"),
-        ("",   "passwordMinLength",  "Int",       "Minimum password length"),
-        ("",   "requireSpecialChar", "Boolean",   "Require special character in password"),
-        ("",   "autoAdvanceQuarter", "Boolean",   "Auto-advance quarter on end date"),
-        ("",   "lastEnrollProSync",  "DateTime?", "Last EnrollPro branding sync timestamp"),
-        ("",   "q1StartDate",        "DateTime?", "Q1 start date"),
-        ("",   "q1EndDate",          "DateTime?", "Q1 end date"),
-        ("",   "q2StartDate",        "DateTime?", "Q2 start date"),
-        ("",   "q2EndDate",          "DateTime?", "Q2 end date"),
-        ("",   "q3StartDate",        "DateTime?", "Q3 start date"),
-        ("",   "q3EndDate",          "DateTime?", "Q3 end date"),
-        ("",   "q4StartDate",        "DateTime?", "Q4 start date"),
-        ("",   "q4EndDate",          "DateTime?", "Q4 end date"),
-        ("",   "createdAt",          "DateTime",  "Record created timestamp"),
-        ("",   "updatedAt",          "DateTime",  "Record last updated timestamp"),
-    ],
-    "GradingConfig": [
-        ("PK", "id",                    "String",      "Unique identifier"),
-        ("",   "subjectType",           "SubjectType", "CORE | MAPEH | TLE | MATH_SCIENCE  (unique)"),
-        ("",   "writtenWorkWeight",     "Int",         "Written work component % weight"),
-        ("",   "performanceTaskWeight", "Int",         "Performance task component % weight"),
-        ("",   "quarterlyAssessWeight", "Int",         "Quarterly assessment component % weight"),
-        ("",   "isDepEdDefault",        "Boolean",     "True if using DepEd standard weights"),
-        ("",   "createdAt",             "DateTime",    "Record created timestamp"),
-        ("",   "updatedAt",             "DateTime",    "Record last updated timestamp"),
-    ],
-    "ExcelTemplate": [
-        ("PK", "id",             "String",   "Unique identifier"),
-        ("",   "formType",       "FormType", "SF1–SF10  (unique per form type)"),
-        ("",   "formName",       "String",   "Display name (e.g. School Form 1)"),
-        ("",   "description",    "String?",  "Template description"),
-        ("",   "filePath",       "String",   "Absolute server-side file path"),
-        ("",   "fileName",       "String",   "Original uploaded filename"),
-        ("",   "fileSize",       "Int",      "File size in bytes"),
-        ("",   "placeholders",   "Json?",    "Array of placeholder keys in the template"),
-        ("",   "instructions",   "String?",  "Usage instructions for this template"),
-        ("",   "isActive",       "Boolean",  "Whether template is active / in use"),
-        ("",   "sheetName",      "String?",  "Target Excel sheet name for injection"),
-        ("FK", "uploadedBy",     "String",   "Uploader user ID (FK to User.id)"),
-        ("",   "uploadedByName", "String",   "Display name of uploader"),
-        ("",   "createdAt",      "DateTime", "Record created timestamp"),
-        ("",   "updatedAt",      "DateTime", "Record last updated timestamp"),
-    ],
-    "ECRTemplate": [
-        ("PK", "id",             "String",      "Unique identifier"),
-        ("",   "subjectName",    "String",      "Subject display name"),
-        ("",   "description",    "String?",     "Template description"),
-        ("",   "filePath",       "String",      "Absolute server-side file path"),
-        ("",   "fileName",       "String",      "Original uploaded filename"),
-        ("",   "fileSize",       "Int",         "File size in bytes"),
-        ("",   "placeholders",   "Json?",       "Array of placeholder keys in the template"),
-        ("",   "instructions",   "String?",     "Usage instructions"),
-        ("",   "isActive",       "Boolean",     "Whether template is active / in use"),
-        ("",   "subjectType",    "SubjectType?","Optional subject type classification"),
-        ("FK", "uploadedBy",     "String",      "Uploader user ID (FK to User.id)"),
-        ("",   "uploadedByName", "String",      "Display name of uploader"),
-        ("",   "createdAt",      "DateTime",    "Record created timestamp"),
-        ("",   "updatedAt",      "DateTime",    "Record last updated timestamp"),
-    ],
-}
-
-# ── Relationships data for summary table ──────────────────────────────────────
-ALL_RELATIONSHIPS = [
-    ("User",            "1 : 1", "Teacher",         "User has one Teacher profile",          "Teacher.userId → User.id"),
-    ("User",            "1 : N", "AuditLog",        "User can create many audit log entries", "AuditLog.userId → User.id"),
-    ("User",            "1 : N", "ExcelTemplate",   "User can upload many SF templates",     "ExcelTemplate.uploadedBy → User.id"),
-    ("User",            "1 : N", "ECRTemplate",     "User can upload many ECR templates",    "ECRTemplate.uploadedBy → User.id"),
-    ("Teacher",         "1 : N", "Section",         "Teacher advises one or more Sections",  "Section.adviserId → Teacher.id"),
-    ("Teacher",         "1 : N", "ClassAssignment", "Teacher has many Class Assignments",    "ClassAssignment.teacherId → Teacher.id"),
-    ("Subject",         "1 : N", "ClassAssignment", "Subject used in many Class Assignments","ClassAssignment.subjectId → Subject.id"),
-    ("Section",         "1 : N", "ClassAssignment", "Section has many Class Assignments",    "ClassAssignment.sectionId → Section.id"),
-    ("Section",         "1 : N", "Enrollment",      "Section has many Enrollments",          "Enrollment.sectionId → Section.id"),
-    ("Student",         "1 : N", "Enrollment",      "Student has many Enrollments",          "Enrollment.studentId → Student.id"),
-    ("Student",         "1 : N", "Grade",           "Student has many Grade records",        "Grade.studentId → Student.id"),
-    ("Student",         "1 : N", "Attendance",      "Student has many Attendance records",   "Attendance.studentId → Student.id"),
-    ("Section",         "1 : N", "Attendance",      "Section has many Attendance records",   "Attendance.sectionId → Section.id"),
-    ("ClassAssignment", "1 : N", "Grade",           "Class Assignment has many Grades",      "Grade.classAssignmentId → ClassAssignment.id"),
+RELATIONSHIPS = [
+    ("Teacher",              "userId",           "User",               "1:1",  "A Teacher has one User account"),
+    ("RefreshToken",         "userId",           "User",               "N:1",  "Many refresh tokens per user"),
+    ("CompanionSsoCode",     "userId",           "User",               "N:1",  "Many SSO codes per user"),
+    ("Section",              "adviserId",        "Teacher",            "N:1",  "Section has one adviser (Teacher)"),
+    ("ClassAssignment",      "teacherId",        "Teacher",            "N:1",  "Teacher has many class assignments"),
+    ("ClassAssignment",      "subjectId",        "Subject",            "N:1",  "Subject has many class assignments"),
+    ("ClassAssignment",      "sectionId",        "Section",            "N:1",  "Section has many class assignments"),
+    ("Enrollment",           "studentId",        "Student",            "N:1",  "Student has many enrollments"),
+    ("Enrollment",           "sectionId",        "Section",            "N:1",  "Section has many enrollments"),
+    ("Grade",                "studentId",        "Student",            "N:1",  "Student has many grades"),
+    ("Grade",                "classAssignmentId","ClassAssignment",    "N:1",  "ClassAssignment has many grades"),
+    ("Grade",                "finalizedBy",      "User",               "N:1",  "User finalizes many grades"),
+    ("Attendance",           "studentId",        "Student",            "N:1",  "Student has many attendance records"),
+    ("Attendance",           "sectionId",        "Section",            "N:1",  "Section has many attendance records"),
+    ("AuditLog",             "userId",           "User",               "N:1",  "User generates many audit logs"),
+    ("ExcelTemplate",        "uploadedBy",       "User",               "N:1",  "User uploads many excel templates"),
+    ("ScheduleEntry",        "teacherId",        "Teacher",            "N:1",  "Teacher has many schedule entries"),
+    ("ScheduleEntry",        "subjectId",        "Subject",            "N:1",  "Subject has many schedule entries"),
+    ("ScheduleEntry",        "sectionId",        "Section",            "N:1",  "Section has many schedule entries"),
+    ("WorkloadEntry",        "teacherId",        "Teacher",            "N:1",  "Teacher has many workload entries"),
+    ("WorkloadEntry",        "sectionId",        "Section",            "N:1",  "Section has many workload entries"),
+    ("WorkloadEntry",        "classAssignmentId","ClassAssignment",    "N:1",  "ClassAssignment has many workload entries"),
+    ("AimsScore",            "classAssignmentId","ClassAssignment",    "N:1",  "ClassAssignment has many AIMS scores"),
+    ("AimsScore",            "studentId",        "Student",            "N:1",  "Student has many AIMS scores"),
+    ("EcrSync",              "classAssignmentId","ClassAssignment",    "N:1",  "ClassAssignment has many ECR syncs"),
+    ("RemedialClass",        "enrollmentId",     "Enrollment",         "N:1",  "Enrollment has many remedial classes"),
+    ("ExternalSchoolRecord", "studentId",        "Student",            "N:1",  "Student has many external records"),
+    ("ExternalSubjectRecord","recordId",         "ExternalSchoolRecord","N:1", "External record has many subject records"),
+    ("GradeSnapshot",        "classAssignmentId","ClassAssignment",    "N:1",  "ClassAssignment has many grade snapshots"),
+    ("YearGradeLock",        "schoolYearId",     "SchoolYear",         "1:1",  "SchoolYear has one year grade lock"),
+    ("TermGradeLock",        "schoolYearId",     "SchoolYear",         "N:1",  "SchoolYear has many term grade locks"),
+    ("SystemSettings",       "schoolYearId",     "SchoolYear",         "N:1",  "SchoolYear referenced in system settings"),
+    ("GradeEditRequest",     "teacherId",        "User",               "N:1",  "Teacher (User) makes many edit requests"),
+    ("GradeEditRequest",     "approvedById",     "User",               "N:1",  "Admin (User) approves many edit requests"),
 ]
 
 ENUMS = {
-    "Role":             ["TEACHER", "ADMIN", "REGISTRAR"],
-    "Quarter":          ["Q1", "Q2", "Q3", "Q4"],
-    "GradeLevel":       ["GRADE_7", "GRADE_8", "GRADE_9", "GRADE_10"],
-    "SubjectType":      ["CORE", "MAPEH", "TLE", "MATH_SCIENCE"],
-    "AttendanceStatus": ["PRESENT", "ABSENT", "LATE", "EXCUSED"],
-    "AuditAction":      ["CREATE", "UPDATE", "DELETE", "LOGIN", "LOGOUT", "CONFIG"],
-    "AuditSeverity":    ["INFO", "WARNING", "CRITICAL"],
-    "FormType":         ["SF1", "SF2", "SF3", "SF4", "SF5", "SF6", "SF7", "SF8", "SF9", "SF10"],
+    "Role":                 ["TEACHER", "ADMIN", "REGISTRAR"],
+    "UserStatus":           ["ACTIVE", "SUSPENDED", "DEACTIVATED"],
+    "GradeStatus":          ["DRAFT", "FINALIZED", "LOCKED"],
+    "Term":                 ["T1", "T2", "T3"],
+    "GradeLevel":           ["GRADE_7", "GRADE_8", "GRADE_9", "GRADE_10"],
+    "SubjectType":          ["CORE", "MAPEH", "TLE", "MATH_SCIENCE"],
+    "WorkloadType":         ["ADVISORY_ROLE"],
+    "AttendanceStatus":     ["PRESENT", "ABSENT", "LATE", "EXCUSED"],
+    "EnrollmentStatus":     ["ENROLLED", "PENDING", "DROPPED", "TRANSFERRED"],
+    "PromotionStatus":      ["PROMOTED", "CONDITIONALLY_PROMOTED", "RETAINED", "JHS_COMPLETER"],
+    "Sf9EligibilityStatus": ["PROMOTED", "CONDITIONALLY_PROMOTED", "RETAINED"],
+    "AuditAction":          ["CREATE", "UPDATE", "DELETE", "LOGIN", "LOGOUT", "CONFIG"],
+    "AuditSeverity":        ["INFO", "WARNING", "CRITICAL"],
+    "FormType":             ["SF1", "SF2", "SF3", "SF4", "SF5", "SF6", "SF7", "SF8", "SF9", "SF10"],
+    "EditRequestStatus":    ["PENDING", "APPROVED", "REJECTED", "EXPIRED"],
+    "ExternalRecordSource": ["MANUAL", "SF10_SCAN", "SF9_SCAN", "SF10_XLSX"],
 }
 
-ENTITY_DESCRIPTIONS = {
-    "User":             "System user accounts. All authenticated users (teacher, admin, registrar) have a User record.",
-    "Teacher":          "Teacher profile linked 1-to-1 with a User. Holds the DepEd employee ID.",
-    "Student":          "Student records identified by LRN (Learner Reference Number).",
-    "Section":          "Class sections (e.g. Grade 8-3 MAKAKALIKASAN) scoped by school year.",
-    "Subject":          "Academic subjects with DepEd grading component weights.",
-    "ClassAssignment":  "Maps one teacher to one subject in one section for a given school year.",
-    "Enrollment":       "Records a student's enrollment in a section for a given school year.",
-    "Grade":            "Quarterly grade record per student per class assignment.",
-    "Attendance":       "Daily attendance record per student per section.",
-    "AuditLog":         "Immutable audit trail for all security-relevant actions in the system. Links to User when the actor still exists.",
-    "SystemSettings":   "Singleton record (id='main') holding school-wide configuration.",
-    "GradingConfig":    "DepEd grading component weights per subject type (overridable per school).",
-    "ExcelTemplate":    "DepEd School Form templates (SF1–SF10) uploaded by a User for Excel export generation.",
-    "ECRTemplate":      "Excel Class Record (ECR) templates per subject, uploaded by a User for grade export.",
-}
+GROUP_ORDER = [
+    "Auth & Users",
+    "Students",
+    "Academic Structure",
+    "Teaching",
+    "Grades",
+    "Attendance",
+    "Remedial",
+    "System & Config",
+    "Atlas Integration",
+    "Audit & Sync",
+]
 
 
-# ── Build the Word document ───────────────────────────────────────────────────
-def build_doc():
+def draw_entity_box(ax, x, y, name, fields, color, box_w=2.8, row_h=0.22):
+    header_h = 0.35
+    n_fields  = len(fields)
+    body_h    = n_fields * row_h
+    total_h   = header_h + body_h + 0.1
+
+    ax.add_patch(FancyBboxPatch((x+0.04, y-total_h-0.04), box_w, total_h,
+        boxstyle="round,pad=0.04", linewidth=0, facecolor="#00000033", zorder=1))
+    ax.add_patch(FancyBboxPatch((x, y-total_h), box_w, total_h,
+        boxstyle="round,pad=0.04", linewidth=1.2,
+        edgecolor=color, facecolor="#1a1a2e", zorder=2))
+    ax.add_patch(FancyBboxPatch((x, y-header_h), box_w, header_h,
+        boxstyle="round,pad=0.04", linewidth=0,
+        facecolor=color, zorder=3))
+
+    ax.text(x + box_w/2, y - header_h/2, name,
+        ha="center", va="center", fontsize=6.5, fontweight="bold",
+        color="white", zorder=4)
+
+    for i, (tag, fname, ftype) in enumerate(fields):
+        fy = y - header_h - (i+0.5)*row_h - 0.05
+        tag_color = "#ffd700" if tag == "PK" else "#87ceeb" if tag == "FK" else "#cccccc"
+        if tag:
+            ax.text(x+0.08, fy, tag, fontsize=4, color=tag_color, va="center", zorder=5, fontweight="bold")
+        ax.text(x+0.34, fy, fname, fontsize=4.5, color="#e8e8e8", va="center", zorder=5)
+        ax.text(x+box_w-0.06, fy, ftype, fontsize=3.8, color="#aaaaaa", va="center",
+                ha="right", zorder=5, style="italic")
+
+    return total_h
+
+
+def generate_group_diagram(group_name, entities_in_group, img_path, cols=3):
+    n = len(entities_in_group)
+    if n == 0:
+        return
+
+    box_w = 2.9
+    box_gap_x = 0.45
+    box_gap_y = 0.5
+
+    col_count = min(cols, n)
+    rows = math.ceil(n / col_count)
+
+    fig_w = col_count * (box_w + box_gap_x) + 0.6
+    fig_h = rows * 5.5 + 1.2
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    ax.set_facecolor("#0d0d1a")
+    fig.patch.set_facecolor("#0d0d1a")
+    ax.set_xlim(0, fig_w)
+    ax.set_ylim(-fig_h + 0.5, 1.0)
+    ax.axis("off")
+
+    ax.text(fig_w/2, 0.75, group_name, ha="center", va="center",
+            fontsize=10, fontweight="bold", color="white",
+            bbox=dict(boxstyle="round,pad=0.35", facecolor="#2a2a4a", edgecolor="#6060cc"))
+
+    for idx, (ename, edef) in enumerate(entities_in_group.items()):
+        col = idx % col_count
+        row = idx // col_count
+        x = 0.3 + col * (box_w + box_gap_x)
+        y = -0.3 - row * 5.2
+
+        draw_entity_box(ax, x, y, ename, edef["fields"], edef["color"],
+                        box_w=box_w, row_h=0.205)
+
+    plt.tight_layout(pad=0.2)
+    plt.savefig(img_path, dpi=150, bbox_inches="tight",
+                facecolor="#0d0d1a", edgecolor="none")
+    plt.close()
+    print(f"    Saved: {img_path}")
+
+
+def set_cell_bg(cell, hex_color):
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), hex_color.lstrip("#"))
+    tcPr.append(shd)
+
+
+def add_table_header_row(table, headers, bg="1e3a5f"):
+    row = table.rows[0]
+    for i, hdr in enumerate(headers):
+        if i >= len(row.cells):
+            break
+        cell = row.cells[i]
+        cell.text = hdr
+        set_cell_bg(cell, bg)
+        for para in cell.paragraphs:
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in para.runs:
+                run.bold = True
+                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                run.font.size = Pt(9)
+
+
+def add_entity_table(doc, entity_name, fields):
+    doc.add_paragraph()
+    h = doc.add_paragraph()
+    h.style = "Heading 3"
+    if not h.runs:
+        h.add_run(f"{entity_name}")
+    else:
+        h.runs[0].text = f"{entity_name}"
+
+    tbl = doc.add_table(rows=1 + len(fields), cols=4)
+    tbl.style = "Table Grid"
+
+    add_table_header_row(tbl, ["Key", "Field Name", "Type / Constraint", "Notes"], bg="1e3a5f")
+
+    for i, (tag, fname, ftype) in enumerate(fields):
+        row = tbl.rows[i+1]
+        row.cells[0].text = tag
+        row.cells[1].text = fname
+        row.cells[2].text = ftype
+        row.cells[3].text = "Primary Key" if tag == "PK" else "Foreign Key" if tag == "FK" else ""
+
+        row_bg = "f2f6fc" if i % 2 == 0 else "ffffff"
+        for c in row.cells:
+            set_cell_bg(c, row_bg)
+            for para in c.paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(8.5)
+
+        tag_color_map = {"PK": RGBColor(0xB8, 0x86, 0x00), "FK": RGBColor(0x00, 0x5A, 0x9C)}
+        if tag in tag_color_map:
+            for run in row.cells[0].paragraphs[0].runs:
+                run.font.color.rgb = tag_color_map[tag]
+                run.bold = True
+
+
+def add_relationships_table(doc):
+    doc.add_paragraph()
+    tbl = doc.add_table(rows=1 + len(RELATIONSHIPS), cols=5)
+    tbl.style = "Table Grid"
+    add_table_header_row(tbl, ["From Entity", "FK Field", "To Entity", "Cardinality", "Description"], bg="1a3d1a")
+
+    for i, (frm, fld, to, card, desc) in enumerate(RELATIONSHIPS):
+        row = tbl.rows[i+1]
+        row.cells[0].text = frm
+        row.cells[1].text = fld
+        row.cells[2].text = to
+        row.cells[3].text = card
+        row.cells[4].text = desc
+        row_bg = "f0f8f0" if i % 2 == 0 else "ffffff"
+        for c in row.cells:
+            set_cell_bg(c, row_bg)
+            for para in c.paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(8.5)
+
+
+def add_enums_table(doc):
+    doc.add_paragraph()
+    rows_data = list(ENUMS.items())
+    tbl = doc.add_table(rows=1 + len(rows_data), cols=2)
+    tbl.style = "Table Grid"
+    add_table_header_row(tbl, ["Enum Name", "Allowed Values"], bg="3d1a5c")
+
+    for i, (name, vals) in enumerate(rows_data):
+        row = tbl.rows[i+1]
+        row.cells[0].text = name
+        row.cells[1].text = ", ".join(vals)
+        row_bg = "f8f2fc" if i % 2 == 0 else "ffffff"
+        for c in row.cells:
+            set_cell_bg(c, row_bg)
+            for para in c.paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(8.5)
+        row.cells[0].paragraphs[0].runs[0].bold = True
+
+
+def build_document():
     doc = Document()
 
-    # Page: A4 landscape for the whole document
-    for sec in doc.sections:
-        sec.page_width   = Cm(29.7)
-        sec.page_height  = Cm(21.0)
-        sec.top_margin   = Cm(1.5)
-        sec.bottom_margin= Cm(1.5)
-        sec.left_margin  = Cm(2.0)
-        sec.right_margin = Cm(2.0)
+    for section in doc.sections:
+        section.page_width  = Cm(29.7)
+        section.page_height = Cm(21.0)
+        section.left_margin   = Cm(1.8)
+        section.right_margin  = Cm(1.8)
+        section.top_margin    = Cm(2.0)
+        section.bottom_margin = Cm(2.0)
 
-    # ── Cover heading ───────────────────────────────────────────────────────
-    t = doc.add_heading("SMART System", 0)
-    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    t.runs[0].font.size = Pt(22)
-    t.runs[0].font.color.rgb = RGBColor(0x1e, 0x3a, 0x5f)
-
-    sub = doc.add_heading("Entity Relationship Diagram (ERD)", 2)
-    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    sub.runs[0].font.color.rgb = RGBColor(0x44, 0x44, 0x88)
-
-    p = doc.add_paragraph("School Management and Reporting Tool  ·  smart_db  ·  PostgreSQL  ·  S.Y. 2026-2027")
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.runs[0].font.size = Pt(10)
-    p.runs[0].font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+    # Cover page
     doc.add_paragraph()
+    doc.add_paragraph()
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = title.add_run("SMART School Management System")
+    run.bold = True
+    run.font.size = Pt(28)
+    run.font.color.rgb = RGBColor(0x1e, 0x4a, 0x8c)
 
-    # ── Section 1: Core ERD Diagram ─────────────────────────────────────────
-    doc.add_heading("1.  Core Academic Entities — ERD Diagram", level=1)
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.add_run().add_picture(IMG_MAIN, width=Inches(10.8))
+    doc.add_paragraph()
+    sub = doc.add_paragraph()
+    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run2 = sub.add_run("Entity Relationship Diagram (ERD)\nTechnical Documentation")
+    run2.font.size = Pt(18)
+    run2.font.color.rgb = RGBColor(0x44, 0x44, 0x88)
 
-    doc.add_page_break()
-
-    # ── Section 2: Config ERD Diagram ───────────────────────────────────────
-    doc.add_heading("2.  Configuration & Administration Entities — ERD Diagram", level=1)
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.add_run().add_picture(IMG_CFG, width=Inches(8.5))
-
-    doc.add_page_break()
-
-    # ── Section 3: Entity Summary ────────────────────────────────────────────
-    doc.add_heading("3.  Entity Summary", level=1)
-    tbl = doc.add_table(rows=1, cols=3)
-    tbl.style = "Table Grid"
-    add_hdr_row(tbl, ["Entity", "Fields", "Description"], "1e3a5f")
-    set_col_widths(tbl, [4.5, 1.5, 18.5])
-
-    all_entities = {**MAIN_ENTITIES, **CFG_ENTITIES}
-    for name in FULL_FIELDS:
-        row = tbl.add_row().cells
-        row[0].text = name
-        row[0].paragraphs[0].runs[0].font.bold = True
-        row[0].paragraphs[0].runs[0].font.size = Pt(9)
-        row[1].text = str(len(FULL_FIELDS[name]))
-        row[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        row[1].paragraphs[0].runs[0].font.size = Pt(9)
-        row[2].text = ENTITY_DESCRIPTIONS.get(name, "")
-        row[2].paragraphs[0].runs[0].font.size = Pt(9)
+    doc.add_paragraph()
+    doc.add_paragraph()
+    meta = doc.add_paragraph()
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run3 = meta.add_run(
+        "Database: PostgreSQL  |  ORM: Prisma\n"
+        "Source: server/prisma/schema.prisma\n"
+        "Total Entities: 29  |  Total Relationships: 34  |  Enumerations: 16\n"
+        "Modules: 10 (Auth, Students, Academic, Teaching, Grades, Attendance,\n"
+        "           Remedial, System Config, Atlas Integration, Audit & Sync)"
+    )
+    run3.font.size = Pt(11)
+    run3.font.color.rgb = RGBColor(0x55, 0x55, 0x88)
 
     doc.add_page_break()
 
-    # ── Section 4: Entity Field Details ─────────────────────────────────────
-    doc.add_heading("4.  Entity Field Details", level=1)
+    # TOC
+    h = doc.add_paragraph()
+    h.style = "Heading 1"
+    h.add_run("Table of Contents")
+    toc_items = [
+        "1. System Overview",
+        "2. ERD Diagrams by Module",
+        "3. Entity Field Definitions",
+        "4. Relationships Summary",
+        "5. Enumeration Types",
+    ]
+    for item in toc_items:
+        p = doc.add_paragraph(item)
+        p.runs[0].font.size = Pt(11)
 
-    for name, fields in FULL_FIELDS.items():
-        color = all_entities.get(name, {}).get("color", "#1e3a5f").lstrip("#")
-        r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+    doc.add_page_break()
 
-        h2 = doc.add_heading(name, level=2)
-        h2.runs[0].font.color.rgb = RGBColor(r, g, b)
+    # Section 1
+    h1 = doc.add_paragraph()
+    h1.style = "Heading 1"
+    h1.add_run("1. System Overview")
 
-        tbl = doc.add_table(rows=1, cols=4)
-        tbl.style = "Table Grid"
-        add_hdr_row(tbl, ["Key", "Field Name", "Type", "Description"], color)
-        set_col_widths(tbl, [1.2, 4.5, 4.0, 14.8])
+    intro = doc.add_paragraph(
+        "The SMART School Management System is a DepEd-aligned secondary education records platform "
+        "built on PostgreSQL (via Prisma ORM). It handles student records, academic structure, "
+        "grading, attendance, scheduling, and integration with companion systems (EnrollPro and Atlas)."
+    )
+    intro.runs[0].font.size = Pt(10)
 
-        for key, fname, ftype, desc in fields:
-            row = tbl.add_row().cells
+    modules = [
+        ("Auth & Users",        "Role-based user accounts (Admin, Teacher, Registrar) with refresh token rotation "
+                                 "and reverse SSO to EnrollPro via CompanionSsoCode."),
+        ("Students",            "Student master records with extended DepEd profile fields, "
+                                 "transferee tracking, and prior-school academic records (ExternalSchoolRecord)."),
+        ("Academic Structure",  "Sections, subjects, and enrollments. Tracks promotion, retention, "
+                                 "and enrollment lifecycle (dropped, transferred, archived)."),
+        ("Teaching",            "ClassAssignment links Teacher+Subject+Section per school year. "
+                                 "ScheduleEntry stores Atlas-synced timetables. WorkloadEntry tracks advisory load."),
+        ("Grades",              "Term-based (T1/T2/T3) grading with written work, performance tasks, QA. "
+                                 "GradeSnapshot for history. AimsScore ingests AIMS quiz/task data. "
+                                 "GradeEditRequest enables admin-controlled unlock workflow."),
+        ("Attendance",          "Daily per-student-per-section attendance with PRESENT/ABSENT/LATE/EXCUSED statuses."),
+        ("Remedial",            "RemedialClass records for EOSY remedial interventions per enrollment."),
+        ("System & Config",     "SchoolYear management with YearGradeLock and TermGradeLock. "
+                                 "SystemSettings (singleton). GradingConfig weights. TransmutationEntry table. "
+                                 "ExcelTemplate for SF form uploads."),
+        ("Atlas Integration",   "AtlasCrosswalk maps Atlas surrogate IDs to SMART entities. "
+                                 "AtlasScheduleMeta caches published schedule provenance per school year."),
+        ("Audit & Sync",        "AuditLog captures every user action with device/network metadata. "
+                                 "SyncHistory records EnrollPro and Atlas sync runs."),
+    ]
 
-            row[0].text = key
-            row[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run0 = row[0].paragraphs[0].runs[0]
-            run0.font.size = Pt(8)
-            run0.font.bold = True
-            if key == "PK":
-                run0.font.color.rgb = RGBColor(0xe6, 0x7e, 0x22)
-            elif key == "FK":
-                run0.font.color.rgb = RGBColor(0x29, 0x80, 0xb9)
+    for mod, desc in modules:
+        p = doc.add_paragraph(style="List Bullet")
+        rb = p.add_run(f"{mod}: ")
+        rb.bold = True
+        rb.font.size = Pt(10)
+        rd = p.add_run(desc)
+        rd.font.size = Pt(10)
 
-            row[1].text = fname
-            run1 = row[1].paragraphs[0].runs[0]
-            run1.font.bold = key in ("PK", "FK")
-            run1.font.size = Pt(8)
+    doc.add_page_break()
 
-            row[2].text = ftype
-            run2 = row[2].paragraphs[0].runs[0]
-            run2.font.size = Pt(8)
-            run2.font.color.rgb = RGBColor(0x44, 0x44, 0x88)
-            run2.font.italic = True
+    # Section 2: Diagrams
+    h2 = doc.add_paragraph()
+    h2.style = "Heading 1"
+    h2.add_run("2. ERD Diagrams by Module")
 
-            row[3].text = desc
-            row[3].paragraphs[0].runs[0].font.size = Pt(8)
+    tmp_dir = os.path.join(SCRIPT_DIR, "_erd_tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
 
+    for gi, group_name in enumerate(GROUP_ORDER):
+        group_entities = {k: v for k, v in ALL_ENTITIES.items() if v.get("group") == group_name}
+        if not group_entities:
+            continue
+
+        img_path = os.path.join(tmp_dir, f"erd_{gi:02d}_{group_name.replace(' & ', '_').replace(' ', '_')}.png")
+        print(f"  Generating: {group_name} ({len(group_entities)} entities)...")
+        cols = 4 if len(group_entities) >= 4 else len(group_entities)
+        generate_group_diagram(group_name, group_entities, img_path, cols=cols)
+
+        sub_h = doc.add_paragraph()
+        sub_h.style = "Heading 2"
+        sub_h.add_run(f"2.{gi+1} {group_name}")
+
+        if os.path.exists(img_path):
+            doc.add_picture(img_path, width=Inches(9.2))
+            doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc.add_paragraph()
 
     doc.add_page_break()
 
-    # ── Section 5: Relationships ─────────────────────────────────────────────
-    doc.add_heading("5.  Relationships Summary", level=1)
-    tbl = doc.add_table(rows=1, cols=5)
-    tbl.style = "Table Grid"
-    add_hdr_row(tbl, ["From Entity", "Cardinality", "To Entity", "Relationship Description", "FK Field"], "1e3a5f")
-    set_col_widths(tbl, [3.5, 2.5, 3.5, 7.5, 7.5])
+    # Section 3: Field Definitions
+    h3 = doc.add_paragraph()
+    h3.style = "Heading 1"
+    h3.add_run("3. Entity Field Definitions")
+    p_intro = doc.add_paragraph(
+        "Every entity (database table) and its fields are listed below. "
+        "PK = Primary Key, FK = Foreign Key. Field types follow Prisma schema conventions."
+    )
+    p_intro.runs[0].font.size = Pt(10)
 
-    for src, card, dst, desc, fk in ALL_RELATIONSHIPS:
-        row = tbl.add_row().cells
-        row[0].text = src
-        row[0].paragraphs[0].runs[0].font.bold = True
-        row[0].paragraphs[0].runs[0].font.size = Pt(9)
-        row[1].text = card
-        row[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        row[1].paragraphs[0].runs[0].font.size = Pt(9)
-        row[2].text = dst
-        row[2].paragraphs[0].runs[0].font.bold = True
-        row[2].paragraphs[0].runs[0].font.size = Pt(9)
-        row[3].text = desc
-        row[3].paragraphs[0].runs[0].font.size = Pt(9)
-        row[4].text = fk
-        run = row[4].paragraphs[0].runs[0]
-        run.font.size = Pt(8)
-        run.font.italic = True
-        run.font.color.rgb = RGBColor(0x29, 0x80, 0xb9)
+    for group_name in GROUP_ORDER:
+        group_entities = {k: v for k, v in ALL_ENTITIES.items() if v.get("group") == group_name}
+        if not group_entities:
+            continue
+        gh = doc.add_paragraph()
+        gh.style = "Heading 2"
+        gh.add_run(group_name)
+        for ename, edef in group_entities.items():
+            add_entity_table(doc, ename, edef["fields"])
 
     doc.add_page_break()
 
-    # ── Section 6: Enumeration Types ─────────────────────────────────────────
-    doc.add_heading("6.  Enumeration Types", level=1)
-    tbl = doc.add_table(rows=1, cols=2)
-    tbl.style = "Table Grid"
-    add_hdr_row(tbl, ["Enum Name", "Allowed Values"], "1e3a5f")
-    set_col_widths(tbl, [5.0, 19.5])
+    # Section 4: Relationships
+    h4 = doc.add_paragraph()
+    h4.style = "Heading 1"
+    h4.add_run("4. Relationships Summary")
+    p_rel = doc.add_paragraph(
+        "This table summarizes all foreign key relationships in the SMART database schema. "
+        "Cardinality: 1:1 = one-to-one, N:1 = many-to-one (many on the left, one on the right)."
+    )
+    p_rel.runs[0].font.size = Pt(10)
+    add_relationships_table(doc)
 
-    for name, vals in ENUMS.items():
-        row = tbl.add_row().cells
-        row[0].text = name
-        row[0].paragraphs[0].runs[0].font.bold = True
-        row[0].paragraphs[0].runs[0].font.size = Pt(9)
-        row[1].text = "  |  ".join(vals)
-        row[1].paragraphs[0].runs[0].font.size = Pt(9)
-        row[1].paragraphs[0].runs[0].font.color.rgb = RGBColor(0x44, 0x44, 0x88)
+    doc.add_page_break()
+
+    # Section 5: Enums
+    h5 = doc.add_paragraph()
+    h5.style = "Heading 1"
+    h5.add_run("5. Enumeration Types")
+    p_enum = doc.add_paragraph(
+        "Enumerations define the fixed set of allowed values for specific fields, "
+        "enforced at the PostgreSQL database level through Prisma."
+    )
+    p_enum.runs[0].font.size = Pt(10)
+    add_enums_table(doc)
+
+    # Footer
+    doc.add_paragraph()
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    fr = footer.add_run(
+        "End of SMART ERD Technical Document\n"
+        "Source: server/prisma/schema.prisma | PostgreSQL + Prisma ORM"
+    )
+    fr.font.size = Pt(8)
+    fr.font.color.rgb = RGBColor(0x88, 0x88, 0xAA)
+    fr.italic = True
 
     doc.save(OUTPUT_PATH)
-    print(f"  Word document saved → {OUTPUT_PATH}")
+    print(f"\nDocument saved: {OUTPUT_PATH}")
+
+    import shutil
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("\n[ 1/4 ] Drawing Core ERD diagram...")
-    draw_diagram(
-        title="SMART – Core Academic Entities  (User · Teacher · Student · Section · Subject · ClassAssignment · Enrollment · Grade · Attendance)",
-        entities=MAIN_ENTITIES,
-        positions=MAIN_POS,
-        relationships=MAIN_REL,
-        canvas_w=15.0,
-        canvas_h=13.0,
-        img_path=IMG_MAIN,
-        dpi=150,
-    )
-
-    print("[ 2/4 ] Drawing Config ERD diagram...")
-    draw_diagram(
-        title="SMART – Configuration & Administration Entities  (AuditLog · SystemSettings · GradingConfig · ExcelTemplate · ECRTemplate)",
-        entities=CFG_ENTITIES,
-        positions=CFG_POS,
-        relationships=CFG_REL,
-        canvas_w=12.0,
-        canvas_h=9.5,
-        img_path=IMG_CFG,
-        dpi=150,
-    )
-
-    print("[ 3/4 ] Building Word document...")
-    build_doc()
-
-    print("[ 4/4 ] Cleaning up temp images...")
-    for f in [IMG_MAIN, IMG_CFG]:
-        if os.path.exists(f):
-            os.remove(f)
-
-    print(f"\nDone!  →  {OUTPUT_PATH}\n")
+    print("=" * 60)
+    print("  SMART ERD Document Generator v2")
+    print("  Covers 29 entities from schema.prisma")
+    print("=" * 60)
+    build_document()

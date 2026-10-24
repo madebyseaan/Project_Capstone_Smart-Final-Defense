@@ -12,7 +12,7 @@ export const remedialUpdateSchema = z.object({
     id: z.string().min(1, 'RemedialClass id is required'),
   }),
   body: z.object({
-    remedialMark: z.number().min(60, 'RCM must be at least 60').max(100, 'RCM must be at most 100').optional(),
+    remedialMark: z.number().int('RCM must be a whole number').min(60, 'RCM must be at least 60').max(100, 'RCM must be at most 100').optional(),
     conductedFrom: dateString.optional(),
     conductedTo: dateString.optional(),
   }).refine(

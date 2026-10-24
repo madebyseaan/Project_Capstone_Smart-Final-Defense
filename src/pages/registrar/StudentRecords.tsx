@@ -8,7 +8,8 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Eye,
+  FileText,
+  FolderOpen,
   User,
   UserRound,
   Layers,
@@ -36,8 +37,9 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/layout/StatCard";
 import { Dash } from "@/components/data-table/Dash";
 import { StudentRecordsTable } from "./components/StudentRecordsTable";
-import { StudentDetailDialog } from "./components/StudentDetailDialog";
+import StudentRecordsDrawer from "./components/StudentRecordsDrawer";
 import { SyncProgressModal } from "@/components/common/SyncProgressModal";
+import type { VaultStudent, VaultTab } from "./components/records/types";
 
 // Extended student type that includes enrollment data
 interface StudentWithEnrollment {
@@ -90,12 +92,9 @@ export default function StudentRecords() {
   // School years from API
   const [schoolYears, setSchoolYears] = useState<string[]>([]);
 
-  // Student detail modal
-  const [selectedStudent, setSelectedStudent] = useState<StudentWithEnrollment | null>(null);
-  const [studentDetailOpen, setStudentDetailOpen] = useState(false);
-  const [sf9Data, setSf9Data] = useState<any>(null);
-  const [sf10Data, setSf10Data] = useState<any>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  // Records vault drawer (same pattern as Former Students)
+  const [vaultStudent, setVaultStudent] = useState<StudentWithEnrollment | null>(null);
+  const [vaultTab, setVaultTab] = useState<VaultTab>("sf10");
 
   const [refreshKey] = useState(0);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
@@ -209,27 +208,30 @@ export default function StudentRecords() {
     return matchesSearch && matchesGrade && matchesSection;
   });
 
-  // View student details
-  const handleViewStudent = async (student: StudentWithEnrollment) => {
-    setSelectedStudent(student);
-    setStudentDetailOpen(true);
-    setLoadingDetail(true);
-    setSf9Data(null);
-    setSf10Data(null);
-
-    try {
-      const [sf9Res, sf10Res] = await Promise.all([
-        registrarApi.getSF9(student.id, selectedSchoolYear),
-        registrarApi.getSF10(student.id),
-      ]);
-      setSf9Data(sf9Res.data);
-      setSf10Data(sf10Res.data);
-    } catch (error) {
-      console.error("Error loading student details:", error);
-    } finally {
-      setLoadingDetail(false);
-    }
+  // Open the records vault drawer (SF10 or all documents)
+  const openVault = (student: StudentWithEnrollment, tab: VaultTab) => {
+    setVaultTab(tab);
+    setVaultStudent(student);
   };
+
+  const toVaultStudent = (s: StudentWithEnrollment): VaultStudent => ({
+    id: s.id,
+    enrollmentId: s.enrollmentId ?? "",
+    lrn: s.lrn ?? "",
+    firstName: s.firstName,
+    middleName: s.middleName ?? null,
+    lastName: s.lastName,
+    suffix: s.suffix ?? null,
+    gender: s.gender ?? null,
+    lastGradeLevel: s.gradeLevel ?? "",
+    lastSection: s.sectionName ?? "",
+    lastSchoolYear: s.schoolYear ?? selectedSchoolYear ?? "",
+    lastProgram: "",
+    enrollmentStatus: s.status ?? "ENROLLED",
+    birthDate: s.birthDate ?? null,
+    homeAddress: s.address ?? null,
+    guardianName: s.guardianName ?? null,
+  });
 
   // Stats calculations (case-insensitive gender match — DB stores MALE/FEMALE from EnrollPro)
   const stats = {
@@ -438,15 +440,25 @@ export default function StudentRecords() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleViewStudent(student)}
-                              className="h-8 rounded-lg"
-                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = `${colors.primary}10`; e.currentTarget.style.color = colors.primary; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; }}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openVault(student, "sf10")}
+                              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                              title="Open SF10"
+                              aria-label={`Open SF10 for ${student.lastName}, ${student.firstName}`}
                             >
-                              <Eye className="w-4 h-4" />
+                              <FileText className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openVault(student, "overview")}
+                              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                              title="All documents"
+                              aria-label={`Open all documents for ${student.lastName}, ${student.firstName}`}
+                            >
+                              <FolderOpen className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
@@ -496,7 +508,7 @@ export default function StudentRecords() {
                   loading={loading}
                   searchQuery={searchQuery}
                   hasActiveFilters={!!searchQuery || selectedGradeLevel !== "all" || selectedSection !== "all"}
-                  onViewStudent={(s) => { void handleViewStudent(s); }}
+                  onOpenVault={openVault}
                   primaryColor={colors.primary}
                 />
               </div>
@@ -585,15 +597,12 @@ export default function StudentRecords() {
         </CardContent>
       </Card>
 
-      {/* Student Detail Dialog */}
-      <StudentDetailDialog
-        student={selectedStudent}
-        open={studentDetailOpen}
-        onOpenChange={setStudentDetailOpen}
-        sf9Data={sf9Data}
-        sf10Data={sf10Data}
-        loadingDetail={loadingDetail}
-        schoolYear={selectedSchoolYear}
+      {/* Records Vault Drawer (same as Former Students) */}
+      <StudentRecordsDrawer
+        student={vaultStudent ? toVaultStudent(vaultStudent) : null}
+        initialTab={vaultTab}
+        onClose={() => setVaultStudent(null)}
+        onRequestSync={() => void handleSync()}
       />
       <SyncProgressModal isOpen={syncModalOpen} onClose={() => { setSyncModalOpen(false); setSyncStatus("idle"); }} status={syncStatus} errorMessage={syncError} />
     </div>

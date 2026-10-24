@@ -11,7 +11,6 @@ import {
   BarChart3,
   FileText,
   ClipboardList,
-  UserCheck,
   Clock,
   Target,
   ArrowLeftRight,
@@ -132,54 +131,6 @@ function BarBreakdown({
   );
 }
 
-/** Single stacked bar — a ratio, not a trend. */
-function GenderSplitBar({ male, female }: { male: number; female: number }) {
-  const total = male + female;
-  if (total === 0) return null;
-  const malePct = Math.round((male / total) * 100);
-  return (
-    <div>
-      <div
-        className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted"
-        role="img"
-        aria-label={`Gender split: ${malePct}% male (${male}), ${100 - malePct}% female (${female})`}
-      >
-        <div style={{ width: `${malePct}%`, backgroundColor: "#3b82f6" }} />
-        <div style={{ width: `${100 - malePct}%`, backgroundColor: "#ec4899" }} />
-      </div>
-      <div className="mt-1 flex justify-between text-[9px] font-bold text-muted-foreground">
-        <span>{malePct}% M · {male}</span>
-        <span>{100 - malePct}% F · {female}</span>
-      </div>
-    </div>
-  );
-}
-
-/** Discrete counts over time — bars, not a continuous line. */
-function WeeklyBars({ items, color }: { items: { label: string; count: number }[]; color: string }) {
-  const max = Math.max(1, ...items.map((i) => i.count));
-  return (
-    <div
-      className="flex h-9 items-end gap-1"
-      role="img"
-      aria-label={`Transferees per week: ${items.map((i) => `${i.label} ${i.count}`).join(", ")}`}
-    >
-      {items.map((item, i) => (
-        <div
-          key={`${item.label}-${i}`}
-          className="flex h-full flex-1 items-end justify-center"
-          title={`Week of ${item.label}: ${item.count}`}
-        >
-          <div
-            className="w-full max-w-[22px] rounded-t transition-all"
-            style={{ height: `${Math.max(3, (item.count / max) * 100)}%`, backgroundColor: color }}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /** Big-number metric tile used inside the Learner Movement panel. */
 function MovementMetric({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -197,15 +148,13 @@ function MovementMetric({ label, value, color }: { label: string; value: number;
 
 /**
  * Learner Movement — inflow vs outflow. Kept full-width because it carries the
- * most information: three counts, net movement, drop-out rate, weekly arrivals,
- * and the document gap.
+ * most information: three counts, net movement, drop-out rate, and the document gap.
  */
 function LearnerMovementPanel({
   inCount,
   outCount,
   dropped,
   dropRate,
-  weekly,
   missingDocs,
   schoolYear,
 }: {
@@ -213,7 +162,6 @@ function LearnerMovementPanel({
   outCount: number;
   dropped: number;
   dropRate: number;
-  weekly: { label: string; count: number }[];
   missingDocs: number;
   schoolYear: string;
 }) {
@@ -253,20 +201,10 @@ function LearnerMovementPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MovementMetric label="Transferred in" value={inCount} color="#8b5cf6" />
         <MovementMetric label="Transferred out" value={outCount} color="#f59e0b" />
         <MovementMetric label="Dropped" value={dropped} color="#ef4444" />
-        <div className="rounded-xl border border-border bg-background/60 p-3">
-          <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-            Arrivals by week
-          </p>
-          {weekly.length > 0 ? (
-            <WeeklyBars items={weekly} color="#8b5cf6" />
-          ) : (
-            <p className="pt-2 text-[11px] text-muted-foreground">No arrivals recorded</p>
-          )}
-        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border/60 pt-2.5 text-[11px] text-muted-foreground">
@@ -325,7 +263,6 @@ export default function RegistrarDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [promotionData, setPromotionData] = useState<null | { schoolYear?: string; summary?: { promoted: number; retained: number; dropped: number; transferred: number; noGrades?: number; gradedStudents?: number } }>(null);
   const [showFailingList, setShowFailingList] = useState(false);
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   const loadDashboard = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -431,25 +368,12 @@ export default function RegistrarDashboardPage() {
       ]
     : [];
 
-  const passingRateData = gradePerformance.bySection.map((s) => ({
-    name: s.sectionName.length > 14 ? s.sectionName.slice(0, 14) + "..." : s.sectionName,
-    fullName: s.sectionName,
-    passingRate: s.passingRate,
-    avgGrade: s.avgGrade ?? 0,
-    failing: s.failingCount,
-    total: s.totalStudents,
-    gradeLevel: s.gradeLevel,
-    failingStudents: s.failingStudents,
-  }));
-
   // ── KPI card data (real series from the dashboard payload) ──
   const sectionsByGrade = GRADE_ORDER.map((grade) => ({
     label: grade.replace("GRADE_", "G"),
     count: dashboard.sections.filter((s) => s.gradeLevel === grade).length,
   }));
   const enrollmentTrend = dashboard.enrollmentTrend ?? [];
-  const transfereeWeekly = dashboard.transfereeWeekly ?? [];
-  const genderTotal = stats.maleCount + stats.femaleCount;
   const dropCohort = stats.activeStudents + stats.droppedStudents + stats.transferredStudents;
   const dropRate = dropCohort > 0 ? Math.round((stats.droppedStudents / dropCohort) * 100) : 0;
   const incompleteCount = stats.incompleteTransferees ?? 0;
@@ -470,17 +394,6 @@ export default function RegistrarDashboardPage() {
       color: "#10b981",
       subtitle: "Across Grade 7 to Grade 10",
       chart: { kind: "bars" as const, items: sectionsByGrade },
-    },
-    {
-      label: "MALE / FEMALE",
-      value: `${stats.maleCount}/${stats.femaleCount}`,
-      icon: UserCheck,
-      color: "#3b82f6",
-      subtitle:
-        genderTotal > 0
-          ? `${Math.round((stats.maleCount / genderTotal) * 100)}% Male \u2022 ${Math.round((stats.femaleCount / genderTotal) * 100)}% Female parity`
-          : "No enrollment data",
-      chart: { kind: "gender" as const, male: stats.maleCount, female: stats.femaleCount },
     },
   ];
 
@@ -543,7 +456,7 @@ export default function RegistrarDashboardPage() {
       <RolloverReadinessCard />
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         {kpiCards.map((card, idx) => (
           <div key={card.label} className="border border-slate-200/60 rounded-2xl bg-card/70 backdrop-blur-xl p-4 shadow-md shadow-slate-200/40 hover:shadow-xl transition-all group relative overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-300" style={{ animationDelay: `${(idx + 1) * 50}ms` }}>
             <div className="absolute top-0 right-0 w-20 h-20 opacity-5 rounded-full -mr-6 -mt-6" style={{ backgroundColor: card.color }} />
@@ -564,9 +477,6 @@ export default function RegistrarDashboardPage() {
               {card.chart.kind === "bars" && (
                 <BarBreakdown items={card.chart.items} color={card.color} />
               )}
-              {card.chart.kind === "gender" && (
-                <GenderSplitBar male={card.chart.male} female={card.chart.female} />
-              )}
             </div>
           </div>
         ))}
@@ -577,7 +487,6 @@ export default function RegistrarDashboardPage() {
         outCount={stats.transferredStudents}
         dropped={stats.droppedStudents}
         dropRate={dropRate}
-        weekly={transfereeWeekly}
         missingDocs={incompleteCount}
         schoolYear={dashboard.currentSchoolYear}
       />
@@ -667,7 +576,7 @@ export default function RegistrarDashboardPage() {
       </div>
 
       {/* ── Charts Row 2: Promotion + Grade Summary ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {/* Promotion Outcomes */}
         <div className="bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
           <div className="flex items-center gap-2 mb-3">
@@ -780,7 +689,7 @@ export default function RegistrarDashboardPage() {
                       <th className="text-left font-semibold text-muted-foreground px-3 py-2">Student</th>
                       <th className="text-left font-semibold text-muted-foreground px-3 py-2">Section</th>
                       <th className="text-left font-semibold text-muted-foreground px-3 py-2">Grade</th>
-                      <th className="text-center font-semibold text-muted-foreground px-3 py-2">Failed</th>
+                      <th className="text-center font-semibold text-muted-foreground px-3 py-2">Subjects Below 75</th>
                       <th className="text-right font-semibold text-muted-foreground px-3 py-2">Avg</th>
                     </tr>
                   </thead>
@@ -792,111 +701,21 @@ export default function RegistrarDashboardPage() {
                         <td className="px-3 py-1.5 text-muted-foreground">{s.gradeLevel?.replace("GRADE_", "Grade ")}</td>
                         <td className="px-3 py-1.5 text-center">
                           <span className={`font-bold ${s.failingSubjects >= 3 ? "text-red-600" : "text-amber-600"}`}>{s.failingSubjects}</span>
+                          <span className="text-muted-foreground"> of {s.totalSubjects}</span>
                         </td>
-                        <td className="px-3 py-1.5 text-right font-bold text-red-500">{s.average}</td>
+                        <td className={`px-3 py-1.5 text-right font-bold ${s.average < 75 ? "text-red-500" : "text-foreground"}`}>{s.average}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <p className="mt-2 text-[10px] text-muted-foreground">
-                3+ failed subjects = retained at year end; 1–2 = for remedial classes.
+                A learner is listed when any subject is below 75, even if the average is passing. 3+ subjects below 75 = retained at year end; 1–2 = for remedial classes. Each subject counts once; non-promotional subjects are excluded — same rule the EOSY promotion uses.
               </p>
             </div>
           )}
         </div>
       </div>
-
-      {/* ── Section Passing Summary ── */}
-      {passingRateData.length > 0 && (() => {
-        const passing = passingRateData.filter((s) => s.passingRate >= 75);
-        const getRateColor = (rate: number) =>
-          rate === 100 ? "var(--color-emerald-500, #10b981)" : rate >= 75 ? "var(--color-lime-500, #84cc16)" : rate >= 50 ? "var(--color-amber-500, #f59e0b)" : "var(--color-red-500, #ef4444)";
-        const getRateBg = (rate: number) =>
-          rate === 100 ? "bg-emerald-50" : rate >= 75 ? "bg-lime-50" : rate >= 50 ? "bg-amber-50" : "bg-red-50";
-        const getRateBorder = (rate: number) =>
-          rate === 100 ? "border-emerald-100" : rate >= 75 ? "border-lime-100" : rate >= 50 ? "border-amber-100" : "border-red-100";
-        const overallRate = Math.round((passing.length / passingRateData.length) * 100);
-        return (
-          <div className="bg-card/70 backdrop-blur-xl border border-border/40 rounded-2xl p-4 shadow-lg shadow-muted/50">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4" style={{ color: colors.primary }} />
-                <h3 className="text-sm font-bold text-foreground">Section Passing</h3>
-              </div>
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Current Term</span>
-            </div>
-            <div
-              className="flex items-center gap-4 cursor-pointer hover:bg-muted/50 rounded-xl p-2 -mx-2 transition-colors"
-              onClick={() => setExpandedSection(expandedSection ? null : "all")}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-4xl font-bold stat-number leading-none" style={{ color: getRateColor(overallRate) }}>{passing.length}</span>
-                <span className="text-xs text-muted-foreground">of {passingRateData.length} passing</span>
-              </div>
-              <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: `${overallRate}%`, backgroundColor: getRateColor(overallRate) }} />
-              </div>
-              <span className="text-lg font-bold stat-number" style={{ color: getRateColor(overallRate) }}>{overallRate}%</span>
-              <span className="text-xs text-muted-foreground">{expandedSection ? "▲" : "▼"}</span>
-            </div>
-
-            {/* Expanded Section Breakdown */}
-            {expandedSection && (
-              <div className="mt-3 pt-3 border-t border-border space-y-1.5 max-h-64 overflow-y-auto">
-                {passingRateData.map((s, i) => {
-                  const isExpanded = expandedSection === s.fullName;
-                  const rateColor = getRateColor(s.passingRate);
-                  return (
-                    <div key={i}>
-                      <div
-                        className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${getRateBg(s.passingRate)} hover:brightness-95 border ${getRateBorder(s.passingRate)}`}
-                        onClick={() => setExpandedSection(isExpanded ? "all" : s.fullName)}
-                      >
-                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: rateColor }} />
-                        <span className="text-xs font-semibold text-foreground flex-1">{s.fullName}</span>
-                        <span className="text-[10px] text-muted-foreground font-medium w-6">{s.gradeLevel?.replace("GRADE_", "G")}</span>
-                        <span className="text-sm font-bold stat-number w-14 text-right" style={{ color: rateColor }}>{s.passingRate}%</span>
-                        <span className="text-[10px] text-muted-foreground w-14 text-right">{s.total} students</span>
-                        {s.failingStudents.length > 0 && (
-                          <span className="text-[10px] text-muted-foreground w-3 text-center">{isExpanded ? "▲" : "▼"}</span>
-                        )}
-                        {s.failingStudents.length === 0 && <span className="w-3" />}
-                      </div>
-
-                      {/* Failing Students for this section */}
-                      {isExpanded && s.failingStudents.length > 0 && (
-                        <div className="ml-5 mt-1 mb-1 rounded-lg border border-red-100 bg-red-50/30 overflow-hidden">
-                          <table className="w-full text-[11px]">
-                            <thead>
-                              <tr className="bg-red-50">
-                                <th className="text-left font-semibold text-red-600 px-3 py-1.5">Student</th>
-                                <th className="text-center font-semibold text-red-600 px-3 py-1.5">Failed</th>
-                                <th className="text-right font-semibold text-red-600 px-3 py-1.5">Average</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {s.failingStudents.map((fs, j) => (
-                                <tr key={j} className="border-t border-red-100/50">
-                                  <td className="px-3 py-1 text-foreground">{fs.studentName}</td>
-                                  <td className="px-3 py-1 text-center">
-                                    <span className={`font-bold ${fs.failingSubjects >= 3 ? "text-red-600" : "text-amber-600"}`}>{fs.failingSubjects}</span>
-                                  </td>
-                                  <td className="px-3 py-1 text-right font-bold text-red-500">{fs.average}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })()}
 
       {/* ── Bottom Row: Data Quality + Quick Actions ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

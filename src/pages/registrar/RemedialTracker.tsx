@@ -226,15 +226,16 @@ export default function RemedialTracker() {
     setEditMarks({});
   }, []);
 
+  // RCM is a whole number from 60 to 100 — reject any other keystroke/paste
   const handleMarkChange = useCallback((rcId: string, value: string) => {
     if (value === "") {
       setEditMarks((prev) => ({ ...prev, [rcId]: "" }));
       return;
     }
-    const num = parseFloat(value);
-    if (!isNaN(num)) {
-      setEditMarks((prev) => ({ ...prev, [rcId]: num }));
-    }
+    if (!/^\d{1,3}$/.test(value)) return;
+    const num = Number(value);
+    if (num > 100) return;
+    setEditMarks((prev) => ({ ...prev, [rcId]: num }));
   }, []);
 
   // Check if a student's pending rows all have valid RCM and dates
@@ -249,10 +250,10 @@ export default function RemedialTracker() {
     }
     const invalidRcm = pendingRows.filter((rc) => {
       const mark = editMarks[rc.id] ?? rc.remedialMark;
-      return typeof mark === "number" && (mark < 60 || mark > 100);
+      return typeof mark === "number" && (!Number.isInteger(mark) || mark < 60 || mark > 100);
     });
     if (invalidRcm.length > 0) {
-      return { ok: false, reason: `RCM must be 60–100: ${invalidRcm.map((r) => r.subjectName).join(", ")}` };
+      return { ok: false, reason: `RCM must be a whole number from 60 to 100: ${invalidRcm.map((r) => r.subjectName).join(", ")}` };
     }
     if (!conductedFrom || !conductedTo) {
       return { ok: false, reason: "Conducted date range is required" };
@@ -272,13 +273,13 @@ export default function RemedialTracker() {
       return;
     }
 
-    // Guard: RCM must be 60-100
+    // Guard: RCM must be a whole number from 60 to 100
     const invalidRcm = pendingRows.filter((rc) => {
       const mark = editMarks[rc.id] ?? rc.remedialMark;
-      return typeof mark === "number" && (mark < 60 || mark > 100);
+      return typeof mark === "number" && (!Number.isInteger(mark) || mark < 60 || mark > 100);
     });
     if (invalidRcm.length > 0) {
-      toast.error(`RCM must be 60–100 for: ${invalidRcm.map((r) => r.subjectName).join(", ")}`);
+      toast.error(`RCM must be a whole number from 60 to 100 for: ${invalidRcm.map((r) => r.subjectName).join(", ")}`);
       return;
     }
 
