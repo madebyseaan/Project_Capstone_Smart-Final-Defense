@@ -29,6 +29,13 @@ export function getAcronym(name: string): string {
   }).join('');
 }
 
+export function formatGradeLevel(gradeLevel: string): string {
+  if (gradeLevel.startsWith("GRADE_")) {
+    return gradeLevel.replace("GRADE_", "");
+  }
+  return gradeLevel;
+}
+
 /**
  * P1-13: allow only well-formed CSS color values (from settings/branding)
  * before interpolating them into style blocks. Anything else falls back to a

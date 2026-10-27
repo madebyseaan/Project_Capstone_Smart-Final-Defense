@@ -477,20 +477,33 @@ export async function syncTeacherOnLogin(
         (a: any) => Number(a.facultyId) === Number(atlasMember.id),
       );
 
-      // Build ATLAS subjectId → code lookup for mapping effective assignments
+      // Build ATLAS subjectId → code lookup for mapping effective assignments.
+      // Archived ATLAS subjects (`isActive === false`) are not current ownership
+      // and must not be re-created here after the global stale-check archives them.
       const atlasSubjectIdToCode = new Map<number, string>();
+      const inactiveAtlasSubjectIds = new Set<number>();
       try {
         const atlasSubjectsData = await atlasGet(`/subjects?schoolId=${ATLAS_SCHOOL_ID}`);
         const atlasSubjs: any[] = atlasSubjectsData.subjects ?? [];
         for (const s of atlasSubjs) {
           if (s.id && s.code) atlasSubjectIdToCode.set(Number(s.id), (s.code ?? '').trim().toUpperCase());
+          if (s.id && s.isActive === false) inactiveAtlasSubjectIds.add(Number(s.id));
         }
       } catch { /* non-critical */ }
 
-      const flatAssignments: any[] = effectiveFaculty.map((a: any) => ({
-        subjectCode: atlasSubjectIdToCode.get(Number(a.subjectId)) ?? String(a.subjectId),
-        sectionId: a.sectionId,
-      }));
+      const inactiveSubjectFaculty = effectiveFaculty.filter(
+        (a: any) => inactiveAtlasSubjectIds.has(Number(a.subjectId)),
+      );
+      if (inactiveSubjectFaculty.length > 0) {
+        logger.warn(`[TeacherSync] Ignoring ${inactiveSubjectFaculty.length} archived-subject assignment(s) from ATLAS load`);
+      }
+
+      const flatAssignments: any[] = effectiveFaculty
+        .filter((a: any) => !inactiveAtlasSubjectIds.has(Number(a.subjectId)))
+        .map((a: any) => ({
+          subjectCode: atlasSubjectIdToCode.get(Number(a.subjectId)) ?? String(a.subjectId),
+          sectionId: a.sectionId,
+        }));
 
       const desiredAssignmentPairs = new Set<string>();
       const rememberDesiredAssignment = (subjectId: string, sectionId: string) => {

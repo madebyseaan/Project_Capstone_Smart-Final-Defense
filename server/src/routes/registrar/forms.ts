@@ -5,19 +5,14 @@ import { prisma } from "../../lib/prisma";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
 import { getSchoolIdentityForYear } from "../../lib/schoolSettingsSnapshot";
-import { buildSf9Attendance } from "../../lib/attendanceAggregate";
 import { buildSf10Records } from "../../lib/sf10";
-import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE, promotionStatusLabel, derivePromotionStatus } from "../../lib/promotion";
+import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE } from "../../lib/promotion";
+import { composeSf9ForStudent } from "../../lib/sf9Composer";
 import {
   resolveCurrentSchoolYearLabel,
   normalizeDisplaySex,
   computeAgeAsOfJune,
   mapRemarksCodes,
-  isHomeroomGuidanceSubjectCode,
-  isSubjectAlignedWithGrade,
-  subjectCanonicalKey,
-  toDisplayName,
-  toTitleCase,
 } from "./helpers";
 
 export default function registerFormRoutes(router: Router): void {
@@ -35,345 +30,23 @@ router.get("/forms/sf9/:studentId", authenticateToken, async (req: AuthRequest, 
     const { schoolYear } = req.query;
     const currentSchoolYear = (schoolYear as string) || await resolveCurrentSchoolYearLabel();
 
-    // Get student data
-    const student = await prisma.student.findUnique({
-      where: { id: studentId }
-    });
-
+    const student = await prisma.student.findUnique({ where: { id: studentId } });
     if (!student) {
       res.status(404).json({ message: "Student not found" });
       return;
     }
 
-    // Get active enrollment for school year — accepts any status (ENROLLED, DROPPED, TRANSFERRED)
-    // This allows retrieving historical SF9s for students who have since left
-    const enrollment = await prisma.enrollment.findFirst({
-      where: {
-        studentId: studentId,
-        schoolYear: currentSchoolYear,
-      },
-      orderBy: [{ createdAt: 'desc' }],
-      include: {
-        section: {
-          include: {
-            adviser: {
-              include: { user: true }
-            }
-          }
-        }
-      }
+    const payload = await composeSf9ForStudent({
+      studentId,
+      schoolYear: currentSchoolYear,
     });
 
-    if (!enrollment) {
+    if (!payload) {
       res.status(404).json({ message: "Student not found for this school year" });
       return;
     }
 
-    // Get current class assignments for this section/year.
-    const classAssignments = await prisma.classAssignment.findMany({
-      where: {
-        sectionId: enrollment.sectionId,
-        schoolYear: currentSchoolYear,
-      },
-      include: {
-        subject: true,
-        teacher: {
-          include: { user: true }
-        }
-      }
-    });
-
-    // Get all grades for this student in this school year
-    const grades = await prisma.grade.findMany({
-      where: {
-        studentId: studentId,
-        classAssignment: {
-          sectionId: enrollment.sectionId,
-          schoolYear: currentSchoolYear,
-        }
-      },
-      include: {
-        classAssignment: {
-          include: {
-            subject: true,
-            teacher: {
-              include: { user: true }
-            }
-          }
-        }
-      }
-    });
-
-    const nonNullQuarterCountByAssignment = new Map<string, number>();
-    grades.forEach((g: any) => {
-      if (g.quarterlyGrade === null) return;
-      nonNullQuarterCountByAssignment.set(
-        g.classAssignmentId,
-        (nonNullQuarterCountByAssignment.get(g.classAssignmentId) ?? 0) + 1,
-      );
-    });
-
-    const gradePriority = (g: any): number => {
-      const activeScore = g.classAssignment?.isActive ? 10_000 : 0;
-      const densityScore = (nonNullQuarterCountByAssignment.get(g.classAssignmentId) ?? 0) * 100;
-      const freshnessScore = new Date(g.updatedAt).getTime() / 1e12;
-      return activeScore + densityScore + freshnessScore;
-    };
-
-    // Build canonical subject rows using learning-area identity (code+name), not subjectId,
-    // so duplicate subject rows from sync do not appear as separate entries.
-    // Each row now carries rotation metadata from the Subject model.
-    const subjectGrades: Record<string, {
-      subjectCode: string;
-      subjectName: string;
-      teacher: string;
-      T1: number | null;
-      T2: number | null;
-      T3: number | null;
-      finalGrade: number | null;
-      // Atlas rotation fields — null = non-rotating subject
-      rotationTermGroupId: string | null;
-      rotationTermRank: number | null;
-      rotationOutputLabel: string | null;
-    }> = {};
-
-    classAssignments.forEach((ca: any) => {
-      if (isHomeroomGuidanceSubjectCode(ca.subject.code)) {
-        return;
-      }
-      if (!isSubjectAlignedWithGrade(ca.subject.code, enrollment.section.gradeLevel)) {
-        return;
-      }
-      const key = subjectCanonicalKey(ca.subject.code, ca.subject.name);
-      if (!subjectGrades[key]) {
-        subjectGrades[key] = {
-          subjectCode: ca.subject.code,
-          subjectName: ca.subject.displayName ?? ca.subject.name,
-          teacher: ca.teacher?.user
-            ? `${toDisplayName(ca.teacher.user.firstName)} ${toDisplayName(ca.teacher.user.lastName)}`
-            : "Unknown",
-          T1: null,
-          T2: null,
-          T3: null,
-          finalGrade: null,
-          rotationTermGroupId: ca.subject.rotationTermGroupId ?? null,
-          rotationTermRank: ca.subject.rotationTermRank ?? null,
-          rotationOutputLabel: ca.subject.rotationOutputLabel ?? null,
-        };
-      }
-    });
-
-    // Populate with actual grade records, preferring higher-priority assignment sources.
-    [...grades].sort((a: any, b: any) => gradePriority(b) - gradePriority(a)).forEach((grade: any) => {
-      const subject = grade.classAssignment.subject;
-      if (isHomeroomGuidanceSubjectCode(subject.code)) {
-        return;
-      }
-      if (!isSubjectAlignedWithGrade(subject.code, enrollment.section.gradeLevel)) {
-        return;
-      }
-
-      const key = subjectCanonicalKey(subject.code, subject.name);
-      if (!subjectGrades[key]) {
-        subjectGrades[key] = {
-          subjectCode: subject.code,
-          subjectName: subject.displayName ?? subject.name,
-          teacher: grade.classAssignment.teacher?.user
-            ? `${toDisplayName(grade.classAssignment.teacher.user.firstName)} ${toDisplayName(grade.classAssignment.teacher.user.lastName)}`
-            : "Unknown",
-          T1: null,
-          T2: null,
-          T3: null,
-          finalGrade: null,
-          rotationTermGroupId: subject.rotationTermGroupId ?? null,
-          rotationTermRank: subject.rotationTermRank ?? null,
-          rotationOutputLabel: subject.rotationOutputLabel ?? null,
-        };
-      }
-
-      if (grade.quarterlyGrade !== null && subjectGrades[key][grade.term as Term] === null) {
-        subjectGrades[key][grade.term as Term] = grade.quarterlyGrade;
-      }
-    });
-
-    // ---------------------------------------------------------------------------
-    // Merge rotating sub-subjects into one row per rotation group.
-    //
-    // Example: SCI_BIO (rank=1), SCI_CHEM (rank=2), SCI_ES (rank=3) all belong to
-    // rotationTermGroupId="SCIENCE". They collapse into one "Science" row where:
-    //   T1 = Bio grade (from rank=1 sub-subject)
-    //   T2 = Chem grade (from rank=2 sub-subject)
-    //   T3 = Earth Sci grade (from rank=3 sub-subject)
-    //   teacher = "Bio Teacher / Chem Teacher / EarthSci Teacher"
-    // Non-rotating subjects (no rotationTermGroupId) pass through unchanged.
-    // ---------------------------------------------------------------------------
-
-    // Separate rotating vs. standalone rows
-    const rotationGroups: Record<string, typeof subjectGrades[string][]> = {};
-    const standaloneRows: (typeof subjectGrades[string])[] = [];
-
-    for (const row of Object.values(subjectGrades)) {
-      if (row.rotationTermGroupId) {
-        if (!rotationGroups[row.rotationTermGroupId]) {
-          rotationGroups[row.rotationTermGroupId] = [];
-        }
-        rotationGroups[row.rotationTermGroupId].push(row);
-      } else {
-        standaloneRows.push(row);
-      }
-    }
-
-    // Build one merged row per rotation group
-    const mergedRotationRows: (typeof subjectGrades[string])[] = [];
-    for (const [, groupRows] of Object.entries(rotationGroups)) {
-      // Sort sub-subjects by their rotation rank so teacher list is ordered
-      const sorted = [...groupRows].sort((a, b) => (a.rotationTermRank ?? 0) - (b.rotationTermRank ?? 0));
-
-      const merged: typeof subjectGrades[string] = {
-        subjectCode: sorted[0].rotationOutputLabel ?? sorted[0].subjectCode,
-        subjectName: toTitleCase(sorted[0].rotationOutputLabel ?? sorted[0].subjectName),
-        teacher: sorted.map(r => r.teacher).filter(Boolean).join(' / '),
-        T1: null,
-        T2: null,
-        T3: null,
-        finalGrade: null,
-        rotationTermGroupId: sorted[0].rotationTermGroupId,
-        rotationTermRank: null, // merged row has no single rank
-        rotationOutputLabel: sorted[0].rotationOutputLabel,
-      };
-
-      // Place each sub-subject's best available term grade into the correct column
-      // using rotationTermRank (1→T1, 2→T2, 3→T3) — authoritative from Atlas
-      for (const sub of sorted) {
-        if (!sub.rotationTermRank) continue;
-        const termKey = `T${sub.rotationTermRank}` as 'T1' | 'T2' | 'T3';
-        // Pick the best non-null grade across all term slots for this sub-subject
-        const bestGrade = sub.T1 ?? sub.T2 ?? sub.T3 ?? null;
-        if (bestGrade !== null) {
-          merged[termKey] = bestGrade;
-        }
-      }
-
-      // Final grade = average of available term slots on the merged row
-      const availableTerms = [merged.T1, merged.T2, merged.T3].filter((v): v is number => v !== null);
-      if (availableTerms.length > 0) {
-        merged.finalGrade = Math.round(availableTerms.reduce((a, b) => a + b, 0) / availableTerms.length);
-      }
-
-      mergedRotationRows.push(merged);
-    }
-
-    // Combine: standalone rows + merged rotation rows
-    const allRows = [...standaloneRows, ...mergedRotationRows];
-
-    // Calculate final grades for standalone (non-rotation) subjects
-    standaloneRows.forEach((subject: any) => {
-      const terms = [subject.T1, subject.T2, subject.T3].filter((q: number | null) => q !== null);
-      if (terms.length > 0) {
-        subject.finalGrade = Math.round(terms.reduce((a: number, b: number) => a + b, 0) / terms.length);
-      }
-    });
-
-    // Calculate general average across all rows (standalone + merged)
-    const allFinals = allRows.map((s: any) => s.finalGrade).filter((g: number | null) => g !== null);
-    const generalAverage = allFinals.length > 0
-      ? Math.round(allFinals.reduce((a: number, b: number) => a + b, 0) / allFinals.length)
-      : null;
-
-    // Calculate student age from birthDate
-    let age = null;
-    if (student.birthDate) {
-      const today = new Date();
-      const birth = new Date(student.birthDate);
-      age = today.getFullYear() - birth.getFullYear();
-      const m = today.getMonth() - birth.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-        age--;
-      }
-    }
-
-    // Use profile snapshot if available (historical), else current student data
-    const snap = enrollment.profileSnapshot as Record<string, any> | null;
-
-    // Attendance record — aggregated per month across the school year
-    const attendanceRecords = await prisma.attendance.findMany({
-      where: {
-        studentId,
-        section: { schoolYear: currentSchoolYear },
-      },
-      select: { studentId: true, date: true, status: true },
-    });
-    const attendance = buildSf9Attendance(attendanceRecords, currentSchoolYear);
-
-    // Fetch school settings for SF9 header from year snapshot
-    const schoolIdentity = await getSchoolIdentityForYear(currentSchoolYear);
-
-    // Remedial outcomes for this enrollment — crediting passed remediation in
-    // the derived promotion status.
-    const remedialRows = await prisma.remedialClass.findMany({
-      where: { enrollmentId: enrollment.id },
-      select: { subjectCode: true, subjectName: true, outcome: true, recomputedGrade: true },
-    });
-
-    res.json({
-      student: {
-        id: student.id,
-        lrn: snap?.lrn ?? student.lrn,
-        name: `${student.lastName}, ${student.firstName} ${student.middleName || ""} ${student.suffix || ""}`.trim(),
-        gender: normalizeDisplaySex(snap?.gender ?? student.gender),
-        birthDate: student.birthDate,
-        age,
-        section: enrollment.section.name,
-        gradeLevel: enrollment.section.gradeLevel,
-        schoolYear: enrollment.schoolYear,
-        adviser: enrollment.section.adviser
-          ? `${enrollment.section.adviser.user.firstName} ${enrollment.section.adviser.user.lastName}`
-          : null
-      },
-      subjectGrades: allRows
-        .sort((a, b) => a.subjectName.localeCompare(b.subjectName))
-        .map((s: any) => ({
-          subjectCode: s.subjectCode,
-          subjectName: s.subjectName,
-          teacher: s.teacher,
-          T1: s.T1,
-          T2: s.T2,
-          T3: s.T3,
-          final: s.finalGrade,
-          remarks: s.finalGrade != null ? (s.finalGrade >= PASSING_GRADE ? "Passed" : "Failed") : null
-        })),
-      attendance: attendance,
-      values: [],
-      generalAverage,
-      honors: generalAverage ? (generalAverage >= 98 ? "With Highest Honors" : generalAverage >= 95 ? "With High Honors" : generalAverage >= 90 ? "With Honors" : null) : null,
-      // Prefer the enrollment's official promotion status (same source as SF10);
-      // otherwise derive with the DO 13 matrix, crediting passed remediation.
-      promotionStatus:
-        promotionStatusLabel(enrollment.promotionStatus ?? null) ??
-        promotionStatusLabel(
-          derivePromotionStatus(
-            enrollment.section.gradeLevel,
-            allRows.map((s: any) => ({
-              subjectCode: s.subjectCode,
-              subjectName: s.subjectName,
-              teacher: s.teacher ?? "",
-              T1: s.T1 ?? null,
-              T2: s.T2 ?? null,
-              T3: s.T3 ?? null,
-              finalRating: s.finalGrade ?? null,
-              remarks: s.finalGrade != null ? (s.finalGrade >= PASSING_GRADE ? "Passed" : "Failed") : null,
-              status: s.finalGrade != null ? ("GRADED" as const) : ("NG" as const),
-            })),
-            remedialRows,
-          ),
-        ),
-      schoolSettings: {
-        schoolName: schoolIdentity.schoolName,
-        division: schoolIdentity.division,
-        region: schoolIdentity.region,
-        schoolHeadName: schoolIdentity.schoolHeadName,
-      },
-    });
+    res.json(payload);
   } catch (error) {
     logger.error("Error fetching SF9 data:", error);
     res.status(500).json({ message: "Failed to fetch SF9 data" });

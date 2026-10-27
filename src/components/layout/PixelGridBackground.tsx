@@ -5,17 +5,8 @@
  */
 export default function PixelGridBackground() {
   return (
-    <div
-      className="pointer-events-none fixed inset-0 -z-10"
-      style={{
-        // Mirrors EnrollPro's `login-pixel-grid` backdrop exactly: slate-50 fading
-        // into the theme primary so the maroon grid reads warm, not grey.
-        backgroundImage:
-          "linear-gradient(to bottom right, #f8fafc 0%, rgba(var(--theme-primary-rgb), 0.08) 50%, rgba(var(--theme-primary-rgb), 0.06) 100%)",
-      }}
-      aria-hidden="true"
-    >
-      <svg className="absolute inset-0 h-full w-full opacity-[0.08]" xmlns="http://www.w3.org/2000/svg">
+    <div className="app-pixel-backdrop pointer-events-none fixed inset-0 -z-10 hidden md:block" aria-hidden="true">
+      <svg className="absolute inset-0 h-full w-full opacity-[0.025]" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <pattern
             id="app-pixel-grid"
@@ -36,3 +27,5 @@ export default function PixelGridBackground() {
     </div>
   );
 }
+
+

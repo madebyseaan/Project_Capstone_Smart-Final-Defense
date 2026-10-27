@@ -40,7 +40,7 @@ export default function AccessibilityMenu({ userId }: AccessibilityMenuProps) {
           <button
             type="button"
             aria-label={triggerLabel}
-            className="relative p-2 rounded-xl hover:bg-accent text-muted-foreground transition-all active:scale-95"
+            className="relative flex h-12 w-12 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-accent active:scale-95 lg:h-9 lg:w-9"
           />
         }
       >
@@ -69,7 +69,7 @@ export default function AccessibilityMenu({ userId }: AccessibilityMenuProps) {
             disabled={!canDecrease}
             onClick={decrease}
             aria-label="Decrease text size"
-            className="flex-1 h-9 justify-center border border-border bg-background px-0"
+            className="flex h-12 flex-1 justify-center border border-border bg-background px-0"
           >
             <Minus className="w-4 h-4" />
           </DropdownMenuItem>
@@ -78,7 +78,7 @@ export default function AccessibilityMenu({ userId }: AccessibilityMenuProps) {
             disabled={!canIncrease}
             onClick={increase}
             aria-label="Increase text size"
-            className="flex-1 h-9 justify-center border border-border bg-background px-0"
+            className="flex h-12 flex-1 justify-center border border-border bg-background px-0"
           >
             <Plus className="w-4 h-4" />
           </DropdownMenuItem>
@@ -98,3 +98,4 @@ export default function AccessibilityMenu({ userId }: AccessibilityMenuProps) {
     </DropdownMenu>
   );
 }
+

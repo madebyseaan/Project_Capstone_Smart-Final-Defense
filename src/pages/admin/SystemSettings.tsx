@@ -8,6 +8,7 @@ import type { SystemSettings as SystemSettingsType } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageError } from "@/components/layout/PageError";
+import { Link } from "react-router-dom";
 import { FilterTabs } from "@/components/layout/FilterTabs";
 import type { FilterTabItem } from "@/components/layout/FilterTabs";
 import { toast } from "@/lib/toast";
@@ -73,9 +74,7 @@ export default function SystemSettings() {
   // SSE subscription for realtime settings updates.
   // Never clobber unsaved local edits — notify instead.
   useEffect(() => {
-    const token = getPortalToken();
-    if (!token) return;
-    const streamToken: string = token;
+    if (!getPortalToken()) return;
 
     let es: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -84,6 +83,8 @@ export default function SystemSettings() {
 
     function connect() {
       if (cancelled) return;
+      const streamToken = getPortalToken();
+      if (!streamToken) return;
       const url = `/api/admin/settings/stream?token=${encodeURIComponent(streamToken)}`;
       es = new EventSource(url);
 
@@ -307,7 +308,7 @@ export default function SystemSettings() {
           </div>
           <div className="flex items-start gap-2 rounded-xl border-2 border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
             <Route className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>Server health, sync history, and diagnostics live on the <a href="/admin/system-health" className="font-medium text-primary underline-offset-2 hover:underline">System Health</a> page.</span>
+            <span>Server health, sync history, and diagnostics live on the <Link to="/admin/health" className="font-medium text-primary underline-offset-2 hover:underline">System Health</Link> page.</span>
           </div>
           <DeveloperToolsCard />
           <AttendanceToolsCard />

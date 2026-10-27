@@ -128,6 +128,7 @@ model Student {
   enrollments     Enrollment[]
   grades          Grade[]
   aimsScores      AimsScore[]
+  observedValues  StudentObservedValue[]
   externalSchoolRecords ExternalSchoolRecord[]
 
   @@index([lastName, firstName])
@@ -677,6 +678,13 @@ enum GradeStatus {
   LOCKED
 }
 
+enum ObservedValueRating {
+  AO
+  SO
+  RO
+  NO
+}
+
 enum Term {
   T1
   T2
@@ -823,6 +831,24 @@ model RemedialClass {
   @@unique([enrollmentId, subjectCode])
   @@index([status])
   @@index([schoolYear])
+}
+
+model StudentObservedValue {
+  id           String              @id @default(cuid())
+  studentId    String
+  schoolYear   String
+  term         Term
+  behaviorCode String
+  rating       ObservedValueRating
+  updatedById  String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  student      Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, schoolYear, term, behaviorCode])
+  @@index([studentId, schoolYear, term])
+  @@index([schoolYear, term])
 }
 
 model GradeEditRequest {

@@ -7,6 +7,10 @@ import { broadcastSyncStatus } from "../lib/sseManager";
 import { getActiveSchoolYearLabel } from "../lib/schoolYearResolver";
 import { logger } from "../lib/logger";
 import { mergeRotationSubjects, SubjectTermInput } from "../lib/promotion";
+import { validate } from "../middleware/validate";
+import { advisorySf9QuerySchema, advisorySf9StudentParamsSchema } from "../schemas/advisory";
+import { composeSf9Section, type Sf9Term } from "../lib/sf9Composer";
+import registerObservedValueRoutes from "./advisory-sub/observedValues";
 
 import type { Student, Enrollment, Section, ClassAssignment, Subject, Teacher, User, Grade } from "@prisma/client";
 
@@ -61,11 +65,15 @@ function toDisplayName(value: string | null | undefined): string {
     .join(' ');
 }
 
+const SUBJECT_ACRONYMS = new Set(["TLE", "MAPEH", "ESP", "STE", "SPA", "SPS", "GMRC", "AP", "PE", "ICT", "HE"]);
+
 function toTitleCase(value: string | null | undefined): string {
   return normalizeWhitespace(value ?? '')
     .split(' ')
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .map((part) => SUBJECT_ACRONYMS.has(part.toUpperCase())
+      ? part.toUpperCase()
+      : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
 }
 
@@ -501,7 +509,7 @@ router.get(
           subjectCode: sorted[0].rotationOutputLabel ?? sorted[0].subjectCode,
           subjectName: toTitleCase(sorted[0].rotationOutputLabel ?? sorted[0].subjectName),
           subjectType: sorted[0].subjectType,
-          teacher: sorted.map(r => r.teacher).filter(Boolean).join(' / '),
+          teacher: [...new Set(sorted.map(r => r.teacher).filter(Boolean))].join(' / '),
           grades: mergedGrades,
           finalGrade,
           remarks: finalGrade ? (finalGrade >= 75 ? "PASSED" : "FAILED") : null,
@@ -596,6 +604,142 @@ router.get(
     }
   }
 );
+
+// Adviser printables: full SF9 or a temporary per-term card for the advisory section.
+router.get(
+  "/sf9",
+  authenticateToken,
+  authorizeRoles("TEACHER"),
+  validate(advisorySf9QuerySchema),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const teacher = await prisma.teacher.findUnique({
+        where: { userId: req.user?.id },
+        select: { id: true },
+      });
+
+      if (!teacher) {
+        res.status(404).json({ message: "Teacher profile not found" });
+        return;
+      }
+
+      const activeSchoolYear = await getActiveSchoolYearLabel();
+      const requestedSchoolYear = (req.query.schoolYear as string | undefined) ?? activeSchoolYear;
+
+      if (requestedSchoolYear !== activeSchoolYear) {
+        res.status(400).json({
+          message: "Historical school years are not available in teacher printables yet. Use the registrar portal.",
+        });
+        return;
+      }
+
+      const section = await prisma.section.findFirst({
+        where: { adviserId: teacher.id, schoolYear: requestedSchoolYear },
+        select: { id: true },
+      });
+
+      if (!section) {
+        res.status(404).json({ message: "No advisory section assigned for this school year" });
+        return;
+      }
+
+      const term = req.query.term as Sf9Term | undefined;
+      const result = await composeSf9Section({
+        sectionId: section.id,
+        schoolYear: requestedSchoolYear,
+        term,
+      });
+
+      if (!result) {
+        res.status(404).json({ message: "Advisory section not found" });
+        return;
+      }
+
+      res.json(result);
+    } catch (error) {
+      logger.error("Error fetching advisory SF9 printables:", error);
+      res.status(500).json({ message: "Failed to build advisory printables" });
+    }
+  }
+);
+
+router.get(
+  "/sf9/:studentId",
+  authenticateToken,
+  authorizeRoles("TEACHER"),
+  validate(advisorySf9StudentParamsSchema),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const teacher = await prisma.teacher.findUnique({
+        where: { userId: req.user?.id },
+        select: { id: true },
+      });
+
+      if (!teacher) {
+        res.status(404).json({ message: "Teacher profile not found" });
+        return;
+      }
+
+      const activeSchoolYear = await getActiveSchoolYearLabel();
+      const requestedSchoolYear = (req.query.schoolYear as string | undefined) ?? activeSchoolYear;
+
+      if (requestedSchoolYear !== activeSchoolYear) {
+        res.status(400).json({
+          message: "Historical school years are not available in teacher printables yet. Use the registrar portal.",
+        });
+        return;
+      }
+
+      const section = await prisma.section.findFirst({
+        where: { adviserId: teacher.id, schoolYear: requestedSchoolYear },
+        select: { id: true },
+      });
+
+      if (!section) {
+        res.status(404).json({ message: "No advisory section assigned for this school year" });
+        return;
+      }
+
+      const studentId = req.params.studentId as string;
+      const enrollment = await prisma.enrollment.findFirst({
+        where: {
+          studentId,
+          sectionId: section.id,
+          schoolYear: requestedSchoolYear,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+
+      if (!enrollment) {
+        res.status(403).json({ message: "Not authorized to view this student" });
+        return;
+      }
+
+      const term = req.query.term as Sf9Term | undefined;
+      const result = await composeSf9Section({
+        sectionId: section.id,
+        schoolYear: requestedSchoolYear,
+        term,
+        studentIds: [studentId],
+        includeNonEnrolled: true,
+      });
+
+      const payload = result?.students[0];
+      if (!payload) {
+        res.status(404).json({ message: "Student not found for this school year" });
+        return;
+      }
+
+      res.json(payload);
+    } catch (error) {
+      logger.error("Error fetching advisory SF9 printable:", error);
+      res.status(500).json({ message: "Failed to build the printable" });
+    }
+  }
+);
+
+registerObservedValueRoutes(router);
 
 // Get advisory section summary (for report card generation)
 router.get(

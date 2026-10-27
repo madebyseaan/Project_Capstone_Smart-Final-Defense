@@ -153,6 +153,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg);
 }
 
@@ -160,6 +161,7 @@ body {
   width: 100%;
   max-width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Typography - Let Tailwind handle colors */
@@ -430,10 +432,45 @@ code {
   background: #cbd5e1;
 }
 
+/* Portal backdrop — mirrors the login pixel grid, with a dark-mode surface */
+.app-pixel-backdrop {
+  background-image: linear-gradient(
+    to bottom right,
+    #f8fafc 0%,
+    rgba(var(--theme-primary-rgb), 0.08) 50%,
+    rgba(var(--theme-primary-rgb), 0.06) 100%
+  );
+}
+
+.dark .app-pixel-backdrop {
+  background-image: linear-gradient(
+    to bottom right,
+    #0f172a 0%,
+    rgba(var(--theme-primary-rgb), 0.16) 50%,
+    rgba(var(--theme-primary-rgb), 0.1) 100%
+  );
+}
+
 /* Focus styles */
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* Mobile-safe app height */
+.min-h-dvh {
+  min-height: 100dvh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @theme inline {
@@ -628,6 +665,37 @@ code {
 
   .print-form-sf9 .text-xs {
     font-size: 10px !important;
+  }
+
+  /* Temporary term card: one page per learner */
+  .print-form-term-card {
+    page-break-after: always !important;
+    break-after: page !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    border-width: 1.5px !important;
+  }
+
+  .print-form-term-card table {
+    width: 100% !important;
+    table-layout: fixed;
+    font-size: 10px !important;
+  }
+
+  .print-form-term-card th,
+  .print-form-term-card td {
+    padding: 2px 3px !important;
+    vertical-align: middle;
+  }
+
+  .print-form-term-card .term-card-watermark-layer,
+  .print-form-term-card .term-card-watermark {
+    background: transparent !important;
+  }
+
+  .print-form-term-card .term-card-watermark {
+    font-size: 42pt !important;
+    line-height: 1.1 !important;
   }
   
   .print-form * {

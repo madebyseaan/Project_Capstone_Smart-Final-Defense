@@ -27,7 +27,11 @@ import {
   ATLAS_SCHOOL_ID,
   resolveAtlasSchoolYear,
 } from './sync/httpClient';
-import { getCachedAtlasFaculty, setCachedAtlasFaculty } from './syncCache';
+import {
+  getCachedAtlasFaculty,
+  setCachedAtlasFaculty,
+  getCachedEnrollProTeachers,
+} from './syncCache';
 import { resolveCrosswalkLabels } from './atlasScheduleSync';
 import {
   normalizeAtlasDraftPayload,
@@ -81,21 +85,54 @@ export type DraftReadResult =
 export interface AtlasFacultyRef {
   /** The id to send as `:externalFacultyId` (ATLAS faculty.externalId preferred). */
   externalId: string;
-  /** `externalId` | `employeeId` — which join key was used (§7.3). */
-  via: 'externalId' | 'employeeId';
+  /** Which join key produced the candidate (§7.3). */
+  via: 'externalId' | 'employeeId' | 'enrollproTeacherId';
 }
 
-async function loadAtlasFaculty(): Promise<any[]> {
+export interface AtlasFacultyResolution {
+  refs: AtlasFacultyRef[];
+  /**
+   * The ATLAS faculty directory could not be loaded (and no cached copy was
+   * available), so a `FACULTY_NOT_FOUND` from the draft read cannot be trusted
+   * as "this teacher does not exist".
+   */
+  directoryUnavailable: boolean;
+}
+
+type AtlasFacultyLoad =
+  | { ok: true; faculty: any[] }
+  | { ok: false; error: string };
+
+async function loadAtlasFaculty(): Promise<AtlasFacultyLoad> {
   const cached = getCachedAtlasFaculty();
-  if (cached && cached.length > 0) return cached;
+  if (cached && cached.length > 0) return { ok: true, faculty: cached };
   try {
     const data = await atlasGet(`/faculty?schoolId=${ATLAS_SCHOOL_ID}`);
     const faculty: any[] = data?.faculty ?? [];
     if (faculty.length > 0) setCachedAtlasFaculty(faculty);
-    return faculty;
+    return { ok: true, faculty };
   } catch (err: any) {
     logger.warn(`[AtlasDraft] Faculty fetch failed: ${err.message}`);
-    return [];
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Best-effort EnrollPro teacher record id. ATLAS `faculty.externalId` is tied
+ * to this id (not the employeeId string), so it is the identifier the draft
+ * endpoint expects. Uses the sync cache so an EnrollPro outage does not turn
+ * into a false `FACULTY_NOT_FOUND`.
+ */
+async function resolveEnrollProTeacherId(employeeId: string): Promise<string | null> {
+  if (!employeeId) return null;
+  try {
+    const teachers = await getCachedEnrollProTeachers();
+    const match = teachers.find((t) => String(t?.employeeId ?? '').trim() === employeeId);
+    const id = match?.id != null ? String(match.id).trim() : '';
+    return id || null;
+  } catch (err: any) {
+    logger.warn(`[AtlasDraft] EnrollPro teacher lookup failed: ${err.message}`);
+    return null;
   }
 }
 
@@ -105,17 +142,21 @@ function normalizeEmail(email: string | null | undefined): string {
 
 /**
  * Resolve a SMART teacher to ATLAS faculty id candidates.
- * Primary key is `faculty.externalId` (§7.3); `faculty.employeeId` is the
- * fallback join key. Both are tried on `404 FACULTY_NOT_FOUND`.
+ * Primary key is `faculty.externalId` (§7.3); EnrollPro's teacher record id is
+ * the same value, so it is used when the ATLAS faculty directory is slow or
+ * unavailable. `faculty.employeeId` is only tried when the directory itself
+ * resolved the teacher — it is never assumed to be the external id.
  */
 export async function resolveAtlasFacultyRefs(teacher: {
   id: string;
   employeeId: string;
   email?: string | null;
-}): Promise<AtlasFacultyRef[]> {
-  const faculty = await loadAtlasFaculty();
+}): Promise<AtlasFacultyResolution> {
   const employeeId = String(teacher.employeeId ?? '').trim();
   const email = normalizeEmail(teacher.email);
+
+  const facultyLoad = await loadAtlasFaculty();
+  const faculty = facultyLoad.ok ? facultyLoad.faculty : [];
 
   const match = faculty.find((af: any) => {
     const afEmployee = String(af?.employeeId ?? '').trim();
@@ -125,7 +166,7 @@ export async function resolveAtlasFacultyRefs(teacher: {
   });
 
   const refs: AtlasFacultyRef[] = [];
-  const push = (value: unknown, via: 'externalId' | 'employeeId') => {
+  const push = (value: unknown, via: AtlasFacultyRef['via']) => {
     const id = String(value ?? '').trim();
     if (id && !refs.some(r => r.externalId === id)) refs.push({ externalId: id, via });
   };
@@ -134,10 +175,16 @@ export async function resolveAtlasFacultyRefs(teacher: {
     push(match.externalId, 'externalId');
     push(match.employeeId, 'employeeId');
     push(match.id, 'employeeId');
+  } else {
+    // Without the directory, EnrollPro's teacher record id is the only
+    // trustworthy external id we can still obtain.
+    push(await resolveEnrollProTeacherId(employeeId), 'enrollproTeacherId');
   }
-  if (refs.length === 0 && employeeId) push(employeeId, 'employeeId');
 
-  return refs;
+  return {
+    refs,
+    directoryUnavailable: !facultyLoad.ok,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +197,8 @@ interface FetchDraftParams {
   atlasSchoolYearId: number;
   /** Faculty id candidates (`faculty.externalId` first, §7.3). */
   facultyRefs: AtlasFacultyRef[];
+  /** True when the ATLAS faculty directory could not be loaded. */
+  facultyDirectoryUnavailable: boolean;
   termIndex: AtlasTermSelector;
 }
 
@@ -218,7 +267,7 @@ async function withLabels(
  * Fail-closed mapping of the §8A error taxonomy — see DraftReadResult.
  */
 export async function fetchTeacherDraftSchedule(params: FetchDraftParams): Promise<DraftReadResult> {
-  const { schoolYearLabel, atlasSchoolYearId, facultyRefs, termIndex } = params;
+  const { schoolYearLabel, atlasSchoolYearId, facultyRefs, facultyDirectoryUnavailable, termIndex } = params;
 
   let lastFailure: ReturnType<typeof toAtlasScheduleFailure> | null = null;
   for (const ref of facultyRefs) {
@@ -258,11 +307,27 @@ export async function fetchTeacherDraftSchedule(params: FetchDraftParams): Promi
   }
 
   const failure = lastFailure;
+  if ((failure && isFacultyNotFound(failure)) || (!failure && facultyDirectoryUnavailable)) {
+    // A 404 here is not trustworthy while the faculty directory is down: the
+    // candidate may simply be the wrong external id. Report the outage, not a
+    // false "this teacher does not exist".
+    if (facultyDirectoryUnavailable) {
+      return {
+        status: 'error',
+        code: 'ATLAS_FACULTY_UNRESOLVED',
+        httpStatus: 502,
+        message: 'The ATLAS faculty directory is unavailable, so this teacher identity could not be verified',
+      };
+    }
+    return {
+      status: 'error',
+      code: 'FACULTY_NOT_FOUND',
+      httpStatus: 404,
+      message: failure?.message ?? 'No ATLAS faculty identity resolved for this teacher',
+    };
+  }
   if (!failure) {
     return { status: 'error', code: 'FACULTY_NOT_FOUND', httpStatus: 404, message: 'No ATLAS faculty identity resolved for this teacher' };
-  }
-  if (isFacultyNotFound(failure)) {
-    return { status: 'error', code: 'FACULTY_NOT_FOUND', httpStatus: 404, message: failure.message };
   }
   return {
     status: 'error',

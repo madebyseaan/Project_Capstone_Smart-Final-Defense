@@ -137,7 +137,7 @@ export function SecuritySection({ settings, onChange }: SecuritySectionProps) {
           <Shield className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
           <span>
             Database connectivity, sync history, and integration health are on the{" "}
-            <Link to="/admin/system-health" className="font-medium text-primary underline-offset-2 hover:underline">
+            <Link to="/admin/health" className="font-medium text-primary underline-offset-2 hover:underline">
               System Health
             </Link>{" "}
             page.

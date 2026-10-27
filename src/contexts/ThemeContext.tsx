@@ -278,10 +278,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   // SSE subscription for realtime settings updates across all connected clients
   useEffect(() => {
-    const token = getPortalToken();
-    if (!token) return;
-    const streamToken: string = token;
-
     let es: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
     let backoffMs = 2000;
@@ -289,6 +285,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
     function connect() {
       if (cancelled) return;
+      const streamToken = getPortalToken();
+      if (!streamToken) {
+        reconnectTimeout = setTimeout(connect, backoffMs);
+        return;
+      }
       const url = `/api/admin/settings/stream?token=${encodeURIComponent(streamToken)}`;
       es = new EventSource(url);
 

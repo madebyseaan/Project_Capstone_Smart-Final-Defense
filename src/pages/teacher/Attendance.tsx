@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
-import { Calendar as CalendarIcon, Users, Save, CheckCircle2, AlertCircle, RefreshCw, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Calendar as CalendarIcon,
+  Users,
+  Save,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Loader2,
+  Search,
+  StickyNote,
+} from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,10 +29,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL, getPortalToken, getCsrfToken } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { StickyActionBar } from "@/components/mobile";
+import { cn } from "@/lib/utils";
 import axios from "axios";
+
+type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
+
+const STATUS_OPTIONS: {
+  id: AttendanceStatus;
+  label: string;
+  short: string;
+  activeClass: string;
+}[] = [
+  { id: "PRESENT", label: "Present", short: "P", activeClass: "border-emerald-600 bg-emerald-600 text-white" },
+  { id: "ABSENT", label: "Absent", short: "A", activeClass: "border-rose-600 bg-rose-600 text-white" },
+  { id: "LATE", label: "Late", short: "L", activeClass: "border-amber-500 bg-amber-500 text-white" },
+  { id: "EXCUSED", label: "Excused", short: "E", activeClass: "border-indigo-600 bg-indigo-600 text-white" },
+];
 
 // ── Local date helpers (fixes UTC timezone bug) ─────────────────────────────
 function getLocalDateStr(): string {
@@ -70,7 +95,6 @@ const gradeLevelLabels: Record<string, string> = {
 };
 
 export default function Attendance() {
-  const { colors } = useTheme();
   const [sections, setSections] = useState<Section[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>(getLocalDateStr());
@@ -86,6 +110,8 @@ export default function Attendance() {
   } | null>(null);
   const [loadingMonthly, setLoadingMonthly] = useState(false);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedRemarks, setExpandedRemarks] = useState<Record<string, boolean>>({});
 
   const fetchMonthlySF2Stats = async (sectionId: string, dateStr: string) => {
     setLoadingMonthly(true);
@@ -113,7 +139,7 @@ export default function Attendance() {
       }
 
       const schoolDays = Math.max(...summaryList.map((s: any) => s.total), 0);
-      const totalPresence = summaryList.reduce((acc: number, s: any) => acc + s.present + s.late, 0);
+      const totalPresence = summaryList.reduce((acc: number, s: any) => acc + s.present + s.late + s.excused, 0);
       const registeredLearners = summaryList.length;
       
       const avgAttendance = schoolDays > 0 ? totalPresence / schoolDays : 0;
@@ -228,7 +254,7 @@ export default function Attendance() {
     }
   };
 
-  const handleStatusChange = (studentId: string, status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED") => {
+  const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
     if (!attendanceData) return;
     setAttendanceData({
       ...attendanceData,
@@ -341,273 +367,474 @@ export default function Attendance() {
 
   const stats = getStatusStats();
 
+  const attendanceStatItems = [
+    {
+      label: "Daily Presence",
+      short: "Present",
+      value: `${stats.present} / ${attendanceData?.attendance.length ?? 0}`,
+      icon: CheckCircle2,
+      iconClass: "bg-emerald-50 text-emerald-600",
+      desc: "Present today",
+    },
+    {
+      label: "Monthly Rate",
+      short: "Monthly",
+      value: loadingMonthly ? "Syncing…" : monthlyStats ? `${monthlyStats.enrollmentRate.toFixed(1)}%` : "0.0%",
+      icon: RefreshCw,
+      iconClass: "bg-primary/10 text-primary",
+      desc: "SF2 month average",
+    },
+    {
+      label: "Daily Average",
+      short: "Avg/day",
+      value: loadingMonthly ? "Syncing…" : monthlyStats ? monthlyStats.avgAttendance.toFixed(1) : "0.0",
+      icon: Users,
+      iconClass: "bg-amber-50 text-amber-600",
+      desc: "Present daily avg",
+    },
+    {
+      label: "School Days",
+      short: "Days",
+      value: loadingMonthly ? "Syncing…" : monthlyStats ? `${monthlyStats.schoolDays}` : "0",
+      icon: CalendarIcon,
+      iconClass: "bg-muted text-muted-foreground",
+      desc: "Tracked this month",
+    },
+  ];
+
+  const filteredStudents = useMemo(() => {
+    const list = attendanceData?.attendance ?? [];
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return list;
+    return list.filter((student) =>
+      `${student.lastName}, ${student.firstName} ${student.middleName ?? ""}`
+        .toLowerCase()
+        .includes(query) || student.lrn.toLowerCase().includes(query),
+    );
+  }, [attendanceData, searchQuery]);
+
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
-      <PageHeader
-        title="Daily Attendance"
-        description="Manage and track student attendance records"
-      />
+    <div className="space-y-5 animate-fade-in max-w-7xl mx-auto pb-4 lg:space-y-6 lg:pb-12">
+      <div className="hidden lg:block">
+        <PageHeader
+          title="Daily Attendance"
+          description="Manage and track student attendance records"
+        />
+      </div>
 
       {/* Messaging */}
       {message && (
         <div
-          className={`p-5 rounded-2xl border-0 shadow-lg animate-slide-up ${
+          role="status"
+          className={cn(
+            "flex items-center gap-3 rounded-xl border p-3 text-sm font-semibold",
             message.type === "success"
-              ? "bg-emerald-50 text-emerald-700 shadow-emerald-100"
-              : "bg-rose-50 text-rose-700 shadow-rose-100"
-          }`}
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-rose-200 bg-rose-50 text-rose-700",
+          )}
         >
-          <div className="flex items-center gap-3">
-            {message.type === "success" ? (
-              <CheckCircle2 className="w-5 h-5" />
-            ) : (
-              <AlertCircle className="w-5 h-5" />
-            )}
-            <span className="font-bold text-sm tracking-tight">{message.text}</span>
-          </div>
+          {message.type === "success" ? (
+            <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+          ) : (
+            <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
+          )}
+          <span>{message.text}</span>
         </div>
       )}
 
-      {/* Quick Stats Grid - SF2 Monthly & Daily live counters */}
+      {/* Quick Stats — compact strip on phones, cards on desktop */}
       {attendanceData && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          {[
-            { 
-              label: "Daily Presence", 
-              value: `${stats.present} / ${attendanceData.attendance.length}`, 
-              icon: CheckCircle2, 
-              color: "emerald",
-              desc: "Learners present today"
-            },
-            { 
-              label: "Monthly Attendance Rate", 
-              value: loadingMonthly ? "Syncing..." : (monthlyStats ? `${monthlyStats.enrollmentRate.toFixed(1)}%` : "0.0%"), 
-              icon: RefreshCw, 
-              color: "indigo",
-              desc: "SF2 Month Average"
-            },
-            { 
-              label: "Average Daily Attendance", 
-              value: loadingMonthly ? "Syncing..." : (monthlyStats ? monthlyStats.avgAttendance.toFixed(1) : "0.0"), 
-              icon: Users, 
-              color: "amber",
-              desc: "Learners present daily avg"
-            },
-            { 
-              label: "School Days Tracked", 
-              value: loadingMonthly ? "Syncing..." : (monthlyStats ? `${monthlyStats.schoolDays} Days` : "0 Days"), 
-              icon: CalendarIcon, 
-              color: "slate",
-              desc: "Days with records this month"
-            },
-          ].map((stat) => (
-            <Card key={stat.label} className="border-0 shadow-lg shadow-slate-200/50 rounded-[2rem] bg-white overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">{stat.label}</p>
-                    <p className={`text-2xl font-bold text-foreground`}>{stat.value}</p>
-                    <p className="text-[9px] text-muted-foreground font-medium mt-1">{stat.desc}</p>
+        <>
+          <div className="grid grid-cols-4 divide-x divide-border rounded-2xl border border-border bg-card py-3 shadow-sm lg:hidden">
+            {attendanceStatItems.map((stat) => (
+              <div key={stat.label} className="px-2 text-center">
+                <p className="truncate text-base font-bold leading-none text-foreground">{stat.value}</p>
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{stat.short}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden grid-cols-2 gap-3 lg:grid lg:grid-cols-4 lg:gap-4">
+            {attendanceStatItems.map((stat) => (
+              <Card key={stat.label} className="rounded-2xl border border-border bg-card shadow-sm">
+                <CardContent className="flex items-center justify-between gap-2 p-3 lg:p-4">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
+                    <p className="mt-0.5 text-lg font-bold leading-tight text-foreground lg:text-xl">{stat.value}</p>
+                    <p className="mt-0.5 hidden truncate text-[11px] text-muted-foreground sm:block">{stat.desc}</p>
                   </div>
-                  <div className={`p-3 rounded-2xl bg-${stat.color}-50 text-${stat.color}-500 shrink-0`}>
-                    <stat.icon className={`w-6 h-6 ${loadingMonthly && stat.icon === RefreshCw ? "animate-spin" : ""}`} />
+                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", stat.iconClass)}>
+                    <stat.icon className={cn("h-4 w-4", loadingMonthly && stat.icon === RefreshCw && "animate-spin")} aria-hidden="true" />
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
-      {/* Main Table - Modern Corporate List */}
-      <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
-        <CardHeader className="p-8 border-b border-slate-50 bg-slate-50/30">
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
-            <div>
-              <CardTitle className="text-xl font-bold text-foreground tracking-tight">
-                {attendanceData?.section 
+      {/* Main roster */}
+      <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <CardHeader className="border-b border-border bg-muted/30 p-4 lg:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              <CardTitle className="truncate text-lg font-semibold text-foreground lg:text-xl">
+                {attendanceData?.section
                   ? `${gradeLevelLabels[attendanceData.section.gradeLevel]} - ${attendanceData.section.name}`
                   : sections.length > 0
                     ? `${gradeLevelLabels[sections[0].gradeLevel]} - ${sections[0].name}`
-                    : "Attendance Roster"
-                }
+                    : "Attendance Roster"}
               </CardTitle>
-              <CardDescription className="text-muted-foreground font-sans normal-case font-medium tracking-normal mt-1">
-                {attendanceData ? `${attendanceData.attendance.length} Learners Enrolled` : "Select filters to view list"}
+              <CardDescription className="mt-1 font-sans text-xs font-medium normal-case tracking-normal text-muted-foreground">
+                {attendanceData ? `${attendanceData.attendance.length} ${attendanceData.attendance.length === 1 ? "learner" : "learners"} enrolled` : "Select filters to view list"}
               </CardDescription>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-              <div className="relative sm:w-[200px]">
+            {/* Desktop actions */}
+            <div className="hidden flex-row items-center gap-2 lg:flex">
+              <div className="relative w-[200px]">
                 <Input
                   type="date"
                   aria-label="Attendance date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
                   max={getLocalDateStr()}
-                  className="h-12 bg-white border-slate-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all pl-10"
+                  className="h-11 rounded-xl border-border bg-background pl-10 text-xs font-semibold"
                 />
-                <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               </div>
               <Button
                 onClick={markAllPresent}
                 variant="outline"
-                className="h-12 rounded-xl border-slate-200 text-muted-foreground hover:bg-white font-bold transition-all"
+                className="h-11 rounded-xl font-semibold"
                 disabled={!attendanceData || loading}
               >
-                <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500" />
-                MARK ALL
+                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
+                Mark all
               </Button>
               <Button
                 onClick={clearAttendance}
                 variant="outline"
-                className="h-12 rounded-xl border-slate-200 text-muted-foreground hover:bg-white font-bold transition-all px-4"
+                className="h-11 rounded-xl px-4 font-semibold"
                 disabled={!attendanceData || loading}
               >
-                CLEAR
+                Clear
               </Button>
               <Button
                 onClick={saveAndNextDay}
                 disabled={saving || !attendanceData}
-                className="h-12 rounded-xl text-white shadow-xl font-bold text-[10px] tracking-widest uppercase transition-all px-6"
-                style={{ backgroundColor: colors.primary }}
+                className="h-11 rounded-xl px-5 text-xs font-semibold uppercase tracking-wide"
               >
                 {saving ? (
                   <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    SAVING...
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
                   </>
                 ) : (
                   <>
-                    <Save className="w-4 h-4 mr-2" />
-                    SAVE & NEXT DAY
+                    <Save className="mr-2 h-4 w-4" />
+                    Save & next day
                   </>
                 )}
               </Button>
             </div>
           </div>
+
+          {/* Mobile date + search + bulk actions */}
+          <div className="space-y-3 lg:hidden">
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Input
+                  type="date"
+                  aria-label="Attendance date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  max={getLocalDateStr()}
+                  className="h-12 rounded-xl border-border bg-background pl-10 text-base font-semibold"
+                />
+                <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              </div>
+              <Button
+                onClick={markAllPresent}
+                variant="outline"
+                className="h-12 shrink-0 rounded-xl px-3 text-xs font-semibold"
+                disabled={!attendanceData || loading}
+              >
+                <CheckCircle2 className="mr-1.5 h-4 w-4 text-emerald-500" />
+                All
+              </Button>
+              <Button
+                onClick={clearAttendance}
+                variant="outline"
+                className="h-12 shrink-0 rounded-xl px-3 text-xs font-semibold"
+                disabled={!attendanceData || loading}
+              >
+                Clear
+              </Button>
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                inputMode="search"
+                placeholder="Search name or LRN"
+                aria-label="Search learners"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-12 rounded-xl border-border bg-background pl-10 text-base"
+              />
+            </div>
+            <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+              <span>{filteredStudents.length} shown</span>
+              <span className="flex items-center gap-3">
+                <span className="text-emerald-600">{stats.present} present</span>
+                <span className="text-rose-600">{stats.absent} absent</span>
+                <span className="text-amber-600">{stats.late} late</span>
+              </span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-24">
+            <div className="flex items-center justify-center py-20">
               <div className="text-center">
-                <div className="w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm" style={{ backgroundColor: `${colors.primary}15` }}>
-                  <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
-                </div>
-                <p className="text-muted-foreground font-bold text-xs uppercase tracking-widest">Loading attendance...</p>
+                <Loader2 className="mx-auto mb-4 h-9 w-9 animate-spin text-primary" />
+                <p className="text-sm font-medium text-muted-foreground">Loading attendance…</p>
               </div>
             </div>
           ) : attendanceData ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50/50 hover:bg-transparent border-0">
-                    <TableHead className="px-8 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">LRN</TableHead>
-                    <TableHead className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Learner Name</TableHead>
-                    <TableHead className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-center">Attendance Status</TableHead>
-                    <TableHead className="px-8 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Notes / Remarks</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {attendanceData.attendance.map((student) => (
-                    <TableRow key={student.studentId} className="hover:bg-slate-50/50 transition-all border-slate-50 group">
-                      <TableCell className="px-8 font-mono text-xs text-muted-foreground font-bold group-hover:text-foreground transition-colors">
-                        {student.lrn}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-muted-foreground font-bold text-xs shrink-0">
+            <>
+              {/* Mobile roster list */}
+              <div className="divide-y divide-border lg:hidden">
+                {filteredStudents.length === 0 ? (
+                  <div className="px-4 py-16 text-center">
+                    <Search className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm font-semibold text-foreground">No learners match your search</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Try a different name or LRN.</p>
+                  </div>
+                ) : (
+                  filteredStudents.map((student) => {
+                    const flag = monthlyStats?.consecutiveAbsenceFlags[student.studentId];
+                    const remarksOpen = !!expandedRemarks[student.studentId];
+                    return (
+                      <div key={student.studentId} className="space-y-3 p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
                             {student.lastName.charAt(0)}
                           </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-bold text-foreground tracking-tight truncate">
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 text-sm font-semibold text-foreground">
                               {student.lastName}, {student.firstName}
-                            </span>
-                              {monthlyStats?.consecutiveAbsenceFlags[student.studentId] && (
-                              <span className="text-[8px] font-bold uppercase text-rose-600 bg-rose-50 border border-rose-100 rounded px-1.5 py-0.5 mt-0.5 w-fit tracking-wide animate-pulse">
-                                5+ Consecutive Absences
+                            </p>
+                            <p className="font-mono text-xs text-muted-foreground">{student.lrn}</p>
+                            {flag && (
+                              <span className="mt-1.5 inline-flex rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-600">
+                                5+ consecutive absences
                               </span>
                             )}
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedRemarks((prev) => ({ ...prev, [student.studentId]: !prev[student.studentId] }))}
+                            aria-label={remarksOpen ? "Hide remark" : "Add remark"}
+                            aria-expanded={remarksOpen}
+                            className={cn(
+                              "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition-colors",
+                              remarksOpen
+                                ? "border-primary/30 bg-primary/10 text-primary"
+                                : "border-border bg-background text-muted-foreground",
+                            )}
+                          >
+                            <StickyNote className="h-5 w-5" />
+                          </button>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-center">
-                          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner">
-                            {[
-                              { id: "PRESENT", symbol: "•", color: "emerald", label: "Present" },
-                              { id: "ABSENT", symbol: "X", color: "rose", label: "Absent" },
-                              { id: "LATE", symbol: "/", color: "amber", label: "Tardy" },
-                              { id: "EXCUSED", symbol: "E", color: "indigo", label: "Excused" }
-                            ].map((option) => (
+
+                        <div
+                          role="group"
+                          aria-label={`Attendance status for ${student.firstName} ${student.lastName}`}
+                          className="grid grid-cols-4 gap-1.5"
+                        >
+                          {STATUS_OPTIONS.map((option) => {
+                            const selected = student.status === option.id;
+                            return (
                               <button
                                 key={option.id}
-                                onClick={() => handleStatusChange(student.studentId, option.id as any)}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition-all text-xs ${
-                                  student.status === option.id 
-                                    ? `bg-${option.color}-600 text-white shadow-md scale-105 z-10` 
-                                    : `text-muted-foreground hover:text-muted-foreground hover:bg-slate-200/50`
-                                }`}
-                                title={option.label}
+                                type="button"
+                                onClick={() => handleStatusChange(student.studentId, option.id)}
+                                aria-pressed={selected}
+                                aria-label={option.label}
+                                className={cn(
+                                  "flex min-h-12 items-center justify-center rounded-xl border px-1 text-[11px] font-semibold transition-colors active:scale-[0.98]",
+                                  selected
+                                    ? option.activeClass
+                                    : "border-border bg-background text-muted-foreground",
+                                )}
                               >
-                                {option.symbol}
+                                {option.label}
                               </button>
-                            ))}
-                          </div>
+                            );
+                          })}
                         </div>
-                      </TableCell>
-                      <TableCell className="px-8">
-                        <Input
-                          placeholder="Add remark..."
-                          value={student.remarks || ""}
-                          onChange={(e) => handleRemarksChange(student.studentId, e.target.value)}
-                          className="h-10 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-indigo-500 focus:ring-0 rounded-none text-xs font-medium transition-all"
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="py-32 flex flex-col items-center justify-center text-center px-4">
-              <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-sm">
-                <Users className="w-10 h-10 text-muted-foreground" />
+
+                        {remarksOpen && (
+                          <Input
+                            autoFocus
+                            placeholder="Add a remark for this learner…"
+                            aria-label={`Remark for ${student.firstName} ${student.lastName}`}
+                            value={student.remarks || ""}
+                            onChange={(e) => handleRemarksChange(student.studentId, e.target.value)}
+                            className="h-12 rounded-xl border-border bg-background text-base"
+                          />
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
-              <h3 className="font-bold text-foreground text-2xl mb-3">No Records Selected</h3>
-              <p className="text-muted-foreground font-medium text-lg leading-relaxed">Configure section and date to begin tracking attendance</p>
+
+              {/* Desktop table */}
+              <div className="hidden overflow-x-auto lg:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-0 bg-muted/50 hover:bg-transparent">
+                      <TableHead className="px-6 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">LRN</TableHead>
+                      <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Learner name</TableHead>
+                      <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Attendance status</TableHead>
+                      <TableHead className="px-6 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Notes / remarks</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {attendanceData.attendance.map((student) => (
+                      <TableRow key={student.studentId} className="group border-border transition-colors hover:bg-muted/40">
+                        <TableCell className="px-6 font-mono text-xs font-semibold text-muted-foreground">
+                          {student.lrn}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                              {student.lastName.charAt(0)}
+                            </div>
+                            <div className="flex min-w-0 flex-col">
+                              <span className="truncate font-semibold tracking-tight text-foreground">
+                                {student.lastName}, {student.firstName}
+                              </span>
+                              {monthlyStats?.consecutiveAbsenceFlags[student.studentId] && (
+                                <span className="mt-0.5 w-fit rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-600">
+                                  5+ consecutive absences
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-center">
+                            <div role="group" aria-label={`Attendance status for ${student.firstName} ${student.lastName}`} className="flex items-center gap-0.5 rounded-xl border border-border bg-muted p-1">
+                              {STATUS_OPTIONS.map((option) => {
+                                const selected = student.status === option.id;
+                                return (
+                                  <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={() => handleStatusChange(student.studentId, option.id)}
+                                    aria-pressed={selected}
+                                    aria-label={option.label}
+                                    className={cn(
+                                      "flex h-9 w-9 items-center justify-center rounded-lg text-xs font-semibold transition-colors",
+                                      selected
+                                        ? option.activeClass
+                                        : "text-muted-foreground hover:bg-background",
+                                    )}
+                                    title={option.label}
+                                  >
+                                    {option.short}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-6">
+                          <Input
+                            placeholder="Add remark…"
+                            aria-label={`Remark for ${student.firstName} ${student.lastName}`}
+                            value={student.remarks || ""}
+                            onChange={(e) => handleRemarksChange(student.studentId, e.target.value)}
+                            className="h-10 rounded-none border-0 border-b border-transparent bg-transparent text-sm font-medium transition-all hover:border-border focus:border-primary focus:ring-0"
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center px-4 py-24 text-center">
+              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+                <Users className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">No records selected</h3>
+              <p className="mt-2 text-sm text-muted-foreground">Configure section and date to begin tracking attendance.</p>
             </div>
           )}
         </CardContent>
       </Card>
 
+      {/* Mobile sticky save */}
+      {attendanceData && (
+        <StickyActionBar>
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1 text-xs font-medium text-muted-foreground">
+              <span className="font-semibold text-foreground">{stats.present}</span> of {attendanceData.attendance.length} present
+            </div>
+            <Button
+              onClick={saveAndNextDay}
+              disabled={saving || !attendanceData}
+              className="h-12 min-w-[160px] rounded-xl text-xs font-semibold uppercase tracking-wide"
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save & next day
+                </>
+              )}
+            </Button>
+          </div>
+        </StickyActionBar>
+      )}
+
       {/* Clear Confirmation Dialog */}
       <Dialog open={showConfirmClear} onOpenChange={setShowConfirmClear}>
-        <DialogContent className="rounded-[2rem] border-0 shadow-2xl p-0 overflow-hidden max-w-md">
-          <div className="bg-amber-600 p-8 text-white">
-            <div className="w-16 h-16 bg-white/20 rounded-[1.5rem] flex items-center justify-center mb-6 backdrop-blur-md">
-              <AlertCircle className="w-8 h-8 text-white" />
+        <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-0">
+          <div className="p-5">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+              <AlertCircle className="h-6 w-6" />
             </div>
             <DialogHeader className="p-0 text-left">
-              <DialogTitle className="text-2xl font-bold text-white leading-tight">Reset Attendance?</DialogTitle>
-              <DialogDescription className="text-amber-100 font-medium text-base mt-2">
-                This will delete all saved attendance records for this date from the database. All students will reset to Present.
+              <DialogTitle className="text-xl font-semibold text-foreground">Reset attendance?</DialogTitle>
+              <DialogDescription className="mt-2 text-sm text-muted-foreground">
+                This deletes all saved attendance records for this date. Every learner resets to Present.
               </DialogDescription>
             </DialogHeader>
           </div>
-          <DialogFooter className="p-8 bg-white flex flex-col sm:flex-row gap-4">
+          <DialogFooter className="flex flex-col gap-2 border-t border-border bg-muted/30 p-4 sm:flex-row">
             <Button
               onClick={() => setShowConfirmClear(false)}
               variant="outline"
-              className="h-14 rounded-2xl border-slate-200 font-bold hover:bg-slate-50 transition-all flex-1"
+              className="h-12 flex-1 rounded-xl font-semibold"
             >
               Cancel
             </Button>
             <Button
               onClick={confirmClear}
-              className="h-14 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xl shadow-amber-100 transition-all flex-1"
+              className="h-12 flex-1 rounded-xl bg-amber-600 font-semibold text-white hover:bg-amber-700"
             >
-              Reset All
+              Reset all
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -615,3 +842,5 @@ export default function Attendance() {
     </div>
   );
 }
+
+

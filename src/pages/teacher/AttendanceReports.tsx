@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { Calendar, Download, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Calendar, ChevronDown, ChevronUp, Download, FileSpreadsheet, Loader2, MoveHorizontal, User } from "lucide-react";
 import api, { advisoryApi, type SF2Data } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,7 @@ export default function AttendanceReports() {
   const [data, setData] = useState<SF2Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showFullGrid, setShowFullGrid] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,152 +134,128 @@ export default function AttendanceReports() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
-      <PageHeader
-        title="Attendance Reports"
-        description="View and download attendance summaries"
-        actions={
-          <div className="p-2.5 rounded-2xl bg-primary text-primary-foreground shadow-lg">
-            <FileSpreadsheet className="w-6 h-6" />
-          </div>
-        }
-      />
+      <div className="hidden lg:block">
+        <PageHeader
+          title="Attendance Reports"
+          description="View and download attendance summaries"
+          actions={
+            <div className="rounded-2xl bg-primary p-2.5 text-primary-foreground shadow-lg">
+              <FileSpreadsheet className="w-6 h-6" />
+            </div>
+          }
+        />
+      </div>
 
-      <Card className="border-0 shadow-xl shadow-foreground/5 rounded-[2.5rem] overflow-hidden bg-card">
-        <CardContent className="p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-xl bg-primary text-primary-foreground">
-              <Calendar className="w-5 h-5" />
+      <div className="grid grid-cols-3 gap-2 lg:gap-6">
+        <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <CardContent className="p-3 lg:p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Students</p>
+                <p className="text-2xl font-bold text-foreground">{data ? enrolmentTotal : "—"}</p>
+              </div>
+              <div className="hidden rounded-xl bg-primary p-2.5 text-primary-foreground sm:flex">
+                <FileSpreadsheet className="w-6 h-6" />
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-bold text-foreground tracking-tight">Attendance Report</p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                Advisory section — auto-loaded, SF2-aligned
-              </p>
+          </CardContent>
+        </Card>
+        <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <CardContent className="p-3 lg:p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Avg. Attendance</p>
+                <p className="text-2xl font-bold text-emerald-600">
+                  {data ? `${data.summary.percentageAttendance}%` : "—"}
+                </p>
+              </div>
+              <div className="hidden rounded-xl bg-emerald-50 p-2.5 text-emerald-500 sm:flex">
+                <Calendar className="w-6 h-6" />
+              </div>
             </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                Advisory Section
-              </label>
-              <div className="h-12 bg-muted/50 border border-border rounded-xl flex items-center px-4">
-                <span className="text-sm font-bold text-foreground">
+          </CardContent>
+        </Card>
+        <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <CardContent className="p-3 lg:p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Days</p>
+                <p className="text-2xl font-bold text-foreground">{data ? totalDays : "—"}</p>
+              </div>
+              <div className="hidden rounded-xl bg-amber-50 p-2.5 text-amber-500 sm:flex">
+                <Calendar className="w-6 h-6" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <CardHeader className="border-b border-border p-4 lg:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="hidden rounded-xl bg-primary p-2 text-primary-foreground sm:flex">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-lg font-semibold tracking-tight text-foreground lg:text-xl">
+                  Attendance summary
+                </CardTitle>
+                <CardDescription className="mt-1 text-sm">
                   {section
                     ? `${gradeLevelLabels[section.gradeLevel] ?? section.gradeLevel} - ${section.name}`
-                    : "Loading..."}
-                </span>
+                    : "Loading advisory section…"}
+                  {hasReport && data ? ` · ${data.monthLabel} ${data.year}` : ""}
+                </CardDescription>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="reportMonth" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                Month
-              </label>
-              <select
-                id="reportMonth"
-                value={month}
-                onChange={(e) => setMonth(Number(e.target.value))}
-                className="h-12 w-full bg-background border border-border rounded-xl text-xs font-bold px-3 text-foreground"
+            <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[8rem_6rem_auto]">
+              <div className="space-y-1.5">
+                <label htmlFor="reportMonth" className="pl-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Month
+                </label>
+                <select
+                  id="reportMonth"
+                  value={month}
+                  onChange={(e) => setMonth(Number(e.target.value))}
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+                >
+                  {MONTH_NAMES.map((name, i) => (
+                    <option key={name} value={i + 1}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="reportYear" className="pl-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Year
+                </label>
+                <select
+                  id="reportYear"
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <Button
+                onClick={handleDownload}
+                disabled={!data}
+                className="col-span-2 h-10 rounded-lg text-xs font-semibold uppercase tracking-wide sm:col-span-1"
               >
-                {MONTH_NAMES.map((name, i) => (
-                  <option key={name} value={i + 1}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+                <Download className="mr-2 h-4 w-4" />
+                Download Excel
+              </Button>
             </div>
-
-            <div className="space-y-2">
-              <label htmlFor="reportYear" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                Year
-              </label>
-              <select
-                id="reportYear"
-                value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
-                className="h-12 w-full bg-background border border-border rounded-xl text-xs font-bold px-3 text-foreground"
-              >
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <Button
-              onClick={handleDownload}
-              disabled={!data}
-              variant="outline"
-              className="h-12 rounded-xl font-bold text-[10px] tracking-widest uppercase"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download Excel
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {hasReport && data && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="border-0 shadow-lg shadow-foreground/5 rounded-[2rem] bg-card overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Students</p>
-                  <p className="text-2xl font-bold text-foreground">{enrolmentTotal}</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-primary text-primary-foreground">
-                  <FileSpreadsheet className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-lg shadow-foreground/5 rounded-[2rem] bg-card overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Avg. Attendance</p>
-                  <p className="text-2xl font-bold text-emerald-600">{data.summary.percentageAttendance}%</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-500">
-                  <Calendar className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-lg shadow-foreground/5 rounded-[2rem] bg-card overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Days</p>
-                  <p className="text-2xl font-bold text-foreground">{totalDays}</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
-                  <Calendar className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <Card className="border-0 shadow-2xl shadow-foreground/5 rounded-[2.5rem] overflow-hidden bg-card">
-        <CardHeader className="p-8 border-b border-border/60 bg-muted/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-xl font-bold text-foreground tracking-tight">Attendance Summary</CardTitle>
-              <CardDescription className="text-muted-foreground font-sans normal-case font-medium tracking-normal mt-1">
-                {hasReport && data
-                  ? `${data.monthLabel} ${data.year} — ${enrolmentTotal} students, ${totalDays} school days`
-                  : "Attendance overview for your advisory class"}
-              </CardDescription>
-            </div>
-            {hasReport && data && (
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-3 py-1.5 rounded-full bg-muted">
-                {enrolmentTotal} Students
-              </span>
-            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -301,16 +278,120 @@ export default function AttendanceReports() {
             </div>
           ) : hasReport && data ? (
             <>
-              <div className="overflow-x-auto">
+              {/* Mobile per-student summary */}
+              {!showFullGrid && (
+              <div className="md:hidden">
+                {data.groups.map((group) => (
+                  <div key={`mobile-${group.key}`}>
+                    <p className="bg-muted/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {group.label} ({group.students.length})
+                    </p>
+                    <div className="divide-y divide-border">
+                      {group.students.map((student) => {
+                        const excused = Object.values(student.marks).filter((m) => m === "E").length;
+                        const rate = parseFloat(getAttendanceRate(student.present));
+                        return (
+                          <details key={`mobile-${student.studentId}`} className="group/student">
+                            <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                                {student.lastName.charAt(0)}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="line-clamp-2 text-sm font-semibold text-foreground">
+                                  {student.lastName}, {student.firstName}
+                                </p>
+                                <p className="font-mono text-[11px] text-muted-foreground">{student.lrn}</p>
+                                {student.maxConsecutiveAbsent >= 5 && (
+                                  <span className="mt-1 inline-flex rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-600">
+                                    5+ consecutive absences
+                                  </span>
+                                )}
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className={`text-sm font-bold ${rate >= 90 ? "text-emerald-600" : rate >= 75 ? "text-amber-600" : "text-rose-600"}`}>
+                                  {getAttendanceRate(student.present)}%
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">{student.present}/{totalDays} days</p>
+                              </div>
+                              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/student:rotate-180" aria-hidden="true" />
+                            </summary>
+                            <div className="space-y-3 bg-muted/30 px-4 pb-4">
+                              <div className="grid grid-cols-4 gap-2">
+                                <div className="rounded-lg border border-border bg-card px-2 py-2 text-center">
+                                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">P</p>
+                                  <p className="text-sm font-bold text-emerald-600">{student.present}</p>
+                                </div>
+                                <div className="rounded-lg border border-border bg-card px-2 py-2 text-center">
+                                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">A</p>
+                                  <p className="text-sm font-bold text-rose-600">{student.absent}</p>
+                                </div>
+                                <div className="rounded-lg border border-border bg-card px-2 py-2 text-center">
+                                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">L</p>
+                                  <p className="text-sm font-bold text-amber-600">{student.tardy}</p>
+                                </div>
+                                <div className="rounded-lg border border-border bg-card px-2 py-2 text-center">
+                                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">E</p>
+                                  <p className="text-sm font-bold text-indigo-600">{excused}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                  <User className="h-3 w-3" /> Daily marks
+                                </p>
+                                <ul className="grid grid-cols-2 gap-1">
+                                  {data.schoolDays.map((d) => {
+                                    const mark = student.marks[d.date] ?? "";
+                                    return (
+                                      <li key={`${student.studentId}-${d.date}`} className="flex items-center justify-between rounded-md bg-card px-2 py-1 text-[11px]">
+                                        <span className="text-muted-foreground">{new Date(`${d.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</span>
+                                        <MarkContent mark={mark} />
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            </div>
+                          </details>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 border-y border-border px-4 py-3 md:hidden">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Full SF2 grid</p>
+                  <p className="text-xs text-muted-foreground">Wide matrix with sticky LRN column</p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFullGrid((prev) => !prev)}
+                  aria-expanded={showFullGrid}
+                  className="h-12 shrink-0 rounded-xl text-xs font-semibold"
+                >
+                  {showFullGrid ? <ChevronUp className="mr-1.5 h-4 w-4" /> : <ChevronDown className="mr-1.5 h-4 w-4" />}
+                  {showFullGrid ? "Hide" : "View"}
+                </Button>
+              </div>
+
+              {showFullGrid && (
+                <p className="flex items-center gap-1.5 px-4 pb-2 text-[11px] font-medium text-muted-foreground md:hidden">
+                  <MoveHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                  Swipe horizontally to see all days
+                </p>
+              )}
+              <div className={showFullGrid ? "overflow-x-auto" : "hidden overflow-x-auto md:block"}>
                 <Table className="border-collapse table-fixed min-w-full">
                   <TableHeader>
                     <TableRow className="bg-muted/50 border-b border-border">
-                      <TableHead className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-r border-border/60 px-4">LRN</TableHead>
-                      <TableHead className="w-56 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-r border-border/60 px-4">Student Name</TableHead>
+                      <TableHead className="sticky left-0 z-10 w-36 bg-muted px-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-r border-border/60">LRN</TableHead>
+                      <TableHead className="w-56 bg-muted px-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-r border-border/60">Student name</TableHead>
                       {data.schoolDays.map((d) => (
                         <TableHead
                           key={d.date}
-                          title={d.date}
+                          title={d.date} aria-label={d.date}
                           className="w-10 text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center border-r border-border/60 p-0"
                         >
                           {d.dayNum}
@@ -332,7 +413,7 @@ export default function AttendanceReports() {
                             colSpan={data.schoolDays.length + 8}
                             className="py-2.5 px-6 text-[10px] font-bold text-muted-foreground tracking-widest uppercase"
                           >
-                            {group.label} ({group.students.length} Learners)
+                            {group.label} ({group.students.length} {group.students.length === 1 ? "Learner" : "Learners"})
                           </TableCell>
                         </TableRow>
                         {group.students.map((student) => {
@@ -340,16 +421,16 @@ export default function AttendanceReports() {
                           const rate = parseFloat(getAttendanceRate(student.present));
                           return (
                             <TableRow key={student.studentId} className="hover:bg-muted/30 transition-all border-border/60">
-                              <TableCell className="font-mono text-xs text-muted-foreground font-bold border-r border-border/60 px-4">
+                              <TableCell className="sticky left-0 z-10 bg-card px-4 font-mono text-xs font-semibold text-muted-foreground border-r border-border/60">
                                 {student.lrn}
                               </TableCell>
-                              <TableCell className="font-bold text-foreground tracking-tight border-r border-border/60 whitespace-nowrap min-w-[200px] px-4">
+                              <TableCell className="min-w-[200px] bg-card px-4 font-semibold tracking-tight text-foreground border-r border-border/60">
                                 <div className="flex items-center justify-between gap-3">
                                   <span>
                                     {student.lastName}, {student.firstName}
                                   </span>
                                   {student.maxConsecutiveAbsent >= 5 && (
-                                    <span className="bg-rose-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse shrink-0">
+                                    <span className="bg-rose-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0">
                                       5+ Abs
                                     </span>
                                   )}
@@ -437,3 +518,7 @@ export default function AttendanceReports() {
     </div>
   );
 }
+
+
+
+

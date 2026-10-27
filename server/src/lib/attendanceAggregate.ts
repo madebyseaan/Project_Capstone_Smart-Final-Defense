@@ -343,3 +343,47 @@ export function buildSf9Attendance(
     },
   };
 }
+
+export interface TermAttendance {
+  startDate: string;
+  endDate: string;
+  schoolDays: number;
+  present: number;
+  absent: number;
+}
+
+function toDateKey(value: Date | string): string {
+  return typeof value === "string" ? value.slice(0, 10) : dateKey(value);
+}
+
+/**
+ * Aggregate attendance for a single term using the configured term start/end
+ * dates. Returns null when either boundary is missing — never guess a range.
+ * Mirrors SF9 attendance semantics: a school day is a date with a saved
+ * attendance row; LATE/EXCUSED count as present; only ABSENT counts as absent.
+ */
+export function buildTermAttendance(
+  records: AttendanceRecordLike[],
+  startDate: Date | string | null | undefined,
+  endDate: Date | string | null | undefined,
+): TermAttendance | null {
+  if (!startDate || !endDate) return null;
+
+  const start = toDateKey(startDate);
+  const end = toDateKey(endDate);
+  const inRange = records.filter((record) => {
+    const key = dateKey(record.date);
+    return key >= start && key <= end;
+  });
+
+  const schoolDays = new Set(inRange.map((record) => dateKey(record.date))).size;
+  const absent = inRange.filter((record) => isAbsent(record.status)).length;
+
+  return {
+    startDate: start,
+    endDate: end,
+    schoolDays,
+    present: inRange.length - absent,
+    absent,
+  };
+}

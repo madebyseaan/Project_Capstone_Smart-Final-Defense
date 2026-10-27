@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSyncStream } from "@/hooks/useSyncStream";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Link, useLocation } from "react-router-dom";
 import {
   Users,
@@ -23,6 +24,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { gradesApi, scheduleApi, type ClassAssignment, type GradeDeadlineInfo, type ArchivedClassInfo } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { MobileDashboard } from "./components/MobileDashboard";
 
 import {
   Select,
@@ -135,6 +137,7 @@ export default function TeacherDashboard() {
   const { colors } = useTheme();
   const { syncVersion } = useSyncStream();
   const location = useLocation();
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [data, setData] = useState<DashboardData | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [masteryData, setMasteryData] = useState<MasteryDistribution | null>(null);
@@ -326,7 +329,7 @@ export default function TeacherDashboard() {
       <div className="flex items-center justify-center h-[80vh]">
         <div className="text-center">
           <div className="relative w-24 h-24 mx-auto mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-slate-100" />
+            <div className="absolute inset-0 rounded-full border-4 border-muted" />
             <div className="absolute inset-0 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
             <div className="absolute inset-0 flex items-center justify-center">
               <Sparkles className="w-8 h-8 text-indigo-500 animate-pulse" />
@@ -341,7 +344,7 @@ export default function TeacherDashboard() {
   if (error || !data) {
     return (
       <div className="flex items-center justify-center h-[60vh] p-4">
-        <Card className="max-w-md w-full border border-slate-200/60 rounded-2xl overflow-hidden">
+        <Card className="max-w-md w-full overflow-hidden rounded-2xl border border-border bg-card">
           <div className="h-2 bg-red-500" />
           <CardContent className="p-10 text-center">
             <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-red-50 flex items-center justify-center text-red-500">
@@ -351,7 +354,7 @@ export default function TeacherDashboard() {
             <p className="text-muted-foreground mb-8">{error || "We couldn't load your dashboard data right now."}</p>
             <Button 
               onClick={() => window.location.reload()} 
-              className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-lg transition-all"
+              className="w-full h-12 rounded-xl bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-all"
             >
               Try to Refresh
             </Button>
@@ -361,11 +364,42 @@ export default function TeacherDashboard() {
     );
   }
 
+  const mobileHonors = [
+    ...(advisoryHonors?.advisoryHonors ?? []),
+    ...(advisoryHonors?.withHonors ?? []),
+  ].sort((a, b) => b.grade - a.grade);
+  const termLabel =
+    data.currentTerm === "T1" ? "Term 1" : data.currentTerm === "T2" ? "Term 2" : data.currentTerm === "T3" ? "Term 3" : "Active term";
+  const todayLabel = now.toLocaleDateString("en-PH", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+    <div className="animate-fade-in max-w-7xl mx-auto pb-12">
+      {!isDesktop && (
+        <MobileDashboard
+          teacherName={data.teacher.name}
+          schoolYear={data.currentSchoolYear || data.classAssignments[0]?.schoolYear}
+          termLabel={termLabel}
+          todayLabel={todayLabel}
+          totalStudents={data.stats.totalStudents}
+          totalClasses={data.stats.totalClasses}
+          passingRate={stats?.summary.overallPassingRate ?? 0}
+          submissionRate={stats?.summary.gradeSubmissionRate ?? 0}
+          classInfo={classInfo}
+          classStats={stats?.classStats ?? []}
+          mastery={masteryData}
+          honors={mobileHonors}
+          atRisk={stats?.summary.studentsAtRisk ?? []}
+        />
+      )}
+
+      {isDesktop && <div className="space-y-6">
       {/* ── Dynamic Living Hero Banner ── */}
       <div
-        className="relative overflow-hidden rounded-3xl p-7 md:p-8 text-white shadow-xl shadow-red-950/20 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2"
+        className="relative overflow-hidden rounded-2xl p-5 text-white shadow-xl shadow-red-950/20 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 lg:rounded-3xl lg:p-8"
         style={{
           background: `linear-gradient(135deg, ${colors.primary} 0%, color-mix(in srgb, ${colors.primary} 70%, black) 100%)`,
         }}
@@ -373,9 +407,9 @@ export default function TeacherDashboard() {
         {/* Ambient subtle light sheen across the top */}
         <div className="absolute inset-0 bg-gradient-to-b from-white/[0.08] to-transparent pointer-events-none" />
 
-        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <div className="relative z-10 grid grid-cols-1 items-center gap-5 lg:grid-cols-12 lg:gap-8">
           {/* Left Column: Greeting & Quick Actions (7 cols) */}
-          <div className="lg:col-span-7 space-y-5">
+          <div className="space-y-4 lg:col-span-7 lg:space-y-5">
             {/* Live Status Pill Row */}
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-semibold tracking-wide">
@@ -397,7 +431,7 @@ export default function TeacherDashboard() {
 
             {/* Main Title & Subtitle */}
             <div>
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white leading-tight">
+              <h1 className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl lg:text-4xl">
                 Good day, Teacher {data.teacher.name.split(",")[0]}
               </h1>
               <p className="text-sm sm:text-base text-white/80 font-normal mt-2 max-w-xl leading-relaxed">
@@ -406,18 +440,20 @@ export default function TeacherDashboard() {
             </div>
 
             {/* Quick Action Buttons */}
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Link to="/teacher/advisory">
-                <Button className="h-11 px-5 rounded-xl bg-white text-slate-900 hover:bg-white/90 active:scale-95 font-bold text-sm transition-all shadow-md flex items-center gap-2">
-                  <Users className="w-4 h-4 text-red-900" />
-                  My Advisory
-                </Button>
+            <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:flex-wrap sm:items-center sm:gap-3 sm:pt-2">
+              <Link
+                to="/teacher/advisory"
+                className="flex h-12 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-slate-900 shadow-md transition-all active:scale-95 hover:bg-white/90"
+              >
+                <Users className="h-4 w-4 text-red-900" />
+                My Advisory
               </Link>
-              <Link to="/teacher/classes">
-                <Button className="h-11 px-5 rounded-xl bg-white/20 hover:bg-white/30 active:scale-95 text-white border border-white/25 backdrop-blur-md font-semibold text-sm transition-all shadow-sm flex items-center gap-2">
-                  <BookOpen className="w-4 h-4" />
-                  Class Records
-                </Button>
+              <Link
+                to="/teacher/classes"
+                className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/20 px-4 text-sm font-semibold text-white shadow-sm backdrop-blur-md transition-all active:scale-95 hover:bg-white/30"
+              >
+                <BookOpen className="h-4 w-4" />
+                Class Records
               </Link>
             </div>
           </div>
@@ -431,7 +467,7 @@ export default function TeacherDashboard() {
                   <Clock className="w-4 h-4 text-amber-300" />
                   <span className="text-xs font-bold uppercase tracking-wider text-white/90">Daily Timetable</span>
                 </div>
-                <Link to="/teacher/schedule" className="text-[11px] font-semibold text-amber-200 hover:underline flex items-center gap-1">
+                <Link to="/teacher/schedule" className="inline-flex min-h-12 items-center gap-1 text-[11px] font-semibold text-amber-200 hover:underline">
                   Full Schedule &rarr;
                 </Link>
               </div>
@@ -440,7 +476,7 @@ export default function TeacherDashboard() {
               {classInfo.status === "active" && classInfo.current ? (
                 <div className="p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-400/30">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded bg-emerald-500 text-white shadow-sm animate-pulse">
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded bg-emerald-500 text-white shadow-sm animate-pulse">
                       In Session Now
                     </span>
                     <span className="text-xs font-bold text-emerald-200">
@@ -475,11 +511,11 @@ export default function TeacherDashboard() {
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div className="p-2.5 rounded-xl bg-white/[0.08] border border-white/15 text-center">
                   <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest block">Passing Rate</span>
-                  <span className="text-lg font-black text-white">{stats?.summary.overallPassingRate.toFixed(0) ?? 0}%</span>
+                  <span className="text-lg font-bold text-white">{stats?.summary.overallPassingRate.toFixed(0) ?? 0}%</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/[0.08] border border-white/15 text-center">
                   <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest block">Submissions</span>
-                  <span className="text-lg font-black text-white">{stats?.summary.gradeSubmissionRate.toFixed(0) ?? 0}%</span>
+                  <span className="text-lg font-bold text-white">{stats?.summary.gradeSubmissionRate.toFixed(0) ?? 0}%</span>
                 </div>
               </div>
             </div>
@@ -488,7 +524,7 @@ export default function TeacherDashboard() {
       </div>
 
       {/* Stats Cards - Refined Professional Look */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-6">
         {[
           {
             label: "Active Students",
@@ -519,14 +555,14 @@ export default function TeacherDashboard() {
             desc: "Successful submissions"
           },
         ].map((stat) => (
-          <Card key={stat.label} className="border border-slate-200/60 rounded-2xl bg-card/70 backdrop-blur-xl p-4 shadow-md shadow-slate-200/40 hover:shadow-xl transition-all group relative overflow-hidden">
+          <Card key={stat.label} className="relative overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm transition-all group">
             <div className="absolute top-0 right-0 w-20 h-20 opacity-5 rounded-full -mr-6 -mt-6" style={{ backgroundColor: stat.color }} />
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 rounded-xl text-primary-foreground shadow-md group-hover:scale-110 transition-transform" style={{ backgroundColor: stat.color }}>
                 <stat.icon className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{stat.label}</p>
+            <p className="text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
             <p className="text-2xl font-bold text-foreground mt-0.5">{stat.value}</p>
             <p className="text-[11px] text-muted-foreground mt-1">{stat.desc}</p>
           </Card>
@@ -657,11 +693,11 @@ export default function TeacherDashboard() {
       })()}
 
       {/* ── Performance Mastery ── Full Width */}
-      <Card className="border border-slate-200/60 rounded-2xl overflow-hidden flex flex-col bg-white">
-          <CardHeader className="p-6 pb-3 border-b border-slate-100">
+      <Card className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
+          <CardHeader className="border-b border-border p-4 pb-3 lg:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-slate-900 text-white">
+                <div className="p-2 rounded-xl bg-primary text-primary-foreground">
                   <BarChart3 className="w-5 h-5" />
                 </div>
                 <div>
@@ -670,12 +706,12 @@ export default function TeacherDashboard() {
                 </div>
               </div>
               
-              <div className="flex items-center gap-4 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+              <div className="flex w-full flex-col gap-2 rounded-xl border border-border bg-muted/50 p-1.5 sm:w-auto sm:flex-row sm:items-center">
                 <Select value={selectedGradeLevel} onValueChange={(val) => {
                   if (val) setSelectedGradeLevel(val);
                   setSelectedSection("all");
                 }}>
-                  <SelectTrigger className="w-[115px]">
+                  <SelectTrigger className="h-12! w-full sm:h-8! sm:w-[130px]">
                     <SelectValue placeholder="Grade">
                       {selectedGradeLevel === "all" ? "All Grades" : (gradeLevelLabels[selectedGradeLevel] || selectedGradeLevel)}
                     </SelectValue>
@@ -688,7 +724,7 @@ export default function TeacherDashboard() {
                   </SelectContent>
                 </Select>
                 <Select value={selectedSection} onValueChange={(val) => val && setSelectedSection(val)}>
-                  <SelectTrigger className="w-[135px]">
+                  <SelectTrigger className="h-12! w-full sm:h-8! sm:w-[150px]">
                     <SelectValue placeholder="Section">
                       {selectedSection === "all" ? "All Sections" : (filteredSections.find((sec) => sec.id === selectedSection)?.name || "All Sections")}
                     </SelectValue>
@@ -703,8 +739,28 @@ export default function TeacherDashboard() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-8 pt-6 flex-1">
-            <div className="h-[320px] w-full">
+          <CardContent className="flex-1 p-4 pt-6 lg:p-8">
+            {/* Compact mobile distribution — the chart is desktop-only */}
+            <div className="grid grid-cols-2 gap-2 sm:hidden">
+              {chartData.map((entry) => (
+                <div key={entry.name} className="rounded-xl border border-border bg-background p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: entry.fill }} />
+                    <span className="truncate text-[11px] font-medium text-muted-foreground">{entry.name}</span>
+                  </div>
+                  <p className="mt-1 text-xl font-bold text-foreground">{entry.students}</p>
+                  <p className="text-[10px] text-muted-foreground">{entry.range}</p>
+                </div>
+              ))}
+              <div className="col-span-2 rounded-xl border border-border bg-background p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">Total learners</span>
+                  <span className="text-lg font-bold text-foreground">{masteryData?.totalStudents ?? 0}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden h-[320px] w-full sm:block">
               <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 800, height: 320 }}>
                 <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                   <defs>
@@ -759,10 +815,10 @@ export default function TeacherDashboard() {
         const remaining = classStats.length - INITIAL_COUNT;
 
         return (
-          <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white">
-            <CardHeader className="p-6 pb-3 border-b border-slate-100">
+          <Card className="overflow-hidden rounded-2xl border border-border bg-card">
+            <CardHeader className="border-b border-border p-4 pb-3 lg:p-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-slate-100 text-foreground">
+                <div className="p-2 rounded-xl bg-muted text-foreground">
                   <FileCheck className="w-5 h-5" />
                 </div>
                 <div>
@@ -771,7 +827,7 @@ export default function TeacherDashboard() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-8 pt-6">
+            <CardContent className="p-4 pt-6 lg:p-8">
               {classStats.length > 0 ? (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -783,11 +839,11 @@ export default function TeacherDashboard() {
                       const barColorList = [colors.primary, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
                       const barColor = barColorList[idx % barColorList.length];
                       return (
-                        <div key={classStat.id} className={`p-6 rounded-3xl border transition-all ${isOffTerm ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50 border-slate-100 hover:border-slate-200'}`}>
+                        <div key={classStat.id} className={`p-6 rounded-3xl border transition-all ${isOffTerm ? 'bg-amber-50/50 border-amber-200' : 'bg-muted/40 border-border hover:border-border'}`}>
                           <div className="flex items-center justify-between mb-4">
                             <div>
                               <p className="text-sm font-bold text-foreground leading-tight">{classStat.sectionName}</p>
-                              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">{classStat.subjectName}</p>
+                              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mt-1">{classStat.subjectName}</p>
                             </div>
                             {isOffTerm ? (
                               <span className="text-[10px] font-bold text-amber-700 bg-amber-100 rounded-lg px-2 py-1">OFF-TERM</span>
@@ -799,15 +855,15 @@ export default function TeacherDashboard() {
                             <p className="text-xs text-amber-700 font-medium">Not taught this term — covered by another class record.</p>
                           ) : (
                             <>
-                              <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
+                              <div className="h-3 bg-border rounded-full overflow-hidden shadow-inner">
                                 <div
                                   className="h-full rounded-full transition-all duration-1000 ease-out"
                                   style={{ width: `${percentage}%`, backgroundColor: barColor }}
                                 />
                               </div>
                               <div className="flex justify-between mt-3">
-                                <p className="text-[9px] font-bold text-muted-foreground">{classStat.gradedCount} graded</p>
-                                <p className="text-[9px] font-bold text-muted-foreground">{classStat.totalStudents} total</p>
+                                <p className="text-[10px] font-medium text-muted-foreground">{classStat.gradedCount} graded</p>
+                                <p className="text-[10px] font-medium text-muted-foreground">{classStat.totalStudents} total</p>
                               </div>
                             </>
                           )}
@@ -820,7 +876,7 @@ export default function TeacherDashboard() {
                       <Button
                         onClick={() => setShowAllGrading(true)}
                         variant="outline"
-                        className="w-full h-12 rounded-2xl border-dashed border-slate-200 text-muted-foreground hover:bg-slate-50 hover:text-foreground font-bold text-[10px] tracking-[0.2em] uppercase transition-all"
+                        className="w-full h-12 rounded-2xl border-dashed border-border text-muted-foreground hover:bg-muted hover:text-foreground font-bold text-[10px] tracking-[0.2em] uppercase transition-all"
                       >
                         Show {remaining} more {remaining === 1 ? 'class' : 'classes'}
                       </Button>
@@ -833,11 +889,12 @@ export default function TeacherDashboard() {
                   <p className="font-bold text-sm uppercase tracking-widest">No class records found</p>
                 </div>
               )}
-              <div className="mt-8">
-                <Link to="/teacher/classes">
-                  <Button className="w-full h-14 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-200 transition-all font-bold text-[10px] tracking-[0.2em] uppercase">
-                    VIEW DETAILED REPORTS
-                  </Button>
+              <div className="mt-6">
+                <Link
+                  to="/teacher/classes"
+                  className="flex h-12 w-full items-center justify-center rounded-xl bg-primary text-xs font-semibold uppercase tracking-wide text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
+                >
+                  View detailed reports
                 </Link>
               </div>
             </CardContent>
@@ -855,7 +912,7 @@ export default function TeacherDashboard() {
         if (!isGradingComplete) return null;
 
         return (
-          <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white">
+          <Card className="overflow-hidden rounded-2xl border border-border bg-card">
             <CardHeader className="p-6 pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
@@ -869,13 +926,13 @@ export default function TeacherDashboard() {
               
               <div className="flex items-center gap-3">
                 {advisoryHonors?.hasAdvisory && (
-                  <Badge variant="secondary" className="bg-slate-50 text-muted-foreground border-slate-100 font-bold px-4 py-2 rounded-xl text-[10px] tracking-widest uppercase">
+                  <Badge variant="secondary" className="bg-muted text-muted-foreground border-border font-bold px-4 py-2 rounded-xl text-[10px] tracking-widest uppercase">
                     ADVISORY CLASS
                   </Badge>
                 )}
                 
                 <Select value={selectedHonorsTerm} onValueChange={(val) => val && setSelectedHonorsTerm(val)}>
-                  <SelectTrigger className="w-[135px]">
+                  <SelectTrigger className="h-12! w-full sm:h-8! sm:w-[150px]">
                     <SelectValue placeholder="Select Term" />
                   </SelectTrigger>
                   <SelectContent className="shadow-xl">
@@ -888,7 +945,7 @@ export default function TeacherDashboard() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="max-h-[420px] overflow-y-auto px-8 pb-8">
+              <div className="max-h-[420px] overflow-y-auto px-4 pb-4 lg:px-8 lg:pb-8">
                 {(() => {
                   const allHonors = [
                     ...(advisoryHonors?.advisoryHonors || []),
@@ -897,19 +954,41 @@ export default function TeacherDashboard() {
 
                   if (allHonors.length === 0) {
                     return (
-                      <div className="py-20 text-center text-muted-foreground bg-slate-50 rounded-[2rem] mt-4 border-2 border-dashed border-slate-100">
-                        <Star className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                        <p className="font-bold text-sm uppercase tracking-widest">No advisory honors yet</p>
-                        <p className="text-[10px] font-bold mt-2">Students with grades of 85 and above will appear here.</p>
+                      <div className="mt-4 rounded-2xl border-2 border-dashed border-border bg-muted/40 py-16 text-center text-muted-foreground">
+                        <Star className="mx-auto mb-4 h-10 w-10 opacity-20" />
+                        <p className="text-sm font-semibold uppercase tracking-wide">No advisory honors yet</p>
+                        <p className="mt-2 text-xs font-medium">Students with grades of 85 and above will appear here.</p>
                       </div>
                     );
                   }
 
                   return (
-                    <div className="overflow-hidden rounded-3xl border border-slate-100 mt-4">
+                    <>
+                    <div className="mt-4 space-y-2 md:hidden">
+                      {allHonors.map((student, idx) => (
+                        <div key={`mobile-honor-${idx}`} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                          <Avatar className="h-10 w-10 shrink-0 border border-border shadow-sm">
+                            <AvatarFallback className="text-xs font-semibold text-white" style={{ backgroundColor: colors.primary }}>
+                              {student.name.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-foreground">{student.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">{student.class}</p>
+                            <Badge className="mt-1 rounded-md border-0 bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+                              {student.honor}
+                            </Badge>
+                          </div>
+                          <span className="shrink-0 text-xl font-bold" style={{ color: colors.primary }}>
+                            {typeof student.grade === 'number' ? student.grade.toFixed(2) : student.grade}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-border md:block">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="bg-slate-50/50 border-b border-slate-100">
+                          <tr className="bg-muted/50 border-b border-border">
                             <th className="px-6 py-4 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Student</th>
                             <th className="px-6 py-4 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Section</th>
                             <th className="px-6 py-4 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Grade</th>
@@ -936,7 +1015,7 @@ export default function TeacherDashboard() {
                                 </span>
                               </td>
                               <td className="px-6 py-5 text-right">
-                                <Badge className="bg-emerald-500 text-white border-0 text-[9px] font-bold uppercase px-3 py-1 rounded-lg shadow-lg shadow-emerald-500/20">
+                                <Badge className="bg-emerald-500 text-white border-0 text-[10px] font-semibold uppercase px-3 py-1 rounded-lg shadow-lg shadow-emerald-500/20">
                                   {student.honor}
                                 </Badge>
                               </td>
@@ -945,6 +1024,7 @@ export default function TeacherDashboard() {
                         </tbody>
                       </table>
                     </div>
+                    </>
                   );
                 })()}
               </div>
@@ -978,8 +1058,8 @@ export default function TeacherDashboard() {
         });
 
         return (
-          <Card className="border border-slate-200/60 rounded-2xl overflow-hidden bg-white border-t-[8px] border-t-rose-500">
-            <CardHeader className="p-6 pb-3 border-b border-slate-100">
+          <Card className="overflow-hidden rounded-2xl border border-border border-t-[8px] border-t-rose-500 bg-card">
+            <CardHeader className="border-b border-border p-4 pb-3 lg:p-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className="p-3 rounded-2xl bg-rose-50 text-rose-500">
@@ -994,7 +1074,7 @@ export default function TeacherDashboard() {
                 <div className="flex flex-wrap items-center gap-4">
                   {/* Section Select Filter */}
                   <Select value={attentionSectionFilter} onValueChange={(v) => setAttentionSectionFilter(v ?? "")}>
-                    <SelectTrigger className="w-[185px]">
+                    <SelectTrigger className="h-12! w-full sm:h-8! sm:w-[185px]">
                       <SelectValue placeholder="Select Section" />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl border-slate-200 shadow-xl">
@@ -1012,7 +1092,7 @@ export default function TeacherDashboard() {
 
                   {/* Subject Select Filter */}
                   <Select value={attentionSubjectFilter} onValueChange={(v) => setAttentionSubjectFilter(v ?? "")}>
-                    <SelectTrigger className="w-[185px]">
+                    <SelectTrigger className="h-12! w-full sm:h-8! sm:w-[185px]">
                       <SelectValue placeholder="Select Subject" />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl border-slate-200 shadow-xl">
@@ -1031,9 +1111,9 @@ export default function TeacherDashboard() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-8 pt-6">
+            <CardContent className="p-4 pt-6 lg:p-8">
               {filteredStudentsAtRisk && filteredStudentsAtRisk.length > 0 ? (
-                <ScrollArea className="h-[350px] pr-4">
+                <ScrollArea className="h-[420px] pr-2 lg:h-[350px] lg:pr-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
                     {filteredStudentsAtRisk.map((student, idx) => (
                       <div key={idx} className="p-6 rounded-3xl bg-rose-50/40 border border-rose-100 hover:bg-rose-50 hover:border-rose-200 transition-all flex flex-col gap-4">
@@ -1043,7 +1123,7 @@ export default function TeacherDashboard() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-foreground truncate">{student.name}</p>
-                            <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest mt-0.5 truncate">{student.class}</p>
+                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide mt-0.5 truncate">{student.class}</p>
                           </div>
                         </div>
                         <div className="flex items-center justify-between pt-2 border-t border-rose-100">
@@ -1075,6 +1155,11 @@ export default function TeacherDashboard() {
           </Card>
         );
       })()}
+      </div>}
     </div>
   );
 }
+
+
+
+

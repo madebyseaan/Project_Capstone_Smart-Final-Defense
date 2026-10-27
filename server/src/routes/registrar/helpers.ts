@@ -144,11 +144,15 @@ export function subjectCanonicalKey(subjectCode: string, subjectName: string): s
   return canonicalSubjectCode(subjectCode);
 }
 
-/** Convert an ALL-CAPS label like "SCIENCE" or "TLE" to title case "Science" / "Tle". */
+const SUBJECT_ACRONYMS = new Set(["TLE", "MAPEH", "ESP", "STE", "SPA", "SPS", "GMRC", "AP", "PE", "ICT", "HE"]);
+
+/** Convert an ALL-CAPS label like "SCIENCE" to title case, preserving known acronyms like "TLE". */
 export function toTitleCase(value: string): string {
   return normalizeWhitespace(value)
     .split(' ')
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .map((part) => SUBJECT_ACRONYMS.has(part.toUpperCase())
+      ? part.toUpperCase()
+      : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
 }

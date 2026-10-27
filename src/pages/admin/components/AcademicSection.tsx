@@ -198,7 +198,7 @@ export function AcademicSection({ settings, schoolYears, onChange }: AcademicSec
 
           <p className="text-xs text-muted-foreground mt-4">
             Term display labels (e.g. “First Quarter”) are configured in{" "}
-            <Link to="/admin/grading-config" className="font-medium text-primary underline-offset-2 hover:underline">
+            <Link to="/admin/grading" className="font-medium text-primary underline-offset-2 hover:underline">
               Grading Config
             </Link>
             .

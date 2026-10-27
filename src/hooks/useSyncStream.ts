@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { getPortalToken } from "@/lib/api";
+import { getPortalLoginPath, getPortalRefreshToken, getPortalToken, getRefreshTokenKey, getTokenKey } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -114,14 +114,23 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
           // 403 = expired token — attempt refresh before giving up
           if (response.status === 403) {
             try {
+              const refreshToken = getPortalRefreshToken();
+              if (!refreshToken) {
+                window.location.href = getPortalLoginPath();
+                return;
+              }
               const refreshRes = await fetch(AUTH_REFRESH_URL, {
                 method: 'POST',
                 credentials: 'include',
+                headers: { 'x-refresh-token': refreshToken },
               });
               if (refreshRes.ok) {
                 const data = await refreshRes.json();
                 if (data.token) {
-                  sessionStorage.setItem('token', data.token);
+                  sessionStorage.setItem(getTokenKey(), data.token);
+                  if (data.refreshToken) {
+                    sessionStorage.setItem(getRefreshTokenKey(), data.refreshToken);
+                  }
                   backoffRef.current = INITIAL_BACKOFF_MS;
                   connect();
                   return;
@@ -130,7 +139,7 @@ export function useSyncStream(options?: UseSyncStreamOptions): UseSyncStreamRetu
             } catch {
               // Refresh failed — fall through to redirect
             }
-            window.location.href = '/login';
+            window.location.href = getPortalLoginPath();
             return;
           }
           throw new Error(`SSE connect failed: ${response.status}`);

@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useSyncStream } from "@/hooks/useSyncStream";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   Users,
   GraduationCap,
@@ -10,6 +10,7 @@ import {
   ClipboardList,
   SplitSquareHorizontal,
   RefreshCw,
+  Printer,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,10 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { sanitizeCssColor } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
+import AdvisoryPrintablesPanel from "./components/AdvisoryPrintablesPanel";
+import AdvisoryObservedValuesPanel from "./components/AdvisoryObservedValuesPanel";
+
+type AdvisoryView = "directory" | "printables" | "observed-values";
 
 const gradeLevelLabels: Record<string, string> = {
   GRADE_7: "Grade 7",
@@ -39,6 +44,10 @@ const gradeLevelLabels: Record<string, string> = {
 
 export default function MyAdvisory() {
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewParam = searchParams.get("view");
+  const activeView: AdvisoryView =
+    viewParam === "printables" || viewParam === "observed-values" ? viewParam : "directory";
   const { colors } = useTheme();
   const { syncVersion } = useSyncStream();
   const [data, setData] = useState<AdvisoryData | null>(null);
@@ -48,6 +57,17 @@ export default function MyAdvisory() {
   const [separateByGender, setSeparateByGender] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
+
+  const setActiveView = (view: AdvisoryView) => {
+    const next = new URLSearchParams(searchParams);
+    if (view === "directory") next.delete("view");
+    else next.set("view", view);
+    setSearchParams(next, { replace: true });
+    requestAnimationFrame(() => {
+      document.getElementById("advisory-view-tabs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -60,7 +80,7 @@ export default function MyAdvisory() {
       } else {
         setSyncMessage(`Sync complete — ${studentsFound} student${studentsFound !== 1 ? 's' : ''} found for ${foundSection}.`);
       }
-      await fetchAdvisory();
+      await fetchAdvisory(true);
     } catch {
       setSyncMessage("Sync failed. Please try again.");
     } finally {
@@ -74,6 +94,7 @@ export default function MyAdvisory() {
     try {
       const res = await advisoryApi.getMyAdvisory();
       setData(res.data);
+      hasLoadedRef.current = true;
     } catch (err) {
       if (!silent) setError("Failed to load advisory data");
       console.error(err);
@@ -82,10 +103,13 @@ export default function MyAdvisory() {
     }
   }, []);
 
-  // Re-fetch when navigating to the page (location.key changes) or after background sync
+  // Re-fetch when navigating to the page (pathname changes) or after background sync.
+  // Do not depend on location.key: switching the Student Directory / Printables view
+  // updates the query string and must not reload the advisory or trigger a sync.
+  // Once loaded, refreshes are silent so an open editor is never replaced by the loader.
   useEffect(() => {
-    fetchAdvisory();
-  }, [fetchAdvisory, location.key, syncVersion]);
+    fetchAdvisory(hasLoadedRef.current);
+  }, [fetchAdvisory, location.pathname, syncVersion]);
 
   // Silent background sync on every page load — pulls fresh data from EnrollPro
   // then re-fetches advisory so new students appear automatically
@@ -93,7 +117,7 @@ export default function MyAdvisory() {
     advisoryApi.syncFromEnrollPro()
       .then(() => fetchAdvisory(true)) // silent=true: no spinner, no error toast
       .catch(() => {/* silent — manual button still available */});
-  }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -117,7 +141,7 @@ export default function MyAdvisory() {
   if (error) {
     return (
       <div className="flex items-center justify-center h-[60vh] p-4">
-        <div className="text-center max-w-sm p-10 bg-white rounded-2xl shadow-2xl shadow-slate-200/50 border border-slate-100">
+        <div className="text-center max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-rose-50 flex items-center justify-center">
             <UserCircle className="w-10 h-10 text-rose-500" />
           </div>
@@ -125,7 +149,7 @@ export default function MyAdvisory() {
           <p className="text-muted-foreground mb-8 text-sm leading-relaxed">{error}</p>
           <Button 
             onClick={() => window.location.reload()} 
-            className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition-all"
+            className="w-full h-12 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/90 font-bold transition-all"
           >
             Try to Reconnect
           </Button>
@@ -137,8 +161,8 @@ export default function MyAdvisory() {
   if (!data?.hasAdvisory) {
     return (
       <div className="flex items-center justify-center h-[60vh] p-4">
-        <div className="text-center max-w-md p-10 bg-white rounded-2xl border border-slate-100 shadow-2xl shadow-slate-200/50">
-          <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-slate-50 flex items-center justify-center text-muted-foreground">
+        <div className="text-center max-w-md rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-muted flex items-center justify-center text-muted-foreground">
             <ClipboardList className="w-10 h-10" />
           </div>
           <h3 className="font-bold text-foreground text-2xl mb-3">No Advisory Assigned</h3>
@@ -157,7 +181,7 @@ export default function MyAdvisory() {
             </Button>
             {syncMessage && <p className="text-xs text-muted-foreground text-center">{syncMessage}</p>}
             <Link to="/teacher" className="w-full">
-              <Button variant="outline" className="w-full h-12 rounded-2xl border-slate-200 text-muted-foreground font-bold hover:bg-slate-50 transition-all">
+              <Button variant="outline" className="w-full h-12 rounded-2xl border-border text-muted-foreground font-bold hover:bg-muted transition-all">
                 Return to Dashboard
               </Button>
             </Link>
@@ -199,23 +223,122 @@ export default function MyAdvisory() {
     return nameA.localeCompare(nameB);
   });
 
+  const getGuardian = (student: NonNullable<AdvisoryData["students"]>[number]) => {
+    if (student.guardianName) return student.guardianName;
+    if (student.fatherName && student.motherName) return `${student.fatherName} / ${student.motherName}`;
+    return student.fatherName || student.motherName || "Unspecified";
+  };
+
+  const renderMobileRow = (student: NonNullable<AdvisoryData["students"]>[number], idx: number) => {
+    const isMale = student.gender?.toLowerCase() === "male";
+    return (
+      <Link
+        key={student.id}
+        to={`/teacher/advisory/student/${student.id}`}
+        data-testid="student-profile-link-mobile"
+        className="flex min-h-16 items-center gap-3 px-4 py-3 transition-colors active:bg-muted"
+      >
+        <span className="w-5 shrink-0 text-center text-[11px] font-medium text-muted-foreground">{idx + 1}</span>
+        <Avatar className="h-10 w-10 shrink-0 border border-border shadow-sm">
+          <AvatarFallback className={cn("text-xs font-semibold text-white", isMale ? "bg-blue-500" : "bg-pink-500")}>
+            {student.lastName.charAt(0)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm font-semibold text-foreground">
+            {student.lastName}, {student.firstName}
+          </p>
+          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{student.lrn}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">Guardian: {getGuardian(student)}</p>
+        </div>
+        <Badge
+          variant="secondary"
+          className={cn(
+            "shrink-0 rounded-md border-0 px-2 py-0.5 text-[10px] font-semibold uppercase",
+            isMale ? "bg-blue-50 text-blue-600" : "bg-pink-50 text-pink-600",
+          )}
+        >
+          {student.gender || "N/A"}
+        </Badge>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </Link>
+    );
+  };
+
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+      {/* Compact mobile summary */}
+      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm lg:hidden">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <GraduationCap className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Class adviser · S.Y. {data.section?.schoolYear}
+            </p>
+            <p className="mt-0.5 truncate text-base font-semibold text-foreground">
+              {gradeLevelLabels[data.section?.gradeLevel || ""] || data.section?.gradeLevel} — {data.section?.name}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {data.teacher.name} · {data.stats?.totalStudents || 0} {(data.stats?.totalStudents || 0) === 1 ? "learner" : "learners"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveView("printables")}
+            data-testid="advisory-printables-mobile"
+            aria-label="Open advisory printables"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors active:bg-muted"
+          >
+            <Printer className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={handleSync}
+            disabled={syncing}
+            aria-label="Sync from EnrollPro"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw className={`h-5 w-5 ${syncing ? "animate-spin" : ""}`} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 divide-x divide-border rounded-xl bg-muted/40 py-2 text-center">
+          <div>
+            <p className="text-lg font-bold leading-none text-foreground">{data.stats?.totalStudents || 0}</p>
+            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Total</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold leading-none text-foreground">{data.stats?.maleCount || 0}</p>
+            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Male</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold leading-none text-foreground">{data.stats?.femaleCount || 0}</p>
+            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Female</p>
+          </div>
+        </div>
+
+        {syncMessage && (
+          <p className="mt-2 text-xs font-medium text-muted-foreground">{syncMessage}</p>
+        )}
+      </section>
+
       {/* Header Section - Refined Glass Style */}
-      <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 p-8 shadow-xl shadow-slate-200/50">
+      <div className="relative hidden overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm lg:block lg:p-6">
         
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-          <div className="flex items-center gap-6">
+        <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between md:gap-6">
+          <div className="flex items-center gap-3 lg:gap-5">
             <div 
-              className="w-20 h-20 rounded-[2rem] text-white flex items-center justify-center shadow-xl transition-all duration-500"
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white shadow-lg transition-all duration-500 lg:h-16 lg:w-16 lg:rounded-3xl"
               style={{ 
                 backgroundColor: colors.primary,
                 boxShadow: `0 20px 25px -5px ${colors.primary}40, 0 10px 10px -5px ${colors.primary}20`
               }}
             >
-              <GraduationCap className="w-10 h-10" />
+              <GraduationCap className="h-7 w-7 lg:h-10 lg:w-10" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-3 mb-1.5">
                 <Badge 
                   variant="secondary" 
@@ -228,48 +351,61 @@ export default function MyAdvisory() {
                 >
                   Class Adviser
                 </Badge>
-                <div className="h-4 w-px bg-slate-200" />
+                <div className="h-4 w-px bg-border" />
                 <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">S.Y. {data.section?.schoolYear}</span>
               </div>
               <PageHeader
+                variant="plain"
                 title={`${gradeLevelLabels[data.section?.gradeLevel || ""] || data.section?.gradeLevel} — ${data.section?.name}`}
-                description={`${data.stats?.totalStudents || 0} Learners Managed`}
+                description={`${data.stats?.totalStudents || 0} ${(data.stats?.totalStudents || 0) === 1 ? "Learner" : "Learners"} Managed`}
               />
             </div>
           </div>
           
-          <div className="flex flex-col items-end gap-3">
-            <div className="flex items-center gap-4 bg-slate-50/80 backdrop-blur-sm px-6 py-4 rounded-[2rem] border border-slate-100 shadow-sm">
-               <Avatar className="w-12 h-12 border-2 border-white shadow-md">
+          <div className="flex flex-col items-stretch gap-2 md:items-end">
+            <div className="flex items-center gap-2.5 rounded-2xl border border-border bg-muted/40 px-3.5 py-2.5 shadow-sm">
+               <Avatar className="h-9 w-9 border-2 border-white shadow-md">
                  <AvatarFallback 
-                    className="text-white font-bold text-lg"
+                    className="text-white font-bold text-sm"
                     style={{ backgroundColor: colors.primary }}
                  >
                    {data.teacher.name.charAt(0)}
                  </AvatarFallback>
                </Avatar>
                <div>
-                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1.5">Assigned Teacher</p>
-                 <p className="text-base font-bold text-foreground tracking-tight">{data.teacher.name}</p>
+                 <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Assigned Teacher</p>
+                 <p className="text-sm font-bold text-foreground tracking-tight">{data.teacher.name}</p>
                </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSync}
-              disabled={syncing}
-              className="h-10 px-5 rounded-2xl border-slate-200 text-muted-foreground font-bold text-[10px] uppercase tracking-widest transition-all group/sync"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 mr-2 ${syncing ? 'animate-spin' : ''} group-hover/sync:text-primary`} />
-              <span className="group-hover/sync:text-foreground">{syncing ? 'SYNCING...' : 'SYNC FROM ENROLLPRO'}</span>
-              <style dangerouslySetInnerHTML={{ __html: `
-                .group\\/sync:hover {
-                  background-color: ${sanitizeCssColor(colors.primary)}10 !important;
-                  border-color: ${sanitizeCssColor(colors.primary)}30 !important;
-                  color: ${sanitizeCssColor(colors.primary)} !important;
-                }
-              `}} />
-            </Button>
+            <div className="flex flex-wrap items-center gap-2 md:justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="advisory-printables-link"
+                onClick={() => setActiveView("printables")}
+                className="h-10 flex-1 rounded-2xl border-border px-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-all hover:bg-muted hover:text-foreground sm:flex-none"
+              >
+                <Printer className="mr-2 h-3.5 w-3.5" />
+                Printables
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSync}
+                disabled={syncing}
+                className="h-10 flex-1 rounded-2xl border-border px-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-all group/sync sm:flex-none"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-2 ${syncing ? 'animate-spin' : ''} group-hover/sync:text-primary`} />
+                <span className="group-hover/sync:text-foreground">{syncing ? 'SYNCING...' : 'SYNC FROM ENROLLPRO'}</span>
+                <style dangerouslySetInnerHTML={{ __html: `
+                  .group\\/sync:hover {
+                    background-color: ${sanitizeCssColor(colors.primary)}10 !important;
+                    border-color: ${sanitizeCssColor(colors.primary)}30 !important;
+                    color: ${sanitizeCssColor(colors.primary)} !important;
+                  }
+                `}} />
+              </Button>
+            </div>
             {syncMessage && (
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{syncMessage}</p>
             )}
@@ -278,17 +414,17 @@ export default function MyAdvisory() {
       </div>
 
       {/* Quick Insights Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="hidden grid-cols-3 gap-2 lg:grid lg:gap-6">
         {[
           { label: "TOTAL CLASS", value: data.stats?.totalStudents || 0, icon: Users, color: "theme" },
           { label: "MALE LEARNERS", value: data.stats?.maleCount || 0, icon: UserCircle, color: "blue" },
           { label: "FEMALE LEARNERS", value: data.stats?.femaleCount || 0, icon: UserCircle, color: "pink" },
         ].map((stat) => (
-          <Card key={stat.label} className="border border-slate-200/60 overflow-hidden rounded-2xl bg-white group hover:-translate-y-1 transition-all duration-300">
-            <CardContent className="p-6 flex items-center gap-5">
+          <Card key={stat.label} className="group overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1">
+            <CardContent className="flex flex-col items-start gap-2 p-3 sm:flex-row sm:items-center sm:gap-4 lg:p-6">
               <div 
                 className={cn(
-                  "p-3.5 rounded-2xl group-hover:scale-110 transition-transform",
+                  "rounded-xl p-2 transition-transform group-hover:scale-110 lg:p-3.5 lg:rounded-2xl",
                   stat.color === "blue" ? "bg-blue-50 text-blue-600" : 
                   stat.color === "pink" ? "bg-pink-50 text-pink-600" : ""
                 )}
@@ -297,65 +433,138 @@ export default function MyAdvisory() {
                   color: colors.primary 
                 } : {}}
               >
-                <stat.icon className="w-6 h-6" />
+                <stat.icon className="h-5 w-5 lg:h-6 lg:w-6" />
               </div>
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">{stat.label}</p>
-                <p className="text-2xl font-bold text-foreground leading-none">{stat.value}</p>
+              <div className="min-w-0">
+                <p className="mb-1 text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
+                <p className="text-xl font-bold leading-none text-foreground lg:text-2xl">{stat.value}</p>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Main Directory Table */}
-      <Card className="border border-slate-200/60 bg-white rounded-2xl overflow-hidden shadow-sm">
-        <CardHeader className="border-b border-slate-50 p-8 pb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            <h2 className="text-xl font-bold text-foreground tracking-tight uppercase">Student Directory</h2>
-            <div className="h-6 w-px bg-slate-100 hidden sm:block" />
+      {/* View tabs */}
+      <div
+        id="advisory-view-tabs"
+        className="flex flex-wrap items-center gap-2"
+        role="group"
+        aria-label="Advisory views"
+      >
+        <Button
+          type="button"
+          aria-pressed={activeView === "directory"}
+          data-testid="advisory-view-directory"
+          variant={activeView === "directory" ? "default" : "outline"}
+          onClick={() => setActiveView("directory")}
+          className="h-11 gap-2 text-xs font-semibold"
+        >
+          <Users className="h-4 w-4" />
+          Student Directory
+        </Button>
+        <Button
+          type="button"
+          aria-pressed={activeView === "printables"}
+          data-testid="advisory-view-printables"
+          variant={activeView === "printables" ? "default" : "outline"}
+          onClick={() => setActiveView("printables")}
+          className="h-11 gap-2 text-xs font-semibold"
+        >
+          <Printer className="h-4 w-4" />
+          Printables
+        </Button>
+        <Button
+          type="button"
+          aria-pressed={activeView === "observed-values"}
+          data-testid="advisory-view-observed-values"
+          variant={activeView === "observed-values" ? "default" : "outline"}
+          onClick={() => setActiveView("observed-values")}
+          className="h-11 gap-2 text-xs font-semibold"
+        >
+          <ClipboardList className="h-4 w-4" />
+          Observed Values
+        </Button>
+      </div>
+
+      {activeView === "observed-values" ? (
+        <AdvisoryObservedValuesPanel />
+      ) : activeView === "printables" ? (
+        <AdvisoryPrintablesPanel />
+      ) : (
+      /* Main Directory Table */
+      <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <CardHeader className="flex flex-col justify-between gap-4 border-b border-border p-4 pb-4 sm:flex-row sm:items-center lg:p-8 lg:pb-6">
+          <div className="flex flex-wrap items-center gap-3 lg:gap-5">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground lg:text-xl">Student directory</h2>
+            <div className="hidden h-6 w-px bg-border sm:block" />
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSeparateByGender(!separateByGender)}
+              aria-pressed={separateByGender}
               className={cn(
-                "h-9 px-4 rounded-xl text-[10px] font-bold uppercase tracking-[0.1em] transition-all border",
-                separateByGender ? "bg-slate-900 text-white border-slate-900" : "text-muted-foreground hover:text-foreground hover:bg-slate-50 border-slate-100"
+                "h-12 rounded-xl border px-3 text-[10px] font-semibold uppercase tracking-wide transition-all lg:h-9 lg:px-4",
+                separateByGender ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <SplitSquareHorizontal className="w-4 h-4 mr-2" />
-              {separateByGender ? "GENDER SEPARATED" : "BY GENDER"}
+              <SplitSquareHorizontal className="mr-2 h-4 w-4" />
+              {separateByGender ? "Gender separated" : "By gender"}
             </Button>
           </div>
           
-          <div className="relative w-full sm:w-80 group">
-            <div 
-              className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-slate-100 text-muted-foreground group-focus-within:text-white transition-all"
-              style={{
-                // We'll handle background color via style for focus-within if possible, or just use a custom class
-              } as any}
-            >
-              <Search className="w-3.5 h-3.5" />
-              <style dangerouslySetInnerHTML={{ __html: `
-                .group:focus-within .absolute.left-4 {
-                  background-color: ${sanitizeCssColor(colors.primary)} !important;
-                }
-              `}} />
+          <div className="relative w-full group sm:w-80">
+            <div className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-focus-within:bg-primary group-focus-within:text-primary-foreground">
+              <Search className="h-4 w-4" />
             </div>
             <Input
-              type="text"
-              placeholder="Search by name or LRN..."
+              type="search"
+              inputMode="search"
+              placeholder="Search by name or LRN"
+              aria-label="Search advisory learners"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-14 h-11 text-sm font-medium bg-white border-slate-300 hover:border-slate-400 focus:border-red-700 focus:ring-2 focus:ring-red-100 focus:outline-none rounded-xl transition-all placeholder:text-slate-400"
+              className="h-12 rounded-xl border-border bg-background pl-12 text-base font-medium lg:h-11 lg:text-sm"
             />
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          {/* Mobile card directory */}
+          <div className="divide-y divide-border lg:hidden">
+            {separateByGender ? (
+              <>
+                {maleStudents.length > 0 && (
+                  <div>
+                    <p className="bg-blue-50/60 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                      Male students ({maleStudents.length})
+                    </p>
+                    <div className="divide-y divide-border">{maleStudents.map((s, i) => renderMobileRow(s, i))}</div>
+                  </div>
+                )}
+                {femaleStudents.length > 0 && (
+                  <div>
+                    <p className="bg-pink-50/60 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-pink-600">
+                      Female students ({femaleStudents.length})
+                    </p>
+                    <div className="divide-y divide-border">{femaleStudents.map((s, i) => renderMobileRow(s, i))}</div>
+                  </div>
+                )}
+              </>
+            ) : sortedStudents.length === 0 ? (
+              <div className="px-4 py-16 text-center">
+                <Search className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm font-semibold text-foreground">
+                  {searchQuery ? "No matching records found" : "No enrolled students yet"}
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">{sortedStudents.map((s, i) => renderMobileRow(s, i))}</div>
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto lg:block">
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-50/50 hover:bg-transparent border-0">
+                <TableRow className="bg-muted/40 hover:bg-transparent border-0">
                   <TableHead className="w-16 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-8">#</TableHead>
                   <TableHead className="w-40 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Learner Reference (LRN)</TableHead>
                   <TableHead className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Full Legal Name</TableHead>
@@ -367,7 +576,7 @@ export default function MyAdvisory() {
               <TableBody>
                 {(() => {
                   const renderRow = (student: any, idx: number) => (
-                    <TableRow key={student.id} className="hover:bg-slate-50/50 transition-all border-slate-50 group">
+                    <TableRow key={student.id} className="hover:bg-muted/40 transition-all border-border group">
                       <TableCell className="text-center text-muted-foreground font-bold text-[10px] px-8">{idx + 1}</TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground font-bold tracking-tighter group-hover:text-foreground transition-colors">{student.lrn}</TableCell>
                       <TableCell>
@@ -391,7 +600,7 @@ export default function MyAdvisory() {
                           <Badge 
                             variant="secondary" 
                             className={cn(
-                              "text-[9px] font-bold uppercase px-3 h-6 rounded-lg border-0",
+                              "text-[10px] font-bold uppercase px-3 h-6 rounded-lg border-0",
                               student.gender?.toLowerCase() === "male" ? "bg-blue-50 text-blue-600" : "bg-pink-50 text-pink-600"
                             )}
                           >
@@ -405,7 +614,10 @@ export default function MyAdvisory() {
                           : <span className="text-muted-foreground">UNSPECIFIED</span>}
                       </TableCell>
                       <TableCell className="text-right pr-8">
-                        <Link to={`/teacher/advisory/student/${student.id}`}>
+                        <Link
+                          to={`/teacher/advisory/student/${student.id}`}
+                          data-testid="student-profile-link"
+                        >
                           <Button 
                             size="sm" 
                             variant="ghost" 
@@ -485,6 +697,7 @@ export default function MyAdvisory() {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

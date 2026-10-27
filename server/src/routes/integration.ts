@@ -738,15 +738,26 @@ router.get(
         return;
       }
 
-      const facultyRefs = await resolveAtlasFacultyRefs({
+      const facultyResolution = await resolveAtlasFacultyRefs({
         id: teacher.id,
         employeeId: teacher.employeeId,
         email: teacher.user?.email ?? null,
       });
+      const { refs: facultyRefs, directoryUnavailable } = facultyResolution;
+
+      if (facultyRefs.length === 0 && directoryUnavailable) {
+        res.status(502).json({
+          code: 'ATLAS_FACULTY_UNRESOLVED',
+          error: 'The timetable service faculty directory is unavailable right now. Please try again in a few minutes.',
+        });
+        return;
+      }
+
       const outcome = await fetchTeacherDraftSchedule({
         schoolYearLabel: schoolYear,
         atlasSchoolYearId,
         facultyRefs,
+        facultyDirectoryUnavailable: directoryUnavailable,
         termIndex: termCheck.term,
       });
 

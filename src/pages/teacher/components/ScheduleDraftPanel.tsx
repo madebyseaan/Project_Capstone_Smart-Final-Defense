@@ -69,10 +69,76 @@ interface ScheduleDraftPanelProps {
   syncVersion?: number;
 }
 
+interface DraftPanelError {
+  code: string;
+  status?: number;
+}
+
+/** Turn backend/upstream failures into something a teacher can act on. */
+function describeDraftError(error: DraftPanelError): { title: string; description: string } {
+  const code = error.code.toUpperCase();
+
+  if (code === "FACULTY_NOT_FOUND") {
+    return {
+      title: "We can't find your faculty record",
+      description:
+        "Your SMART account isn't linked to a teacher record in the timetable system yet. Ask your school administrator to check your faculty record, then try again.",
+    };
+  }
+
+  if (["TERM_INDEX_REQUIRED", "INVALID_TERM_INDEX", "TERM_INDEX_OUTSIDE_CONTRACT"].includes(code)) {
+    return {
+      title: "No draft for this term",
+      description: "There isn't a shared draft for this term yet. Try another term or check back later.",
+    };
+  }
+
+  if (code === "ATLAS_YEAR_UNRESOLVED") {
+    return {
+      title: "Timetable service isn't ready",
+      description:
+        "The timetable system isn't ready for this school year yet. Please try again later or contact your administrator.",
+    };
+  }
+
+  if (code === "DRAFT_SHARING_DISABLED") {
+    return {
+      title: "Draft not shared yet",
+      description: "Your scheduler hasn't opened the draft for preview yet. Check back later.",
+    };
+  }
+
+  if (code === "DRAFT_RUN_NOT_FOUND") {
+    return {
+      title: "No draft available",
+      description: "There's no draft timetable to preview yet. It will appear here once your scheduler generates one.",
+    };
+  }
+
+  if (
+    code === "NETWORK_ERROR" ||
+    code === "UNKNOWN" ||
+    code === "ATLAS_FACULTY_UNRESOLVED" ||
+    code.startsWith("HTTP_5") ||
+    (error.status != null && error.status >= 500)
+  ) {
+    return {
+      title: "Timetable service unavailable",
+      description:
+        "We couldn't reach the timetable service right now. Your published schedule is unaffected — please try again in a few minutes.",
+    };
+  }
+
+  return {
+    title: "Couldn't load the draft preview",
+    description: "Something went wrong while loading your draft timetable. Please try again in a few minutes.",
+  };
+}
+
 export default function ScheduleDraftPanel({ termIndex, terms, syncVersion }: ScheduleDraftPanelProps) {
   const [data, setData] = useState<DraftScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const [error, setError] = useState<DraftPanelError | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,11 +147,20 @@ export default function ScheduleDraftPanel({ termIndex, terms, syncVersion }: Sc
       setData(res.data);
       setError(null);
     } catch (err: unknown) {
-      const payload = (err as { response?: { data?: { code?: string; error?: string } } })?.response?.data;
+      const response = (err as {
+        response?: { status?: number; data?: { code?: string; error?: string } };
+      })?.response;
+      if (import.meta.env.DEV) {
+        console.warn("[ScheduleDraftPanel] Draft load failed:", {
+          code: response?.data?.code,
+          status: response?.status,
+          detail: response?.data?.error ?? (err instanceof Error ? err.message : err),
+        });
+      }
       setData(null);
       setError({
-        code: payload?.code ?? "UNKNOWN",
-        message: payload?.error ?? "Failed to load the draft timetable",
+        code: response?.data?.code ?? (response ? "UNKNOWN" : "NETWORK_ERROR"),
+        status: response?.status,
       });
     } finally {
       setLoading(false);
@@ -99,15 +174,15 @@ export default function ScheduleDraftPanel({ termIndex, terms, syncVersion }: Sc
   const termLabel =
     terms.find((t) => t.order === termIndex)?.displayLabel ?? (termIndex != null ? `TERM ${termIndex}` : "");
 
-  const cardClass = "border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white";
+  const cardClass = "rounded-2xl border border-border bg-card shadow-sm";
 
   // ---- Loading ----
   if (loading && !data) {
     return (
       <Card className={cardClass}>
-        <CardContent className="p-8">
+        <CardContent className="p-4 lg:p-8">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-slate-100">
+            <div className="p-2.5 rounded-xl bg-muted">
               <FileClock className="w-5 h-5 text-muted-foreground animate-pulse" />
             </div>
             <div>
@@ -120,21 +195,20 @@ export default function ScheduleDraftPanel({ termIndex, terms, syncVersion }: Sc
     );
   }
 
-  // ---- Error (contract codes surfaced verbatim) ----
+  // ---- Error (plain-language; raw upstream detail only in dev) ----
   if (error) {
+    const friendly = describeDraftError(error);
     return (
       <Card className={cardClass}>
-        <CardContent className="p-8">
+        <CardContent className="p-4 lg:p-8">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-red-50 flex-shrink-0">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
+            <div className="p-2.5 rounded-xl bg-destructive/10 flex-shrink-0">
+              <AlertTriangle className="w-5 h-5 text-destructive" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-foreground">Draft Timetable (Preview)</h2>
-              <p className="text-sm text-muted-foreground mt-1">{error.message}</p>
-              <p className="text-xs text-muted-foreground mt-2">
-                <span className="font-medium">Code:</span> {error.code}
-              </p>
+              <p className="text-sm font-semibold text-foreground mt-1">{friendly.title}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{friendly.description}</p>
               <Button variant="outline" size="sm" className="mt-3" onClick={load}>
                 <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
                 Try again
@@ -152,9 +226,9 @@ export default function ScheduleDraftPanel({ termIndex, terms, syncVersion }: Sc
   if (data.status === "not_shared") {
     return (
       <Card className={cardClass}>
-        <CardContent className="p-8">
+        <CardContent className="p-4 lg:p-8">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-slate-100 flex-shrink-0">
+            <div className="p-2.5 rounded-xl bg-muted flex-shrink-0">
               <EyeOff className="w-5 h-5 text-muted-foreground" />
             </div>
             <div>
@@ -175,9 +249,9 @@ export default function ScheduleDraftPanel({ termIndex, terms, syncVersion }: Sc
     const published = data.reason === "PUBLISHED_RUN_IS_NOT_A_DRAFT";
     return (
       <Card className={cardClass}>
-        <CardContent className="p-8">
+        <CardContent className="p-4 lg:p-8">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-slate-100 flex-shrink-0">
+            <div className="p-2.5 rounded-xl bg-muted flex-shrink-0">
               <CalendarX2 className="w-5 h-5 text-muted-foreground" />
             </div>
             <div>
@@ -198,8 +272,8 @@ export default function ScheduleDraftPanel({ termIndex, terms, syncVersion }: Sc
   const days = groupByDay(data.entries);
   return (
     <Card className={cardClass}>
-      <CardContent className="p-8">
-        <div className="flex items-center justify-between mb-6">
+      <CardContent className="p-4 lg:p-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-amber-100 text-amber-700">
               <FileClock className="w-5 h-5" />
@@ -250,7 +324,7 @@ export default function ScheduleDraftPanel({ termIndex, terms, syncVersion }: Sc
                   {rows.map((entry) => (
                     <div
                       key={`${entry.entryId ?? `${entry.startTime}-${entry.subjectId ?? 0}`}`}
-                      className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border"
+                      className="flex flex-col items-start gap-1.5 rounded-xl border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:gap-3"
                     >
                       <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-xs font-medium text-foreground whitespace-nowrap">

@@ -21,6 +21,8 @@ const PAGES = {
     "/teacher/attendance-reports",
     "/teacher/schedule",
     "/teacher/advisory",
+    "/teacher/advisory?view=printables",
+    "/teacher/advisory?view=observed-values",
   ],
   registrar: [
     "/registrar",

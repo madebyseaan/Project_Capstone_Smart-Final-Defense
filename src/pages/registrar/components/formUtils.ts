@@ -1,12 +1,6 @@
 // Shared pure formatting helpers for registrar school form rendering.
 
-// Helper function to format grade level for display
-export const formatGradeLevel = (gradeLevel: string) => {
-  if (gradeLevel.startsWith("GRADE_")) {
-    return gradeLevel.replace("GRADE_", "");
-  }
-  return gradeLevel;
-};
+export { formatGradeLevel } from "@/lib/utils";
 
 // Format an ISO date string as mm/dd/yyyy using the calendar date directly
 // (avoids toLocaleDateString shifting the day when the browser is in a negative UTC offset)

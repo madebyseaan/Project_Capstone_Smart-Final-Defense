@@ -265,12 +265,28 @@ export default function ClassRecordView() {
   const stats = useMemo(() => {
     if (mergedRecords.length === 0) return null;
     const grades = mergedRecords.map((r) => getDisplayFinalGrade(r)).filter((g): g is number => g != null);
-    if (grades.length === 0) return { avg: 0, passed: 0, highest: 0, lowest: 0 };
-    return { avg: grades.reduce((a, b) => a + b, 0) / grades.length, passed: grades.filter((g) => g >= 75).length, highest: Math.max(...grades), lowest: Math.min(...grades) };
-  }, [mergedRecords, selectedTerm, activeWeights]);
+    if (grades.length === 0) return { avg: 0, passed: 0, total: mergedRecords.length, highest: 0, lowest: 0 };
+    return { avg: grades.reduce((a, b) => a + b, 0) / grades.length, passed: grades.filter((g) => g >= 75).length, total: mergedRecords.length, highest: Math.max(...grades), lowest: Math.min(...grades) };
+  }, [mergedRecords, getDisplayFinalGrade]);
 
   // Mobile editor hook
   const mobileEditor = useMobileEditor({ sortedRecords, selectedTerm, wwCount: metaHook.wwCount, ptCount: metaHook.ptCount, getMaxForCell, getCellKey, handleScoreUpdate, setInvalidCells, setError, isViewOnly: editAccess.isViewOnly });
+
+  const mobileEditorIndex = useMemo(
+    () => sortedRecords.findIndex((r) => r.student.id === mobileEditor.mobileEditorStudentId),
+    [sortedRecords, mobileEditor.mobileEditorStudentId],
+  );
+
+  const { setMobileEditorStudentId, setMobileScoreDraft } = mobileEditor;
+
+  const navigateMobileStudent = useCallback((direction: "prev" | "next") => {
+    if (mobileEditorIndex < 0) return;
+    const next = sortedRecords[mobileEditorIndex + (direction === "next" ? 1 : -1)];
+    if (!next) return;
+    void flushPendingScores();
+    setMobileEditorStudentId(next.student.id);
+    setMobileScoreDraft({});
+  }, [mobileEditorIndex, sortedRecords, setMobileEditorStudentId, setMobileScoreDraft, flushPendingScores]);
 
   // Sticky layout hook
   const layout = useStickyLayout({ classAssignmentId, showAssessmentDetails, selectedColumn: metaHook.selectedColumn });
@@ -351,11 +367,11 @@ export default function ClassRecordView() {
     await metaHook.applyColumnMetaFromMobile(category, index, description, date);
   }, [flushPendingScores, metaHook.applyColumnMetaFromMobile]);
 
-  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="text-center"><div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm"><Loader2 className="w-10 h-10 text-indigo-600 animate-spin" /></div><p className="text-slate-500 font-bold text-xs uppercase tracking-widest">Fetching Class Records...</p></div></div>;
+  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><div className="text-center"><div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fetching class records…</p></div></div>;
   if (!classAssignment) return null;
 
   return (
-    <div className="space-y-0 animate-fade-in w-full px-6 pb-12">
+    <div className="space-y-0 animate-fade-in w-full pb-4 lg:px-6 lg:pb-12">
       {isArchivedAssignment && (
         <div className={`rounded-2xl border p-4 flex items-center gap-3 ${isTransferredAssignment ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-destructive/5 border-destructive/20 text-destructive'}`}>
           <AlertTriangle className="w-5 h-5 shrink-0" />
@@ -367,7 +383,7 @@ export default function ClassRecordView() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-clip">
+      <div className="overflow-clip bg-transparent lg:rounded-2xl lg:border lg:border-border lg:bg-card lg:shadow-xs">
       <ClassRecordHero
         classAssignment={classAssignment}
         effectiveWeightsSource={effectiveWeights?.source ?? null}
@@ -422,7 +438,7 @@ export default function ClassRecordView() {
 
       {mergedRecords.length === 0 ? (
         <div className="border-t border-dashed border-slate-300 p-12 text-center">
-          <p className="text-slate-500 font-medium">No learners enrolled in this class for this school year.</p>
+          <p className="text-muted-foreground font-medium">No learners enrolled in this class for this school year.</p>
         </div>
       ) : (
         <>
@@ -434,7 +450,42 @@ export default function ClassRecordView() {
 
       <ClassDescriptorFooter average={stats?.avg ?? null} totalLearners={mergedRecords.length} />
 
-      <GradeEditModal open={mobileEditor.mobileEditorOpen} onOpenChange={(open) => { mobileEditor.setMobileEditorOpen(open); if (!open) { mobileEditor.setMobileEditorStudentId(null); mobileEditor.setMobileScoreDraft({}); } }} selectedRecord={mobileEditor.selectedMobileRecord} selectedTerm={selectedTerm} mobileEditorTab={mobileEditor.mobileEditorTab} onTabChange={mobileEditor.setMobileEditorTab} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} mobileScoreDraft={mobileEditor.mobileScoreDraft} invalidCells={invalidCells} getCellKey={getCellKey} getMobileDraftKey={getMobileDraftKey} getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)} getMaxForCell={getMaxForCell} onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange} onMobileScoreCommit={mobileEditor.commitMobileScore} onApplyColumnMeta={applyColumnMetaFromMobileFlushed} isViewOnly={editAccess.isViewOnly} aimsScores={mobileEditor.selectedMobileRecord ? aimsByStudent[mobileEditor.selectedMobileRecord.student.id] : undefined} aimsAssessmentTitles={Object.fromEntries(aimsAssessments.map(a => [a.assessmentId, a.title]))} aimsAllAssessments={aimsAllAssessments} aimsByStudent={aimsByStudent} />
+      <GradeEditModal
+        open={mobileEditor.mobileEditorOpen}
+        onOpenChange={(open) => {
+          mobileEditor.setMobileEditorOpen(open);
+          if (!open) {
+            mobileEditor.setMobileEditorStudentId(null);
+            mobileEditor.setMobileScoreDraft({});
+          }
+        }}
+        selectedRecord={mobileEditor.selectedMobileRecord}
+        selectedTerm={selectedTerm}
+        mobileEditorTab={mobileEditor.mobileEditorTab}
+        onTabChange={mobileEditor.setMobileEditorTab}
+        wwCount={metaHook.wwCount}
+        ptCount={metaHook.ptCount}
+        wwMeta={metaHook.wwMeta}
+        ptMeta={metaHook.ptMeta}
+        qaMeta={metaHook.qaMeta}
+        mobileScoreDraft={mobileEditor.mobileScoreDraft}
+        invalidCells={invalidCells}
+        getCellKey={getCellKey}
+        getMobileDraftKey={getMobileDraftKey}
+        getScoreFromGrade={(record, category, index) => computeScoreFromGrade(record, selectedTerm, category, index)}
+        getMaxForCell={getMaxForCell}
+        onMobileScoreDraftChange={mobileEditor.handleMobileDraftChange}
+        onMobileScoreCommit={mobileEditor.commitMobileScore}
+        onApplyColumnMeta={applyColumnMetaFromMobileFlushed}
+        isViewOnly={editAccess.isViewOnly}
+        aimsScores={mobileEditor.selectedMobileRecord ? aimsByStudent[mobileEditor.selectedMobileRecord.student.id] : undefined}
+        aimsAssessmentTitles={Object.fromEntries(aimsAssessments.map(a => [a.assessmentId, a.title]))}
+        aimsAllAssessments={aimsAllAssessments}
+        aimsByStudent={aimsByStudent}
+        onNavigateStudent={navigateMobileStudent}
+        canNavigatePrev={mobileEditorIndex > 0}
+        canNavigateNext={mobileEditorIndex >= 0 && mobileEditorIndex < sortedRecords.length - 1}
+      />
 
           <ClassRecordTour isOpen={isTourOpen} onClose={() => { setIsTourOpen(false); setShowAssessmentDetails(false); metaHook.setSelectedColumn(null); window.dispatchEvent(new Event("tour:end")); }} setShowAssessmentDetails={setShowAssessmentDetails} setSelectedColumn={metaHook.setSelectedColumn} hasAimsColumns={aimsAssessments.length > 0} />
 

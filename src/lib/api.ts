@@ -740,6 +740,37 @@ export interface AdvisoryData {
   subjects?: AdvisorySubject[];
 }
 
+export type ObservedValueRating = "AO" | "SO" | "RO" | "NO";
+
+export interface ObservedValueBehavior {
+  code: string;
+  statement: string;
+}
+
+export interface ObservedValueGroup {
+  coreValue: string;
+  behaviors: ObservedValueBehavior[];
+}
+
+export interface ObservedValueStudent {
+  id: string;
+  lrn: string;
+  name: string;
+  ratings: Record<string, ObservedValueRating>;
+  markedCount: number;
+  totalCount: number;
+}
+
+export interface AdvisoryObservedValuesData {
+  schoolYear: string;
+  term: Sf9Term;
+  termLabel: string;
+  isLocked: boolean;
+  ratings: ObservedValueRating[];
+  groups: ObservedValueGroup[];
+  students: ObservedValueStudent[];
+}
+
 export interface QuarterGrade {
   writtenWorkPS: number | null;
   perfTaskPS: number | null;
@@ -845,6 +876,26 @@ export const advisoryApi = {
     }),
 
   getAdvisorySummary: () => api.get<AdvisorySummary>("/advisory/summary"),
+
+  getObservedValues: (params: { term: Sf9Term }) =>
+    api.get<AdvisoryObservedValuesData>("/advisory/observed-values", { params }),
+
+  saveObservedValues: (
+    studentId: string,
+    data: {
+      term: Sf9Term;
+      values: Array<{ behaviorCode: string; rating: ObservedValueRating }>;
+    },
+  ) => api.put<{ message: string; values: Array<{ behaviorCode: string; rating: ObservedValueRating }> }>(
+    `/advisory/observed-values/${studentId}`,
+    data,
+  ),
+
+  getSf9Section: (params?: { term?: Sf9Term }) =>
+    api.get<Sf9BatchResponse>("/advisory/sf9", { params }),
+
+  getStudentSf9: (studentId: string, params?: { term?: Sf9Term }) =>
+    api.get<Sf9Payload>(`/advisory/sf9/${studentId}`, { params }),
 };
 
 // Registrar API Types
@@ -1165,55 +1216,134 @@ export interface SF8Data {
   }[];
 }
 
-export interface SF9Data {
-  student: {
-    id: string;
-    lrn: string;
-    name: string;
-    gender: string;
-    birthDate?: string;
-    age?: number;
-    address?: string;
-    section: string;
-    gradeLevel: string;
-    schoolYear: string;
-    adviser?: string;
-  };
-  subjectGrades: {
-    subjectCode: string;
-    subjectName: string;
-    teacher?: string;
-    T1?: number;
-    T2?: number;
-    T3?: number;
-    final?: number;
-    remarks?: string;
+export type Sf9Term = "T1" | "T2" | "T3";
+export type Sf9Mode = "SF9" | "TERM_CARD";
+export type Sf9TermStatus = "DRAFT" | "FINAL";
+
+export interface Sf9Meta {
+  mode: Sf9Mode;
+  schoolYear: string;
+  generatedAt: string;
+  isTemporary: boolean;
+  term?: Sf9Term;
+  termLabel?: string;
+  termStatus?: Sf9TermStatus;
+  termStartDate?: string | null;
+  termEndDate?: string | null;
+  termDatesDerived?: boolean;
+}
+
+export interface Sf9StudentInfo {
+  id: string;
+  lrn: string;
+  name: string;
+  gender: string;
+  birthDate?: string;
+  age?: number | null;
+  address?: string;
+  section: string;
+  gradeLevel: string;
+  schoolYear: string;
+  adviser?: string | null;
+}
+
+export interface Sf9SubjectGrade {
+  subjectCode: string;
+  subjectName: string;
+  teacher?: string;
+  T1?: number | null;
+  T2?: number | null;
+  T3?: number | null;
+  final?: number | null;
+  remarks?: string | null;
+}
+
+export interface Sf9TermSubject {
+  subjectCode: string;
+  subjectName: string;
+  teacher?: string;
+  grade: number | null;
+  remarks: "Passed" | "Failed" | null;
+}
+
+export interface Sf9AttendanceData {
+  months: {
+    key: string;
+    label: string;
+    schoolDays: number;
+    present: number;
+    absent: number;
   }[];
-  attendance: {
-    months: {
-      key: string;
-      label: string;
-      schoolDays: number;
-      present: number;
-      absent: number;
-    }[];
-    total: { schoolDays: number; present: number; absent: number };
-  };
-  values: {
-    mpiDescription: string;
-    T1?: string;
-    T2?: string;
-    T3?: string;
-  }[];
-  generalAverage?: number;
-  honors?: string;
+  total: { schoolDays: number; present: number; absent: number };
+}
+
+export interface Sf9TermAttendance {
+  startDate: string | null;
+  endDate: string | null;
+  schoolDays: number;
+  present: number;
+  absent: number;
+}
+
+export interface Sf9SchoolSettings {
+  schoolName: string;
+  division: string;
+  region: string;
+  schoolHeadName: string;
+  district?: string;
+}
+
+export interface Sf9ValueRow {
+  code: string;
+  coreValue: string;
+  statement: string;
+  T1?: string | null;
+  T2?: string | null;
+  T3?: string | null;
+}
+
+export interface FullSf9Payload {
+  meta: Sf9Meta & { mode: "SF9"; isTemporary: false; term?: never };
+  student: Sf9StudentInfo;
+  subjectGrades: Sf9SubjectGrade[];
+  attendance: Sf9AttendanceData;
+  values: Sf9ValueRow[];
+  generalAverage?: number | null;
+  honors?: string | null;
   promotionStatus?: string | null;
-  schoolSettings?: {
-    schoolName: string;
-    division: string;
-    region: string;
-    schoolHeadName: string;
+  schoolSettings?: Sf9SchoolSettings;
+}
+
+export interface TermCardPayload {
+  meta: Sf9Meta & {
+    mode: "TERM_CARD";
+    isTemporary: true;
+    term: Sf9Term;
+    termStatus: Sf9TermStatus;
   };
+  student: Sf9StudentInfo;
+  termSubjects: Sf9TermSubject[];
+  termAverage: number | null;
+  termAttendance: Sf9TermAttendance | null;
+  schoolSettings?: Sf9SchoolSettings;
+}
+
+export type Sf9Payload = FullSf9Payload | TermCardPayload;
+export type SF9Data = FullSf9Payload;
+
+export interface Sf9SectionInfo {
+  id: string;
+  name: string;
+  gradeLevel: string;
+  schoolYear: string;
+  adviser: string | null;
+  totalStudents: number;
+}
+
+export interface Sf9BatchResponse {
+  meta: Sf9Meta;
+  section: Sf9SectionInfo;
+  students: Sf9Payload[];
 }
 
 export interface SF2Data {

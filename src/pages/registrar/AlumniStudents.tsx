@@ -55,8 +55,9 @@ const gradeLevelLabels: Record<string, string> = {
 };
 
 const formatName = (s: AlumniStudent) => {
-  const parts = [s.lastName, s.firstName, s.middleName].filter(Boolean);
-  return parts.join(", ");
+  if (!s.lastName) return [s.firstName, s.middleName].filter(Boolean).join(" ");
+  const givenNames = [s.firstName, s.middleName].filter(Boolean).join(" ");
+  return givenNames ? `${s.lastName}, ${givenNames}` : s.lastName;
 };
 
 const statusStyles: Record<string, { bg: string; text: string; border: string }> = {
@@ -70,6 +71,10 @@ const statusLabels: Record<string, string> = {
   "TRANSFERRED": "Transferred",
   "GRADUATED": "Graduated",
 };
+
+/** Former-student rows with an ENROLLED last status are JHS completers. */
+const alumniDisplayStatus = (s: AlumniStudent) =>
+  s.enrollmentStatus === "ENROLLED" ? "GRADUATED" : s.enrollmentStatus;
 
 const tabConfig = [
   { key: "all", label: "All", icon: Users },
@@ -375,9 +380,9 @@ export default function AlumniStudents() {
                       <TableCell className="py-3.5 px-4 text-left align-middle">
                         <Badge
                           variant="outline"
-                          className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap ${statusStyles[student.enrollmentStatus]?.bg || "bg-muted/50"} ${statusStyles[student.enrollmentStatus]?.text || "text-muted-foreground"} ${statusStyles[student.enrollmentStatus]?.border || "border-border"}`}
+                          className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap ${statusStyles[alumniDisplayStatus(student)]?.bg || "bg-muted/50"} ${statusStyles[alumniDisplayStatus(student)]?.text || "text-muted-foreground"} ${statusStyles[alumniDisplayStatus(student)]?.border || "border-border"}`}
                         >
-                          {statusLabels[student.enrollmentStatus] || student.enrollmentStatus}
+                          {statusLabels[alumniDisplayStatus(student)] || alumniDisplayStatus(student)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-left py-3.5 px-4 align-middle">

@@ -224,7 +224,7 @@ export function AimsLinkForm({ classAssignmentId, classContext, onConnected, onC
                       {c.subject} · {c.sectionName} · {c.schoolYear}
                       {c.gradeLevel ? ` · ${c.gradeLevel}` : ""}
                       {c.teacherName !== undefined ? ` · ${c.teacherName ?? "Unassigned"}` : ""}
-                      {c.studentCount !== undefined ? ` · ${c.studentCount} learners` : ""}
+                      {c.studentCount !== undefined ? ` · ${c.studentCount} ${c.studentCount === 1 ? "learner" : "learners"}` : ""}
                     </span>
                     {(c.id === suggestedCourseId || chips.length > 0 || c.archived) && (
                       <span className="mt-1.5 flex flex-wrap gap-1.5">

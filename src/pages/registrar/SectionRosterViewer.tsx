@@ -385,7 +385,7 @@ export default function SectionRosterViewer() {
                             {gradeLabel(s.gradeLevel)}
                           </Badge>
                           <Badge variant="outline" className="text-[10px]">
-                            {s._count?.enrollments ?? 0} learners
+                            {s._count?.enrollments ?? 0} {(s._count?.enrollments ?? 0) === 1 ? "learner" : "learners"}
                           </Badge>
                         </div>
                       </div>
@@ -561,7 +561,7 @@ export default function SectionRosterViewer() {
                 {rosterData.length > 0 && (
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[11px] font-medium text-muted-foreground">
-                      {rosterStats.total} learners
+                      {rosterStats.total} {rosterStats.total === 1 ? "learner" : "learners"}
                     </span>
                     <span className="text-[11px] font-medium text-blue-600">
                       {rosterStats.male} male

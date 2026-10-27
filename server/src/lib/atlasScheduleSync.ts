@@ -494,6 +494,8 @@ export interface SyncAtlasScheduleParams {
   epSectionById: Map<number, any>;
   sectionByKey: Map<string, any>;
   subjectByCode: Map<string, any>;
+  /** Active-term payload already fetched for the faculty fallback (avoid a duplicate read). */
+  prefetchedActivePayload?: AtlasPublishedPayload | null;
 }
 
 export interface SyncAtlasScheduleResult {
@@ -506,7 +508,7 @@ export interface SyncAtlasScheduleResult {
 export async function syncAtlasPublishedSchedule(
   params: SyncAtlasScheduleParams,
 ): Promise<SyncAtlasScheduleResult> {
-  const { schoolYearLabel, atlasSchoolYearId, facultyIndex, epSectionById, sectionByKey, subjectByCode } = params;
+  const { schoolYearLabel, atlasSchoolYearId, facultyIndex, epSectionById, sectionByKey, subjectByCode, prefetchedActivePayload } = params;
   const errors: string[] = [];
   let conflict: string | null = null;
 
@@ -550,7 +552,10 @@ export async function syncAtlasPublishedSchedule(
     }
   };
 
-  const activePayload = await fetchTerm('active');
+  const activePayload = prefetchedActivePayload ?? await fetchTerm('active');
+  if (prefetchedActivePayload) {
+    logger.debug('[AtlasSync] Using prefetched active-term published schedule (faculty fallback)');
+  }
   if (activePayload) {
     const source = activePayload.source;
     activeTermIndex = source.termIndex;

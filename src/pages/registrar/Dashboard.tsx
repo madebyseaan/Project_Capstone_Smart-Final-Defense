@@ -406,6 +406,7 @@ export default function RegistrarDashboardPage() {
       >
         <div className="relative">
           <PageHeader
+            variant="plain"
             title="Registrar Dashboard"
             description={`Student enrollment overview for ${dashboard.currentSchoolYear}`}
             className="text-white [&_h1]:!text-white [&_p]:!text-white/80"

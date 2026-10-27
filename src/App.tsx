@@ -119,6 +119,7 @@ function App() {
         <Route path="records" element={<ClassRecordsList />} />
         <Route path="records/:classAssignmentId" element={<ClassRecordView />} />
         <Route path="advisory" element={<MyAdvisory />} />
+        <Route path="advisory/print" element={<Navigate to="/teacher/advisory?view=printables" replace />} />
         <Route path="advisory/student/:studentId" element={<StudentGradeProfile />} />
         <Route path="attendance" element={<RequireAdvisory><Attendance /></RequireAdvisory>} />
         <Route path="attendance-reports" element={<RequireAdvisory><AttendanceReports /></RequireAdvisory>} />

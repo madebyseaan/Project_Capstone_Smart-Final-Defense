@@ -250,6 +250,7 @@ export default function AdminDashboard() {
         <div className="absolute -bottom-24 left-1/3 w-72 h-72 rounded-full bg-white/5 blur-3xl pointer-events-none" />
         <div className="relative">
           <PageHeader
+            variant="plain"
             title="Admin Dashboard"
             description={`${settings?.schoolName || "SMART"} · ${settings?.currentSchoolYear || "—"}${currentTermLabel ? ` · ${currentTermLabel}` : ""}`}
             className="text-white [&_h1]:!text-white [&_p]:!text-white/80"

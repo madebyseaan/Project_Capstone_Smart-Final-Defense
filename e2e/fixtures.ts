@@ -8,11 +8,12 @@ export interface Account {
   login: string;
 }
 
-type Role = "admin" | "teacher" | "registrar";
+type Role = "admin" | "teacher" | "teacher2" | "registrar";
 
 const LOGIN_PATH: Record<Role, string> = {
   admin: "/login/admin",
   teacher: "/login",
+  teacher2: "/login",
   registrar: "/login/registrar",
 };
 
@@ -33,6 +34,7 @@ export function account(role: Role): Account {
   const env: Partial<Record<Role, { id?: string; pw?: string }>> = {
     admin: { id: process.env.SMART_TEST_ADMIN_EMAIL, pw: process.env.SMART_TEST_ADMIN_PASSWORD },
     teacher: { id: process.env.SMART_TEST_TEACHER_EMAIL, pw: process.env.SMART_TEST_TEACHER_PASSWORD },
+    teacher2: { id: process.env.SMART_TEST_TEACHER2_EMAIL, pw: process.env.SMART_TEST_TEACHER2_PASSWORD },
     registrar: { id: process.env.SMART_TEST_REGISTRAR_EMAIL, pw: process.env.SMART_TEST_REGISTRAR_PASSWORD },
   };
   const e = env[role];
@@ -45,6 +47,16 @@ export function account(role: Role): Account {
   throw new Error(
     `[e2e] No credentials for "${role}". Set SMART_TEST_${role.toUpperCase()}_EMAIL/PASSWORD or create tests/playwright-accounts.json.`,
   );
+}
+
+/** Non-throwing credential check for optional accounts (e.g. teacher2). */
+export function hasAccount(role: Role): boolean {
+  try {
+    account(role);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function login(page: Page, role: Role): Promise<void> {

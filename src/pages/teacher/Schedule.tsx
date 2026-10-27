@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun, Coffee, UtensilsCrossed, Info } from "lucide-react";
+import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun, Coffee, UtensilsCrossed, Info, MoveHorizontal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   type ScheduleTermInfo,
 } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { cn } from "@/lib/utils";
 import ScheduleDraftPanel from "./components/ScheduleDraftPanel";
 
 // ---------------------------------------------------------------------------
@@ -62,34 +63,34 @@ const DAY_SHORT: Record<string, string> = {
 function getGradeColors(gradeLevel: string) {
   switch (gradeLevel) {
     case "GRADE_7": return {
-      badge: "bg-emerald-50 text-emerald-700 border-emerald-100",
-      cell: "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50",
+      badge: "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20",
+      cell: "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:hover:bg-emerald-500/15",
       dot: "bg-emerald-400",
-      text: "text-emerald-800",
+      text: "text-emerald-800 dark:text-emerald-200",
     };
     case "GRADE_8": return {
-      badge: "bg-amber-50 text-amber-700 border-amber-100",
-      cell: "bg-amber-50/40 border-amber-200 hover:bg-amber-50",
+      badge: "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20",
+      cell: "bg-amber-50/40 border-amber-200 hover:bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/20 dark:hover:bg-amber-500/15",
       dot: "bg-amber-400",
-      text: "text-amber-800",
+      text: "text-amber-800 dark:text-amber-200",
     };
     case "GRADE_9": return {
-      badge: "bg-rose-50 text-rose-700 border-rose-100",
-      cell: "bg-rose-50/40 border-rose-200 hover:bg-rose-50",
+      badge: "bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20",
+      cell: "bg-rose-50/40 border-rose-200 hover:bg-rose-50 dark:bg-rose-500/10 dark:border-rose-500/20 dark:hover:bg-rose-500/15",
       dot: "bg-rose-400",
-      text: "text-rose-800",
+      text: "text-rose-800 dark:text-rose-200",
     };
     case "GRADE_10": return {
-      badge: "bg-blue-50 text-blue-700 border-blue-100",
-      cell: "bg-blue-50/40 border-blue-200 hover:bg-blue-50",
+      badge: "bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20",
+      cell: "bg-blue-50/40 border-blue-200 hover:bg-blue-50 dark:bg-blue-500/10 dark:border-blue-500/20 dark:hover:bg-blue-500/15",
       dot: "bg-blue-400",
-      text: "text-blue-800",
+      text: "text-blue-800 dark:text-blue-200",
     };
     default: return {
-      badge: "bg-indigo-50 text-indigo-700 border-indigo-100",
-      cell: "bg-indigo-50/40 border-indigo-200 hover:bg-indigo-50",
+      badge: "bg-indigo-50 text-indigo-700 border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/20",
+      cell: "bg-indigo-50/40 border-indigo-200 hover:bg-indigo-50 dark:bg-indigo-500/10 dark:border-indigo-500/20 dark:hover:bg-indigo-500/15",
       dot: "bg-indigo-400",
-      text: "text-indigo-800",
+      text: "text-indigo-800 dark:text-indigo-200",
     };
   }
 }
@@ -178,6 +179,8 @@ export default function TeacherSchedule() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
+  const [mobileView, setMobileView] = useState<"agenda" | "week">("agenda");
+  const [selectedDay, setSelectedDay] = useState<string>(getDayKey() || "MONDAY");
 
   const fetchSchedule = async (termIndex?: number | null) => {
     try {
@@ -201,6 +204,9 @@ export default function TeacherSchedule() {
 
   const todayKey = getDayKey();
   const todayClasses = schedule?.byDay[todayKey] ?? [];
+  const selectedDayClasses = [...(schedule?.byDay[selectedDay] ?? [])].sort(
+    (a, b) => a.startTime.localeCompare(b.startTime),
+  );
   const gridRows = getTimeSlots(schedule?.entries ?? [], schedule?.specialEvents ?? [], schedule?.timeSlots ?? []);
   const gradeLevels = [...new Set((schedule?.entries ?? []).map(e => e.section.gradeLevel))].sort();
   const terms: ScheduleTermInfo[] = schedule?.terms ?? [];
@@ -257,7 +263,7 @@ export default function TeacherSchedule() {
             key={t.identity}
             type="button"
             onClick={() => setSelectedTerm(t.order)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+            className={`min-h-12 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
               isActive
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-background text-muted-foreground border-border hover:bg-muted"
@@ -267,6 +273,34 @@ export default function TeacherSchedule() {
           </button>
         );
       })}
+    </div>
+  ) : null;
+
+  const gradeLegend = gradeLevels.length > 1 ? (
+    <div className="flex items-center gap-2.5 flex-wrap">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grade Levels:</span>
+      {gradeLevels.map((gl) => {
+        const gc = getGradeColors(gl);
+        return (
+          <span key={gl} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${gc.badge}`}>
+            <span className={`w-2 h-2 rounded-full ${gc.dot}`} />
+            {formatGradeShort(gl)}
+          </span>
+        );
+      })}
+    </div>
+  ) : null;
+
+  const filterContent = termChips || gradeLegend ? (
+    <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-8">
+      {termChips}
+      {gradeLegend}
+    </div>
+  ) : null;
+
+  const mobileFilterBar = filterContent ? (
+    <div className="rounded-2xl border border-border bg-card px-4 py-3 shadow-sm lg:hidden">
+      {filterContent}
     </div>
   ) : null;
 
@@ -298,7 +332,7 @@ export default function TeacherSchedule() {
   if (error) {
     return (
       <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
-        <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] bg-white">
+        <Card className="rounded-2xl border border-border bg-card shadow-sm">
           <CardContent className="py-32 text-center">
             <div className="w-24 h-24 bg-red-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-sm">
               <AlertTriangle className="w-10 h-10 text-red-400" />
@@ -322,18 +356,18 @@ export default function TeacherSchedule() {
         <PageHeader
           title="My Schedule"
           description={`S.Y. ${schedule?.schoolYear ?? ""}`}
+          footer={filterContent}
         />
 
         {notices}
-        {termChips}
 
         {/* Draft preview — shown even with no published schedule */}
         {draftPanel}
 
         {/* Empty state card */}
-        <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] bg-white overflow-hidden">
+        <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <CardContent className="p-10 flex flex-col items-center justify-center text-center">
-            <div className="w-20 h-20 rounded-[1.75rem] bg-slate-100 flex items-center justify-center mb-6">
+            <div className="w-20 h-20 rounded-[1.75rem] bg-muted flex items-center justify-center mb-6">
               <CalendarClock className="w-9 h-9 text-muted-foreground" />
             </div>
             <h3 className="font-bold text-foreground text-2xl mb-2">No Schedule Published</h3>
@@ -343,7 +377,7 @@ export default function TeacherSchedule() {
 
             {/* Feature hints */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-xl mx-auto">
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border">
                 <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
                   <CalendarDays className="w-4 h-4 text-emerald-500" />
                 </div>
@@ -352,7 +386,7 @@ export default function TeacherSchedule() {
                   <p className="text-[11px] text-muted-foreground">Mon–Fri timetable</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
                   <Clock className="w-4 h-4 text-blue-500" />
                 </div>
@@ -361,7 +395,7 @@ export default function TeacherSchedule() {
                   <p className="text-[11px] text-muted-foreground">Period-by-period</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border">
                 <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
                   <Sun className="w-4 h-4 text-amber-500" />
                 </div>
@@ -380,50 +414,170 @@ export default function TeacherSchedule() {
   // ---- Main render ----
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
-      {/* Header */}
-      <PageHeader
-        title="My Schedule"
-        description={`S.Y. ${schedule.schoolYear} · ${schedule.count} class${schedule.count !== 1 ? "es" : ""} per week`}
-        actions={
-          <Button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            variant="outline"
-            className="h-11 px-6 rounded-xl border-slate-200 text-foreground hover:bg-slate-50 font-bold text-sm shadow-sm"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Syncing..." : "Refresh"}
-          </Button>
-        }
-      />
+      {/* Compact mobile header */}
+      <div className="flex items-center justify-between gap-3 lg:hidden">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">
+            S.Y. {schedule.schoolYear} · {schedule.count} classes/week
+          </p>
+          <h1 className="mt-0.5 text-xl font-semibold text-foreground">Weekly schedule</h1>
+        </div>
+        <Button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          variant="outline"
+          size="icon"
+          aria-label="Refresh schedule"
+          className="h-12 w-12 shrink-0 rounded-xl"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      {/* Desktop header */}
+      <div className="hidden lg:block">
+        <PageHeader
+          title="My Schedule"
+          description={`S.Y. ${schedule.schoolYear} · ${schedule.count} class${schedule.count !== 1 ? "es" : ""} per week`}
+          footer={filterContent}
+          actions={
+            <Button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              variant="outline"
+              className="h-12 px-6 rounded-xl border-border text-foreground font-semibold hover:bg-muted text-sm shadow-sm"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Syncing..." : "Refresh"}
+            </Button>
+          }
+        />
+      </div>
 
       {notices}
-      {termChips}
+      {mobileFilterBar}
+
+      {/* Mobile view switch */}
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 lg:hidden">
+        {(["agenda", "week"] as const).map((view) => (
+          <button
+            key={view}
+            type="button"
+            onClick={() => setMobileView(view)}
+            aria-pressed={mobileView === view}
+            className={cn(
+              "min-h-12 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors",
+              mobileView === view ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {view === "agenda" ? "Day agenda" : "Week grid"}
+          </button>
+        ))}
+      </div>
+
+      {/* Mobile day agenda */}
+      {mobileView === "agenda" && (
+        <Card className="rounded-2xl border border-border bg-card shadow-sm lg:hidden">
+          <CardContent className="p-0">
+            <div className="grid grid-cols-5 gap-1 border-b border-border p-2">
+              {DAYS.map((day) => {
+                const active = selectedDay === day;
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setSelectedDay(day)}
+                    aria-pressed={active}
+                    aria-label={DAY_LABELS[day]}
+                    className={cn(
+                      "flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors",
+                      active
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted/50 text-muted-foreground active:bg-muted",
+                    )}
+                  >
+                    <span>{DAY_SHORT[day]}</span>
+                    {day === todayKey && (
+                      <span className={cn("text-[9px] font-bold uppercase tracking-wide", active ? "text-primary-foreground/80" : "text-primary")}>
+                        Today
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-semibold text-foreground">{DAY_LABELS[selectedDay]}</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedDayClasses.length} {selectedDayClasses.length === 1 ? "class" : "classes"}
+                  </p>
+                </div>
+                <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide">
+                  {selectedDay === todayKey ? "Today" : "Selected day"}
+                </Badge>
+              </div>
+
+              {selectedDayClasses.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
+                  <Sun className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm font-semibold text-foreground">No classes scheduled</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Enjoy the free day.</p>
+                </div>
+              ) : (
+                <ol className="space-y-2">
+                  {selectedDayClasses.map((entry, idx) => {
+                    const gc = getGradeColors(entry.section.gradeLevel);
+                    return (
+                      <li key={entry.id} className={cn("flex gap-3 rounded-xl border p-3", gc.cell)}>
+                        <div className="w-16 shrink-0 border-r border-border/60 pr-2 text-xs font-semibold text-muted-foreground">
+                          <p className="whitespace-nowrap text-foreground">{formatTime12h(entry.startTime)}</p>
+                          <p className="mt-0.5 whitespace-nowrap">{formatTime12h(entry.endTime)}</p>
+                          <p className="mt-1 text-[10px] font-medium uppercase tracking-wide">#{idx + 1}</p>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={cn("truncate text-sm font-semibold", gc.text)} title={entry.subject.name}>
+                            {stripGradeSuffix(entry.subject.name)}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs font-medium text-muted-foreground">
+                            {formatSectionLabel(entry.section.gradeLevel, entry.section.name)}
+                          </p>
+                          {roomDisplay(entry) && (
+                            <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                              <MapPin className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{roomDisplay(entry)!.text}</span>
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Grade Level Legend */}
-      {gradeLevels.length > 1 && (
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Grade Levels:</span>
-          {gradeLevels.map((gl) => {
-            const gc = getGradeColors(gl);
-            return (
-              <span key={gl} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${gc.badge}`}>
-                <span className={`w-2 h-2 rounded-full ${gc.dot}`} />
-                {formatGradeShort(gl)}
-              </span>
-            );
-          })}
-        </div>
+      {mobileView === "week" && (
+        <p className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground lg:hidden">
+          <MoveHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+          Swipe to see the full week
+        </p>
       )}
 
       {/* Weekly Timetable Grid */}
-      <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
+      <div className={cn(mobileView === "week" ? "block" : "hidden", "lg:block")}>
+      <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[750px]">
+            <table className="w-full min-w-[700px]">
               <thead>
-                <tr className="border-b border-slate-200" style={{ backgroundColor: `${colors.primary}08` }}>
-                  <th className="px-5 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest w-[120px]">Time</th>
+                <tr className="border-b border-border" style={{ backgroundColor: `${colors.primary}08` }}>
+                  <th className="sticky left-0 z-20 w-[84px] bg-card px-3 py-5 lg:w-[120px] lg:px-4 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Time</th>
                   {DAYS.map((day) => {
                     const isToday = day === todayKey;
                     return (
@@ -451,11 +605,11 @@ export default function TeacherSchedule() {
                     const label = slot.eventName;
                     const tone = slot.breakType === "lunch" ? "orange" : slot.breakType === "recess" ? "amber" : "slate";
                     return (
-                      <tr key={`break-${idx}`} className="border-y border-dashed border-slate-200/80">
+                      <tr key={`break-${idx}`} className="border-y border-dashed border-border">
                         {/* Time column */}
-                        <td className="px-5 py-3 align-middle border-r border-slate-100 whitespace-nowrap">
+                        <td className="sticky left-0 z-10 whitespace-nowrap border-r border-border bg-card px-3 py-3 align-middle lg:px-4">
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tone === "orange" ? "bg-orange-50" : tone === "amber" ? "bg-amber-50" : "bg-slate-100"}`}>
+                            <div className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg lg:flex ${tone === "orange" ? "bg-orange-50" : tone === "amber" ? "bg-amber-50" : "bg-slate-100"}`}>
                               <BreakIcon className={`w-4 h-4 ${tone === "orange" ? "text-orange-400" : tone === "amber" ? "text-amber-500" : "text-muted-foreground"}`} />
                             </div>
                             <div className="leading-none">
@@ -470,18 +624,18 @@ export default function TeacherSchedule() {
                           if (!applies) {
                             return (
                               <td key={day} className="px-2 py-2 align-middle">
-                                <div className={`h-[88px] rounded-2xl ${day === todayKey ? "bg-primary/[0.03]" : "bg-slate-50/50"}`} />
+                                <div className={`min-h-[88px] rounded-2xl ${day === todayKey ? "bg-primary/[0.03]" : "bg-muted/40"}`} />
                               </td>
                             );
                           }
                           return (
                             <td key={day} className="px-2 py-2 align-middle">
-                              <div className={`h-[88px] rounded-2xl border border-dashed flex flex-col items-center justify-center gap-1 ${
+                              <div className={`min-h-[88px] rounded-2xl border border-dashed flex flex-col items-center justify-center gap-1 ${
                                 tone === "orange"
                                   ? "border-orange-200/60 bg-orange-50/30"
                                   : tone === "amber"
                                     ? "border-amber-200/60 bg-amber-50/30"
-                                    : "border-slate-200/60 bg-slate-50/30"
+                                    : "border-border bg-muted/30"
                               }`}>
                                 <BreakIcon className={`w-4 h-4 ${tone === "orange" ? "text-orange-300" : tone === "amber" ? "text-amber-400" : "text-muted-foreground"}`} />
                                 <span className={`text-[10px] font-bold uppercase tracking-wider ${tone === "orange" ? "text-orange-400" : tone === "amber" ? "text-amber-400" : "text-muted-foreground"}`}>
@@ -497,11 +651,11 @@ export default function TeacherSchedule() {
 
                   // --- Class row ---
                   return (
-                    <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
+                    <tr key={idx} className="group hover:bg-muted/40 transition-colors">
                       {/* Time column — single line, no wrap */}
-                      <td className="px-5 py-4 align-middle border-r border-slate-100 whitespace-nowrap">
+                      <td className="sticky left-0 z-10 whitespace-nowrap border-r border-border bg-card px-3 py-4 align-middle lg:px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                          <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted lg:flex">
                             <Clock className="w-4 h-4 text-muted-foreground" />
                           </div>
                           <div className="leading-none">
@@ -520,10 +674,10 @@ export default function TeacherSchedule() {
                             slot.event && (slot.event.days.length === 0 || slot.event.days.includes(day));
                           return (
                             <td key={day} className="px-2 py-2 align-middle">
-                              <div className={`h-[88px] rounded-2xl flex flex-col items-center justify-center gap-1 ${
+                              <div className={`min-h-[88px] rounded-2xl flex flex-col items-center justify-center gap-1 ${
                                 eventApplies
                                   ? "border border-dashed border-amber-200/60 bg-amber-50/30"
-                                  : day === todayKey ? "bg-primary/[0.03]" : "bg-slate-50/50"
+                                  : day === todayKey ? "bg-primary/[0.03]" : "bg-muted/40"
                               }`}>
                                 {eventApplies && (
                                   <>
@@ -574,14 +728,15 @@ export default function TeacherSchedule() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
-      {/* Today's Classes */}
+      {/* Today's Classes — desktop */}
       {todayClasses.length > 0 && (
-        <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
-          <CardContent className="p-8">
+        <Card className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:block">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-slate-900 text-white">
+                <div className="p-2.5 rounded-xl bg-primary text-primary-foreground">
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
@@ -630,10 +785,10 @@ export default function TeacherSchedule() {
         </Card>
       )}
 
-      {/* No classes today */}
+      {/* No classes today — desktop */}
       {todayClasses.length === 0 && todayKey && (
-        <Card className="border-0 shadow-2xl shadow-slate-200/40 rounded-[2.5rem] overflow-hidden bg-white">
-          <CardContent className="p-8 text-center">
+        <Card className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:block">
+          <CardContent className="p-6 text-center">
             <BookOpen className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
             <p className="font-bold text-foreground text-lg">No Classes Today</p>
             <p className="text-muted-foreground text-sm font-semibold mt-1">{DAY_LABELS[todayKey]} is free!</p>
@@ -770,3 +925,7 @@ function roomDisplay(entry: ScheduleEntry): { text: string; title: string } | nu
   }
   return null;
 }
+
+
+
+

@@ -178,6 +178,10 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
     );
   }
 
+  if (selectedTerm && currentTerm && TERM_ORDER[selectedTerm] > TERM_ORDER[currentTerm]) {
+    return null;
+  }
+
   // --- Current term: deadline warnings ---
   if (!termEndDate) return null;
 

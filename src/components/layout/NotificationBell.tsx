@@ -62,7 +62,7 @@ export default function NotificationBell({
           <button
             type="button"
             aria-label={count > 0 ? `Notifications, ${count} active` : "Notifications"}
-            className="relative p-2 rounded-xl hover:bg-accent text-muted-foreground transition-all active:scale-95"
+            className="relative flex h-12 w-12 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-accent active:scale-95 lg:h-9 lg:w-9"
           />
         }
       >
@@ -124,3 +124,4 @@ export default function NotificationBell({
     </DropdownMenu>
   );
 }
+

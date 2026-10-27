@@ -66,28 +66,28 @@ export function ClassRecordHero({
     : "0%";
 
   return (
-    <div className="bg-white transition-all">
-      {/* Top Accent Gradient Line */}
-      <div className="h-1 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-800" />
+    <div className="bg-card transition-all">
+      {/* Top Accent Line */}
+      <div className="h-1 bg-primary" />
 
       {/* Top Utility & Controls Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-2.5 border-b border-slate-100 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5 lg:px-6">
         {/* Left: Back Arrow + Breadcrumb */}
-        <div className="flex items-center gap-3">
-          <Link to="/teacher/classes">
+        <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+          <Link to="/teacher/classes" aria-label="Back to class records">
             <Button
               variant="ghost"
               size="icon"
-              className="w-8 h-8 rounded-lg bg-slate-50 text-slate-500 hover:bg-indigo-600 hover:text-white transition-all border border-slate-200/80 shadow-xs"
+              className="h-12 w-12 rounded-xl border border-border bg-muted/50 text-muted-foreground transition-all hover:bg-primary hover:text-primary-foreground lg:h-8 lg:w-8 lg:rounded-lg"
               title="Back to class records"
             >
               <ArrowLeft className="w-4 h-4" />
             </Button>
           </Link>
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-            <span>Class Record</span>
-            <span>/</span>
-            <span className="text-slate-700 font-bold">
+          <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-muted-foreground">
+            <span className="hidden sm:inline">Class Record</span>
+            <span className="hidden sm:inline">/</span>
+            <span className="truncate font-semibold text-foreground">
               {gradeLevelLabels[classAssignment.section.gradeLevel] ?? classAssignment.section.gradeLevel} - {classAssignment.section.name}
             </span>
           </div>
@@ -96,7 +96,7 @@ export function ClassRecordHero({
         {/* Right Action Cluster */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Term Switcher (Preserves tutorial-period-controls ID) */}
-          <div id="tutorial-period-controls" className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/80">
+          <div id="tutorial-period-controls" className="flex items-center rounded-lg border border-border bg-muted p-0.5">
             {(["T1", "T2", "T3"] as const).map((t) => (
               <button
                 key={t}
@@ -104,10 +104,10 @@ export function ClassRecordHero({
                 onClick={() => !lockedTerm && onTermChange(t)}
                 disabled={!!lockedTerm && lockedTerm !== t}
                 className={cn(
-                  "h-6 px-2.5 rounded-md text-[11px] font-bold transition-all",
+                  "h-12 rounded-md px-2.5 text-[11px] font-semibold transition-all lg:h-6",
                   selectedTerm === t
-                    ? "bg-white text-indigo-700 shadow-xs scale-[1.02]"
-                    : "text-slate-500 hover:text-slate-800"
+                    ? "bg-card text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {termLabels?.[t] ?? termTitles[t]}
@@ -121,7 +121,7 @@ export function ClassRecordHero({
               variant="outline"
               size="sm"
               onClick={onStartTour}
-              className="h-8 px-3 rounded-lg border-amber-200 bg-amber-50/80 text-amber-900 hover:bg-amber-100 font-bold text-xs uppercase tracking-wider gap-1.5 shadow-xs"
+              className="hidden h-12 gap-1.5 rounded-xl border-amber-200 bg-amber-50/80 px-3 text-xs font-semibold uppercase tracking-wide text-amber-900 shadow-xs hover:bg-amber-100 lg:inline-flex lg:h-8 lg:rounded-lg"
               title="Start Step-by-Step Interactive Tutorial"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
@@ -131,11 +131,11 @@ export function ClassRecordHero({
 
           {/* View / Entry Mode Badge */}
           {isViewOnly ? (
-            <Badge className="h-8 px-3 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 font-bold text-[11px] gap-1">
+            <Badge className="h-9 gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[11px] font-semibold text-blue-700 lg:h-8">
               <Eye className="w-3 h-3" /> View Only
             </Badge>
           ) : (
-            <Badge className="h-8 px-3 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px]">
+            <Badge className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-semibold text-emerald-700 lg:h-8">
               Grade Entry Mode
             </Badge>
           )}
@@ -143,109 +143,118 @@ export function ClassRecordHero({
       </div>
 
       {/* Hero Subject & Metadata Area (Preserves tutorial-hero-info ID) */}
-      <div id="tutorial-hero-info" className="px-6 py-4 bg-white">
+      <div id="tutorial-hero-info" className="bg-card px-4 py-4 lg:px-6">
         <div className="flex flex-col gap-1.5">
           {/* Main Subject Title */}
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight uppercase">
+          <h1 className="text-xl font-bold tracking-tight text-foreground lg:text-2xl">
             {classAssignment.subject.name}
           </h1>
 
           {/* Clean Metadata Badges */}
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[11px] font-bold px-2.5 py-0.5 rounded-md">
+            <Badge className="bg-muted text-foreground border-border text-[11px] font-bold px-2.5 py-0.5 rounded-md">
               {gradeLevelLabels[classAssignment.section.gradeLevel] ?? classAssignment.section.gradeLevel} · Section {classAssignment.section.name}
             </Badge>
 
-            <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[11px] font-bold px-2.5 py-0.5 rounded-md flex items-center gap-1.5">
-              <User className="w-3 h-3 text-slate-400" />
+            <Badge className="hidden items-center gap-1.5 rounded-md border-border bg-muted px-2.5 py-0.5 text-[11px] font-medium text-foreground sm:inline-flex">
+              <User className="w-3 h-3 text-muted-foreground" />
               <span>Teacher:</span>
-              <span className="text-slate-900 font-extrabold">{userName}</span>
+              <span className="text-foreground font-semibold">{userName}</span>
             </Badge>
 
-            <Badge className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[11px] font-bold px-2.5 py-0.5 rounded-md">
+            <Badge className="bg-primary/10 text-primary border-primary/20 text-[11px] font-bold px-2.5 py-0.5 rounded-md">
               Weights: WW {activeWeights.ww}% · PT {activeWeights.pt}% · QA {activeWeights.qa}%
             </Badge>
 
             {effectiveWeightsSource === "subject-override" && (
-              <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">
+              <span className="hidden text-[10px] font-medium uppercase tracking-wide text-primary lg:inline">
                 (Custom Weights)
               </span>
             )}
             {effectiveWeightsSource === "subject-type" && (
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              <span className="hidden text-[10px] font-medium uppercase tracking-wide text-muted-foreground lg:inline">
                 (Group Defaults)
               </span>
             )}
             {effectiveWeightsSource === "generic-fallback" && (
-              <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600">
+              <span className="hidden text-[10px] font-medium uppercase tracking-wide text-amber-600 lg:inline">
                 (Generic 20/50/30)
               </span>
             )}
 
-            <div className="h-3.5 w-px bg-slate-200 mx-1 hidden sm:block" />
+            <div className="mx-1 hidden h-3.5 w-px bg-border lg:block" />
 
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            <span className="hidden text-[10px] font-medium uppercase tracking-wide text-muted-foreground lg:inline">
               DepEd Form 7-A (E-Class Record)
             </span>
           </div>
         </div>
       </div>
 
-      {/* High-End Telemetry Bar (No Chunky Boxes - Preserves tutorial-stats-overview ID) */}
+      {/* Telemetry — compact strip on phones, detailed bar on desktop */}
       {(stats || toolsSlot) && (
-        <div 
-          id="tutorial-stats-overview" 
-          className="border-t border-slate-100 bg-slate-50/60 px-6 py-2.5 flex flex-wrap items-center gap-6 text-xs"
-        >
+        <div id="tutorial-stats-overview" className="border-t border-border bg-muted/40">
           {stats && (
             <>
-              {/* Class Average */}
-              <div className="flex items-center gap-2">
-                <div className="p-1 rounded-md bg-indigo-50 text-indigo-600">
-                  <Target className="w-3.5 h-3.5" />
+              <div className="hidden flex-wrap items-center gap-6 px-6 py-2.5 text-xs lg:flex">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-md bg-primary/10 p-1 text-primary">
+                    <Target className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Class Average:</span>
+                  <span className="text-sm font-semibold text-foreground">{stats.avg.toFixed(1)}</span>
                 </div>
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Class Average:</span>
-            <span className="text-slate-900 font-extrabold text-sm">{stats.avg.toFixed(1)}</span>
-          </div>
 
-          <div className="h-3.5 w-px bg-slate-200 hidden sm:block" />
+                <div className="h-3.5 w-px bg-border" />
 
-          {/* Passing Rate */}
-          <div className="flex items-center gap-2">
-            <div className="p-1 rounded-md bg-emerald-50 text-emerald-600">
-              <TrendingUp className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Passing Rate:</span>
-            <span className="text-slate-900 font-extrabold text-sm">{passingRate}</span>
-            <span className="text-slate-400 text-[11px] font-semibold">({stats.passed}/{stats.total})</span>
-          </div>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-md bg-emerald-50 p-1 text-emerald-600">
+                    <TrendingUp className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Passing Rate:</span>
+                  <span className="text-sm font-semibold text-foreground">{passingRate}</span>
+                  <span className="text-[11px] font-semibold text-muted-foreground">({stats.passed}/{stats.total})</span>
+                </div>
 
-          <div className="h-3.5 w-px bg-slate-200 hidden sm:block" />
+                <div className="h-3.5 w-px bg-border" />
 
-          {/* Highest Grade */}
-          <div className="flex items-center gap-2">
-            <div className="p-1 rounded-md bg-amber-50 text-amber-600">
-              <Award className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Highest Grade:</span>
-            <span className="text-slate-900 font-extrabold text-sm">{stats.highest}</span>
-          </div>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-md bg-amber-50 p-1 text-amber-600">
+                    <Award className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Highest Grade:</span>
+                  <span className="text-sm font-semibold text-foreground">{stats.highest}</span>
+                </div>
 
-          <div className="h-3.5 w-px bg-slate-200 hidden sm:block" />
+                <div className="h-3.5 w-px bg-border" />
 
-          {/* Lowest Grade */}
-          <div className="flex items-center gap-2">
-            <div className="p-1 rounded-md bg-rose-50 text-rose-600">
-              <TrendingDown className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Lowest Grade:</span>
-            <span className="text-slate-900 font-extrabold text-sm">{stats.lowest}</span>
-          </div>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-md bg-rose-50 p-1 text-rose-600">
+                    <TrendingDown className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Lowest Grade:</span>
+                  <span className="text-sm font-semibold text-foreground">{stats.lowest}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 divide-x divide-border lg:hidden">
+                {[
+                  { label: "Average", value: stats.avg.toFixed(1) },
+                  { label: "Passing", value: passingRate },
+                  { label: "Highest", value: stats.highest },
+                  { label: "Lowest", value: stats.lowest },
+                ].map((item) => (
+                  <div key={item.label} className="px-2 py-2.5 text-center">
+                    <p className="text-sm font-bold leading-none text-foreground">{item.value}</p>
+                    <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                  </div>
+                ))}
+              </div>
             </>
           )}
 
           {toolsSlot && (
-            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 border-t border-border bg-card px-3 py-2.5 lg:px-6">
               {toolsSlot}
             </div>
           )}
@@ -256,3 +265,4 @@ export function ClassRecordHero({
     </div>
   );
 }
+

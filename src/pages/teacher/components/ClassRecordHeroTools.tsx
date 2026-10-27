@@ -69,15 +69,17 @@ export function ClassRecordHeroTools({
         size="sm"
         onClick={openAims}
         title={linked ? "Manage AIMS LMS connection" : "Connect an AIMS LMS course"}
+        aria-label={linked ? "Manage AIMS connection" : "Connect AIMS"}
         className={cn(
-          "h-8 rounded-lg border font-bold text-[11px] gap-1.5 shadow-xs",
+          "h-12 gap-1.5 rounded-xl border text-xs font-semibold shadow-xs lg:h-8 lg:rounded-lg lg:text-[11px]",
           linked
             ? "bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border-[var(--ledger-aims)] hover:bg-[var(--ledger-aims-bg)]"
-            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+            : "border-border bg-background text-muted-foreground hover:bg-muted"
         )}
       >
         {linked ? <Check className="w-3.5 h-3.5" /> : <Link2 className="w-3.5 h-3.5 text-[var(--ledger-aims)]" />}
-        {linked ? `AIMS${courseCode ? `: ${courseCode}` : " Connected"}` : "Connect AIMS"}
+        <span className="sm:hidden">AIMS</span>
+        <span className="hidden sm:inline">{linked ? `AIMS${courseCode ? `: ${courseCode}` : " Connected"}` : "Connect AIMS"}</span>
       </Button>
 
       <Button
@@ -86,10 +88,12 @@ export function ClassRecordHeroTools({
         onClick={handleDownload}
         disabled={downloading}
         title="Download the official DepEd E-Class-Record pre-filled with your roster"
-        className="h-8 rounded-lg border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-bold text-[11px] gap-1.5 shadow-xs"
+        aria-label="Download pre-filled Excel"
+        className="h-12 gap-1.5 rounded-xl border border-border bg-background text-xs font-semibold text-muted-foreground shadow-xs hover:bg-muted lg:h-8 lg:rounded-lg lg:text-[11px]"
       >
         {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5 text-emerald-600" />}
-        Download pre-filled Excel
+        <span className="sm:hidden">Excel</span>
+        <span className="hidden sm:inline">Download pre-filled Excel</span>
       </Button>
 
       <Button
@@ -98,10 +102,12 @@ export function ClassRecordHeroTools({
         onClick={() => setExcelOpen(true)}
         disabled={isViewOnly}
         title={isViewOnly ? "Read-only — importing is disabled" : "Import a filled E-Class-Record"}
-        className="h-8 rounded-lg border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-bold text-[11px] gap-1.5 shadow-xs disabled:opacity-50"
+        aria-label="Import filled Excel"
+        className="h-12 gap-1.5 rounded-xl border border-border bg-background text-xs font-semibold text-muted-foreground shadow-xs hover:bg-muted disabled:opacity-50 lg:h-8 lg:rounded-lg lg:text-[11px]"
       >
-        <FileUp className="w-3.5 h-3.5 text-indigo-600" />
-        Import filled Excel
+        <FileUp className="w-3.5 h-3.5 text-primary" />
+        <span className="sm:hidden">Import</span>
+        <span className="hidden sm:inline">Import filled Excel</span>
       </Button>
 
       {/* AIMS LMS manager — one dialog, no nesting (link form XOR manager) */}
@@ -160,3 +166,4 @@ export function ClassRecordHeroTools({
     </>
   );
 }
+

@@ -30,6 +30,7 @@ import {
   getAtlasScheduleSyncState,
   type AtlasFacultyIndex,
 } from './atlasScheduleSync';
+import { resolveAtlasFacultyIndex } from './atlasFacultyFallback';
 import {
   mapGradeLevel,
   resolveSubjectCode,
@@ -45,14 +46,6 @@ import { computeResolutionConfidence, exceedsRatio, MAX_ARCHIVE_RATIO } from './
 
 function normalizeAtlasSubjectCode(code: string | null | undefined): string {
   return (code ?? '').trim().toUpperCase();
-}
-
-function normalizeEmail(email: string | null | undefined): string {
-  if (!email) return '';
-  return email.toLowerCase()
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
 }
 
 // -- State ------------------------------------------------------------------
@@ -257,46 +250,30 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const smartTeachers = await prisma.teacher.findMany({
       include: { user: { select: { email: true } } },
     });
-    const smartTeacherIdByEmployeeId = new Map<string, string>();
-    const smartTeacherIdByEmail = new Map<string, string>();
-    for (const teacher of smartTeachers) {
-      smartTeacherIdByEmployeeId.set(String(teacher.employeeId).trim(), teacher.id);
-      const email = teacher.user.email;
-      if (email) smartTeacherIdByEmail.set(normalizeEmail(email), teacher.id);
-    }
-
     const enrollProTeachers = await getEnrollProTeachers();
 
-    // Match ATLAS faculty by externalId first, then fallback to email.
-    const atlasIdToSmartTeacherId = new Map<number, string>();
-    const atlasExternalIdToSmartTeacherId = new Map<number, string>();
-    for (const af of atlasFaculty) {
-      const externalId = Number(af.externalId ?? NaN);
-      const externalMatch = Number.isFinite(externalId)
-        ? enrollProTeachers.find((teacher) => Number(teacher.id) === externalId)
-        : undefined;
-      const externalTeacherId = externalMatch?.employeeId
-        ? smartTeacherIdByEmployeeId.get(String(externalMatch.employeeId).trim())
-        : undefined;
-      const directEmployeeIdMatch = af.employeeId
-        ? smartTeacherIdByEmployeeId.get(String(af.employeeId).trim())
-        : undefined;
-      const emailMatch = smartTeacherIdByEmail.get(normalizeEmail(af.contactInfo));
-      const tid = externalTeacherId ?? directEmployeeIdMatch ?? emailMatch;
-      if (tid) {
-        atlasIdToSmartTeacherId.set(af.id, tid);
-        // §7.3 of the term-aware schedule contract: faculty.externalId /
-        // employeeId are the preferred join keys over the ATLAS surrogate id.
-        if (Number.isFinite(externalId)) atlasExternalIdToSmartTeacherId.set(externalId, tid);
-        matched++;
-      }
-    }
-
-    const facultyIndex: AtlasFacultyIndex = {
-      byAtlasId: atlasIdToSmartTeacherId,
-      byExternalId: atlasExternalIdToSmartTeacherId,
-      byEmployeeId: smartTeacherIdByEmployeeId,
-    };
+    const facultyResolution = await resolveAtlasFacultyIndex({
+      atlasFaculty,
+      smartTeachers: smartTeachers.map((teacher) => ({
+        id: teacher.id,
+        employeeId: teacher.employeeId,
+        email: teacher.user?.email ?? null,
+      })),
+      enrollProTeachers: enrollProTeachers.map((teacher) => ({
+        id: teacher.id,
+        employeeId: String(teacher.employeeId ?? ''),
+      })),
+      atlasSchoolYearId,
+    });
+    matched = facultyResolution.matched;
+    const facultyIndex: AtlasFacultyIndex = facultyResolution.index;
+    const prefetchedActivePayload = facultyResolution.prefetchedActivePayload;
+    errors.push(...facultyResolution.errors);
+    logger.info(
+      `[AtlasSync] Faculty index source=${facultyResolution.source} candidates=${facultyResolution.candidates} ` +
+      `matched=${facultyResolution.matched} (externalId=${facultyResolution.matchedByExternalId}, ` +
+      `employeeId=${facultyResolution.matchedByEmployeeId}, email=${facultyResolution.matchedByEmail})`,
+    );
 
     // 3.1 Build EnrollPro sectionId → section details map for ATLAS assignments
     // Contract: scoped sections only — unscoped fallback removed from ownership path.
@@ -417,17 +394,21 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const loads: Array<{ smartTeacherId: string; subjectCode: string; sectionName: string; gradeLevel: GradeLevel }> = [];
     const desiredAssignmentPairs = new Set<string>();
     // ALL Atlas-matched teacher IDs (for stale-check scope — not just those with resolved loads)
-    const allAtlasMatchedTeacherIds = Array.from(atlasIdToSmartTeacherId.values());
+    const allAtlasMatchedTeacherIds = Array.from(facultyIndex.byAtlasId.values());
     let effectiveLoadState: 'EMPTY' | 'POPULATED' | 'UNAVAILABLE' | 'REJECTED' = 'UNAVAILABLE';
     let effectiveAssignmentsCount = 0;
 
-    // Build ATLAS subjectId → code lookup from already-fetched atlasSubjects
+    // Build ATLAS subjectId → code lookup from already-fetched atlasSubjects.
+    // `isActive === false` means the subject was archived in ATLAS; its stale
+    // teaching-load rows must not be treated as current ownership.
     const atlasSubjectIdToCode = new Map<number, string>();
+    const inactiveAtlasSubjectIds = new Set<number>();
     try {
       const atlasSubjectsData = await atlasGet(`/subjects?schoolId=${ATLAS_SCHOOL_ID}`);
       const atlasSubjects: any[] = atlasSubjectsData.subjects ?? [];
       for (const s of atlasSubjects) {
         if (s.id && s.code) atlasSubjectIdToCode.set(Number(s.id), normalizeAtlasSubjectCode(s.code));
+        if (s.id && s.isActive === false) inactiveAtlasSubjectIds.add(Number(s.id));
       }
     } catch { /* non-critical — will use ID as fallback */ }
 
@@ -474,11 +455,20 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         logger.info('[AtlasSync] Teaching load state is EMPTY — all current-year assignments for Atlas-matched teachers will be archived.');
       } else {
         // POPULATED: map effective assignments to SMART teacher loads
+        let inactiveSubjectLoadRows = 0;
+        const inactiveSubjectIdsInLoad = new Set<number>();
         for (const assignment of effectiveLoad.assignments) {
-          const smartTeacherId = atlasIdToSmartTeacherId.get(assignment.facultyId);
+          const smartTeacherId = facultyIndex.byAtlasId.get(assignment.facultyId);
           if (!smartTeacherId) continue;
 
-          const subjectCode = atlasSubjectIdToCode.get(Number(assignment.subjectId))
+          const subjectId = Number(assignment.subjectId);
+          if (inactiveAtlasSubjectIds.has(subjectId)) {
+            inactiveSubjectLoadRows++;
+            inactiveSubjectIdsInLoad.add(subjectId);
+            continue;
+          }
+
+          const subjectCode = atlasSubjectIdToCode.get(subjectId)
             ?? normalizeAtlasSubjectCode(String(assignment.subjectId));
           const sectionId = Number(assignment.sectionId);
           if (!Number.isFinite(sectionId)) continue;
@@ -492,6 +482,14 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           if (gradeLevel) {
             loads.push({ smartTeacherId, subjectCode, sectionName: epSection.name, gradeLevel });
           }
+        }
+        if (inactiveSubjectLoadRows > 0) {
+          const codes = [...inactiveSubjectIdsInLoad]
+            .map((id) => atlasSubjectIdToCode.get(id) ?? String(id))
+            .sort();
+          logger.warn(
+            `[AtlasSync] Excluding ${inactiveSubjectLoadRows} teaching-load row(s) for archived ATLAS subject(s): ${codes.join(', ')}`,
+          );
         }
       }
     } else if (effectiveResult.status === 'rejected') {
@@ -925,6 +923,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       epSectionById,
       sectionByKey,
       subjectByCode,
+      prefetchedActivePayload,
     });
     errors.push(...scheduleOutcome.errors);
 
