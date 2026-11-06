@@ -10,6 +10,7 @@ import { Term, AuditAction, AuditSeverity, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { createAuditLog } from "./audit";
+import { getGradingModeForSchoolYear } from "./gradingMode";
 import { calculateGrades, createGradeSnapshot, resolveEffectiveWeightsForClassAssignment } from "../routes/grades-sub/helpers";
 
 // ---------------------------------------------------------------------------
@@ -103,8 +104,9 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
     scoresByStudent.get(s.studentId)!.push(s);
   }
 
-  // Resolve effective weights for grade computation
+  // Resolve effective weights and grading mode for grade computation
   const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
+  const gradingMode = await getGradingModeForSchoolYear(classAssignment.schoolYear);
 
   let savedCount = 0;
   let finalizedSkipped = 0;
@@ -367,6 +369,7 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
         mergedWW, mergedPT,
         finalQAScore, finalQAMax,
         effectiveWeights.ww, effectiveWeights.pt, effectiveWeights.qa,
+        gradingMode,
       );
 
       const gradePayload = {

@@ -287,37 +287,37 @@ export default function TeacherDashboard() {
 
   // Prepare chart data with more vibrant colors
   const chartData = masteryData ? [
-    { 
-      name: "Outstanding", 
-      range: "90-100", 
+    {
+      name: "Advancing",
+      range: "90-100",
       students: masteryData.distribution.outstanding,
       fill: "#10b981", // Emerald 500
       secondary: "#059669" // Emerald 600
     },
-    { 
-      name: "Very Satisfactory", 
-      range: "85-89", 
+    {
+      name: "Benchmarking",
+      range: "80-89",
       students: masteryData.distribution.verySatisfactory,
       fill: "#3b82f6", // Blue 500
       secondary: "#2563eb" // Blue 600
     },
-    { 
-      name: "Satisfactory", 
-      range: "80-84", 
+    {
+      name: "Connecting",
+      range: "75-79",
       students: masteryData.distribution.satisfactory,
       fill: "#f59e0b", // Amber 500
       secondary: "#d97706" // Amber 600
     },
-    { 
-      name: "Fairly Satisfactory", 
-      range: "75-79", 
+    {
+      name: "Developing",
+      range: "65-74",
       students: masteryData.distribution.fairlySatisfactory,
       fill: "#f97316", // Orange 500
       secondary: "#ea580c" // Orange 600
     },
-    { 
-      name: "Did Not Meet", 
-      range: "<75", 
+    {
+      name: "Emerging",
+      range: "0-64",
       students: masteryData.distribution.didNotMeet,
       fill: "#ef4444", // Red 500
       secondary: "#dc2626" // Red 600

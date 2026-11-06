@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../../middleware/auth";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { getTransmutationTable } from "../../lib/transmutationCache";
+import { getGradingModeForSchoolYear } from "../../lib/gradingMode";
 import { logger } from "../../lib/logger";
 import {
   ClassAssignmentWithRelations,
@@ -231,6 +232,7 @@ export default function registerDashboard(router: Router): void {
           let gradesForStats: any[] = ca.grades;
           if (!isHG) {
             const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(ca.id);
+            const gradingMode = await getGradingModeForSchoolYear(ca.schoolYear);
             gradesForStats = await Promise.all(ca.grades.map(async (g: any) => {
               if (g.quarterlyGrade !== null) return g;
 
@@ -241,7 +243,8 @@ export default function registerDashboard(router: Router): void {
                 g.quarterlyAssessMax ?? 100,
                 effectiveWeights.ww,
                 effectiveWeights.pt,
-                effectiveWeights.qa
+                effectiveWeights.qa,
+                gradingMode
               );
 
               return {
@@ -709,10 +712,10 @@ export default function registerDashboard(router: Router): void {
 
         const distribution = {
           outstanding: allGrades.filter((g: number) => g >= 90 && g <= 100).length,
-          verySatisfactory: allGrades.filter((g: number) => g >= 85 && g <= 89).length,
-          satisfactory: allGrades.filter((g: number) => g >= 80 && g <= 84).length,
-          fairlySatisfactory: allGrades.filter((g: number) => g >= 75 && g <= 79).length,
-          didNotMeet: allGrades.filter((g: number) => g < 75).length,
+          verySatisfactory: allGrades.filter((g: number) => g >= 80 && g <= 89).length,
+          satisfactory: allGrades.filter((g: number) => g >= 75 && g <= 79).length,
+          fairlySatisfactory: allGrades.filter((g: number) => g >= 65 && g <= 74).length,
+          didNotMeet: allGrades.filter((g: number) => g < 65).length,
         };
 
         const allSections = await prisma.classAssignment.findMany({

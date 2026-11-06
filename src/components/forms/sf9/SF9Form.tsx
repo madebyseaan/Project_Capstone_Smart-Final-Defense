@@ -165,10 +165,10 @@ export default function SF9Form({ data, fullLogoUrl, highlightSubject, focusTerm
             </thead>
             <tbody>
               <tr><td className="border border-gray-600 p-1.5 text-gray-900">Advancing</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">90-100</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
-              <tr><td className="border border-gray-600 p-1.5 text-gray-900">Benchmarking</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">85-89</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
-              <tr><td className="border border-gray-600 p-1.5 text-gray-900">Connecting</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">80-84</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
-              <tr><td className="border border-gray-600 p-1.5 text-gray-900">Developing</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">75-79</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
-              <tr><td className="border border-gray-600 p-1.5 text-gray-900">Emerging</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">60-74</td><td className="border border-gray-600 p-1.5 text-gray-900">Failed</td></tr>
+              <tr><td className="border border-gray-600 p-1.5 text-gray-900">Benchmarking</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">80-89</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
+              <tr><td className="border border-gray-600 p-1.5 text-gray-900">Connecting</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">75-79</td><td className="border border-gray-600 p-1.5 text-gray-900">Passed</td></tr>
+              <tr><td className="border border-gray-600 p-1.5 text-gray-900">Developing</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">65-74</td><td className="border border-gray-600 p-1.5 text-gray-900">Failed</td></tr>
+              <tr><td className="border border-gray-600 p-1.5 text-gray-900">Emerging</td><td className="border border-gray-600 p-1.5 text-center text-gray-900">0-64</td><td className="border border-gray-600 p-1.5 text-gray-900">Failed</td></tr>
             </tbody>
           </table>
         </div>

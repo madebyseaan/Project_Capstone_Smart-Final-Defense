@@ -12,6 +12,8 @@ interface ConfirmDialogProps {
   destructive?: boolean;
   loading?: boolean;
   icon?: ReactNode;
+  testId?: string;
+  confirmTestId?: string;
   children?: ReactNode;
 }
 
@@ -30,6 +32,8 @@ export function ConfirmDialog({
   destructive = false,
   loading = false,
   icon,
+  testId,
+  confirmTestId,
   children,
 }: ConfirmDialogProps) {
   return (
@@ -51,6 +55,8 @@ export function ConfirmDialog({
       onConfirm={onConfirm}
       destructive={destructive}
       loading={loading}
+      testId={testId}
+      confirmTestId={confirmTestId}
     >
       {children}
     </AppModal>

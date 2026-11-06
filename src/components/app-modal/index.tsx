@@ -53,6 +53,8 @@ export interface AppModalProps {
   loading?: boolean;
   /** Hide footer entirely (view-only dialogs) */
   hideFooter?: boolean;
+  testId?: string;
+  confirmTestId?: string;
   children?: ReactNode;
 }
 
@@ -69,6 +71,8 @@ export function AppModal({
   destructive = false,
   loading = false,
   hideFooter = false,
+  testId,
+  confirmTestId,
   children,
 }: AppModalProps) {
   const { colors } = useTheme();
@@ -76,6 +80,7 @@ export function AppModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        data-testid={testId}
         className={`${SIZE_CLASSES[size]} max-h-[90vh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-8 border-0 shadow-2xl bg-card rounded-xl sm:rounded-2xl gap-0`}
       >
         {/* Header */}
@@ -114,6 +119,7 @@ export function AppModal({
               Cancel
             </Button>
             <Button
+              data-testid={confirmTestId}
               className="rounded-xl"
               style={
                 destructive

@@ -66,3 +66,6 @@ server/check-*.js
 # Tesseract.js language data (downloaded at runtime)
 *.traineddata
 *.traineddata.gz
+
+# Local verification artifacts (PM2/log evidence)
+artifacts/

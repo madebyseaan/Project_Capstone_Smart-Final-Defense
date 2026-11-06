@@ -63,9 +63,11 @@ async function upsertUser(opts: {
 }
 
 async function main() {
-  const year =
-    (await prisma.schoolYear.findUnique({ where: { externalId: 900003 } })) ??
-    (await prisma.schoolYear.create({ data: { label: YEAR_LABEL, externalId: 900003, status: "ACTIVE" } }));
+  const year = await prisma.schoolYear.upsert({
+    where: { externalId: 900003 },
+    update: { label: YEAR_LABEL, status: "ACTIVE", gradingMode: "TRANSMUTED" },
+    create: { label: YEAR_LABEL, externalId: 900003, status: "ACTIVE", gradingMode: "TRANSMUTED" },
+  });
 
   await prisma.systemSettings.upsert({
     where: { id: "main" },
@@ -140,6 +142,7 @@ async function main() {
     });
   }
 
+  const studentIds: string[] = [];
   for (let i = 1; i <= 6; i += 1) {
     const lrn = `99000000000${i}`;
     const student = await prisma.student.upsert({
@@ -147,6 +150,7 @@ async function main() {
       update: { firstName: `Student${i}`, lastName: "Rig", gender: i % 2 === 0 ? "FEMALE" : "MALE" },
       create: { lrn, firstName: `Student${i}`, lastName: "Rig", gender: i % 2 === 0 ? "FEMALE" : "MALE" },
     });
+    studentIds.push(student.id);
     await prisma.enrollment.upsert({
       where: { studentId_sectionId_schoolYear: { studentId: student.id, sectionId: section.id, schoolYear: year.label } },
       update: { status: "ENROLLED", isArchived: false },
@@ -154,8 +158,66 @@ async function main() {
     });
   }
 
+  const gradeFixtures = [
+    {
+      studentId: studentIds[0],
+      ww: 70,
+      pt: 80,
+      qa: 90,
+      initialGrade: 81,
+      quarterlyGrade: 84,
+    },
+    {
+      studentId: studentIds[1],
+      ww: 70,
+      pt: 75,
+      qa: 78,
+      initialGrade: 74.5,
+      quarterlyGrade: 78,
+    },
+  ];
+
+  for (const fixture of gradeFixtures) {
+    await prisma.grade.upsert({
+      where: {
+        studentId_classAssignmentId_term: {
+          studentId: fixture.studentId,
+          classAssignmentId: assignment.id,
+          term: "T1",
+        },
+      },
+      update: {
+        writtenWorkScores: [{ name: "WW1", score: fixture.ww, maxScore: 100 }],
+        perfTaskScores: [{ name: "PT1", score: fixture.pt, maxScore: 100 }],
+        quarterlyAssessScore: fixture.qa,
+        quarterlyAssessMax: 100,
+        writtenWorkPS: fixture.ww,
+        perfTaskPS: fixture.pt,
+        quarterlyAssessPS: fixture.qa,
+        initialGrade: fixture.initialGrade,
+        quarterlyGrade: fixture.quarterlyGrade,
+        status: "DRAFT",
+      },
+      create: {
+        studentId: fixture.studentId,
+        classAssignmentId: assignment.id,
+        term: "T1",
+        writtenWorkScores: [{ name: "WW1", score: fixture.ww, maxScore: 100 }],
+        perfTaskScores: [{ name: "PT1", score: fixture.pt, maxScore: 100 }],
+        quarterlyAssessScore: fixture.qa,
+        quarterlyAssessMax: 100,
+        writtenWorkPS: fixture.ww,
+        perfTaskPS: fixture.pt,
+        quarterlyAssessPS: fixture.qa,
+        initialGrade: fixture.initialGrade,
+        quarterlyGrade: fixture.quarterlyGrade,
+        status: "DRAFT",
+      },
+    });
+  }
+
   console.log(
-    `[seed-offline-fixtures] Ready: year=${year.label} admin=${admin.username} teacher=${teacherUser.username} registrar=${registrar.username} section=${section.name} subject=${subject.code} assignment=${assignment.id}`,
+    `[seed-offline-fixtures] Ready: year=${year.label} admin=${admin.username} teacher=${teacherUser.username} registrar=${registrar.username} section=${section.name} subject=${subject.code} assignment=${assignment.id} grades=${gradeFixtures.length}`,
   );
 }
 

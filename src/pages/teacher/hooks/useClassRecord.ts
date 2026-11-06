@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { gradesApi, type ClassRecord, type ClassAssignment, type ScoreItem, type InheritedGrade, type InheritedFromTeacher, type AimsScoresResponse, type RotationSibling } from "@/lib/api";
+import { gradesApi, type ClassRecord, type ClassAssignment, type ScoreItem, type InheritedGrade, type InheritedFromTeacher, type AimsScoresResponse, type RotationSibling, type GradingMode } from "@/lib/api";
 import type { TransmutationRow } from "@/lib/gradeMath";
 
 interface ClassRecordResponse {
   classAssignment: ClassAssignment;
   classRecord: ClassRecord[];
+  gradingMode: GradingMode;
   currentTerm?: "T1" | "T2" | "T3";
   effectiveWeights?: {
     ww: number;

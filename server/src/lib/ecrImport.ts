@@ -14,6 +14,7 @@ import { Term, AuditAction, AuditSeverity, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { createAuditLog } from "./audit";
+import { getGradingModeForSchoolYear } from "./gradingMode";
 import {
   calculateGrades,
   createGradeSnapshot,
@@ -214,6 +215,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
   const hasExamHps = parsed.hps.st1 > 0 || parsed.hps.st2 > 0 || parsed.hps.te > 0;
 
   const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
+  const gradingMode = await getGradingModeForSchoolYear(classAssignment.schoolYear);
   const user = await prisma.user.findUnique({ where: { id: teacherUserId } });
 
   interface Prepared {
@@ -309,6 +311,7 @@ export async function importEcrToGrades(input: EcrImportInput): Promise<EcrImpor
         effectiveWeights.ww,
         effectiveWeights.pt,
         effectiveWeights.qa,
+        gradingMode,
       );
 
       const existing = existingMap.get(item.studentId);

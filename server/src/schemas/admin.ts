@@ -130,6 +130,12 @@ export const termLockToggleSchema = z.object({
   }),
 });
 
+export const gradingModeUpdateSchema = z.object({
+  body: z.object({
+    mode: z.enum(['TRANSMUTED', 'ZERO_BASED']),
+  }),
+});
+
 export const gradingConfigSchema = z.object({
   params: z.object({
     subjectType: z.string().min(1, 'subjectType is required'),

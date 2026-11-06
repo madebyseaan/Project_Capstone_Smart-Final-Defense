@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -154,6 +154,8 @@ export default function TermFinalization() {
   const [gradePreviewSection, setGradePreviewSection] =
     useState<TermFinalizationSection | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [bulkAction, setBulkAction] = useState<"finalize" | "unfinalize" | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,6 +240,25 @@ export default function TermFinalization() {
   const isDeadlinePassed = deadlinePassed(deadline);
   const lockActive = !!overview?.yearLock?.isLocked || !!overview?.termLock?.isLocked;
 
+  const bulkTargets = useMemo(() => {
+    const eligible = filteredSections.filter(
+      (section) => section.canFinalize && !section.eosyFinalized,
+    );
+    return {
+      finalize: eligible.filter((section) => section.draftCount > 0),
+      unfinalize: eligible.filter((section) => section.finalizedCount > 0),
+    };
+  }, [filteredSections]);
+
+  const bulkDraftGrades = bulkTargets.finalize.reduce(
+    (sum, section) => sum + section.draftCount,
+    0,
+  );
+  const bulkFinalizedGrades = bulkTargets.unfinalize.reduce(
+    (sum, section) => sum + section.finalizedCount,
+    0,
+  );
+
   const toggleSection = (sectionId: string) => {
     setExpandedSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
   };
@@ -289,6 +310,58 @@ export default function TermFinalization() {
     }
   };
 
+  const runBulkAction = async (kind: "finalize" | "unfinalize") => {
+    if (!selectedTerm || !selectedSchoolYear) return;
+    const targets = kind === "finalize" ? bulkTargets.finalize : bulkTargets.unfinalize;
+    if (targets.length === 0) {
+      setBulkAction(null);
+      return;
+    }
+
+    setBulkBusy(true);
+    let affected = 0;
+    const failed: string[] = [];
+    let warning: string | undefined;
+
+    for (const section of targets) {
+      try {
+        const payload = {
+          sectionId: section.sectionId,
+          term: selectedTerm,
+          schoolYear: selectedSchoolYear,
+        };
+        const res =
+          kind === "finalize"
+            ? await registrarApi.finalizeTerm(payload)
+            : await registrarApi.unfinalizeTerm(payload);
+        affected +=
+          kind === "finalize" ? res.data.finalizedCount : res.data.unfinalizedCount;
+        if (res.data.warning) warning = res.data.warning;
+      } catch {
+        failed.push(section.sectionName);
+      }
+    }
+
+    setBulkBusy(false);
+    setBulkAction(null);
+    setRefreshKey((value) => value + 1);
+
+    const verb = kind === "finalize" ? "Finalized" : "Unfinalized";
+    const completed = targets.length - failed.length;
+    if (completed === 0) {
+      toast.error(`Unable to ${kind} grades for any section.`);
+      return;
+    }
+    if (failed.length === 0) {
+      toast.success(`${verb} ${affected} grade(s) across ${completed} section(s).`);
+    } else {
+      toast.warning(
+        `${verb} ${affected} grade(s) in ${completed} of ${targets.length} sections. Failed: ${failed.join(", ")}.`,
+      );
+    }
+    if (warning) toast.warning(warning);
+  };
+
   const confirmCopy = (() => {
     if (!pendingAction) {
       return { title: "", description: "", confirmLabel: "Confirm" };
@@ -313,26 +386,146 @@ export default function TermFinalization() {
       ? `${overview.termLock.lockedBy ?? "System"}${overview.termLock.lockedAt ? ` · ${formatDateTime(overview.termLock.lockedAt)}` : ""}`
       : "";
 
+  const bulkConfirmCopy = (() => {
+    if (!bulkAction) {
+      return { title: "", description: "", confirmLabel: "Confirm" };
+    }
+    const targets = bulkAction === "finalize" ? bulkTargets.finalize : bulkTargets.unfinalize;
+    const verb = bulkAction === "finalize" ? "Finalize" : "Unfinalize";
+    const count = bulkAction === "finalize" ? bulkDraftGrades : bulkFinalizedGrades;
+    const sectionWord = targets.length === 1 ? "section" : "sections";
+
+    const parts = [
+      bulkAction === "finalize"
+        ? `This will mark ${count} DRAFT grade${count === 1 ? "" : "s"} as FINALIZED across ${targets.length} ${sectionWord} (${selectedTerm}).`
+        : `This will return ${count} FINALIZED grade${count === 1 ? "" : "s"} to DRAFT across ${targets.length} ${sectionWord} (${selectedTerm}).`,
+    ];
+    if (bulkAction === "finalize" && deadline && !isDeadlinePassed) {
+      parts.push(
+        `The ${selectedTerm} deadline is ${formatDate(deadline)}; finalizing early will lock teacher edits.`,
+      );
+    }
+    if (bulkAction === "unfinalize") {
+      parts.push(
+        "If the term is locked, teachers still need an approved edit request or an admin unlock before they can edit.",
+      );
+    }
+    if (targets.some((section) => section.eosyStarted)) {
+      parts.push("Sections with EOSY promotion data will need EOSY re-run.");
+    }
+
+    return {
+      title: `${verb} ${selectedTerm} grades for ${targets.length} ${sectionWord}?`,
+      description: parts.join(" "),
+      confirmLabel: bulkAction === "finalize" ? "Finalize all" : "Unfinalize all",
+    };
+  })();
+
   return (
     <div className="space-y-6" data-testid="term-finalization-page">
-      <PageHeader
-        title="Term Finalization"
-        description="Finalize grades at the end of each term. Term locks stay separate; EOSY promotion finalization remains on the EOSY page."
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setRefreshKey((value) => value + 1)}
-            disabled={loading || loadingYears}
-          >
-            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-        }
-      />
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-5">
+          <PageHeader
+            title="Term Finalization"
+            description="Finalize grades at the end of each term. Term locks stay separate; EOSY promotion finalization remains on the EOSY page."
+            variant="plain"
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkAction("finalize")}
+                  disabled={
+                    loading ||
+                    loadingYears ||
+                    bulkBusy ||
+                    bulkTargets.finalize.length === 0
+                  }
+                  data-testid="term-finalization-finalize-all"
+                >
+                  {bulkBusy && bulkAction === "finalize" ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileCheck2 className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Finalize all
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkAction("unfinalize")}
+                  disabled={
+                    loading ||
+                    loadingYears ||
+                    bulkBusy ||
+                    bulkTargets.unfinalize.length === 0
+                  }
+                  className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                  data-testid="term-finalization-unfinalize-all"
+                >
+                  {bulkBusy && bulkAction === "unfinalize" ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileEdit className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Unfinalize all
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRefreshKey((value) => value + 1)}
+                  disabled={loading || loadingYears || bulkBusy}
+                >
+                  <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+              </div>
+            }
+          />
+        </div>
 
-      <Card className="border border-border bg-card shadow-sm rounded-xl p-0">
-        <CardContent className="p-4">
+        {overview && (
+          <div className="border-t border-border p-4 lg:p-5">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                label="Sections"
+                value={overview.summary.sections}
+                numericValue={overview.summary.sections}
+                icon={<Users className="h-5 w-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                label="Finalized Sections"
+                value={overview.summary.sectionsFinalized}
+                numericValue={overview.summary.sectionsFinalized}
+                icon={<FileCheck2 className="h-5 w-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                label="Draft Grades"
+                value={overview.summary.totalDraftGrades}
+                numericValue={overview.summary.totalDraftGrades}
+                icon={<FileEdit className="h-5 w-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                label="Subjects Without Grades"
+                value={overview.summary.noGradeSubjects}
+                numericValue={overview.summary.noGradeSubjects}
+                icon={<AlertTriangle className="h-5 w-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:max-w-[560px]">
               <div className="space-y-1.5">
@@ -406,91 +599,55 @@ export default function TermFinalization() {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {overview && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard
-            label="Sections"
-            value={overview.summary.sections}
-            numericValue={overview.summary.sections}
-            icon={<Users className="h-5 w-5 text-primary" />}
-            iconClassName="bg-primary/10"
-          />
-          <StatCard
-            label="Finalized Sections"
-            value={overview.summary.sectionsFinalized}
-            numericValue={overview.summary.sectionsFinalized}
-            icon={<FileCheck2 className="h-5 w-5 text-primary" />}
-            iconClassName="bg-primary/10"
-          />
-          <StatCard
-            label="Draft Grades"
-            value={overview.summary.totalDraftGrades}
-            numericValue={overview.summary.totalDraftGrades}
-            icon={<FileEdit className="h-5 w-5 text-primary" />}
-            iconClassName="bg-primary/10"
-          />
-          <StatCard
-            label="Subjects Without Grades"
-            value={overview.summary.noGradeSubjects}
-            numericValue={overview.summary.noGradeSubjects}
-            icon={<AlertTriangle className="h-5 w-5 text-primary" />}
-            iconClassName="bg-primary/10"
-          />
         </div>
-      )}
-
-      {yearArchived && (
-        <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 p-4">
-          <Archive className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
-          <div>
-            <p className="text-sm font-semibold text-foreground">This school year is archived</p>
-            <p className="text-xs text-muted-foreground">
-              Finalization is read-only. Unarchive the year or select a different school year to make changes.
-            </p>
+        {yearArchived && (
+          <div className="border-t border-border p-4 lg:p-5">
+            <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3">
+              <Archive className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">This school year is archived</p>
+                <p className="text-xs text-muted-foreground">
+                  Finalization is read-only. Unarchive the year or select a different school year to make changes.
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {!yearArchived && lockActive && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <Lock className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-          <div>
-            <p className="text-sm font-semibold text-amber-900">
-              {overview?.yearLock?.isLocked ? "The whole school year is locked" : "This term is locked"}
-            </p>
-            <p className="text-xs text-amber-800">
-              {lockProvenance ? `${lockProvenance}. ` : ""}
-              You can still finalize grades after the deadline. Unfinalizing does not reopen teacher
-              editing while the lock is active — teachers need an approved edit request or an admin unlock.
-            </p>
+        {!yearArchived && lockActive && (
+          <div className="border-t border-border p-4 lg:p-5">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <Lock className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900">
+                  {overview?.yearLock?.isLocked ? "The whole school year is locked" : "This term is locked"}
+                </p>
+                <p className="text-xs text-amber-800">
+                  {lockProvenance ? `${lockProvenance}. ` : ""}
+                  You can still finalize grades after the deadline. Unfinalizing does not reopen teacher
+                  editing while the lock is active — teachers need an approved edit request or an admin unlock.
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {loading || loadingYears ? (
-        <Card className="border border-border bg-card shadow-sm rounded-xl p-0">
-          <CardContent className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
+        {loading || loadingYears ? (
+          <div className="flex items-center justify-center gap-2 border-t border-border py-16 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm">Loading term finalization status...</span>
-          </CardContent>
-        </Card>
-      ) : error ? (
-        <Card className="border border-border bg-card shadow-sm rounded-xl p-0">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center border-t border-border px-4 py-16 text-center">
             <AlertTriangle className="mb-3 h-8 w-8 text-destructive" />
             <p className="text-sm font-semibold text-foreground">Unable to load term finalization</p>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">{error}</p>
             <Button variant="outline" size="sm" className="mt-4" onClick={() => setRefreshKey((value) => value + 1)}>
               Try again
             </Button>
-          </CardContent>
-        </Card>
-      ) : filteredSections.length === 0 ? (
-        <Card className="border border-border bg-card shadow-sm rounded-xl p-0">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+          </div>
+        ) : filteredSections.length === 0 ? (
+          <div className="flex flex-col items-center justify-center border-t border-border px-4 py-16 text-center">
             <BookOpen className="mb-3 h-8 w-8 text-muted-foreground/60" />
             <p className="text-sm font-semibold text-foreground">No sections found</p>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
@@ -498,36 +655,38 @@ export default function TermFinalization() {
                 ? "No sections match your search."
                 : "No sections were found for this school year."}
             </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <p className="text-sm font-medium text-foreground">
-              {filteredSections.length} section{filteredSections.length === 1 ? "" : "s"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {overview?.summary.totalSubjects ?? 0} subjects ·{" "}
-              {overview?.summary.finalizedSubjects ?? 0} finalized
-            </p>
           </div>
-          {filteredSections.map((section) => (
-            <TermFinalizationSectionCard
-              key={section.sectionId}
-              section={section}
-              expanded={!!expandedSections[section.sectionId]}
-              yearArchived={yearArchived}
-              busyKey={busyKey}
-              onToggle={() => toggleSection(section.sectionId)}
-              onViewGrades={() => setGradePreviewSection(section)}
-              onFinalizeSection={() => startSectionAction("finalize", section)}
-              onUnfinalizeSection={() => startSectionAction("unfinalize", section)}
-              onFinalizeSubject={(subject) => startSubjectAction("finalize", section, subject)}
-              onUnfinalizeSubject={(subject) => startSubjectAction("unfinalize", section, subject)}
-            />
-          ))}
-        </div>
-      )}
+        ) : (
+          <div className="border-t border-border">
+            <div className="flex items-center justify-between px-4 py-3 lg:px-5">
+              <p className="text-sm font-medium text-foreground">
+                {filteredSections.length} section{filteredSections.length === 1 ? "" : "s"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {overview?.summary.totalSubjects ?? 0} subjects ·{" "}
+                {overview?.summary.finalizedSubjects ?? 0} finalized
+              </p>
+            </div>
+            <div className="space-y-3 bg-muted/30 p-4 lg:p-5">
+              {filteredSections.map((section) => (
+                <TermFinalizationSectionCard
+                  key={section.sectionId}
+                  section={section}
+                  expanded={!!expandedSections[section.sectionId]}
+                  yearArchived={yearArchived}
+                  busyKey={bulkBusy ? "__bulk__" : busyKey}
+                  onToggle={() => toggleSection(section.sectionId)}
+                  onViewGrades={() => setGradePreviewSection(section)}
+                  onFinalizeSection={() => startSectionAction("finalize", section)}
+                  onUnfinalizeSection={() => startSectionAction("unfinalize", section)}
+                  onFinalizeSubject={(subject) => startSubjectAction("finalize", section, subject)}
+                  onUnfinalizeSubject={(subject) => startSubjectAction("unfinalize", section, subject)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
 
       {selectedTerm && (
         <TermGradesPreviewModal
@@ -544,7 +703,7 @@ export default function TermFinalization() {
       <ConfirmDialog
         open={!!pendingAction}
         onOpenChange={(open) => {
-          if (!open && !busyKey) setPendingAction(null);
+          if (!open && !busyKey && !bulkBusy) setPendingAction(null);
         }}
         title={confirmCopy.title}
         description={confirmCopy.description}
@@ -553,6 +712,22 @@ export default function TermFinalization() {
         loading={!!busyKey}
         onConfirm={() => {
           if (pendingAction) void runAction(pendingAction);
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!bulkAction}
+        onOpenChange={(open) => {
+          if (!open && !bulkBusy) setBulkAction(null);
+        }}
+        title={bulkConfirmCopy.title}
+        description={bulkConfirmCopy.description}
+        confirmLabel={bulkConfirmCopy.confirmLabel}
+        destructive={bulkAction === "unfinalize"}
+        loading={bulkBusy}
+        testId="term-finalization-bulk-confirm"
+        onConfirm={() => {
+          if (bulkAction) void runBulkAction(bulkAction);
         }}
       />
     </div>

@@ -56,11 +56,11 @@ const gradeLevelLabels: Record<string, string> = {
 // DepEd mastery level helper
 function getMasteryLevel(grade: number | null): { label: string; color: string; bgColor: string } {
   if (grade === null) return { label: "Not Graded", color: "text-muted-foreground", bgColor: "bg-gray-100" };
-  if (grade >= 90) return { label: "Outstanding", color: "text-emerald-700", bgColor: "bg-emerald-100" };
-  if (grade >= 85) return { label: "Very Satisfactory", color: "text-blue-700", bgColor: "bg-blue-100" };
-  if (grade >= 80) return { label: "Satisfactory", color: "text-amber-700", bgColor: "bg-amber-100" };
-  if (grade >= 75) return { label: "Fairly Satisfactory", color: "text-orange-700", bgColor: "bg-orange-100" };
-  return { label: "Did Not Meet", color: "text-red-700", bgColor: "bg-red-100" };
+  if (grade >= 90) return { label: "Advancing", color: "text-emerald-700", bgColor: "bg-emerald-100" };
+  if (grade >= 80) return { label: "Benchmarking", color: "text-blue-700", bgColor: "bg-blue-100" };
+  if (grade >= 75) return { label: "Connecting", color: "text-amber-700", bgColor: "bg-amber-100" };
+  if (grade >= 65) return { label: "Developing", color: "text-orange-700", bgColor: "bg-orange-100" };
+  return { label: "Emerging", color: "text-red-700", bgColor: "bg-red-100" };
 }
 
 // Format date helper
@@ -684,11 +684,11 @@ export default function StudentGradeProfilePage() {
         <CardContent className="p-4 lg:p-8">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
             {[
-              { label: "Outstanding", range: "90-100", opacity: "18" },
-              { label: "Very Satisfactory", range: "85-89", opacity: "28" },
-              { label: "Satisfactory", range: "80-84", opacity: "38" },
-              { label: "Fairly Satisfactory", range: "75-79", opacity: "48" },
-              { label: "Did Not Meet Expectations", range: "Below 75", color: "border-destructive/20 bg-destructive/10 text-destructive" },
+              { label: "Advancing", range: "90-100", opacity: "18" },
+              { label: "Benchmarking", range: "80-89", opacity: "28" },
+              { label: "Connecting", range: "75-79", opacity: "38" },
+              { label: "Developing", range: "65-74", opacity: "48" },
+              { label: "Emerging", range: "0-64", color: "border-destructive/20 bg-destructive/10 text-destructive" },
             ].map((level) => (
               <div key={level.label} className={`p-4 rounded-2xl border ${level.color || ''}`}
                 style={!level.color ? { backgroundColor: `${colors.primary}${level.opacity}`, color: colors.primary, borderColor: `${colors.primary}30` } : undefined}

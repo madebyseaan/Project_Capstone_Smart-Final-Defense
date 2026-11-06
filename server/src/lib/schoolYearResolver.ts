@@ -22,6 +22,7 @@ import { Prisma, AuditAction, AuditSeverity } from '@prisma/client';
 import type { SchoolYear } from '@prisma/client';
 import { readLiveSnapshot } from './schoolSettingsSnapshot';
 import { createAuditLog } from './audit';
+import { invalidateGradingModeCache } from './gradingMode';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -220,4 +221,5 @@ export async function ensureSchoolYearFromEnrollPro(
 export function invalidateSchoolYearCache(): void {
   cachedActiveYear = null;
   cacheCreatedAt = 0;
+  invalidateGradingModeCache();
 }

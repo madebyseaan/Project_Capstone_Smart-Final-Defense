@@ -1,7 +1,8 @@
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { GradingMode, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { makeTransmuter, resolveCanonicalWeights } from "../prisma/canonicalGrade";
+import { resolveCanonicalWeights } from "../prisma/canonicalGrade";
+import { computeTermGrade } from "../src/lib/gradingMode";
 
 const connectionString = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({
@@ -23,8 +24,9 @@ function toObjectScores(scores: unknown, prefix: string): Array<{ name: string; 
 async function main() {
   const table = await prisma.transmutationEntry.findMany({ orderBy: { minGrade: "asc" } });
   if (table.length === 0) throw new Error("TransmutationEntry table is empty — aborting");
-  const transmute = makeTransmuter(table);
   const gradingConfigs = await prisma.gradingConfig.findMany();
+  const schoolYears = await prisma.schoolYear.findMany({ select: { label: true, gradingMode: true } });
+  const modeByYear = new Map(schoolYears.map((year) => [year.label, year.gradingMode]));
 
   const grades = await prisma.grade.findMany({
     include: { classAssignment: { include: { subject: true } } },
@@ -50,7 +52,8 @@ async function main() {
         (g.writtenWorkPS * w.ww) / 100 +
         (g.perfTaskPS * w.pt) / 100 +
         (g.quarterlyAssessPS * w.qa) / 100;
-      const qg = transmute(initial);
+      const mode = modeByYear.get(g.classAssignment.schoolYear) ?? GradingMode.TRANSMUTED;
+      const qg = computeTermGrade(initial, mode, table);
       if (Math.abs((g.initialGrade ?? -1) - initial) > 1e-9 || g.quarterlyGrade !== qg) {
         data.initialGrade = initial;
         data.quarterlyGrade = qg;

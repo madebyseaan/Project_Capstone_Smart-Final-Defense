@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ClassAssignment, ClassRecord, ScoreItem, AimsAssessmentInfo, AimsRowScore } from "@/lib/api";
+import type { ClassAssignment, ClassRecord, ScoreItem, AimsAssessmentInfo, AimsRowScore, GradingMode } from "@/lib/api";
 import type { TransmutationRow } from "@/lib/gradeMath";
 
 import { LedgerRow } from "./ledger/LedgerRow";
@@ -24,6 +24,7 @@ interface ClassRecordTableProps {
     qa: number;
   } | null;
   selectedTerm: string;
+  gradingMode?: GradingMode;
   /** View-only mode — past terms or locked grades */
   isViewOnly?: boolean;
   separateByGender: boolean;
@@ -61,6 +62,7 @@ export function ClassRecordTable({
   classAssignment,
   effectiveWeights,
   selectedTerm,
+  gradingMode = "TRANSMUTED",
   isViewOnly,
   separateByGender,
   onSeparateByGenderChange,
@@ -206,7 +208,7 @@ export function ClassRecordTable({
         );
         maleRecords.forEach((r, i) =>
           rows.push(
-            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
+            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} gradingMode={gradingMode} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
           )
         );
       }
@@ -223,20 +225,20 @@ export function ClassRecordTable({
         );
         femaleRecords.forEach((r, i) =>
           rows.push(
-            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
+            <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} gradingMode={gradingMode} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
           )
         );
       }
     } else {
       sortedRecords.forEach((r, i) =>
         rows.push(
-          <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
+          <LedgerRow key={`${r.student.id}-${selectedTerm}`} record={r} idx={i} rowIndex={rowCounter++} selectedTerm={selectedTerm} wwCount={wwCount} ptCount={ptCount} weights={weights} onHpsUpdate={onHpsUpdate} onScoreCommit={onScoreCommit} onCellFocus={onCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} gradingMode={gradingMode} isViewOnly={isViewOnly} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsWW={aimsWW} aimsPT={aimsPT} aimsQA={aimsQA} wwColIsAims={wwColIsAims} ptColIsAims={ptColIsAims} />
         )
       );
     }
 
     return rows;
-  }, [sortedRecords, maleRecords, femaleRecords, separateByGender, selectedTerm, wwCount, ptCount, weights, isViewOnly, onHpsUpdate, onScoreCommit, onCellFocus, isCellInvalid, transmutationTable, aimsAssessments, aimsByStudent, aimsWW, aimsPT, aimsQA, wwColIsAims, ptColIsAims]);
+  }, [sortedRecords, maleRecords, femaleRecords, separateByGender, selectedTerm, wwCount, ptCount, weights, gradingMode, isViewOnly, onHpsUpdate, onScoreCommit, onCellFocus, isCellInvalid, transmutationTable, aimsAssessments, aimsByStudent, aimsWW, aimsPT, aimsQA, wwColIsAims, ptColIsAims]);
 
   // Sticky + grade columns are fixed; score columns are flexible and share the
   // leftover card width so the table always fills the space with no blank gap.
@@ -525,7 +527,7 @@ export function ClassRecordTable({
                   onScoreCommit={onScoreCommit}
                   onCellFocus={onCellFocus}
                   isCellInvalid={isCellInvalid}
-                  transmutationTable={transmutationTable}
+                  transmutationTable={transmutationTable} gradingMode={gradingMode}
                   aimsAssessments={aimsAssessments}
                   aimsByStudent={aimsByStudent}
                   aimsWW={aimsWW}

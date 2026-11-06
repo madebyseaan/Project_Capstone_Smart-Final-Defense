@@ -75,11 +75,11 @@ export interface MobileDashboardProps {
 }
 
 const MASTERY_SEGMENTS = [
-  { key: "outstanding", label: "Outstanding", range: "90-100", color: "bg-emerald-500" },
-  { key: "verySatisfactory", label: "Very satisfactory", range: "85-89", color: "bg-blue-500" },
-  { key: "satisfactory", label: "Satisfactory", range: "80-84", color: "bg-amber-500" },
-  { key: "fairlySatisfactory", label: "Fairly satisfactory", range: "75-79", color: "bg-orange-500" },
-  { key: "didNotMeet", label: "Did not meet", range: "<75", color: "bg-rose-500" },
+  { key: "outstanding", label: "Advancing", range: "90-100", color: "bg-emerald-500" },
+  { key: "verySatisfactory", label: "Benchmarking", range: "80-89", color: "bg-blue-500" },
+  { key: "satisfactory", label: "Connecting", range: "75-79", color: "bg-amber-500" },
+  { key: "fairlySatisfactory", label: "Developing", range: "65-74", color: "bg-orange-500" },
+  { key: "didNotMeet", label: "Emerging", range: "0-64", color: "bg-rose-500" },
 ] as const;
 
 function formatTime12h(time24: string): string {

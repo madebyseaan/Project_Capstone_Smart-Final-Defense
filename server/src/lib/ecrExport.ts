@@ -24,6 +24,7 @@ import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { createAuditLog } from "./audit";
 import { getTransmutationTable } from "./transmutationCache";
+import { getGradingModeForSchoolYear } from "./gradingMode";
 
 const CORE_TEMPLATE = "E-Class-Record-CORE-Grades-2-10-3Term.xlsx";
 const TLE_TEMPLATE = "E-Class-Record-TLE-MAPEH-Grades-2-10-3Term.xlsx";
@@ -141,10 +142,10 @@ export function rewriteTemplateFormulas(xml: string): string {
 /** Qualitative descriptors — mirrors src/lib/gradeMath.ts GRADE_DESCRIPTORS (DO 015, s. 2026). */
 const GRADE_DESCRIPTOR_BANDS: Array<{ label: string; min: number; max: number }> = [
   { label: "Advancing", min: 90, max: 100 },
-  { label: "Benchmarking", min: 85, max: 89 },
-  { label: "Connecting", min: 80, max: 84 },
-  { label: "Developing", min: 75, max: 79 },
-  { label: "Emerging", min: 60, max: 74 },
+  { label: "Benchmarking", min: 80, max: 89 },
+  { label: "Connecting", min: 75, max: 79 },
+  { label: "Developing", min: 65, max: 74 },
+  { label: "Emerging", min: 0, max: 64 },
 ];
 
 const HELPER_FIRST_ROW = 8;
@@ -169,6 +170,25 @@ export function buildHelperCells(
     cells[`C${row}`] = band.maxGrade;
     cells[`D${row}`] = band.transmutedGrade;
     const grade = 100 - i;
+    cells[`F${row}`] = grade;
+    cells[`G${row}`] = GRADE_DESCRIPTOR_BANDS.find((d) => grade >= d.min && grade <= d.max)?.label ?? "";
+  }
+  return cells;
+}
+
+/**
+ * Identity mapping for zero-based grading. Column C is a half-point threshold so
+ * the template's descending lookup preserves round-half-up (74.50 -> 75,
+ * 74.49 -> 74). The last row maps everything below 60.5 to the 60 floor.
+ */
+export function buildIdentityHelperCells(): Record<string, string | number> {
+  const cells: Record<string, string | number> = {};
+  for (let i = 0; i < HELPER_ROWS; i++) {
+    const row = HELPER_FIRST_ROW + i;
+    const grade = 100 - i;
+    const lookupMax = i === HELPER_ROWS - 1 ? 0 : grade - 0.5;
+    cells[`C${row}`] = lookupMax;
+    cells[`D${row}`] = grade;
     cells[`F${row}`] = grade;
     cells[`G${row}`] = GRADE_DESCRIPTOR_BANDS.find((d) => grade >= d.min && grade <= d.max)?.label ?? "";
   }
@@ -264,10 +284,14 @@ export async function exportEcrWorkbook(input: {
 
   const zip = await JSZip.loadAsync(templateBuffer);
 
-  // ── HELPER: override the template's baked-in scale with the admin-configured
-  //    transmutation table + SMART descriptors so Term Grade/Descriptor match the ledger.
-  const transmutation = await getTransmutationTable();
-  const helperCells = buildHelperCells(transmutation);
+  // ── HELPER: override the template's baked-in scale with the active grading mode.
+  //    Transmuted mode uses the admin-configurable table; zero-based uses an
+  //    identity mapping with half-point thresholds and the 60 floor.
+  const gradingMode = await getGradingModeForSchoolYear(ca.schoolYear);
+  const helperCells =
+    gradingMode === "ZERO_BASED"
+      ? buildIdentityHelperCells()
+      : buildHelperCells(await getTransmutationTable());
   if (Object.keys(helperCells).length > 0) {
     const helperXml = await zip.file(HELPER_SHEET)?.async("string");
     if (helperXml) zip.file(HELPER_SHEET, injectCells(helperXml, helperCells));

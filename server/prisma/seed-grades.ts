@@ -45,12 +45,11 @@ async function loadWeightResolver(): Promise<(subjectCode: string) => Weights> {
 
 // ─── Qualitative Descriptor ──────────────────────────────────────────────────
 function getDescriptor(qg: number): string {
-  if (qg >= 98) return "Outstanding";
-  if (qg >= 95) return "Very Satisfactory";
-  if (qg >= 90) return "Satisfactory";
-  if (qg >= 85) return "Fairly Satisfactory";
-  if (qg >= 80) return "Beginning";
-  return "Did Not Meet Expectations";
+  if (qg >= 90) return "Advancing";
+  if (qg >= 80) return "Benchmarking";
+  if (qg >= 75) return "Connecting";
+  if (qg >= 65) return "Developing";
+  return "Emerging";
 }
 
 // ─── Subject Grouping (activity counts only — weights come from the DB) ──────

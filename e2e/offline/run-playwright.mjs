@@ -39,4 +39,4 @@ run("npx", ["prisma", "db", "push", "--accept-data-loss"], SERVER_DIR);
 run("npx", ["ts-node", "--transpile-only", "scripts/wipe.ts"], SERVER_DIR);
 run("npx", ["ts-node", "--transpile-only", "scripts/seed-test-base.ts"], SERVER_DIR);
 run("npx", ["ts-node", "--transpile-only", "scripts/seed-offline-fixtures.ts"], SERVER_DIR);
-run("npx", ["playwright", "test", "-c", "e2e/offline/playwright.offline.config.ts"], ROOT);
+run("npx", ["playwright", "test", "-c", "e2e/offline/playwright.offline.config.ts", ...process.argv.slice(2)], ROOT);

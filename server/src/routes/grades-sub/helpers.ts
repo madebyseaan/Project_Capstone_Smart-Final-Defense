@@ -1,7 +1,8 @@
-import { Term, EnrollmentStatus, Prisma } from "@prisma/client";
+import { Term, EnrollmentStatus, Prisma, GradingMode } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
 import { getTransmutationTable } from "../../lib/transmutationCache";
+import { computeTermGrade } from "../../lib/gradingMode";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
 import { getIntegrationV1ActiveTerm } from "../../lib/enrollproClient";
@@ -288,7 +289,8 @@ export async function calculateGrades(
   quarterlyAssessMax: number,
   wwWeight: number,
   ptWeight: number,
-  qaWeight: number
+  qaWeight: number,
+  gradingMode: GradingMode
 ) {
   let writtenWorkPS: number | null = null;
   if (writtenWorkScores && writtenWorkScores.length > 0) {
@@ -319,7 +321,8 @@ export async function calculateGrades(
 
   let quarterlyGrade: number | null = null;
   if (initialGrade !== null) {
-    quarterlyGrade = await transmute(initialGrade);
+    const table = gradingMode === GradingMode.TRANSMUTED ? await getTransmutationTable() : [];
+    quarterlyGrade = computeTermGrade(initialGrade, gradingMode, table);
   }
 
   return {
@@ -332,18 +335,8 @@ export async function calculateGrades(
 }
 
 export async function transmute(initialGrade: number): Promise<number> {
-  const roundedGrade = Math.round(initialGrade * 100) / 100;
   const table = await getTransmutationTable();
-  for (const entry of table) {
-    if (roundedGrade >= entry.minGrade && roundedGrade <= entry.maxGrade) {
-      return entry.transmutedGrade;
-    }
-  }
-  logger.warn(
-    `[Transmutation] Initial grade ${roundedGrade} did not match any range — returning fallback 60. ` +
-      `Check the transmutation table for gaps or misconfigured ranges (${table.length} entries).`
-  );
-  return 60;
+  return computeTermGrade(initialGrade, GradingMode.TRANSMUTED, table);
 }
 
 export async function createGradeSnapshot(params: {

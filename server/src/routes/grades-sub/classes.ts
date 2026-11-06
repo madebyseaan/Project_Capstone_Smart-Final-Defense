@@ -25,6 +25,7 @@ import {
 } from "./helpers";
 import { checkGradeEditLocks, getGradeLockState } from "../../lib/gradeLocks";
 import { computeExamPS } from "../../lib/examMath";
+import { getGradingModeForSchoolYear } from "../../lib/gradingMode";
 
 export default function registerClasses(router: Router): void {
   // Get all class assignments for the logged-in teacher
@@ -198,6 +199,7 @@ export default function registerClasses(router: Router): void {
         });
 
         const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
+        const gradingMode = await getGradingModeForSchoolYear(classAssignment.schoolYear);
         const currentTerm = await resolveCurrentTerm();
         const systemSettings = await prisma.systemSettings.findUnique({ where: { id: 'main' } });
         const lockState = await getGradeLockState(classAssignment.schoolYear);
@@ -309,6 +311,7 @@ export default function registerClasses(router: Router): void {
           classAssignment,
           classRecord,
           effectiveWeights,
+          gradingMode,
           currentTerm,
           termDates: {
             t1StartDate: systemSettings?.t1StartDate,
@@ -503,6 +506,7 @@ export default function registerClasses(router: Router): void {
               : (seedGrade?.qaDate ?? null));
 
         const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
+        const gradingMode = await getGradingModeForSchoolYear(classAssignment.schoolYear);
         const calculated = await calculateGrades(
             mergedWrittenWorkScores,
             mergedPerfTaskScores,
@@ -510,7 +514,8 @@ export default function registerClasses(router: Router): void {
             mergedQuarterlyAssessMax || 100,
             effectiveWeights.ww,
             effectiveWeights.pt,
-            effectiveWeights.qa
+            effectiveWeights.qa,
+            gradingMode
           );
           writtenWorkPS = calculated.writtenWorkPS;
           perfTaskPS = calculated.perfTaskPS;
@@ -687,6 +692,7 @@ export default function registerClasses(router: Router): void {
         }
 
         const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
+        const gradingMode = await getGradingModeForSchoolYear(classAssignment.schoolYear);
         const skipped: Array<{ studentId: string; reason: string }> = [];
 
         // Pre-check: gather enrollments and existing grades
@@ -794,7 +800,8 @@ export default function registerClasses(router: Router): void {
               mergedQuarterlyAssessMax || 100,
               effectiveWeights.ww,
               effectiveWeights.pt,
-              effectiveWeights.qa
+              effectiveWeights.qa,
+              gradingMode
             );
 
             const gradePayload = {

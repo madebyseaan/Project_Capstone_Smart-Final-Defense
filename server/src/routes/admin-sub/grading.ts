@@ -1,14 +1,22 @@
 import { Router, Response } from "express";
-import { SubjectType, AuditAction, AuditSeverity } from "@prisma/client";
+import { SubjectType, AuditAction, AuditSeverity, GradeStatus, GradingMode } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import { prisma } from "../../lib/prisma";
 import { createAuditLog } from "../../lib/audit";
 import { getTransmutationTable, invalidateTransmutationCache } from "../../lib/transmutationCache";
 import { validateTransmutationEntries, validateTransmutationRowChange } from "../../lib/transmutationValidation";
-import { getActiveTermLabels } from "../../lib/schoolYearResolver";
+import {
+  getActiveTermLabels,
+  getActiveSchoolYear,
+  invalidateSchoolYearCache,
+} from "../../lib/schoolYearResolver";
+import {
+  invalidateGradingModeCache,
+  recommendedModeForSchoolYear,
+} from "../../lib/gradingMode";
 import { logger } from "../../lib/logger";
 import { validate } from "../../middleware/validate";
-import { gradingConfigSchema } from "../../schemas/admin";
+import { gradingConfigSchema, gradingModeUpdateSchema } from "../../schemas/admin";
 import { recomputeStoredGrades } from "../../lib/gradeRecalc";
 import { requireAdmin } from "./helpers";
 
@@ -202,6 +210,221 @@ export default function (router: Router) {
     } catch (error) {
       logger.error("Error resetting grading configs:", error);
       res.status(500).json({ message: "Failed to reset grading configurations" });
+    }
+  });
+
+  // ── Grading Mode ─────────────────────────────────────────────────────────
+
+  type GradingModeGuard = {
+    canChange: boolean;
+    blockedReason: string | null;
+    gradeCount: number;
+  };
+
+  function blockedModeMessage(reason: string): string {
+    switch (reason) {
+      case "ARCHIVED_SCHOOL_YEAR":
+        return "The active school year is archived. Grading mode cannot be changed.";
+      case "FINALIZED_GRADES":
+        return "This school year has finalized grades. Unfinalize the term grades before changing the grading mode.";
+      case "EOSY_FINALIZED":
+        return "This school year is EOSY-finalized. Unfinalize EOSY before changing the grading mode.";
+      default:
+        return "The grading mode cannot be changed right now.";
+    }
+  }
+
+  async function getGradingModeGuard(year: {
+    label: string;
+    status: string;
+    archivedAt: Date | null;
+  }): Promise<GradingModeGuard> {
+    if (year.status === "ARCHIVED" || year.archivedAt) {
+      return { canChange: false, blockedReason: "ARCHIVED_SCHOOL_YEAR", gradeCount: 0 };
+    }
+
+    const [finalizedCount, eosyCount, gradeCount] = await Promise.all([
+      prisma.grade.count({
+        where: {
+          classAssignment: { is: { schoolYear: year.label } },
+          status: { in: [GradeStatus.FINALIZED, GradeStatus.LOCKED] },
+        },
+      }),
+      prisma.gradeSnapshot.count({
+        where: {
+          schoolYear: year.label,
+          snapshot: { path: ["source"], equals: "EOSY_FINALIZE" },
+        },
+      }),
+      prisma.grade.count({
+        where: { classAssignment: { is: { schoolYear: year.label } } },
+      }),
+    ]);
+
+    if (eosyCount > 0) {
+      return { canChange: false, blockedReason: "EOSY_FINALIZED", gradeCount };
+    }
+    if (finalizedCount > 0) {
+      return { canChange: false, blockedReason: "FINALIZED_GRADES", gradeCount };
+    }
+    return { canChange: true, blockedReason: null, gradeCount };
+  }
+
+  function emptyRecomputeSummary() {
+    return {
+      scanned: 0,
+      updated: 0,
+      unrecomputable: 0,
+      durationMs: 0,
+      byMode: {
+        [GradingMode.TRANSMUTED]: 0,
+        [GradingMode.ZERO_BASED]: 0,
+      },
+    };
+  }
+
+  router.get("/grading-mode", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const year = await getActiveSchoolYear();
+      const guard = await getGradingModeGuard(year);
+
+      res.json({
+        mode: year.gradingMode,
+        recommendedMode: recommendedModeForSchoolYear(year.label),
+        schoolYear: { id: year.id, label: year.label, status: year.status },
+        canChange: guard.canChange,
+        blockedReason: guard.blockedReason,
+        gradeCount: guard.gradeCount,
+      });
+    } catch (err: any) {
+      logger.error("Error fetching grading mode:", err);
+      res.status(409).json({
+        code: "NO_ACTIVE_SCHOOL_YEAR",
+        message: "No active school year found.",
+      });
+    }
+  });
+
+  router.put(
+    "/grading-mode",
+    authenticateToken,
+    requireAdmin,
+    validate(gradingModeUpdateSchema),
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        const mode = req.body.mode as GradingMode;
+        const year = await getActiveSchoolYear();
+        const guard = await getGradingModeGuard(year);
+
+        if (!guard.canChange) {
+          res.status(409).json({
+            code: guard.blockedReason,
+            message: blockedModeMessage(guard.blockedReason ?? "BLOCKED"),
+          });
+          return;
+        }
+
+        if (year.gradingMode === mode) {
+          res.json({
+            mode,
+            schoolYear: { id: year.id, label: year.label },
+            recompute: emptyRecomputeSummary(),
+          });
+          return;
+        }
+
+        if (mode === GradingMode.TRANSMUTED) {
+          const table = await getTransmutationTable();
+          const validationError = validateTransmutationEntries(table);
+          if (validationError) {
+            res.status(409).json({
+              code: "INVALID_TRANSMUTATION_TABLE",
+              message: validationError,
+            });
+            return;
+          }
+        }
+
+        await prisma.schoolYear.update({
+          where: { id: year.id },
+          data: { gradingMode: mode },
+        });
+
+        invalidateSchoolYearCache();
+        invalidateGradingModeCache();
+        invalidateTransmutationCache();
+
+        let recompute;
+        try {
+          recompute = await recomputeStoredGrades({
+            schoolYear: year.label,
+            modeOverride: mode,
+          });
+        } catch (recomputeError: any) {
+          logger.error("Error recomputing grades after grading mode change:", recomputeError);
+          await createAuditLog(
+            AuditAction.UPDATE,
+            {
+              id: req.user?.id,
+              firstName: req.user?.username,
+              lastName: "",
+              role: req.user?.role ?? "ADMIN",
+            },
+            "GradingMode",
+            "CONFIG",
+            `Changed grading mode to ${mode} for SY ${year.label}, but grade recompute failed: ${recomputeError?.message ?? recomputeError}`,
+            (req.ip as string) || req.socket?.remoteAddress,
+            AuditSeverity.WARNING,
+            year.id,
+          );
+          res.status(500).json({
+            code: "RECOMPUTE_FAILED",
+            message: "Grading mode was changed, but stored grades could not be realigned. Retry the recompute.",
+            mode,
+            schoolYear: { id: year.id, label: year.label },
+          });
+          return;
+        }
+
+        await createAuditLog(
+          AuditAction.UPDATE,
+          {
+            id: req.user?.id,
+            firstName: req.user?.username,
+            lastName: "",
+            role: req.user?.role ?? "ADMIN",
+          },
+          "GradingMode",
+          "CONFIG",
+          `Changed grading mode to ${mode} for SY ${year.label} (${recompute.updated}/${recompute.scanned} grades recomputed)`,
+          (req.ip as string) || req.socket?.remoteAddress,
+          AuditSeverity.INFO,
+          year.id,
+        );
+
+        res.json({
+          mode,
+          schoolYear: { id: year.id, label: year.label },
+          recompute,
+        });
+      } catch (err: any) {
+        logger.error("Error updating grading mode:", err);
+        res.status(500).json({ message: "Failed to update grading mode" });
+      }
+    },
+  );
+
+  router.post("/grading-mode/recompute", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const year = await getActiveSchoolYear();
+      const recompute = await recomputeStoredGrades({ schoolYear: year.label });
+      res.json({
+        schoolYear: { id: year.id, label: year.label },
+        recompute,
+      });
+    } catch (err: any) {
+      logger.error("Error recomputing grading mode grades:", err);
+      res.status(500).json({ message: "Failed to recompute grades for the active school year" });
     }
   });
 

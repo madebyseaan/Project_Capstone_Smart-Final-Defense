@@ -30,8 +30,8 @@ async function main() {
   const label = "2088-2089";
   const year = await prisma.schoolYear.upsert({
     where: { externalId: 900003 },
-    update: { label, status: "ACTIVE" },
-    create: { label, externalId: 900003, status: "ACTIVE" },
+    update: { label, status: "ACTIVE", gradingMode: "TRANSMUTED" },
+    create: { label, externalId: 900003, status: "ACTIVE", gradingMode: "TRANSMUTED" },
   });
 
   await prisma.systemSettings.upsert({

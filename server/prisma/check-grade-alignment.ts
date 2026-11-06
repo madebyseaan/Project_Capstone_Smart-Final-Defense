@@ -1,27 +1,21 @@
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { GradingMode, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { computeTermGrade } from "../src/lib/gradingMode";
 
 const connectionString = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString }),
 });
 
-function transmute(initialGrade: number, table: Array<{ minGrade: number; maxGrade: number; transmutedGrade: number }>): number {
-  const roundedGrade = Math.round(initialGrade * 100) / 100;
-  for (const entry of table) {
-    if (roundedGrade >= entry.minGrade && roundedGrade <= entry.maxGrade) {
-      return entry.transmutedGrade;
-    }
-  }
-  return -1; // no match
-}
-
 async function main() {
   // 1. Canonical DB transmutation table (used by server save + SF9/SF10 + class record preview)
   const table = await prisma.transmutationEntry.findMany({ orderBy: { minGrade: "asc" } });
   console.log(`\nDB TransmutationEntry rows: ${table.length}`);
   console.log("Sample DB entries:", table.slice(22, 26).map(e => `${e.minGrade}-${e.maxGrade}=>${e.transmutedGrade}`).join(" | "));
+
+  const schoolYears = await prisma.schoolYear.findMany({ select: { label: true, gradingMode: true } });
+  const modeByYear = new Map(schoolYears.map((year) => [year.label, year.gradingMode]));
 
   // 2. GradingConfig weights (server resolution source)
   const gradingConfigs = await prisma.gradingConfig.findMany();
@@ -65,12 +59,13 @@ async function main() {
     if (g.writtenWorkPS === null || g.perfTaskPS === null || g.quarterlyAssessPS === null) continue;
 
     const initial = (g.writtenWorkPS * weights.ww) / 100 + (g.perfTaskPS * weights.pt) / 100 + (g.quarterlyAssessPS * weights.qa) / 100;
-    const recomputedQG = transmute(initial, table);
+    const mode = modeByYear.get(g.classAssignment.schoolYear) ?? GradingMode.TRANSMUTED;
+    const recomputedQG = computeTermGrade(initial, mode, table);
     if (recomputedQG !== g.quarterlyGrade) {
       mismatchCount++;
       shapeMismatches[isNumberForm ? "number-form" : "object-form"]++;
       if (mismatchCount <= 10 && grades.some((s: any) => s.id === g.id)) {
-        console.log(`  MISMATCH ${subject.code} ${g.term}: stored quarterlyGrade=${g.quarterlyGrade} | recomputed initial=${initial.toFixed(2)} -> transmuted=${recomputedQG} (weights ww/pt/qa=${weights.ww}/${weights.pt}/${weights.qa}, PS=${g.writtenWorkPS.toFixed(2)}/${g.perfTaskPS.toFixed(2)}/${g.quarterlyAssessPS.toFixed(2)})`);
+        console.log(`  MISMATCH ${subject.code} ${g.term}: stored quarterlyGrade=${g.quarterlyGrade} | recomputed initial=${initial.toFixed(2)} -> ${mode}=${recomputedQG} (weights ww/pt/qa=${weights.ww}/${weights.pt}/${weights.qa}, PS=${g.writtenWorkPS.toFixed(2)}/${g.perfTaskPS.toFixed(2)}/${g.quarterlyAssessPS.toFixed(2)})`);
       }
     }
   }

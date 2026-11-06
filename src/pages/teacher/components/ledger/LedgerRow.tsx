@@ -1,6 +1,6 @@
 import React from "react";
 import { TableCell, TableRow } from "@/components/ui/table";
-import type { ClassRecord, ScoreItem, AimsAssessmentInfo, AimsRowScore } from "@/lib/api";
+import type { ClassRecord, ScoreItem, AimsAssessmentInfo, AimsRowScore, GradingMode } from "@/lib/api";
 import { getDescriptor, getGradeColor, transmuteGrade, computeExamPS, computeExamSubWS, EXAM_SUB_TESTS, type TransmutationRow } from "@/lib/gradeMath";
 import { LedgerScoreCell } from "./LedgerScoreCell";
 
@@ -22,6 +22,7 @@ interface LedgerRowProps {
   onCellFocus: (cat: "WW" | "PT" | "QA" | "EX", idx: number) => void;
   isCellInvalid: (sid: string, cat: "WW" | "PT" | "QA" | "EX", idx: number) => string | undefined;
   transmutationTable?: TransmutationRow[];
+  gradingMode?: GradingMode;
   isViewOnly?: boolean;
   aimsAssessments?: AimsAssessmentInfo[];
   aimsByStudent?: Record<string, Record<string, AimsRowScore>>;
@@ -49,6 +50,7 @@ export const LedgerRow = React.memo(
     onCellFocus,
     isCellInvalid,
     transmutationTable,
+    gradingMode = "TRANSMUTED",
     isViewOnly = false,
     aimsByStudent = {},
     aimsWW = [],
@@ -114,7 +116,7 @@ export const LedgerRow = React.memo(
 
     const displayInitialGrade =
       displayWWWS !== null && displayPTWS !== null && displayQAWS !== null ? displayWWWS + displayPTWS + displayQAWS : null;
-    const displayQuarterlyGrade = displayInitialGrade !== null ? transmuteGrade(displayInitialGrade, transmutationTable) : null;
+    const displayQuarterlyGrade = displayInitialGrade !== null ? transmuteGrade(displayInitialGrade, transmutationTable, gradingMode) : null;
 
     const cellClass = "text-center text-[11px] font-bold border-r border-slate-200 p-0 h-9";
 
@@ -413,6 +415,10 @@ export const LedgerRow = React.memo(
         </TableCell>
         {/* TERM GRADE */}
         <TableCell
+          data-testid={isHps ? undefined : "ledger-term-grade"}
+          data-student-id={isHps ? undefined : studentId}
+          data-term={isHps ? undefined : selectedTerm}
+          data-term-grade={isHps ? undefined : displayQuarterlyGrade ?? ""}
           className={`text-center font-bold text-xs border-r border-b border-slate-200 w-[72px] min-w-[72px] max-w-[72px] ${
             isHps
               ? "text-white bg-slate-900 border-y border-r border-slate-700 bg-clip-padding"

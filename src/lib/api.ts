@@ -435,6 +435,7 @@ export const gradesApi = {
     api.get<{
       classAssignment: ClassAssignment;
       classRecord: ClassRecord[];
+      gradingMode: GradingMode;
       currentTerm?: "T1" | "T2" | "T3";
       effectiveWeights?: {
         ww: number;
@@ -2325,6 +2326,25 @@ export const publicSettingsApi = {
   getSettings: () => api.get<PublicSettingsData>("/admin/settings/public"),
 };
 
+export type GradingMode = "TRANSMUTED" | "ZERO_BASED";
+
+export interface GradingModeResponse {
+  mode: GradingMode;
+  recommendedMode: GradingMode;
+  schoolYear: { id: string; label: string; status: string };
+  canChange: boolean;
+  blockedReason: string | null;
+  gradeCount: number;
+}
+
+export interface GradingModeRecomputeSummary {
+  scanned: number;
+  updated: number;
+  unrecomputable: number;
+  durationMs: number;
+  byMode: Record<GradingMode, number>;
+}
+
 export const adminApi = {
   // Dashboard
   getDashboard: () => api.get<AdminDashboard>("/admin/dashboard"),
@@ -2492,6 +2512,22 @@ export const adminApi = {
 
   restoreClassAssignment: (id: string) =>
     api.post<any>(`/admin/class-assignments/${id}/restore`),
+
+  // ─── Grading Mode ─────────────────────────────────────────────────────────
+  getGradingMode: () => api.get<GradingModeResponse>("/admin/grading-mode"),
+
+  updateGradingMode: (mode: GradingMode) =>
+    api.put<{
+      mode: GradingMode;
+      schoolYear: { id: string; label: string };
+      recompute: GradingModeRecomputeSummary;
+    }>("/admin/grading-mode", { mode }),
+
+  recomputeGradingMode: () =>
+    api.post<{
+      schoolYear: { id: string; label: string };
+      recompute: GradingModeRecomputeSummary;
+    }>("/admin/grading-mode/recompute"),
 
   // ─── Transmutation Table ─────────────────────────────────────────────────
   getTransmutationTable: () =>

@@ -1,4 +1,4 @@
-import type { ClassRecord, ScoreItem } from "@/lib/api";
+import type { ClassRecord, GradingMode, ScoreItem } from "@/lib/api";
 
 export type TransmutationRow = {
   minGrade: number;
@@ -22,8 +22,17 @@ export const DEPED_FALLBACK_TRANSMUTATION: [number, number, number][] = [
   [99.50, 100.00, 100],
 ];
 
-export function transmuteGrade(initialGrade: number, table?: TransmutationRow[]): number {
+export function transmuteGrade(
+  initialGrade: number,
+  table?: TransmutationRow[],
+  mode: GradingMode = "TRANSMUTED",
+): number {
   const roundedGrade = Math.round(initialGrade * 100) / 100;
+
+  if (mode === "ZERO_BASED") {
+    return Math.min(100, Math.max(60, Math.round(roundedGrade)));
+  }
+
   if (table && table.length > 0) {
     for (const entry of table) {
       if (roundedGrade >= entry.minGrade && roundedGrade <= entry.maxGrade) {
@@ -47,11 +56,11 @@ export type GradeDescriptorInfo = {
 
 // Qualitative descriptors (DepEd Order No. 015, s. 2026).
 export const GRADE_DESCRIPTORS: GradeDescriptorInfo[] = [
-  { label: "Advancing", min: 90, max: 100, description: "Consistently demonstrates understanding of concepts that meet or exceed standards with independence, flexibility, and depth." },
-  { label: "Benchmarking", min: 85, max: 89, description: "Demonstrates expected grade-level skills and understanding with competency and independence." },
-  { label: "Connecting", min: 80, max: 84, description: "Demonstrates sufficient understanding and application of grade-level standards with occasional guidance." },
-  { label: "Developing", min: 75, max: 79, description: "Demonstrates partial understanding and application of skills; requires targeted support and scaffolding." },
-  { label: "Emerging", min: 60, max: 74, description: "Does not yet demonstrate foundational skills and understanding; requires intensive support." },
+  { label: "Advancing", min: 90, max: 100, description: "Consistently demonstrates advanced skills, understanding, and values beyond expectations; performs with confidence, accuracy, and independence." },
+  { label: "Benchmarking", min: 80, max: 89, description: "Demonstrates expected grade-level skills, understanding, and values with consistency; performs tasks accurately and independently." },
+  { label: "Connecting", min: 75, max: 79, description: "Demonstrates foundational skills, understanding, and values; applies learning in familiar tasks with minimal guidance." },
+  { label: "Developing", min: 65, max: 74, description: "Demonstrates partial understanding and inconsistent application of skills and values; requires targeted support and regular practice." },
+  { label: "Emerging", min: 0, max: 64, description: "Does not yet demonstrate foundational skills and understanding; requires structured and sustained intervention." },
 ];
 
 export function getDescriptorInfo(grade: number | null): GradeDescriptorInfo | null {
@@ -66,9 +75,9 @@ export function getDescriptor(grade: number | null): string {
 export function getGradeColor(grade: number | null): string {
   if (grade === null) return "text-slate-300";
   if (grade >= 90) return "text-emerald-600";
-  if (grade >= 85) return "text-blue-600";
-  if (grade >= 80) return "text-amber-600";
-  if (grade >= 75) return "text-orange-600";
+  if (grade >= 80) return "text-blue-600";
+  if (grade >= 75) return "text-amber-600";
+  if (grade >= 65) return "text-orange-600";
   return "text-rose-600";
 }
 
@@ -129,7 +138,8 @@ export function getDisplayFinalGrade(
   record: ClassRecord,
   selectedTerm: string,
   weights: { ww: number; pt: number; qa: number },
-  transmutationTable?: TransmutationRow[]
+  transmutationTable?: TransmutationRow[],
+  gradingMode: GradingMode = "TRANSMUTED",
 ): number | null {
   const grade = getQuarterGrade(record, selectedTerm);
   if (!grade) return null;
@@ -151,5 +161,5 @@ export function getDisplayFinalGrade(
 
   const initial = wwPS * (weights.ww / 100) + ptPS * (weights.pt / 100) + qaPS * (weights.qa / 100);
 
-  return transmuteGrade(initial, transmutationTable);
+  return transmuteGrade(initial, transmutationTable, gradingMode);
 }

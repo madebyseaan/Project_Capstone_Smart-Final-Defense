@@ -17,6 +17,8 @@ async function main() {
   console.log(`Scanned:  ${summary.scanned}`);
   console.log(`Updated:  ${summary.updated}`);
   console.log(`Skipped (missing PS values): ${summary.unrecomputable}`);
+  console.log(`TRANSMUTED grades: ${summary.byMode.TRANSMUTED}`);
+  console.log(`ZERO_BASED grades: ${summary.byMode.ZERO_BASED}`);
   console.log(`Duration: ${summary.durationMs}ms`);
 }
 
