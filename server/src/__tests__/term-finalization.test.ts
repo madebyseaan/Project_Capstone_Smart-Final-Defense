@@ -153,6 +153,72 @@ describe("term finalization", () => {
     );
   });
 
+  it("omits archived assignments that never held a grade", async () => {
+    const suffix = Date.now();
+    const emptySubject = await prisma.subject.create({
+      data: { code: `ARCH-EMPTY-${suffix}`, name: `Archived Empty Subject ${suffix}` },
+    });
+    const gradedSubject = await prisma.subject.create({
+      data: { code: `ARCH-GRADED-${suffix}`, name: `Archived Graded Subject ${suffix}` },
+    });
+    const emptyAssignment = await prisma.classAssignment.create({
+      data: {
+        sectionId,
+        subjectId: emptySubject.id,
+        teacherId,
+        schoolYear: YEAR,
+        isActive: false,
+        archivedAt: new Date(),
+        archivedReason: "TEST",
+      },
+    });
+    const gradedAssignment = await prisma.classAssignment.create({
+      data: {
+        sectionId,
+        subjectId: gradedSubject.id,
+        teacherId,
+        schoolYear: YEAR,
+        isActive: false,
+        archivedAt: new Date(),
+        archivedReason: "TEST",
+      },
+    });
+    await prisma.grade.create({
+      data: {
+        studentId,
+        classAssignmentId: gradedAssignment.id,
+        term: "T1",
+        status: "DRAFT",
+        writtenWorkScores: [],
+        perfTaskScores: [],
+      },
+    });
+
+    try {
+      const res = await request(app)
+        .get("/api/registrar/term-finalization")
+        .query({ schoolYear: YEAR, term: "T1" })
+        .set(auth());
+
+      expect(res.status).toBe(200);
+      const section = res.body.sections.find((s: any) => s.sectionId === sectionId);
+      expect(section).toBeDefined();
+      const subjectNames = section.subjects.map((s: any) => s.subjectName);
+      expect(subjectNames).toContain(`Archived Graded Subject ${suffix}`);
+      expect(subjectNames).not.toContain(`Archived Empty Subject ${suffix}`);
+    } finally {
+      await prisma.grade.deleteMany({
+        where: { classAssignmentId: { in: [emptyAssignment.id, gradedAssignment.id] } },
+      }).catch(() => {});
+      await prisma.classAssignment.deleteMany({
+        where: { id: { in: [emptyAssignment.id, gradedAssignment.id] } },
+      }).catch(() => {});
+      await prisma.subject.deleteMany({
+        where: { id: { in: [emptySubject.id, gradedSubject.id] } },
+      }).catch(() => {});
+    }
+  });
+
   it("returns the term grade preview for the requested school year", async () => {
     const res = await request(app)
       .get(`/api/registrar/student-grades/${sectionId}/T1`)

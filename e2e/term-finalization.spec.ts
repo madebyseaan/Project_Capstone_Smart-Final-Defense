@@ -52,7 +52,7 @@ test.describe("registrar term finalization (read-only)", () => {
     }
 
     const finalizeButton = firstSection.getByTestId("term-finalization-finalize-section");
-    if (await finalizeButton.isEnabled().catch(() => false)) {
+    if ((await finalizeButton.count()) > 0 && (await finalizeButton.isEnabled().catch(() => false))) {
       await finalizeButton.click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();

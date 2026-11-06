@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { GraduationCap, Loader2, AlertTriangle, RefreshCw, Download, LayoutDashboard, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,12 +9,18 @@ import { FilterTabs } from "@/components/layout/FilterTabs";
 import type { FilterTabItem } from "@/components/layout/FilterTabs";
 import { registrarApi } from "@/lib/api";
 import type { TermFinalizeStatusSubject } from "@/lib/termFinalizationTypes";
+import type {
+  EosyFinalizationOverview,
+  EosyFinalizationSectionStatus,
+} from "@/lib/eosyTypes";
+import { toast } from "@/lib/toast";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 
 import EOSYOverviewTab from "./components/EOSYOverviewTab";
 import EOSYLearnerRecordsTab from "./components/EOSYLearnerRecordsTab";
 import EOSYConfirmDialog from "./components/EOSYConfirmDialog";
+import EOSYFinalizationStatusPanel from "./components/EOSYFinalizationStatusPanel";
 
 // NOTE: This page is intentionally read-only for EnrollPro data.
 // EOSY finalization (POST /eosy/sections/:id/finalize) writes to EnrollPro and is STRICTLY FORBIDDEN
@@ -32,6 +38,10 @@ function formatStaleNotice(ageMs: number) {
   return `Cached data — about ${mins} min old (EnrollPro unreachable).`;
 }
 
+function normalizeSectionName(value: string | null | undefined) {
+  return (value ?? "").trim().toUpperCase();
+}
+
 export default function EOSYFinalization() {
 
   // ── Filters ──
@@ -45,6 +55,14 @@ export default function EOSYFinalization() {
   const [localSections, setLocalSections] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("overview");
   const [cacheNotice, setCacheNotice] = useState<string | null>(null);
+  const [sectionsSource, setSectionsSource] = useState<"enrollpro" | "db" | null>(null);
+
+  // ── Year-level finalization status (SMART DB, independent of EnrollPro) ──
+  const [finalizationOverview, setFinalizationOverview] =
+    useState<EosyFinalizationOverview | null>(null);
+  const [finalizationLoading, setFinalizationLoading] = useState(false);
+  const [finalizationError, setFinalizationError] = useState<string | null>(null);
+  const finalizationRequestId = useRef(0);
 
   // ── Data ──
   const [recordsLoading, setRecordsLoading] = useState(false);
@@ -100,12 +118,14 @@ export default function EOSYFinalization() {
       } else if (payload?.stale) {
         setCacheNotice(formatStaleNotice(payload.ageMs ?? 0));
       }
-      const active = years.find((y: any) => y.status === "ACTIVE");
-      if (active) {
-        setSelectedSchoolYearId(String(active.id));
-      } else if (years.length > 0) {
-        setSelectedSchoolYearId(String(years[0].id));
-      }
+      setSelectedSchoolYearId((current) => {
+        if (current && years.some((year) => String(year.id) === current)) {
+          return current;
+        }
+        const active = years.find((year) => year.status === "ACTIVE");
+        if (active) return String(active.id);
+        return years.length > 0 ? String(years[0].id) : "";
+      });
     } catch (err: any) {
       console.error("Failed to load school years", err);
       setCacheNotice("EnrollPro is unreachable and no cached school years are available.");
@@ -125,6 +145,7 @@ export default function EOSYFinalization() {
       const res = await registrarApi.getEosySections(parseInt(targetSyId, 10), force);
       const payload = res.data as any;
       setSections(payload.sections ?? payload.data ?? payload ?? []);
+      setSectionsSource(payload?.source === "db" ? "db" : "enrollpro");
       if (payload?.source === "db") {
         setCacheNotice("EnrollPro is unreachable — showing last known sections from the SMART database. Live EOSY records are unavailable.");
       } else if (payload?.stale) {
@@ -133,6 +154,7 @@ export default function EOSYFinalization() {
         setCacheNotice(null);
       }
     } catch (err: any) {
+      setSectionsSource(null);
       setSectionsError(err?.response?.data?.message ?? "Failed to load EOSY sections from EnrollPro.");
     } finally {
       setSectionsLoading(false);
@@ -211,16 +233,45 @@ export default function EOSYFinalization() {
     }
   };
 
-  const loadLocalSections = async () => {
+  const loadFinalizationStatus = useCallback(async (schoolYear: string) => {
+    if (!schoolYear) {
+      setFinalizationOverview(null);
+      setFinalizationError(null);
+      return;
+    }
+    const requestId = ++finalizationRequestId.current;
+    setFinalizationLoading(true);
+    setFinalizationError(null);
     try {
-      const settingsRes = await fetch("/api/admin/settings/public");
-      const settingsData = await settingsRes.json();
-      const currentSY = settingsData?.settings?.currentSchoolYear;
-      if (!currentSY) {
+      const res = await registrarApi.getEosyFinalizationStatus(schoolYear);
+      if (requestId !== finalizationRequestId.current) return;
+      setFinalizationOverview(res.data);
+    } catch (err: any) {
+      if (requestId !== finalizationRequestId.current) return;
+      setFinalizationOverview(null);
+      setFinalizationError(
+        err?.response?.data?.message ?? "Failed to load EOSY finalization status.",
+      );
+    } finally {
+      if (requestId === finalizationRequestId.current) {
+        setFinalizationLoading(false);
+      }
+    }
+  }, []);
+
+  const loadLocalSections = async (schoolYearLabel?: string) => {
+    try {
+      let targetSchoolYear = schoolYearLabel;
+      if (!targetSchoolYear) {
+        const settingsRes = await fetch("/api/admin/settings/public");
+        const settingsData = await settingsRes.json();
+        targetSchoolYear = settingsData?.settings?.currentSchoolYear;
+      }
+      if (!targetSchoolYear) {
         setLocalSections([]);
         return;
       }
-      const res = await registrarApi.getSections({ schoolYear: currentSY });
+      const res = await registrarApi.getSections({ schoolYear: targetSchoolYear });
       const data = res.data as any;
       setLocalSections(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -230,16 +281,37 @@ export default function EOSYFinalization() {
 
   // ─── Effects ─────────────────────────────────────────────────────────────────
 
-  useEffect(() => { void loadSchoolYears(); }, []);
-  useEffect(() => { void loadLocalSections(); }, []);
-  useEffect(() => { if (selectedSchoolYearId) void loadSections(selectedSchoolYearId); }, [selectedSchoolYearId]);
+  const selectedSyLabel =
+    schoolYears.find((y: any) => String(y.id) === selectedSchoolYearId)?.yearLabel ?? "";
 
-  const selectedSyLabel = schoolYears.find((y: any) => String(y.id) === selectedSchoolYearId)?.yearLabel ?? "";
+  useEffect(() => { void loadSchoolYears(); }, []);
+  useEffect(() => {
+    if (!selectedSyLabel) return;
+    void loadLocalSections(selectedSyLabel);
+  }, [selectedSyLabel]);
+  useEffect(() => { if (selectedSchoolYearId) void loadSections(selectedSchoolYearId); }, [selectedSchoolYearId]);
+  useEffect(() => {
+    if (!selectedSyLabel) {
+      finalizationRequestId.current += 1;
+      setFinalizationOverview(null);
+      setFinalizationError(null);
+      setFinalizationLoading(false);
+      return;
+    }
+    setFinalizationOverview(null);
+    setFinalizationError(null);
+    void loadFinalizationStatus(selectedSyLabel);
+  }, [selectedSyLabel, loadFinalizationStatus]);
 
   // Resolve local section for the selected EP section
   const epSection = sections.find((s) => String(s.id) === selectedSectionId);
   const localSection = localSections.find(
-    (ls) => ls.name?.toUpperCase() === epSection?.name?.toUpperCase()
+    (ls) =>
+      (epSection?.id != null &&
+        ls.enrollProId != null &&
+        String(ls.enrollProId) === String(epSection.id)) ||
+      normalizeSectionName(ls.name) ===
+        normalizeSectionName(epSection?.name ?? epSection?.sectionName),
   );
 
   useEffect(() => {
@@ -263,6 +335,51 @@ export default function EOSYFinalization() {
   }, [selectedSectionId, localSections, sections, selectedSyLabel]);
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
+
+  const handleRefreshAll = () => {
+    void loadSchoolYears();
+    if (selectedSchoolYearId) void loadSections(selectedSchoolYearId, true);
+    if (selectedSyLabel) {
+      void loadFinalizationStatus(selectedSyLabel);
+      void loadLocalSections(selectedSyLabel);
+    }
+  };
+
+  const findEnrollProSectionForStatus = (status: EosyFinalizationSectionStatus) => {
+    if (sectionsSource !== "enrollpro") return null;
+    const local = localSections.find((section) => section.id === status.sectionId);
+    if (local?.enrollProId != null) {
+      const byEnrollProId = sections.find(
+        (section) => Number(section.id) === Number(local.enrollProId),
+      );
+      if (byEnrollProId) return byEnrollProId;
+    }
+    return (
+      sections.find(
+        (section) =>
+          normalizeSectionName(section.name ?? section.sectionName) ===
+          normalizeSectionName(status.sectionName),
+      ) ?? null
+    );
+  };
+
+  const canOpenStatusSection = (status: EosyFinalizationSectionStatus) =>
+    !!findEnrollProSectionForStatus(status);
+
+  const handleOpenStatusSection = (status: EosyFinalizationSectionStatus) => {
+    const target = findEnrollProSectionForStatus(status);
+    if (!target) {
+      toast.error("This section is not available in EnrollPro.");
+      return;
+    }
+    setSelectedSectionId(String(target.id));
+    setActiveTab("overview");
+    window.setTimeout(() => {
+      document
+        .getElementById("eosy-section-detail")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  };
 
   const handleEosyFinalize = async () => {
     if (!localSection || !selectedSyLabel || eosyFinalizing) return;
@@ -431,14 +548,17 @@ export default function EOSYFinalization() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div
+      className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full"
+      data-testid="eosy-finalization-page"
+    >
       <PageHeader
         title="EOSY Finalization"
         description="Year-end promotion finalization. Term grade finalization now lives on the Term Finalization page."
         actions={
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => { void loadSchoolYears(); void loadSections(undefined, true); }}
+              onClick={handleRefreshAll}
               variant="outline"
               size="sm"
               className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
@@ -531,7 +651,7 @@ export default function EOSYFinalization() {
 
               {(sectionsError || schoolYearsUnavailable) && (
                 <Button
-                  onClick={() => { void loadSchoolYears(); if (selectedSchoolYearId) void loadSections(undefined, true); }}
+                  onClick={handleRefreshAll}
                   variant="outline"
                   size="sm"
                   className="h-9 rounded-lg"
@@ -543,7 +663,22 @@ export default function EOSYFinalization() {
           </div>
         </div>
 
+        {selectedSyLabel && (
+          <div className="border-b border-border p-6">
+            <EOSYFinalizationStatusPanel
+              overview={finalizationOverview}
+              loading={finalizationLoading}
+              error={finalizationError}
+              yearLabel={selectedSyLabel}
+              onRefresh={handleRefreshAll}
+              onOpenSection={handleOpenStatusSection}
+              canOpenSection={canOpenStatusSection}
+            />
+          </div>
+        )}
+
         <CardContent className="p-0">
+          <div id="eosy-section-detail" className="scroll-mt-24">
           {hasSectionSelected ? (
             <FilterTabs
               value={activeTab}
@@ -630,6 +765,7 @@ export default function EOSYFinalization() {
               </p>
             </div>
           )}
+          </div>
         </CardContent>
       </Card>
 

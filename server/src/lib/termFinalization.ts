@@ -220,12 +220,14 @@ export async function buildTermFinalizationOverview(
             id: true,
             sectionId: true,
             subjectId: true,
+            isActive: true,
             subject: { select: { code: true, name: true } },
             teacher: {
               select: {
                 user: { select: { firstName: true, lastName: true, username: true } },
               },
             },
+            _count: { select: { grades: true } },
             grades: {
               where: { term: term as Term },
               select: { status: true },
@@ -300,6 +302,10 @@ export async function buildTermFinalizationOverview(
 
   for (const ca of classAssignments) {
     if ((ca.subject?.code ?? "").toUpperCase().startsWith("HG")) continue;
+    // Archived assignments that never held any grade are stale subject/teacher
+    // rows (e.g. retired TLE Exploratory after an ATLAS remap). They cannot be
+    // finalized and only create phantom "No grades" rows.
+    if (!ca.isActive && ca._count.grades === 0) continue;
     const baseName = getBaseSubjectName(ca.subject?.name ?? "");
     if (!baseName) continue;
     const key = `${ca.sectionId}::${baseName}`;

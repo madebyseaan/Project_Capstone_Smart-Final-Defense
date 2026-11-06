@@ -377,6 +377,15 @@ export interface SectionEosyStatus {
   finalized: boolean;
 }
 
+export type EosySectionState = "FINALIZED" | "PARTIAL" | "NOT_STARTED" | "EMPTY";
+
+export interface SectionEosyFinalizationStatus extends SectionEosyStatus {
+  program: string;
+  sectionStatus: string;
+  adviserName: string | null;
+  state: EosySectionState;
+}
+
 export async function getSectionEosyStatus(sectionId: string, schoolYear: string): Promise<SectionEosyStatus | null> {
   const promotions = await computeSectionPromotions(sectionId, schoolYear);
   if (!promotions) return null;
@@ -398,80 +407,118 @@ export async function getSectionEosyStatus(sectionId: string, schoolYear: string
   };
 }
 
-export async function listUnfinalizedSections(schoolYear: string): Promise<SectionEosyStatus[]> {
-  const [sections, enrollments, classAssignments, allGrades] = await Promise.all([
-    prisma.section.findMany({ where: { schoolYear } }),
+export async function listSectionEosyStatuses(
+  schoolYear: string,
+): Promise<SectionEosyFinalizationStatus[]> {
+  const [sections, enrollments, classAssignments, draftGrades] = await Promise.all([
+    prisma.section.findMany({
+      where: { schoolYear },
+      select: {
+        id: true,
+        name: true,
+        gradeLevel: true,
+        program: true,
+        status: true,
+        adviser: {
+          select: {
+            user: { select: { firstName: true, lastName: true, username: true } },
+          },
+        },
+      },
+      orderBy: [{ gradeLevel: "asc" }, { name: "asc" }],
+    }),
     prisma.enrollment.findMany({
       where: { schoolYear, status: "ENROLLED" },
-      include: { student: true },
+      select: { sectionId: true, studentId: true, promotionStatus: true },
     }),
     prisma.classAssignment.findMany({
       where: { schoolYear },
-      include: { subject: true },
+      select: { id: true, sectionId: true, subject: { select: { code: true } } },
     }),
     prisma.grade.findMany({
-      where: { classAssignment: { schoolYear } },
-      include: { classAssignment: { include: { subject: true } } },
+      where: { classAssignment: { schoolYear }, status: "DRAFT" },
+      select: { studentId: true, classAssignmentId: true },
     }),
   ]);
 
-  const enrollmentsBySection = new Map<string, typeof enrollments>();
-  for (const enr of enrollments) {
-    const list = enrollmentsBySection.get(enr.sectionId) ?? [];
-    list.push(enr);
-    enrollmentsBySection.set(enr.sectionId, list);
+  const enrollmentsBySection = new Map<
+    string,
+    Array<{ studentId: string; promotionStatus: string | null }>
+  >();
+  const enrolledStudentIdsBySection = new Map<string, Set<string>>();
+  for (const enrollment of enrollments) {
+    const list = enrollmentsBySection.get(enrollment.sectionId) ?? [];
+    list.push(enrollment);
+    enrollmentsBySection.set(enrollment.sectionId, list);
+
+    const ids = enrolledStudentIdsBySection.get(enrollment.sectionId) ?? new Set<string>();
+    ids.add(enrollment.studentId);
+    enrolledStudentIdsBySection.set(enrollment.sectionId, ids);
   }
 
-  const casBySection = new Map<string, typeof classAssignments>();
-  for (const ca of classAssignments) {
-    const list = casBySection.get(ca.sectionId) ?? [];
-    list.push(ca);
-    casBySection.set(ca.sectionId, list);
+  const classAssignmentSection = new Map<string, string>();
+  const classAssignmentCode = new Map<string, string>();
+  for (const assignment of classAssignments) {
+    classAssignmentSection.set(assignment.id, assignment.sectionId);
+    classAssignmentCode.set(assignment.id, assignment.subject.code ?? "");
   }
 
-  const gradesBySection = new Map<string, typeof allGrades>();
-  for (const g of allGrades) {
-    const list = gradesBySection.get(g.classAssignment.sectionId) ?? [];
-    list.push(g);
-    gradesBySection.set(g.classAssignment.sectionId, list);
+  const draftBlockersBySection = new Map<string, number>();
+  for (const grade of draftGrades) {
+    const sectionId = classAssignmentSection.get(grade.classAssignmentId);
+    if (!sectionId) continue;
+    // Homeroom Guidance is non-promotional and never blocks EOSY finalization.
+    if ((classAssignmentCode.get(grade.classAssignmentId) ?? "").toUpperCase().startsWith("HG")) {
+      continue;
+    }
+    if (!enrolledStudentIdsBySection.get(sectionId)?.has(grade.studentId)) continue;
+    draftBlockersBySection.set(sectionId, (draftBlockersBySection.get(sectionId) ?? 0) + 1);
   }
 
-  const statuses: SectionEosyStatus[] = [];
-  for (const section of sections) {
+  return sections.map((section) => {
     const sectionEnrollments = enrollmentsBySection.get(section.id) ?? [];
-    const sectionCas = casBySection.get(section.id) ?? [];
-    const sectionGrades = gradesBySection.get(section.id) ?? [];
-
-    let draftBlockerCount = 0;
-    for (const grade of sectionGrades) {
-      if (grade.status !== "DRAFT") continue;
-      const hasEnrollment = sectionEnrollments.some((e) => e.studentId === grade.studentId);
-      if (hasEnrollment) draftBlockerCount++;
-    }
-
-    let withStoredStatus = 0;
-    for (const enr of sectionEnrollments) {
-      if (enr.promotionStatus !== null) withStoredStatus++;
-    }
-
+    const enrollmentCount = sectionEnrollments.length;
+    const withStoredStatus = sectionEnrollments.filter(
+      (enrollment) => enrollment.promotionStatus !== null,
+    ).length;
+    const draftBlockerCount = draftBlockersBySection.get(section.id) ?? 0;
+    // RL-2a: a section with zero ENROLLED learners has nothing left to
+    // finalize. Treating it as unfinalized permanently blocked rollover.
     const finalized =
-      // RL-2a: empty sections must not block rollover forever.
-      sectionEnrollments.length === 0 ||
-      (withStoredStatus === sectionEnrollments.length && draftBlockerCount === 0);
+      enrollmentCount === 0 ||
+      (withStoredStatus === enrollmentCount && draftBlockerCount === 0);
+    const state: EosySectionState =
+      enrollmentCount === 0
+        ? "EMPTY"
+        : withStoredStatus === 0
+          ? "NOT_STARTED"
+          : finalized
+            ? "FINALIZED"
+            : "PARTIAL";
+    const adviser = section.adviser?.user;
+    const adviserName = adviser
+      ? `${adviser.firstName ?? ""} ${adviser.lastName ?? ""}`.trim() || adviser.username
+      : null;
 
-    if (!finalized) {
-      statuses.push({
-        sectionId: section.id,
-        sectionName: section.name,
-        gradeLevel: section.gradeLevel,
-        enrollmentCount: sectionEnrollments.length,
-        withStoredStatus,
-        draftBlockerCount,
-        finalized: false,
-      });
-    }
-  }
-  return statuses;
+    return {
+      sectionId: section.id,
+      sectionName: section.name,
+      gradeLevel: section.gradeLevel,
+      program: section.program,
+      sectionStatus: section.status,
+      adviserName,
+      enrollmentCount,
+      withStoredStatus,
+      draftBlockerCount,
+      finalized,
+      state,
+    };
+  });
+}
+
+export async function listUnfinalizedSections(schoolYear: string): Promise<SectionEosyStatus[]> {
+  const statuses = await listSectionEosyStatuses(schoolYear);
+  return statuses.filter((status) => !status.finalized);
 }
 
 const EOSY_SNAPSHOT_SOURCE = "EOSY_FINALIZE";

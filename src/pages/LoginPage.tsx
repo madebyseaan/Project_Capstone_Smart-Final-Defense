@@ -118,58 +118,48 @@ export default function LoginPage() {
         />
 
         <div className="relative z-10 flex flex-col justify-center py-12 xl:py-16 px-12 xl:px-20 text-white w-full h-full">
-          {/* Brand header (top left) - No logo, text only */}
-          <div className="flex items-center gap-4 mb-6">
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight text-white font-sans">{acronym}</h1>
-              <p className="text-white text-sm font-bold max-w-md font-sans"> Student Management and Records Tracking</p>
-            </div>
-          </div>
+          <div className="w-full">
+            {/* School header */}
+            <h2 className="text-lg xl:text-xl font-bold uppercase tracking-[0.08em] text-white font-sans">
+              {schoolName}
+            </h2>
+            <p className="mt-1.5 text-sm xl:text-base font-medium text-white/75 font-sans">
+              Student Management and Records Tracking System
+            </p>
 
-          {/* School Name + Details */}
-          <div className="space-y-3 mb-6">
-              <h2 className="text-3xl xl:text-4xl font-bold leading-tight tracking-tight text-white font-sans">
-                {schoolName}
-              </h2>
-              <p className="text-white text-sm font-bold font-sans">Junior High School (Grades 7-10)</p>
-            <div className="flex flex-col gap-1.5 mt-3">
-              <p className="text-white text-sm font-bold font-sans">
-                DepEd Public School Student Management and Records Tracking Portal
-              </p>
-            </div>
-          </div>
+            {/* Acronym + portal subtitle */}
+            <h1 className="mt-9 xl:mt-12 text-6xl xl:text-[64px] font-bold tracking-tight text-white font-sans">
+              {acronym}
+            </h1>
+            <p className="mt-4 xl:mt-5 text-base xl:text-xl font-medium text-white/85 font-sans">
+              DepEd Junior High School (Grades 7-10) Management and Records Portal
+            </p>
 
-          {/* Teacher-specific Feature cards */}
-          <div className="grid gap-2.5 max-w-xl">
-            {[
-              { icon: ClipboardList, title: "Class Records", desc: "Manage and input student grades" },
-              { icon: Users2, title: "Advisory Class", desc: "Monitor your advisee's progress" },
-              { icon: TrendingUp, title: "Grade Analytics", desc: "Track student performance trends" },
-              { icon: BookOpen, title: "DepEd-Compliant", desc: "K-12 curriculum aligned" }
-            ].map((feature, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 hover:bg-white/10 hover:border-white/20 group transition-all duration-300"
-              >
-                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
-                  <feature.icon className="w-5 h-5 text-white" />
+            {/* Teacher-specific Feature cards */}
+            <div className="mt-9 xl:mt-12 grid gap-3 xl:gap-3.5">
+              {[
+                { icon: ClipboardList, title: "Class Records", desc: "Manage and input student grades" },
+                { icon: Users2, title: "Advisory Class", desc: "Monitor your advisee's progress" },
+                { icon: TrendingUp, title: "Grade Analytics", desc: "Track student performance trends" },
+                { icon: BookOpen, title: "DepEd-Compliant", desc: "K-12 curriculum aligned" }
+              ].map((feature, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 xl:gap-4 p-4 xl:p-5 rounded-2xl bg-white/[0.07] backdrop-blur-sm border border-white/10 hover:bg-white/10 hover:border-white/20 group transition-all duration-300"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
+                    <feature.icon className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-base xl:text-lg font-bold text-white font-sans">{feature.title}</h3>
+                    <p className="text-sm xl:text-[15px] font-normal text-white/75 font-sans">{feature.desc}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-white font-sans">{feature.title}</h3>
-                  <p className="text-white text-sm font-semibold font-sans">{feature.desc}</p>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Footer attribution */}
-        <div className="absolute bottom-8 left-12 xl:left-20 flex items-center gap-3 text-white/50 text-sm">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
-            <BookOpen className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-sans">Teacher Portal • Academic Excellence</span>
-        </div>
       </div>
 
       {/* Right Panel - Login Form */}
@@ -219,33 +209,33 @@ export default function LoginPage() {
           </div>
 
           {/* Login card with premium styling */}
-          <Card className="border border-black/[0.06] shadow-[0_20px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">
-            <CardHeader className="space-y-1 text-center pt-8 pb-3 px-8 bg-transparent border-b-0">
+          <Card className="border border-black/[0.06] shadow-[0_24px_48px_-16px_rgba(15,23,42,0.18)] bg-white rounded-3xl overflow-hidden">
+            <CardHeader className="space-y-1 text-center pt-7 pb-2 px-7 bg-transparent border-b-0">
               <div
-                className="w-14 h-14 mx-auto rounded-full flex items-center justify-center shadow-lg overflow-hidden"
+                className="w-16 h-16 mx-auto rounded-full flex items-center justify-center overflow-hidden"
                 style={{
                   background: fullLogoUrl
                     ? 'white'
                     : 'var(--theme-primary)',
-                  boxShadow: '0 10px 15px -3px rgba(var(--theme-primary-rgb), 0.3)',
+                  boxShadow: '0 0 0 6px rgba(var(--theme-primary-rgb), 0.06), 0 12px 24px -8px rgba(var(--theme-primary-rgb), 0.35)',
                   border: fullLogoUrl ? '2px solid rgba(var(--theme-primary-rgb), 0.2)' : 'none',
                 }}
               >
                 {fullLogoUrl ? (
-                  <img src={fullLogoUrl} alt={schoolName} className="w-10 h-10 object-cover" />
+                  <img src={fullLogoUrl} alt={schoolName} className="w-12 h-12 object-cover" />
                 ) : (
-                  <Sparkles className="w-5 h-5 text-white" />
+                  <Sparkles className="w-6 h-6 text-white" />
                 )}
               </div>
               <CardTitle className="text-2xl font-bold text-slate-900 tracking-tight pt-2">
                 Welcome Back
               </CardTitle>
-              <CardDescription className="text-slate-500 text-sm font-normal mt-1 leading-relaxed">
-                Sign in to your Teacher account to manage classes at <span className="font-semibold text-primary">{acronym}</span>
+              <CardDescription className="normal-case tracking-normal text-slate-900 text-[15px] font-semibold mt-1.5 leading-snug">
+                Sign in to access the <span className="font-bold text-primary">Teacher Portal</span>
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="px-8 pb-8 pt-4">
+            <CardContent className="px-7 pb-7 pt-4">
               {/* Error Message */}
               {error && (
                 <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 login-scale-in">
@@ -274,15 +264,11 @@ export default function LoginPage() {
               <form onSubmit={handleSubmit} className="space-y-3">
                 {/* Employee ID Field */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-sm font-medium text-slate-700 pl-1">
+                  <Label htmlFor="email" className="text-sm font-bold text-slate-900">
                     Employee ID or Email
                   </Label>
-                  <div className="relative group">
-                    <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center pointer-events-none z-10">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 group-focus-within:bg-slate-200 flex items-center justify-center transition-colors duration-200">
-                        <User className="w-4 h-4 text-slate-400 transition-colors duration-200" />
-                      </div>
-                    </div>
+                  <div className="relative">
+                    <User className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <Input
                       id="email"
                       type="text"
@@ -292,7 +278,7 @@ export default function LoginPage() {
                         setEmail(e.target.value);
                         if (error) setError(null);
                       }}
-                      className="pl-12 h-11 bg-white border-slate-300 hover:border-slate-400 focus:border-red-700 focus:ring-2 focus:ring-red-100 focus:outline-none rounded-xl transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
+                      className="pl-11 h-11 bg-muted/60 border-transparent hover:bg-muted focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none rounded-full transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
                       autoComplete="username"
                       required
                     />
@@ -301,15 +287,11 @@ export default function LoginPage() {
 
                 {/* Password Field */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="password" className="text-sm font-medium text-slate-700 pl-1">
+                  <Label htmlFor="password" className="text-sm font-bold text-slate-900">
                     Password
                   </Label>
-                  <div className="relative group">
-                    <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center pointer-events-none z-10">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 group-focus-within:bg-slate-200 flex items-center justify-center transition-colors duration-200">
-                        <Lock className="w-4 h-4 text-slate-400 transition-colors duration-200" />
-                      </div>
-                    </div>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
@@ -319,14 +301,14 @@ export default function LoginPage() {
                         setPassword(e.target.value);
                         if (error) setError(null);
                       }}
-                      className="pl-12 pr-11 h-11 bg-white border-slate-300 hover:border-slate-400 focus:border-red-700 focus:ring-2 focus:ring-red-100 focus:outline-none rounded-xl transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
+                      className="pl-11 pr-11 h-11 bg-muted/60 border-transparent hover:bg-muted focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none rounded-full transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
                       autoComplete="current-password"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200"
                       tabIndex={-1}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -335,53 +317,40 @@ export default function LoginPage() {
                 </div>
 
                 {/* Remember Me & Forgot Password */}
-                <div className="flex items-center justify-between text-sm py-1">
-                  <label className="flex items-center gap-2 cursor-pointer group">
-                    <div className="relative flex items-center justify-center">
-                      <input
-                        type="checkbox"
-                        className="peer sr-only"
-                      />
-                      <div className="w-4 h-4 rounded border border-slate-300 bg-white peer-checked:bg-primary peer-checked:border-primary flex items-center justify-center transition-all duration-150">
-                        <svg className="w-2.5 h-2.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity duration-150" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    </div>
-                    <span className="text-slate-600 group-hover:text-slate-900 transition-colors font-medium text-sm select-none">Remember me</span>
+                <div className="flex items-start justify-between gap-4 py-1">
+                  <label className="flex items-center gap-2.5 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      className="peer sr-only"
+                    />
+                    <div className="w-4 h-4 rounded-full border-2 border-primary/70 bg-white peer-checked:border-[5px] peer-checked:border-primary transition-all duration-150" />
+                    <span className="text-slate-900 group-hover:text-primary transition-colors font-semibold text-sm select-none">Remember me</span>
                   </label>
-                  <span className="text-xs font-medium text-muted-foreground select-none">
-                    Contact System Admin
-                  </span>
+                  <div className="text-right leading-snug">
+                    <span className="block text-[13px] font-medium text-slate-500 select-none">Forgot password?</span>
+                    <span className="block text-[13px] text-slate-500 mt-0.5 select-none">Contact the System Admin.</span>
+                  </div>
                 </div>
 
                 {/* Login Button */}
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 font-semibold text-sm rounded-xl bg-primary text-primary-foreground hover:opacity-95 hover:shadow-lg hover:shadow-red-900/20 active:scale-[0.99] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="w-full h-11 font-semibold text-sm rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.99] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
-                    <span className="flex items-center gap-3">
-                      <Loader2 className="animate-spin h-5 w-5" />
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="animate-spin h-4 w-4" />
                       Signing in...
                     </span>
                   ) : (
-                    <span className="flex items-center gap-3">
-                      <LogIn className="w-5 h-5" />
+                    <span className="flex items-center gap-2">
+                      <LogIn className="w-4 h-4" />
                       Sign In
                     </span>
                   )}
                 </Button>
               </form>
-
-              {/* Footer */}
-              <p className="text-[11px] text-slate-400 text-center mt-4 leading-relaxed">
-                By signing in, you agree to our{' '}
-                <a href="#" className="hover:underline text-primary">Terms</a>
-                {' '}and{' '}
-                <a href="#" className="hover:underline text-primary">Privacy Policy</a>
-              </p>
             </CardContent>
           </Card>
         </div>

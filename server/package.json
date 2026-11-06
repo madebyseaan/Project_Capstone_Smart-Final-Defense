@@ -17,6 +17,7 @@
     "prisma:seed-term": "ts-node prisma/seed-grades-term.ts",
     "prisma:seed-grades": "ts-node prisma/seed-grades.ts",
     "prisma:seed-teacher-scores": "ts-node prisma/seed-teacher-scores.ts",
+    "data:check": "ts-node --transpile-only scripts/check-data-integrity.ts",
     "grades:realign": "ts-node scripts/realign-seeded-grades.ts",
     "grades:recompute": "ts-node prisma/recompute-stale-grades.ts",
     "grades:check-alignment": "ts-node prisma/check-grade-alignment.ts",

@@ -17,6 +17,7 @@ import {
   resolveEnrollProSchoolYear,
 } from "./enrollproClient";
 import { logger } from "./logger";
+import { buildDataIntegrityReport } from "./dataIntegrity";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -341,6 +342,29 @@ export async function buildSyncVerificationReport(): Promise<SyncVerificationRep
         missingFromEP: orphanReport.teachersMissingFromEnrollPro.slice(0, 5),
       },
     });
+  }
+
+  // Grade placement integrity: active assignments must not be empty while
+  // archived same-family assignments still hold grades (ATLAS subject remap).
+  if (activeYearLabel) {
+    try {
+      const integrity = await buildDataIntegrityReport(activeYearLabel);
+      for (const anomaly of integrity.anomalies) {
+        anomalies.push({
+          code: anomaly.code,
+          severity: anomaly.severity,
+          message: anomaly.message,
+          detail: anomaly,
+        });
+      }
+    } catch (err) {
+      anomalies.push({
+        code: "DATA_INTEGRITY_CHECK_FAILED",
+        severity: "WARNING",
+        message: "Could not run the grade-placement integrity check.",
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const hasNonInfoAnomalies = anomalies.some((a) => a.severity !== "INFO");

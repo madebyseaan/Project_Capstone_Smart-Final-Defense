@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
-import { eosyFinalizeSchema } from "../../schemas/registrar";
+import { eosyFinalizeSchema, eosyStatusQuerySchema } from "../../schemas/registrar";
 import { createAuditLog } from "../../lib/audit";
 import { AuditAction, AuditSeverity } from "@prisma/client";
 import {
@@ -23,6 +23,7 @@ import {
 import { logger } from "../../lib/logger";
 import { withSectionLock } from "../../lib/sectionLock";
 import { prisma } from "../../lib/prisma";
+import { buildEosyFinalizationOverview } from "../../lib/eosyStatus";
 
 export default function registerEosyRoutes(router: Router): void {
 
@@ -38,6 +39,30 @@ router.get("/eosy/school-years", authenticateToken, async (req: AuthRequest, res
     res.status(502).json({ message: "Failed to fetch school years from EnrollPro" });
   }
 });
+
+// GET /registrar/eosy/finalization-status?schoolYear= — every section's EOSY state.
+// Read-only SMART DB projection: promotion statuses + DRAFT blockers + snapshot gaps.
+router.get(
+  "/eosy/finalization-status",
+  authenticateToken,
+  validate(eosyStatusQuerySchema),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const user = req.user;
+    if (!user || user.role !== "REGISTRAR") {
+      res.status(403).json({ message: "Access denied. Registrar only." });
+      return;
+    }
+    try {
+      const { schoolYear } = req.query as { schoolYear: string };
+      const overview = await buildEosyFinalizationOverview(schoolYear);
+      res.set("Cache-Control", "no-store");
+      res.json(overview);
+    } catch (err: any) {
+      logger.error("[registrar/eosy/finalization-status]", err.message);
+      res.status(500).json({ message: "Failed to load EOSY finalization status" });
+    }
+  },
+);
 
 // GET /registrar/eosy/sections — sections available for EOSY (SWR cache + SMART DB fallback)
 router.get("/eosy/sections", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {

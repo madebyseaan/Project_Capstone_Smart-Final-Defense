@@ -43,6 +43,12 @@ export const eosyFinalizeSchema = z.object({
   }),
 });
 
+export const eosyStatusQuerySchema = z.object({
+  query: z.object({
+    schoolYear: z.string().min(1, 'schoolYear is required'),
+  }),
+});
+
 export const termFinalizationQuerySchema = z.object({
   query: z.object({
     schoolYear: z.string().min(1, 'schoolYear must be a non-empty string').optional(),

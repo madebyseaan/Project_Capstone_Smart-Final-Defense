@@ -5,6 +5,7 @@ import type {
   TermFinalizeStatusSubject,
   TermGradesResponse,
 } from "./termFinalizationTypes";
+import type { EosyFinalizationOverview } from "./eosyTypes";
 
 const API_URL = "/api";
 
@@ -1870,6 +1871,11 @@ export const registrarApi = {
 
   getEosyUnfinalizedSections: (schoolYear: string) =>
     api.get("/registrar/eosy/unfinalized-sections", { params: { schoolYear } }),
+
+  getEosyFinalizationStatus: (schoolYear: string) =>
+    api.get<EosyFinalizationOverview>("/registrar/eosy/finalization-status", {
+      params: { schoolYear },
+    }),
 
   exportYearBackup: (schoolYear: string) =>
     api.get("/registrar/export/year-backup", { params: { schoolYear }, responseType: "blob" }),
