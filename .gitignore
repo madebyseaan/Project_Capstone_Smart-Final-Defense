@@ -69,3 +69,7 @@ server/check-*.js
 
 # Local verification artifacts (PM2/log evidence)
 artifacts/
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]
