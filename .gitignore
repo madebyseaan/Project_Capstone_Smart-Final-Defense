@@ -50,6 +50,9 @@ check_centering.*
 # Official E-Class-Record templates are load-bearing (ECR export clones them)
 !server/assets/ecr/*.xlsx
 
+# Official school-form templates are load-bearing (SF6 renderer)
+!server/assets/forms/*.xlsx
+
 # Codex/OpenCode lock
 skills-lock.json
 

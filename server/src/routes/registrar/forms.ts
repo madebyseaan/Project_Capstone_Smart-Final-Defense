@@ -1,13 +1,12 @@
-import { Router, Request, Response } from "express";
-import { Term } from "@prisma/client";
+import { Router, Response } from "express";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import { prisma } from "../../lib/prisma";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
 import { getSchoolIdentityForYear } from "../../lib/schoolSettingsSnapshot";
 import { buildSf10Records } from "../../lib/sf10";
-import { mergeRotationSubjects, SubjectTermInput, PASSING_GRADE } from "../../lib/promotion";
 import { composeSf9ForStudent } from "../../lib/sf9Composer";
+import { composeSF6 } from "../../lib/sf6Composer";
 import {
   resolveCurrentSchoolYearLabel,
   normalizeDisplaySex,
@@ -192,7 +191,6 @@ router.get("/forms/sf5/:sectionId", authenticateToken, async (req: AuthRequest, 
   }
 });
 
-// Get SF6 (Summary Promotion Report) data — school-wide aggregate
 router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const user = req.user;
@@ -203,144 +201,9 @@ router.get("/forms/sf6", authenticateToken, async (req: AuthRequest, res: Respon
 
     const { schoolYear } = req.query;
     const currentSchoolYear = (schoolYear as string) || await resolveCurrentSchoolYearLabel();
+    const data = await composeSF6(currentSchoolYear);
 
-    // Get all sections for this school year
-    const sections = await prisma.section.findMany({
-      where: { schoolYear: currentSchoolYear },
-      include: { adviser: { include: { user: true } } },
-      orderBy: [{ gradeLevel: 'asc' }, { name: 'asc' }],
-    });
-
-    const gradeOrder = ['GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10'];
-    const sectionResults: any[] = [];
-    const byGradeLevel: Record<string, { total: number; promoted: number; retained: number; dropped: number; transferred: number; noGrades: number }> = {};
-
-    for (const section of sections) {
-      // Get enrollments
-      const enrollments = await prisma.enrollment.findMany({
-        where: { sectionId: section.id, schoolYear: currentSchoolYear },
-        include: { student: true },
-      });
-
-      // Get class assignments
-      const classAssignments = await prisma.classAssignment.findMany({
-        where: { sectionId: section.id, schoolYear: currentSchoolYear },
-        include: { subject: true },
-      });
-
-      // Get grades
-      const grades = await prisma.grade.findMany({
-        where: {
-          classAssignment: { sectionId: section.id, schoolYear: currentSchoolYear },
-        },
-        include: { classAssignment: { include: { subject: true } } },
-      });
-
-      // Compute per-student promotion status
-      let promoted = 0, retained = 0, dropped = 0, transferred = 0, noGrades = 0;
-
-      for (const enr of enrollments) {
-        if (enr.status === 'DROPPED') { dropped++; continue; }
-        if (enr.status === 'TRANSFERRED') { transferred++; continue; }
-
-        const studentGrades = grades.filter((g) => g.studentId === enr.studentId);
-
-        // Merge rotational subjects (TLE, Science) so each rotation group = one subject
-        const rotationInputs: SubjectTermInput[] = classAssignments
-          .filter((ca) => !ca.subject.code.toUpperCase().startsWith("HG"))
-          .map((ca) => {
-            const caGrades = studentGrades.filter((g) => g.classAssignmentId === ca.id);
-            const terms: Record<string, number | null> = { T1: null, T2: null, T3: null };
-            for (const g of caGrades) {
-              if (g.quarterlyGrade !== null && !terms[g.term]) {
-                terms[g.term] = g.quarterlyGrade;
-              }
-            }
-            return {
-              subjectCode: ca.subject.code,
-              subjectName: ca.subject.displayName ?? ca.subject.name,
-              T1: terms.T1,
-              T2: terms.T2,
-              T3: terms.T3,
-              rotationTermGroupId: (ca.subject as any).rotationTermGroupId ?? null,
-              rotationTermRank: (ca.subject as any).rotationTermRank ?? null,
-              rotationOutputLabel: (ca.subject as any).rotationOutputLabel ?? null,
-            };
-          });
-
-        const mergedSubjects = mergeRotationSubjects(rotationInputs);
-        const subjectFinals: number[] = mergedSubjects
-          .map((row) => {
-            const vals = [row.T1, row.T2, row.T3].filter((v): v is number => v !== null);
-            return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
-          })
-          .filter((v): v is number => v !== null);
-
-        const hasFailing = subjectFinals.some((g) => g < PASSING_GRADE);
-        const hasGrades = subjectFinals.length > 0;
-        // A learner with no encoded grades yet is PENDING, not retained — counting
-        // them as retained made an ungraded school year read as "85 retained".
-        if (!hasGrades) { noGrades++; } else if (hasFailing) { retained++; } else { promoted++; }
-      }
-
-      const total = enrollments.length;
-      const promotionRate = total > 0 ? Math.round((promoted / total) * 100) : 0;
-
-      sectionResults.push({
-        sectionId: section.id,
-        sectionName: section.name,
-        gradeLevel: section.gradeLevel,
-        program: section.program || 'REGULAR',
-        adviser: section.adviser ? `${section.adviser.user.firstName} ${section.adviser.user.lastName}` : null,
-        totalStudents: total,
-        promoted,
-        retained,
-        dropped,
-        transferred,
-        noGrades,
-        promotionRate,
-      });
-
-      // Aggregate by grade level
-      const gl = section.gradeLevel;
-      if (!byGradeLevel[gl]) byGradeLevel[gl] = { total: 0, promoted: 0, retained: 0, dropped: 0, transferred: 0, noGrades: 0 };
-      byGradeLevel[gl].total += total;
-      byGradeLevel[gl].promoted += promoted;
-      byGradeLevel[gl].retained += retained;
-      byGradeLevel[gl].dropped += dropped;
-      byGradeLevel[gl].transferred += transferred;
-      byGradeLevel[gl].noGrades += noGrades;
-    }
-
-    // Sort section results by grade level then name
-    sectionResults.sort((a, b) => {
-      const gi = gradeOrder.indexOf(a.gradeLevel) - gradeOrder.indexOf(b.gradeLevel);
-      return gi !== 0 ? gi : a.sectionName.localeCompare(b.sectionName);
-    });
-
-    // Overall summary
-    const totalStudents = sectionResults.reduce((s, r) => s + r.totalStudents, 0);
-    const totalPromoted = sectionResults.reduce((s, r) => s + r.promoted, 0);
-    const totalRetained = sectionResults.reduce((s, r) => s + r.retained, 0);
-    const totalDropped = sectionResults.reduce((s, r) => s + r.dropped, 0);
-    const totalTransferred = sectionResults.reduce((s, r) => s + r.transferred, 0);
-    const totalNoGrades = sectionResults.reduce((s, r) => s + r.noGrades, 0);
-
-    res.json({
-      schoolYear: currentSchoolYear,
-      sections: sectionResults,
-      summary: {
-        totalStudents,
-        promoted: totalPromoted,
-        retained: totalRetained,
-        dropped: totalDropped,
-        transferred: totalTransferred,
-        noGrades: totalNoGrades,
-        gradedStudents: totalPromoted + totalRetained,
-        overallPromotionRate: totalStudents > 0 ? Math.round((totalPromoted / totalStudents) * 100) : 0,
-      },
-      byGradeLevel,
-    });
+    res.json(data);
   } catch (error) {
     logger.error("Error fetching SF6 data:", error);
     res.status(500).json({ message: "Failed to fetch SF6 data" });

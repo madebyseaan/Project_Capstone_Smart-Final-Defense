@@ -10,6 +10,9 @@ import { defineConfig } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // The offline rig has its own config + webServer stack. Running it from the
+  // main suite fails on missing stubs; use `npm run test:e2e:offline`.
+  testIgnore: ["offline/**"],
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

@@ -261,7 +261,9 @@ export default function RegistrarDashboardPage() {
   const [syncError, setSyncError] = useState<string | undefined>();
   const [dashboard, setDashboard] = useState<RegistrarDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [promotionData, setPromotionData] = useState<null | { schoolYear?: string; summary?: { promoted: number; retained: number; dropped: number; transferred: number; noGrades?: number; gradedStudents?: number } }>(null);
+  const [promotionData, setPromotionData] = useState<null | { schoolYear?: string; summary?: {
+    promoted: number; conditional?: number; retained: number; dropped: number; transferred: number; noGrades?: number;
+    gradedStudents?: number } }>(null);
   const [showFailingList, setShowFailingList] = useState(false);
 
   const loadDashboard = async (silent = false) => {
@@ -359,6 +361,7 @@ export default function RegistrarDashboardPage() {
   const promotionBarData = promotionData?.summary
     ? [
         { name: "Promoted", count: promotionData.summary.promoted, color: "#10b981" },
+        { name: "Conditional", count: promotionData.summary.conditional ?? 0, color: "#eab308" },
         { name: "Retained", count: promotionData.summary.retained, color: "#f59e0b" },
         ...(promotionData.summary.noGrades
           ? [{ name: "Pending (no grades)", count: promotionData.summary.noGrades, color: "#94a3b8" }]

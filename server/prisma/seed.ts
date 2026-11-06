@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaClient, Role, Term } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+import { ensureSf6Template } from "../src/lib/sf6Template";
 
 const connectionString = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({
@@ -131,6 +132,11 @@ async function main() {
     });
   }
   console.log(`Seeded ${transmutationData.length} transmutation entries.`);
+
+  const sf6Template = await ensureSf6Template(prisma);
+  if (sf6Template.created) {
+    console.log(`Registered SF6 template with ${sf6Template.placeholderCount} placeholders.`);
+  }
 
   console.log("DB seeding completed successfully!");
 }

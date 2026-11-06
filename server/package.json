@@ -12,6 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed-sf6-template": "ts-node prisma/seed-sf6-template.ts",
+    "template:sf6": "ts-node scripts/generate-sf6-template.ts",
     "prisma:seed-term": "ts-node prisma/seed-grades-term.ts",
     "prisma:seed-grades": "ts-node prisma/seed-grades.ts",
     "prisma:seed-teacher-scores": "ts-node prisma/seed-teacher-scores.ts",

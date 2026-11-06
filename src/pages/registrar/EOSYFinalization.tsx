@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { GraduationCap, Loader2, AlertTriangle, RefreshCw, Download, LayoutDashboard, Lock, Users } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { GraduationCap, Loader2, AlertTriangle, RefreshCw, Download, LayoutDashboard, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -7,22 +8,22 @@ import { TabsContent } from "@/components/ui/tabs";
 import { FilterTabs } from "@/components/layout/FilterTabs";
 import type { FilterTabItem } from "@/components/layout/FilterTabs";
 import { registrarApi } from "@/lib/api";
+import type { TermFinalizeStatusSubject } from "@/lib/termFinalizationTypes";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 
 import EOSYOverviewTab from "./components/EOSYOverviewTab";
-import EOSYGradeLockingTab from "./components/EOSYGradeLockingTab";
 import EOSYLearnerRecordsTab from "./components/EOSYLearnerRecordsTab";
 import EOSYConfirmDialog from "./components/EOSYConfirmDialog";
 
 // NOTE: This page is intentionally read-only for EnrollPro data.
 // EOSY finalization (POST /eosy/sections/:id/finalize) writes to EnrollPro and is STRICTLY FORBIDDEN
 // in SMART. All EnrollPro finalization must be performed directly in EnrollPro.
-// SMART's own finalize actions (grade locking, promotion snapshots) are performed here.
+// SMART's own action here is EOSY promotion finalization. Term grade
+// finalization is performed on /registrar/term-finalization.
 
 const EOSY_TAB_ITEMS: FilterTabItem[] = [
   { value: "overview", label: "Overview", icon: LayoutDashboard },
-  { value: "grade-locking", label: "Grade Locking", icon: Lock },
   { value: "learner-records", label: "Learner Records", icon: Users },
 ];
 
@@ -52,19 +53,16 @@ export default function EOSYFinalization() {
   const [, setSectionMeta] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // ── Grade Finalization ──
-  const [, setFinalizeStatus] = useState<any[]>([]);
-  const [allTermStatus, setAllTermStatus] = useState<any[]>([]);
-  const [finalizeLoading, setFinalizeLoading] = useState(false);
-  const [finalizingSubject, setFinalizingSubject] = useState<string | null>(null);
-  const [finalizeMessage, setFinalizeMessage] = useState<string | null>(null);
-  const [currentTerm, setCurrentTerm] = useState<string>("");
+  // ── Term finalization readiness (read-only here; actions live on Term Finalization) ──
+  const [allTermStatus, setAllTermStatus] = useState<TermFinalizeStatusSubject[]>([]);
 
   // ── SMART Promotion ──
   const [smartPromotion, setSmartPromotion] = useState<any>(null);
   const [smartLoading, setSmartLoading] = useState(false);
   const [eosyFinalizing, setEosyFinalizing] = useState(false);
+  const [eosyUnfinalizing, setEosyUnfinalizing] = useState(false);
   const [, setEosyMessage] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // ── Student Grades (inline expand) ──
   const [expandedStudentLrn, setExpandedStudentLrn] = useState<string | null>(null);
@@ -76,9 +74,17 @@ export default function EOSYFinalization() {
     open: boolean;
     title: string;
     description: string;
+    confirmLabel: string;
     variant: "danger" | "warning" | "info";
     onConfirm: () => void;
-  }>({ open: false, title: "", description: "", variant: "warning", onConfirm: () => {} });
+  }>({
+    open: false,
+    title: "",
+    description: "",
+    confirmLabel: "Confirm",
+    variant: "warning",
+    onConfirm: () => {},
+  });
 
   // ─── Data Loading ────────────────────────────────────────────────────────────
 
@@ -120,7 +126,7 @@ export default function EOSYFinalization() {
       const payload = res.data as any;
       setSections(payload.sections ?? payload.data ?? payload ?? []);
       if (payload?.source === "db") {
-        setCacheNotice("EnrollPro is unreachable — showing last known sections from the SMART database. Grade Locking still works; live grades are unavailable.");
+        setCacheNotice("EnrollPro is unreachable — showing last known sections from the SMART database. Live EOSY records are unavailable.");
       } else if (payload?.stale) {
         setCacheNotice(formatStaleNotice(payload.ageMs ?? 0));
       } else {
@@ -136,7 +142,7 @@ export default function EOSYFinalization() {
   const loadRecords = async (sectionId: string, force = false) => {
     if (!/^\d+$/.test(sectionId)) {
       setRecords([]);
-      setRecordsError("EnrollPro is unreachable — live EOSY grades are unavailable right now. Grade Locking still works.");
+      setRecordsError("EnrollPro is unreachable — live EOSY records are unavailable right now.");
       return;
     }
     setRecordsLoading(true);
@@ -192,36 +198,14 @@ export default function EOSYFinalization() {
     }
   };
 
-  const loadFinalizeStatus = async (sectionId: string) => {
-    if (!currentTerm) {
-      setFinalizeStatus([]);
+  const loadAllTermStatus = async (sectionId: string, schoolYear: string) => {
+    if (!schoolYear) {
+      setAllTermStatus([]);
       return;
     }
-    setFinalizeLoading(true);
     try {
-      const token = localStorage.getItem("token_registrar") || sessionStorage.getItem("token_registrar") || "";
-      const csrfCookie = document.cookie.split("; ").find(row => row.startsWith("x-csrf-token="))?.split("=")[1] || "";
-      const res = await fetch(`/api/registrar/finalize-status/${sectionId}/${currentTerm}`, {
-        headers: { Authorization: `Bearer ${token}`, "x-csrf-token": csrfCookie },
-      });
-      const data = await res.json();
-      setFinalizeStatus(data.subjects || []);
-    } catch (err) {
-      console.error("Failed to load finalize status", err);
-    } finally {
-      setFinalizeLoading(false);
-    }
-  };
-
-  const loadAllTermStatus = async (sectionId: string) => {
-    try {
-      const token = localStorage.getItem("token_registrar") || sessionStorage.getItem("token_registrar") || "";
-      const csrfCookie = document.cookie.split("; ").find(row => row.startsWith("x-csrf-token="))?.split("=")[1] || "";
-      const res = await fetch(`/api/registrar/finalize-status-all/${sectionId}`, {
-        headers: { Authorization: `Bearer ${token}`, "x-csrf-token": csrfCookie },
-      });
-      const data = await res.json();
-      setAllTermStatus(data.subjects || []);
+      const res = await registrarApi.getFinalizeStatusAll(sectionId, schoolYear);
+      setAllTermStatus(res.data.subjects ?? []);
     } catch (err) {
       console.error("Failed to load all-term finalize status", err);
     }
@@ -244,22 +228,10 @@ export default function EOSYFinalization() {
     }
   };
 
-  const fetchCurrentTerm = async () => {
-    try {
-      const res = await fetch("/api/admin/settings/public");
-      const data = await res.json();
-      const term = data.settings?.currentTerm;
-      setCurrentTerm(typeof term === "string" ? term : "");
-    } catch (err) {
-      console.error("Failed to fetch current term", err);
-    }
-  };
-
   // ─── Effects ─────────────────────────────────────────────────────────────────
 
   useEffect(() => { void loadSchoolYears(); }, []);
   useEffect(() => { void loadLocalSections(); }, []);
-  useEffect(() => { void fetchCurrentTerm(); }, []);
   useEffect(() => { if (selectedSchoolYearId) void loadSections(selectedSchoolYearId); }, [selectedSchoolYearId]);
 
   const selectedSyLabel = schoolYears.find((y: any) => String(y.id) === selectedSchoolYearId)?.yearLabel ?? "";
@@ -283,13 +255,12 @@ export default function EOSYFinalization() {
   useEffect(() => {
     if (selectedSectionId) {
       void loadRecords(selectedSectionId);
-      if (localSection) {
-        void loadFinalizeStatus(localSection.id);
-        void loadAllTermStatus(localSection.id);
+      if (localSection && selectedSyLabel) {
+        void loadAllTermStatus(localSection.id, selectedSyLabel);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSectionId, localSections, sections]);
+  }, [selectedSectionId, localSections, sections, selectedSyLabel]);
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -299,6 +270,7 @@ export default function EOSYFinalization() {
       open: true,
       title: "Finalize EOSY?",
       description: `This will snapshot all finalized grades and persist promotion status for ${epSection?.name} (${selectedSyLabel}). This action is safe to re-run.`,
+      confirmLabel: "Finalize EOSY",
       variant: "warning",
       onConfirm: async () => {
         setConfirmDialog((prev) => ({ ...prev, open: false }));
@@ -323,140 +295,39 @@ export default function EOSYFinalization() {
     });
   };
 
-  const handleFinalizeAll = async () => {
-    if (finalizingSubject) return;
-    if (!selectedSectionId || !localSection) {
-      setFinalizeMessage("Section not found in SMART database");
-      setTimeout(() => setFinalizeMessage(null), 6000);
-      return;
-    }
-    const draftCount = allTermStatus.filter((s) => s.totalDraft > 0).length;
-    if (draftCount === 0) {
-      setFinalizeMessage("All grades are already finalized");
-      setTimeout(() => setFinalizeMessage(null), 4000);
-      return;
-    }
+  const handleUnfinalizeEosy = async () => {
+    if (!localSection || !selectedSyLabel || eosyUnfinalizing) return;
     setConfirmDialog({
       open: true,
-      title: "Finalize all draft grades?",
-      description: `This will lock ${draftCount} subject(s) across all terms (T1, T2, T3) for ${epSection?.name}, then create the EOSY promotion snapshots for this section. Teachers will no longer be able to edit these grades.`,
+      title: "Unfinalize EOSY?",
+      description: `This deletes EOSY promotion snapshots and clears promotion status for ${epSection?.name} (${selectedSyLabel}). Grade rows and term finalization are not changed. This is blocked if any remedial record is completed.`,
+      confirmLabel: "Unfinalize EOSY",
       variant: "danger",
       onConfirm: async () => {
         setConfirmDialog((prev) => ({ ...prev, open: false }));
-        setFinalizingSubject("all");
-        setFinalizeMessage(null);
+        setEosyUnfinalizing(true);
+        setEosyMessage(null);
         try {
-          const draftSubjects = allTermStatus.filter((s) => s.totalDraft > 0);
-          let totalFinalized = 0;
-          let failed = 0;
-          const terms = ["T1", "T2", "T3"] as const;
-          for (const subject of draftSubjects) {
-            const subjectIds = (subject.subjectId ?? "").split(",").filter(Boolean);
-            for (const term of terms) {
-              if (subject.terms[term]?.draft > 0) {
-                for (const subjectId of subjectIds) {
-                  try {
-                    const res = await registrarApi.finalizeGrades(localSection.id, term, subjectId);
-                    totalFinalized += res.data?.finalizedCount || 0;
-                  } catch {
-                    failed++;
-                  }
-                  await new Promise((r) => setTimeout(r, 100));
-                }
-              }
-            }
-          }
-
-          // Also run the EOSY promotion finalize so promotion snapshots exist.
-          // Without this, the archive/rollover guardrail blocks the year (snapshot gap).
-          let eosyNote = "";
-          try {
-            const eosyRes = await registrarApi.finalizeEosySection(localSection.id, selectedSyLabel);
-            const snapCount = eosyRes.data?.snapshotsCreated ?? 0;
-            eosyNote = ` EOSY finalized (${snapCount} promotion snapshot${snapCount === 1 ? "" : "s"} created).`;
-            void loadSmartPromotion(localSection.id, selectedSyLabel);
-          } catch (eosyErr: any) {
-            eosyNote = eosyErr?.response?.data?.message
-              ? ` EOSY finalize needs attention: ${eosyErr.response.data.message}`
-              : " EOSY finalize could not be completed.";
-          }
-
-          setFinalizeMessage(
-            failed > 0
-              ? `Finalized ${totalFinalized} grades, ${failed} request(s) failed — try again for remaining.${eosyNote}`
-              : `Finalized ${totalFinalized} grades across ${draftSubjects.length} subjects (all terms).${eosyNote}`,
-          );
-          void loadFinalizeStatus(localSection.id);
-          void loadAllTermStatus(localSection.id);
-          setTimeout(() => setFinalizeMessage(null), 6000);
-        } catch {
-          setFinalizeMessage("Failed to finalize grades");
-          setTimeout(() => setFinalizeMessage(null), 6000);
+          const res = await registrarApi.unfinalizeEosySection(localSection.id, selectedSyLabel);
+          setEosyMessage(res.data?.message ?? "EOSY unfinalized");
+          void loadSmartPromotion(localSection.id, selectedSyLabel);
+          void loadAllTermStatus(localSection.id, selectedSyLabel);
+        } catch (err: any) {
+          setEosyMessage(err?.response?.data?.message ?? "Failed to unfinalize EOSY");
         } finally {
-          setFinalizingSubject(null);
+          setEosyUnfinalizing(false);
+          setTimeout(() => setEosyMessage(null), 8000);
         }
       },
     });
   };
 
-  const handleUnfinalizeAll = async () => {
-    if (finalizingSubject) return;
-    if (!selectedSectionId || !localSection) {
-      setFinalizeMessage("Section not found in SMART database");
-      setTimeout(() => setFinalizeMessage(null), 6000);
-      return;
-    }
-    const finalizedSubjects = allTermStatus.filter((s) => s.totalFinalized > 0);
-    if (finalizedSubjects.length === 0) {
-      setFinalizeMessage("No grades to unfinalize");
-      setTimeout(() => setFinalizeMessage(null), 4000);
-      return;
-    }
-    setConfirmDialog({
-      open: true,
-      title: "Unfinalize all grades?",
-      description: `This will unlock ${finalizedSubjects.length} subject(s) across all terms (T1, T2, T3) for ${epSection?.name}. Teachers will be able to edit grades again. NOTE: this only unlocks grades — EOSY promotion snapshots remain until the section is unfinalized in Overview.`,
-      variant: "warning",
-      onConfirm: async () => {
-        setConfirmDialog((prev) => ({ ...prev, open: false }));
-        setFinalizingSubject("all");
-        setFinalizeMessage(null);
-        try {
-          let totalUnfinalized = 0;
-          let failed = 0;
-          const terms = ["T1", "T2", "T3"] as const;
-          for (const subject of finalizedSubjects) {
-            const subjectIds = (subject.subjectId ?? "").split(",").filter(Boolean);
-            for (const term of terms) {
-              if (subject.terms[term]?.finalized > 0) {
-                for (const subjectId of subjectIds) {
-                  try {
-                    const res = await registrarApi.unfinalizeGrades(localSection.id, term, subjectId);
-                    totalUnfinalized += res.data?.unfinalizedCount || 0;
-                  } catch {
-                    failed++;
-                  }
-                  await new Promise((r) => setTimeout(r, 100));
-                }
-              }
-            }
-          }
-          setFinalizeMessage(
-            failed > 0
-              ? `Unfinalized ${totalUnfinalized} grades, ${failed} request(s) failed — try again for remaining`
-              : `Unfinalized ${totalUnfinalized} grades across ${finalizedSubjects.length} subjects (all terms)`,
-          );
-          void loadFinalizeStatus(localSection.id);
-          void loadAllTermStatus(localSection.id);
-          setTimeout(() => setFinalizeMessage(null), 6000);
-        } catch {
-          setFinalizeMessage("Failed to unfinalize grades");
-          setTimeout(() => setFinalizeMessage(null), 6000);
-        } finally {
-          setFinalizingSubject(null);
-        }
-      },
-    });
+  const handleOpenTermFinalization = () => {
+    const params = new URLSearchParams();
+    if (selectedSyLabel) params.set("schoolYear", selectedSyLabel);
+    if (localSection) params.set("sectionId", localSection.id);
+    const query = params.toString();
+    navigate(`/registrar/term-finalization${query ? `?${query}` : ""}`);
   };
 
   const handleToggleStudentGrades = async (student: any) => {
@@ -550,14 +421,12 @@ export default function EOSYFinalization() {
   const hasSectionSelected = !!selectedSectionId;
   const schoolYearsUnavailable = !schoolYearsLoading && schoolYears.length === 0;
 
-  // "Grades locked but EOSY promotion not finalized" — the exact state that
-  // previously blocked rollover silently. Surfaced as a warning in Grade Locking.
-  const gradesFullyLocked = allTermStatus.length > 0 && allTermStatus.every((s: any) => s.totalDraft === 0);
+  // Term finalization is now owned by /registrar/term-finalization. EOSY only
+  // reads that state to decide whether promotion can be finalized.
   const eosyFinalized =
     !!smartPromotion?.enrollments?.length &&
     smartPromotion.enrollments.every((e: any) => e.stored?.promotionStatus != null) &&
     (smartPromotion.draftBlockers?.length ?? 0) === 0;
-  const eosyPending = gradesFullyLocked && !eosyFinalized;
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -565,7 +434,7 @@ export default function EOSYFinalization() {
     <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
       <PageHeader
         title="EOSY Finalization"
-        description="End-of-School-Year monitoring, grade locking, and promotion finalization"
+        description="Year-end promotion finalization. Term grade finalization now lives on the Term Finalization page."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -705,34 +574,15 @@ export default function EOSYFinalization() {
                       smartPromotion={smartPromotion}
                       smartLoading={smartLoading}
                       eosyFinalizing={eosyFinalizing}
+                      eosyUnfinalizing={eosyUnfinalizing}
                       records={mergedRecords}
                       allTermStatus={allTermStatus}
                       epSectionName={epSection?.name ?? null}
                       adviserName={localSection?.adviser ?? null}
                       eosyFinalized={eosyFinalized}
-                      finalizingSubject={finalizingSubject}
                       onEosyFinalize={handleEosyFinalize}
-                      onFinalizeAll={handleFinalizeAll}
-                    />
-                  )}
-                </TabsContent>
-
-                <TabsContent value="grade-locking">
-                  {finalizeLoading && allTermStatus.length === 0 ? (
-                    <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span className="text-sm">Loading finalization status...</span>
-                    </div>
-                  ) : (
-                    <EOSYGradeLockingTab
-                      allTermStatus={allTermStatus}
-                      finalizeLoading={finalizeLoading}
-                      finalizingSubject={finalizingSubject}
-                      finalizeMessage={finalizeMessage}
-                      epSectionName={epSection?.name ?? null}
-                      eosyPending={eosyPending}
-                      onFinalizeAll={handleFinalizeAll}
-                      onUnfinalizeAll={handleUnfinalizeAll}
+                      onUnfinalizeEosy={handleUnfinalizeEosy}
+                      onOpenTermFinalization={handleOpenTermFinalization}
                     />
                   )}
                 </TabsContent>
@@ -790,7 +640,8 @@ export default function EOSYFinalization() {
         title={confirmDialog.title}
         description={confirmDialog.description}
         variant={confirmDialog.variant}
-        confirmLabel={confirmDialog.variant === "danger" ? "Yes, Finalize" : "Confirm"}
+        confirmLabel={confirmDialog.confirmLabel}
+        loading={eosyFinalizing || eosyUnfinalizing}
         onConfirm={confirmDialog.onConfirm}
       />
     </div>

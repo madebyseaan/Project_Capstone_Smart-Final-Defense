@@ -61,13 +61,27 @@ interface ExcelRendererProps {
   className?: string;
   scale?: number; // Scale factor for responsive sizing (default: 1)
   showGridlines?: boolean;
+  data?: Record<string, string | number | null | undefined>;
+}
+
+const TEMPLATE_TOKEN = /\{\{\s*([\w.-]+)\s*\}\}/g;
+
+function applyTemplateData(
+  value: string,
+  data: Record<string, string | number | null | undefined>
+): string {
+  return value.replace(TEMPLATE_TOKEN, (_match, key: string) => {
+    const replacement = data[key];
+    return replacement === null || replacement === undefined ? '' : String(replacement);
+  });
 }
 
 export const ExcelRenderer: React.FC<ExcelRendererProps> = ({
   sheet,
   className = '',
   scale = 1,
-  showGridlines = true
+  showGridlines = true,
+  data
 }) => {
   // Build a 2D grid for easy cell lookup
   const cellGrid = React.useMemo(() => {
@@ -144,20 +158,26 @@ export const ExcelRenderer: React.FC<ExcelRendererProps> = ({
 
   // Format cell value based on type and format
   const formatCellValue = (cell: ParsedCell): string => {
-    if (cell.value === null || cell.value === undefined || cell.value === '') {
+    let value = cell.value;
+
+    if (typeof value === 'string' && data) {
+      value = applyTemplateData(value, data);
+    }
+
+    if (value === null || value === undefined || value === '') {
       return '';
     }
 
     // Handle dates
     if (cell.type === 'date') {
-      const date = new Date(cell.value);
+      const date = new Date(value);
       return date.toLocaleDateString();
     }
 
     // Handle numbers with formatting
     if (cell.type === 'number' && cell.style.numberFormat) {
       // Basic number formatting (can be enhanced)
-      const num = parseFloat(cell.value);
+      const num = parseFloat(value);
       if (cell.style.numberFormat.includes('%')) {
         return `${(num * 100).toFixed(2)}%`;
       }
@@ -166,7 +186,7 @@ export const ExcelRenderer: React.FC<ExcelRendererProps> = ({
       }
     }
 
-    return String(cell.value);
+    return String(value);
   };
 
   // Render rows

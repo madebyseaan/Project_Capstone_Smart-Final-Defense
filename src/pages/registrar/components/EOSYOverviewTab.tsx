@@ -1,4 +1,4 @@
-import { Loader2, AlertTriangle, FileCheck, Users, CheckCircle, XCircle, AlertCircle, Lock, GraduationCap, Rocket } from "lucide-react";
+import { Loader2, AlertTriangle, FileCheck, FileEdit, Users, CheckCircle, XCircle, AlertCircle, Lock, GraduationCap, Rocket } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,33 +6,36 @@ import { Separator } from "@/components/ui/separator";
 import { StatCard } from "@/components/layout/StatCard";
 import EOSYPromotionBreakdown from "./EOSYPromotionBreakdown";
 import { useTheme } from "@/contexts/ThemeContext";
+import type { TermFinalizeStatusSubject } from "@/lib/termFinalizationTypes";
 
 interface EOSYOverviewTabProps {
   smartPromotion: any;
   smartLoading: boolean;
   eosyFinalizing: boolean;
+  eosyUnfinalizing?: boolean;
   records: any[];
-  allTermStatus: any[];
+  allTermStatus: TermFinalizeStatusSubject[];
   epSectionName: string | null;
   adviserName: string | null;
   eosyFinalized?: boolean;
-  finalizingSubject?: string | null;
   onEosyFinalize: () => void;
-  onFinalizeAll: () => void;
+  onUnfinalizeEosy: () => void;
+  onOpenTermFinalization: () => void;
 }
 
 export default function EOSYOverviewTab({
   smartPromotion,
   smartLoading,
   eosyFinalizing,
+  eosyUnfinalizing,
   records,
   allTermStatus,
   epSectionName,
   adviserName,
   eosyFinalized,
-  finalizingSubject,
   onEosyFinalize,
-  onFinalizeAll,
+  onUnfinalizeEosy,
+  onOpenTermFinalization,
 }: EOSYOverviewTabProps) {
   const { colors } = useTheme();
 
@@ -80,59 +83,77 @@ export default function EOSYOverviewTab({
           </div>
 
           <div className="space-y-2">
-            {/* Step 1 — Lock grades */}
+            {/* Step 1 — Finalize term grades (owned by Term Finalization) */}
             <div
               className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3 ${
-                gradesLocked ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-muted/30"
+                gradesLocked ? "border-emerald-200 bg-emerald-50/50" : "border-border bg-muted/30"
               }`}
             >
               <div className="flex items-start gap-3">
                 <div
                   className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                    gradesLocked ? "bg-emerald-100 text-emerald-600" : "bg-slate-200 text-muted-foreground"
+                    gradesLocked ? "bg-emerald-100 text-emerald-600" : "bg-muted text-muted-foreground"
                   }`}
                 >
                   <Lock className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Step 1 — Lock grades</p>
+                  <p className="text-sm font-semibold text-foreground">Step 1 — Finalize term grades</p>
                   <p className="text-xs text-muted-foreground">
                     {allTermStatus.length === 0
                       ? "No subjects loaded yet."
                       : gradesLocked
-                        ? `${totalFinalizedSubjects}/${allTermStatus.length} subjects locked — teachers can no longer edit.`
-                        : `${totalDraftSubjects} subject(s) still in draft — lock them so grades can't be edited.`}
+                        ? `${totalFinalizedSubjects}/${allTermStatus.length} subjects finalized across T1–T3.`
+                        : `${totalDraftSubjects} subject(s) still have draft grades. Finalize them term-by-term on the Term Finalization page.`}
                   </p>
+                  {allTermStatus.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(["T1", "T2", "T3"] as const).map((term) => {
+                        const termSubjects = allTermStatus.filter(
+                          (subject) => (subject.terms?.[term]?.total ?? 0) > 0,
+                        );
+                        const complete =
+                          termSubjects.length > 0 &&
+                          termSubjects.every((subject) => subject.terms[term].draft === 0);
+                        return (
+                          <Badge
+                            key={term}
+                            className={`text-[10px] font-medium ${
+                              complete
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
+                            }`}
+                          >
+                            {term} {complete ? "finalized" : "draft"}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
-              {!gradesLocked && (
-                <Button
-                  onClick={onFinalizeAll}
-                  disabled={finalizingSubject === "all" || allTermStatus.length === 0}
-                  size="sm"
-                  style={{ backgroundColor: colors.primary }}
-                  className="text-primary-foreground shrink-0"
-                >
-                  {finalizingSubject === "all" ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : (
-                    <FileCheck className="w-4 h-4 mr-2" />
-                  )}
-                  Lock Grades
-                </Button>
-              )}
+              <Button
+                onClick={onOpenTermFinalization}
+                disabled={allTermStatus.length === 0}
+                size="sm"
+                variant={gradesLocked ? "outline" : "default"}
+                className="shrink-0"
+              >
+                <FileCheck className="w-4 h-4 mr-2" />
+                {gradesLocked ? "Review Term Finalization" : "Open Term Finalization"}
+              </Button>
             </div>
 
             {/* Step 2 — Finalize EOSY promotion */}
             <div
               className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3 ${
-                eosyDone ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-muted/30"
+                eosyDone ? "border-emerald-200 bg-emerald-50/50" : "border-border bg-muted/30"
               }`}
             >
               <div className="flex items-start gap-3">
                 <div
                   className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                    eosyDone ? "bg-emerald-100 text-emerald-600" : "bg-slate-200 text-muted-foreground"
+                    eosyDone ? "bg-emerald-100 text-emerald-600" : "bg-muted text-muted-foreground"
                   }`}
                 >
                   <GraduationCap className="w-4 h-4" />
@@ -146,7 +167,22 @@ export default function EOSYOverviewTab({
                   </p>
                 </div>
               </div>
-              {!eosyDone && (
+              {eosyDone ? (
+                <Button
+                  onClick={onUnfinalizeEosy}
+                  disabled={eosyUnfinalizing || eosyFinalizing}
+                  size="sm"
+                  variant="outline"
+                  className="text-amber-700 border-amber-200 hover:bg-amber-50 shrink-0"
+                >
+                  {eosyUnfinalizing ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <FileEdit className="w-4 h-4 mr-2" />
+                  )}
+                  Unfinalize EOSY
+                </Button>
+              ) : (
                 <Button
                   onClick={onEosyFinalize}
                   disabled={eosyFinalizing || hasBlockers || !gradesLocked}
@@ -159,7 +195,11 @@ export default function EOSYOverviewTab({
                   ) : (
                     <GraduationCap className="w-4 h-4 mr-2" />
                   )}
-                  {hasBlockers ? "Blocked by Draft Grades" : !gradesLocked ? "Lock Grades First" : "Finalize EOSY"}
+                  {hasBlockers
+                    ? "Blocked by Draft Grades"
+                    : !gradesLocked
+                      ? "Finalize All Terms First"
+                      : "Finalize EOSY"}
                 </Button>
               )}
             </div>
@@ -263,24 +303,46 @@ export default function EOSYOverviewTab({
             <Separator />
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-foreground">Finalize EOSY</p>
+                <p className="text-sm font-medium text-foreground">
+                  {eosyDone ? "EOSY promotion is finalized" : "Finalize EOSY"}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Snapshots all finalized grades and persists promotion status on each enrollment.
+                  {eosyDone
+                    ? "Unfinalize only when term grades or promotion decisions need to change."
+                    : "Snapshots all finalized grades and persists promotion status on each enrollment."}
                 </p>
               </div>
-              <Button
-                onClick={onEosyFinalize}
-                disabled={eosyFinalizing || hasBlockers}
-                style={{ backgroundColor: hasBlockers ? undefined : colors.primary }}
-                className={hasBlockers ? "bg-muted text-muted-foreground cursor-not-allowed" : "text-primary-foreground"}
-              >
-                {eosyFinalizing ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : (
-                  <FileCheck className="w-4 h-4 mr-2" />
-                )}
-                {hasBlockers ? "Blocked by Draft Grades" : "Finalize EOSY"}
-              </Button>
+              {eosyDone ? (
+                <Button
+                  onClick={onUnfinalizeEosy}
+                  disabled={eosyUnfinalizing || eosyFinalizing}
+                  variant="outline"
+                  className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                >
+                  {eosyUnfinalizing ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <FileEdit className="w-4 h-4 mr-2" />
+                  )}
+                  Unfinalize EOSY
+                </Button>
+              ) : (
+                <Button
+                  onClick={onEosyFinalize}
+                  disabled={eosyFinalizing || hasBlockers || !gradesLocked}
+                >
+                  {eosyFinalizing ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <FileCheck className="w-4 h-4 mr-2" />
+                  )}
+                  {hasBlockers
+                    ? "Blocked by Draft Grades"
+                    : !gradesLocked
+                      ? "Finalize All Terms First"
+                      : "Finalize EOSY"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -116,7 +116,8 @@ src/                              # Frontend (React)
         ├── Dashboard.tsx         # Registrar overview
         ├── StudentRecords.tsx    # Student master list
         ├── SectionRosterViewer.tsx # Section rosters
-        ├── EOSYFinalization.tsx  # End-of-school-year
+        ├── TermFinalization.tsx  # Term-end grade finalization
+        ├── EOSYFinalization.tsx  # End-of-school-year promotion finalization
         ├── RemedialTracker.tsx   # Remedial classes
         ├── TeachingLoad.tsx      # Teacher load
         ├── SchoolForms.tsx       # Form generation
@@ -158,6 +159,7 @@ server/src/                       # Backend (Express)
 │   ├── tokens.ts                 # JWT generation/verification
 │   ├── audit.ts                  # Audit logging
 │   ├── schoolYearResolver.ts     # Current school year logic
+│   ├── termFinalization.ts       # Term-end finalization (DRAFT → FINALIZED)
 │   ├── transmutationValidation.ts # Grade transmutation rules
 │   ├── transmutationCache.ts     # Cache for transmutation tables
 │   ├── teacherSync.ts            # Sync teachers from EnrollPro
@@ -212,6 +214,12 @@ Each portal (admin/teacher/registrar) has its own sessionStorage keys:
 - Never hardcode or manually set the term
 - The scheduler does NOT auto-advance terms — only `resolveCurrentTerm()` writes `currentTerm` to DB
 - The scheduler only handles grade locking (when term end date passes)
+
+### Term Finalization vs EOSY vs Locks
+- **Term finalization (registrar):** `DRAFT → FINALIZED` per section + term on `/registrar/term-finalization` (`GET/POST /api/registrar/term-finalization/*`). It never creates EOSY snapshots.
+- **Term/year locks:** `TermGradeLock` / `YearGradeLock` are per school year + term (global, not per section), owned by Admin and the scheduler. A lock is not a finalization status; an approved edit request bypasses a term lock only.
+- **EOSY:** explicit year-end promotion snapshots + `Enrollment.promotionStatus` on the EOSY page. A **fully** EOSY-finalized section blocks term finalize/unfinalize until EOSY is unfinalized. Partial EOSY data is recoverable.
+- `/finalize-grades` no longer auto-runs EOSY. Finalize terms first, then EOSY.
 
 ### Data Flow Patterns
 - **Auth:** Login → JWT token → sessionStorage → Axios interceptor adds header → Backend verifies

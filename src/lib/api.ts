@@ -1,4 +1,10 @@
 import axios from "axios";
+import type {
+  TermFinalizationActionResponse,
+  TermFinalizationOverview,
+  TermFinalizeStatusSubject,
+  TermGradesResponse,
+} from "./termFinalizationTypes";
 
 const API_URL = "/api";
 
@@ -1536,6 +1542,81 @@ export interface SF5Data {
   };
 }
 
+export interface Sf6StatusCounts {
+  promoted: number;
+  conditional: number;
+  retained: number;
+  noGrades: number;
+}
+
+export interface Sf6DescriptorCounts {
+  male: number;
+  female: number;
+  total: number;
+}
+
+export type Sf6Descriptors = Record<"DNME" | "FS" | "S" | "VS" | "O", Sf6DescriptorCounts>;
+
+export interface Sf6SectionResult {
+  sectionId: string;
+  sectionName: string;
+  gradeLevel: string;
+  program: string;
+  adviser: string | null;
+  totalStudents: number;
+  promoted: number;
+  conditional: number;
+  retained: number;
+  dropped: number;
+  transferred: number;
+  noGrades: number;
+  promotionRate: number;
+  male: Sf6StatusCounts;
+  female: Sf6StatusCounts;
+  descriptors: Sf6Descriptors;
+}
+
+export interface Sf6GradeAggregate {
+  total: number;
+  promoted: number;
+  conditional: number;
+  retained: number;
+  dropped: number;
+  transferred: number;
+  noGrades: number;
+  male: Sf6StatusCounts;
+  female: Sf6StatusCounts;
+  descriptors: Sf6Descriptors;
+}
+
+export interface Sf6Data {
+  schoolYear: string;
+  schoolSettings: {
+    schoolName: string;
+    schoolId: string;
+    division: string;
+    region: string;
+    district: string;
+    schoolHeadName?: string;
+  };
+  sections: Sf6SectionResult[];
+  summary: {
+    totalStudents: number;
+    promoted: number;
+    conditional: number;
+    retained: number;
+    dropped: number;
+    transferred: number;
+    noGrades: number;
+    gradedStudents: number;
+    overallPromotionRate: number;
+    male: Sf6StatusCounts;
+    female: Sf6StatusCounts;
+    descriptors: Sf6Descriptors;
+  };
+  byGradeLevel: Record<string, Sf6GradeAggregate>;
+}
+
 export interface SF1Student {
   index: number;
   lrn: string;
@@ -1676,35 +1757,7 @@ export const registrarApi = {
     api.get(`/registrar/export/sf1/${sectionId}`, { params: { schoolYear }, responseType: "blob" }),
 
   getSF6: (schoolYear?: string) =>
-    api.get<{
-      schoolYear: string;
-      sections: Array<{
-        sectionId: string;
-        sectionName: string;
-        gradeLevel: string;
-        program: string;
-        adviser: string | null;
-        totalStudents: number;
-        promoted: number;
-        retained: number;
-        dropped: number;
-        transferred: number;
-        /** Learners with no encoded grades yet — pending, NOT retained. */
-        noGrades?: number;
-        promotionRate: number;
-      }>;
-      summary: {
-        totalStudents: number;
-        promoted: number;
-        retained: number;
-        dropped: number;
-        transferred: number;
-        noGrades?: number;
-        gradedStudents?: number;
-        overallPromotionRate: number;
-      };
-      byGradeLevel: Record<string, { total: number; promoted: number; retained: number; dropped: number; transferred: number; noGrades?: number }>;
-    }>("/registrar/forms/sf6", { params: { schoolYear } }),
+    api.get<Sf6Data>("/registrar/forms/sf6", { params: { schoolYear } }),
 
   getSF1: (sectionId: string, schoolYear?: string) =>
     api.get<SF1Data>(`/registrar/forms/sf1/${sectionId}`, { params: { schoolYear } }),
@@ -1761,6 +1814,47 @@ export const registrarApi = {
 
   finalizeEosySection: (sectionId: string, schoolYear: string) =>
     api.post("/registrar/eosy/finalize", { sectionId, schoolYear }),
+
+  unfinalizeEosySection: (sectionId: string, schoolYear: string) =>
+    api.post("/registrar/eosy/unfinalize", { sectionId, schoolYear }),
+
+  getFinalizeStatusAll: (sectionId: string, schoolYear?: string) =>
+    api.get<{ sectionId: string; subjects: TermFinalizeStatusSubject[] }>(
+      `/registrar/finalize-status-all/${sectionId}`,
+      { params: schoolYear ? { schoolYear } : {} },
+    ),
+
+  // Term-end finalization (separate from EOSY)
+  getTermFinalization: (params?: { schoolYear?: string; term?: string }) =>
+    api.get<TermFinalizationOverview>("/registrar/term-finalization", { params }),
+
+  getStudentTermGrades: (
+    sectionId: string,
+    term: string,
+    schoolYear: string,
+    opts?: { includeInactive?: boolean; mergeRotations?: boolean },
+  ) =>
+    api.get<TermGradesResponse>(`/registrar/student-grades/${sectionId}/${term}`, {
+      params: {
+        schoolYear,
+        ...(opts?.includeInactive ? { includeInactive: 1 } : {}),
+        ...(opts?.mergeRotations === false ? { mergeRotations: 0 } : {}),
+      },
+    }),
+
+  finalizeTerm: (data: {
+    sectionId: string;
+    term: string;
+    schoolYear: string;
+    subjectIds?: string[];
+  }) => api.post<TermFinalizationActionResponse>("/registrar/term-finalization/finalize", data),
+
+  unfinalizeTerm: (data: {
+    sectionId: string;
+    term: string;
+    schoolYear: string;
+    subjectIds?: string[];
+  }) => api.post<TermFinalizationActionResponse>("/registrar/term-finalization/unfinalize", data),
 
   finalizeGrades: (sectionId: string, term: string, subjectId: string) =>
     api.post<{ message: string; finalizedCount: number; sectionId: string; term: string; subjectId: string }>(

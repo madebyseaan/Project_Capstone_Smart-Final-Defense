@@ -29,6 +29,7 @@ const PAGES = {
     "/registrar/students",
     "/registrar/roster",
     "/registrar/forms",
+    "/registrar/term-finalization",
     "/registrar/eosy",
     "/registrar/alumni",
     "/registrar/remedial",

@@ -12,6 +12,7 @@ import {
   Layers,
   GraduationCap,
   ArrowLeftRight,
+  ClipboardCheck,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -60,6 +61,7 @@ const navigationGroups: NavGroup[] = [
   {
     title: "CLOSING OPERATIONS",
     items: [
+      { name: "Term Finalization", href: "/registrar/term-finalization", icon: ClipboardCheck },
       { name: "Remedial", href: "/registrar/remedial", icon: FlaskConical },
       { name: "EOSY", href: "/registrar/eosy", icon: GraduationCap },
     ]

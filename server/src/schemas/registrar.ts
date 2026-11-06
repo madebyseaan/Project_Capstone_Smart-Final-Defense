@@ -43,6 +43,23 @@ export const eosyFinalizeSchema = z.object({
   }),
 });
 
+export const termFinalizationQuerySchema = z.object({
+  query: z.object({
+    schoolYear: z.string().min(1, 'schoolYear must be a non-empty string').optional(),
+    term: termEnum.optional(),
+  }),
+});
+
+export const termFinalizeSchema = z.object({
+  body: z.object({
+    sectionId: z.string().min(1, 'sectionId is required'),
+    term: termEnum,
+    schoolYear: z.string().min(1, 'schoolYear is required'),
+    // Optional: finalize only the given subjects. Omit to finalize every subject.
+    subjectIds: z.array(z.string().min(1)).min(1).optional(),
+  }),
+});
+
 export const transfereeUpdateSchema = z.object({
   params: z.object({
     enrollmentId: z.string().min(1, 'enrollmentId is required'),

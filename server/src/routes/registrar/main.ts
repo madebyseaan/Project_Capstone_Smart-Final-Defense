@@ -16,7 +16,7 @@ import { maskId } from "../../lib/redact";
 import { withSectionLock } from "../../lib/sectionLock";
 import { validate } from "../../middleware/validate";
 import { enrollmentStatusSchema, finalizeGradesSchema } from "../../schemas/registrar";
-import { listUnfinalizedSections, finalizeSectionEosy, canonicalSubjectKey, PASSING_GRADE } from "../../lib/promotion";
+import { listUnfinalizedSections, canonicalSubjectKey, PASSING_GRADE } from "../../lib/promotion";
 import { findSnapshotGapSections } from "../../lib/rollover";
 import {
   resolveCurrentSchoolYearLabel,
@@ -1398,31 +1398,8 @@ router.post("/finalize-grades", authenticateToken, validate(finalizeGradesSchema
         AuditSeverity.WARNING,
       );
 
-      // Auto-create EOSY promotion snapshots once the section is fully locked.
-      // Safety net: prevents the "grades finalized but no promotion snapshots" state
-      // that silently blocked rollover (snapshot-gap guardrail).
-      let eosyFinalized = false;
-      let eosySnapshotsCreated = 0;
-      try {
-        const remainingDrafts = await prisma.grade.count({
-          where: { classAssignment: { sectionId, schoolYear: schoolYearLabel }, status: "DRAFT" },
-        });
-        if (remainingDrafts === 0) {
-          const eosy = await finalizeSectionEosy({
-            sectionId,
-            schoolYear: schoolYearLabel,
-            actor: { id: user.id, name: user.username, role: user.role },
-          });
-          if (eosy.ok) {
-            eosyFinalized = true;
-            eosySnapshotsCreated = eosy.snapshotsCreated;
-            logger.info(`[Registrar] Auto EOSY finalize for section ${sectionId}: ${eosy.snapshotsCreated} snapshots created`);
-          }
-        }
-      } catch (eosyErr: any) {
-        logger.warn(`[Registrar] Auto EOSY finalize failed for section ${sectionId}: ${eosyErr.message}`);
-      }
-
+      // EOSY is an explicit year-end action on the EOSY page. Term-level grade
+      // finalization must never create promotion snapshots as a side effect.
       return {
         status: 200 as const,
         body: {
@@ -1431,8 +1408,6 @@ router.post("/finalize-grades", authenticateToken, validate(finalizeGradesSchema
           sectionId,
           term,
           subjectId,
-          eosyFinalized,
-          snapshotsCreated: eosySnapshotsCreated,
         },
       };
     });
@@ -1526,8 +1501,9 @@ router.get("/finalize-status/:sectionId/:term", authenticateToken, async (req: A
     const sectionId = req.params.sectionId as string;
     const term = req.params.term as string;
 
-    // Get all class assignments for this section
-    const schoolYearLabel = await getActiveSchoolYearLabel();
+    // Get all class assignments for this section (explicit year supports past-term review)
+    const schoolYearLabel =
+      (req.query.schoolYear as string) || (await getActiveSchoolYearLabel());
     const classAssignments = await prisma.classAssignment.findMany({
       where: {
         sectionId,
@@ -1580,7 +1556,8 @@ router.get("/finalize-status-all/:sectionId", authenticateToken, async (req: Aut
     }
 
     const sectionId = req.params.sectionId as string;
-    const schoolYearLabel = await getActiveSchoolYearLabel();
+    const schoolYearLabel =
+      (req.query.schoolYear as string) || (await getActiveSchoolYearLabel());
 
     const classAssignments = await prisma.classAssignment.findMany({
       where: {
@@ -1720,14 +1697,26 @@ router.get("/student-grades/:sectionId/:term", authenticateToken, async (req: Au
       return;
     }
 
-    const schoolYearLabel = await getActiveSchoolYearLabel();
+    // Explicit year keeps the registrar's grade preview correct for past terms
+    // and after rollover (year-scoped only — never isActive/isArchived).
+    const schoolYearLabel =
+      (req.query.schoolYear as string) || (await getActiveSchoolYearLabel());
+    // Term finalization touches every grade row in the class record, including
+    // learners who later dropped/transferred. `includeInactive=1` makes the
+    // preview match that scope; the default stays ENROLLED-only for EOSY.
+    const includeInactive =
+      req.query.includeInactive === "1" || req.query.includeInactive === "true";
+    // EOSY/SF9 merge rotation components into one subject row. Term
+    // finalization needs the raw component rows because every row is finalized.
+    const mergeRotations =
+      req.query.mergeRotations !== "0" && req.query.mergeRotations !== "false";
 
     // Get all enrollments for this section
     const enrollments = await prisma.enrollment.findMany({
       where: {
         sectionId,
         schoolYear: schoolYearLabel,
-        status: "ENROLLED",
+        ...(includeInactive ? {} : { status: "ENROLLED" as const }),
       },
       include: {
         student: true,
@@ -1899,9 +1888,12 @@ router.get("/student-grades/:sectionId/:term", authenticateToken, async (req: Au
         });
       }
 
-      const subjectGrades = [...standaloneRows, ...mergedRotationRows].sort((a, b) =>
+      const mergedSubjectGrades = [...standaloneRows, ...mergedRotationRows].sort((a, b) =>
         a.subjectName.localeCompare(b.subjectName)
       );
+      const subjectGrades = mergeRotations
+        ? mergedSubjectGrades
+        : [...rawSubjectGrades].sort((a, b) => a.subjectName.localeCompare(b.subjectName));
 
       // Calculate average from available term/final grades
       const gradedSubjects = subjectGrades.filter(
@@ -1921,6 +1913,7 @@ router.get("/student-grades/:sectionId/:term", authenticateToken, async (req: Au
         lastName: enrollment.student.lastName,
         middleName: enrollment.student.middleName,
         lrn: enrollment.student.lrn,
+        enrollmentStatus: enrollment.status,
         subjects: subjectGrades,
         average,
         totalSubjects: subjectGrades.length,
