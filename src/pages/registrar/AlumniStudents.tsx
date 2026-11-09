@@ -182,64 +182,75 @@ export default function AlumniStudents() {
     <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
       <SyncProgressModal isOpen={syncModalOpen} onClose={() => { setSyncModalOpen(false); setSyncStatus("idle"); }} status={syncStatus} errorMessage={syncError} />
 
-      <PageHeader
-        title="Former Students"
-        description="Archived learners who are no longer actively enrolled"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              className="font-semibold text-xs shadow-sm shadow-primary/20"
-              disabled={syncStatus === "syncing"}
-              onClick={() => void handleSync()}
-            >
-              <CloudDownload className="w-4 h-4 mr-1.5" />
-              Sync from EnrollPro
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-              onClick={() => void loadAlumni()}
-            >
-              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-            </Button>
-          </div>
-        }
-      />
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-5">
+          <PageHeader
+            title="Former Students"
+            description="Archived learners who are no longer actively enrolled"
+            variant="plain"
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="font-semibold text-xs shadow-sm shadow-primary/20"
+                  disabled={syncStatus === "syncing"}
+                  onClick={() => void handleSync()}
+                >
+                  <CloudDownload className="w-4 h-4 mr-1.5" />
+                  Sync from EnrollPro
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+                  onClick={() => void loadAlumni()}
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+                </Button>
+              </div>
+            }
+          />
+        </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Total"
-          value={counts.all}
-          numericValue={counts.all}
-          icon={<Users className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Graduated"
-          value={counts.graduated}
-          numericValue={counts.graduated}
-          icon={<GraduationCap className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Transferred"
-          value={counts.TRANSFERRED}
-          numericValue={counts.TRANSFERRED}
-          icon={<ArrowRightLeft className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Other"
-          value={Math.max(0, counts.all - counts.graduated - counts.TRANSFERRED)}
-          numericValue={Math.max(0, counts.all - counts.graduated - counts.TRANSFERRED)}
-          icon={<FileText className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-      </div>
+        {/* Stats Row */}
+        <div className="border-t border-border p-4 lg:p-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard
+              label="Total"
+              value={counts.all}
+              numericValue={counts.all}
+              icon={<Users className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard
+              label="Graduated"
+              value={counts.graduated}
+              numericValue={counts.graduated}
+              icon={<GraduationCap className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard
+              label="Transferred"
+              value={counts.TRANSFERRED}
+              numericValue={counts.TRANSFERRED}
+              icon={<ArrowRightLeft className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard
+              label="Other"
+              value={Math.max(0, counts.all - counts.graduated - counts.TRANSFERRED)}
+              numericValue={Math.max(0, counts.all - counts.graduated - counts.TRANSFERRED)}
+              icon={<FileText className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+          </div>
+        </div>
+      </Card>
 
       {/* Main Table Card */}
       <Card className="border border-border shadow-sm bg-card overflow-hidden rounded-xl p-0">

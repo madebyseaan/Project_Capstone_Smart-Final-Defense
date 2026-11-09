@@ -6,10 +6,9 @@ interface SF9FormProps {
   data: FullSf9Payload;
   fullLogoUrl: string | null;
   highlightSubject?: string | null;
-  focusTerm?: "T1" | "T2" | "T3" | null;
 }
 
-export default function SF9Form({ data, fullLogoUrl, highlightSubject, focusTerm }: SF9FormProps) {
+export default function SF9Form({ data, fullLogoUrl, highlightSubject }: SF9FormProps) {
   const valueGroups = (data.values ?? []).reduce<{ coreValue: string; behaviors: Sf9ValueRow[] }[]>(
     (groups, row) => {
       const last = groups[groups.length - 1];
@@ -109,9 +108,9 @@ export default function SF9Form({ data, fullLogoUrl, highlightSubject, focusTerm
               <th rowSpan={2} className="p-2 text-gray-900 w-20">Remarks</th>
             </tr>
             <tr className="border-b-2 border-gray-600 bg-gray-100">
-              <th className={`border-r border-gray-600 p-2 w-12 ${focusTerm === "T1" ? "bg-primary/10 text-primary print:bg-gray-100 print:text-gray-900" : "text-gray-900"}`}>1</th>
-              <th className={`border-r border-gray-600 p-2 w-12 ${focusTerm === "T2" ? "bg-primary/10 text-primary print:bg-gray-100 print:text-gray-900" : "text-gray-900"}`}>2</th>
-              <th className={`border-r border-gray-600 p-2 w-12 ${focusTerm === "T3" ? "bg-primary/10 text-primary print:bg-gray-100 print:text-gray-900" : "text-gray-900"}`}>3</th>
+              <th className="border-r border-gray-600 p-2 w-12 text-gray-900">1</th>
+              <th className="border-r border-gray-600 p-2 w-12 text-gray-900">2</th>
+              <th className="border-r border-gray-600 p-2 w-12 text-gray-900">3</th>
             </tr>
           </thead>
           <tbody>
@@ -120,13 +119,13 @@ export default function SF9Form({ data, fullLogoUrl, highlightSubject, focusTerm
               return (
                 <tr key={index} className={`border-b border-gray-600 ${highlighted ? "bg-primary/10 ring-2 ring-inset ring-primary print:ring-0 print:bg-transparent" : ""}`}>
                   <td className="border-r border-gray-600 p-2 font-medium text-gray-900">{sg.subjectName}</td>
-                  <td className={`border-r border-gray-600 p-2 text-center font-semibold ${focusTerm === "T1" ? "bg-primary/5 print:bg-transparent" : ""} ${(sg.T1 ?? 0) < 75 && sg.T1 ? 'text-red-600' : 'text-gray-900'}`}>
+                  <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.T1 ?? 0) < 75 && sg.T1 ? 'text-red-600' : 'text-gray-900'}`}>
                     {sg.T1 ?? ''}
                   </td>
-                  <td className={`border-r border-gray-600 p-2 text-center font-semibold ${focusTerm === "T2" ? "bg-primary/5 print:bg-transparent" : ""} ${(sg.T2 ?? 0) < 75 && sg.T2 ? 'text-red-600' : 'text-gray-900'}`}>
+                  <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.T2 ?? 0) < 75 && sg.T2 ? 'text-red-600' : 'text-gray-900'}`}>
                     {sg.T2 ?? ''}
                   </td>
-                  <td className={`border-r border-gray-600 p-2 text-center font-semibold ${focusTerm === "T3" ? "bg-primary/5 print:bg-transparent" : ""} ${(sg.T3 ?? 0) < 75 && sg.T3 ? 'text-red-600' : 'text-gray-900'}`}>
+                  <td className={`border-r border-gray-600 p-2 text-center font-semibold ${(sg.T3 ?? 0) < 75 && sg.T3 ? 'text-red-600' : 'text-gray-900'}`}>
                     {sg.T3 ?? ''}
                   </td>
                   <td className={`border-r border-gray-600 p-2 text-center font-bold ${(sg.final ?? 0) < 75 && sg.final ? 'text-red-600' : 'text-gray-900'}`}>

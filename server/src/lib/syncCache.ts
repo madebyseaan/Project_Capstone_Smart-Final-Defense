@@ -165,10 +165,14 @@ class SyncCache {
   /**
    * Invalidate every key starting with the given prefix.
    * Used for per-source invalidation after a successful sync step.
+   * `except` keeps read-only derivative caches (e.g. EOSY) warm — they are not
+   * updated by the sync itself, so wiping them only forces slow live refetches.
    */
-  invalidatePrefix(prefix: string): void {
+  invalidatePrefix(prefix: string, except: string[] = []): void {
     for (const key of Array.from(this.store.keys())) {
-      if (key.startsWith(prefix)) this.store.delete(key);
+      if (!key.startsWith(prefix)) continue;
+      if (except.some((keep) => key.startsWith(keep))) continue;
+      this.store.delete(key);
     }
   }
 
@@ -330,8 +334,8 @@ export function invalidateAllCaches(): void {
  * Invalidate every key with the given prefix (e.g. 'enrollpro:').
  * Used for per-source invalidation after a successful sync step.
  */
-export function invalidatePrefix(prefix: string): void {
-  syncCache.invalidatePrefix(prefix);
+export function invalidatePrefix(prefix: string, except: string[] = []): void {
+  syncCache.invalidatePrefix(prefix, except);
 }
 
 // ---------------------------------------------------------------------------
@@ -395,37 +399,63 @@ async function forceFetchThenCache<T>(key: string, fetcher: () => Promise<T>): P
   }
 }
 
+async function readSchoolYearsFromDb(): Promise<EnrollProSchoolYear[]> {
+  const rows = await prisma.schoolYear.findMany({
+    where: { externalId: { not: null } },
+    orderBy: { label: 'desc' },
+    select: { externalId: true, label: true, status: true },
+  });
+  return rows.map((row) => ({
+    id: row.externalId as number,
+    yearLabel: row.label,
+    status: row.status === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED',
+  }));
+}
+
+const fetchEosySchoolYears = async (): Promise<EnrollProSchoolYear[]> => {
+  const fresh = await getEnrollProSchoolYears();
+  if (fresh.length === 0) throw new Error('EnrollPro returned no school years');
+  return fresh;
+};
+
 /**
  * EOSY school years. `getEnrollProSchoolYears()` resolves to `[]` only when
  * every EnrollPro lookup failed, so an empty result is treated as an outage:
  * serve stale cache, else fall back to the SMART SchoolYear mirror.
+ *
+ * On a cold cache we return the DB mirror immediately and refresh from
+ * EnrollPro in the background — the dropdown must never block on the network.
  */
 export async function getEosySchoolYearsResilient(): Promise<{
   years: EnrollProSchoolYear[];
   stale: boolean;
   ageMs: number;
   source: 'enrollpro' | 'db';
+  warming?: boolean;
 }> {
+  const cached = syncCache.getWithStatus<EnrollProSchoolYear[]>(EOSY_SCHOOL_YEARS_KEY);
+  if (cached) {
+    const years = await syncCache.getOrFetch(EOSY_SCHOOL_YEARS_KEY, fetchEosySchoolYears);
+    const status = syncCache.getWithStatus<EnrollProSchoolYear[]>(EOSY_SCHOOL_YEARS_KEY) ?? cached;
+    return { years, stale: status.stale, ageMs: status.ageMs, source: 'enrollpro' };
+  }
+
   try {
-    const years = await syncCache.getOrFetch(EOSY_SCHOOL_YEARS_KEY, async () => {
-      const fresh = await getEnrollProSchoolYears();
-      if (fresh.length === 0) throw new Error('EnrollPro returned no school years');
-      return fresh;
-    });
+    const dbYears = await readSchoolYearsFromDb();
+    if (dbYears.length > 0) {
+      void syncCache.getOrFetch(EOSY_SCHOOL_YEARS_KEY, fetchEosySchoolYears).catch(() => {});
+      return { years: dbYears, stale: true, ageMs: 0, source: 'db', warming: true };
+    }
+  } catch {
+    // fall through to a live fetch
+  }
+
+  try {
+    const years = await syncCache.getOrFetch(EOSY_SCHOOL_YEARS_KEY, fetchEosySchoolYears);
     const status = syncCache.getWithStatus<EnrollProSchoolYear[]>(EOSY_SCHOOL_YEARS_KEY);
     return { years, stale: status?.stale ?? false, ageMs: status?.ageMs ?? 0, source: 'enrollpro' };
   } catch {
-    const rows = await prisma.schoolYear.findMany({
-      where: { externalId: { not: null } },
-      orderBy: { label: 'desc' },
-      select: { externalId: true, label: true, status: true },
-    });
-    const years: EnrollProSchoolYear[] = rows.map((row) => ({
-      id: row.externalId as number,
-      yearLabel: row.label,
-      status: row.status === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED',
-    }));
-    return { years, stale: true, ageMs: 0, source: 'db' };
+    return { years: await readSchoolYearsFromDb(), stale: true, ageMs: 0, source: 'db' };
   }
 }
 
@@ -453,4 +483,28 @@ export async function getEosySectionRecordsResilient(
   const payload = await syncCache.getOrFetch(key, fetcher);
   const status = syncCache.getWithStatus<any>(key);
   return { payload, stale: status?.stale ?? false, ageMs: status?.ageMs ?? 0 };
+}
+
+/**
+ * Prewarm the caches the EOSY page and registrar section lists read on mount,
+ * so opening those pages does not pay a live EnrollPro round-trip.
+ * Runs fire-and-forget after a successful sync cycle.
+ */
+export async function warmEosyCaches(): Promise<void> {
+  try {
+    await getEosySchoolYearsResilient();
+  } catch {
+    // non-fatal
+  }
+
+  try {
+    const sy = await getCachedSchoolYear();
+    if (!sy?.id) return;
+    await Promise.allSettled([
+      getEosySectionsResilient(sy.id),
+      getCachedIntegrationV1Sections(sy.id),
+    ]);
+  } catch (err: any) {
+    logger.debug(`[SyncCache] EOSY warm-up skipped: ${err.message}`);
+  }
 }

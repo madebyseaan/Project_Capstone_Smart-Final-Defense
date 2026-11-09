@@ -47,7 +47,7 @@ test.describe("registrar term finalization (read-only)", () => {
         await expect(preview).toContainText(/no grades to show/i);
       }
 
-      await preview.getByRole("button", { name: /^close$/i }).click();
+      await page.getByTestId("term-grades-close").click();
       await expect(preview).toBeHidden();
     }
 
@@ -104,7 +104,7 @@ test.describe("registrar term finalization (mobile)", () => {
     );
     expect(previewOverflow, "grade preview must not scroll horizontally").toBe(false);
 
-    await preview.getByRole("button", { name: /^close$/i }).click();
+    await page.getByTestId("term-grades-close").click();
     await expect(preview).toBeHidden();
 
     expect(problems, problems.join("\n")).toEqual([]);

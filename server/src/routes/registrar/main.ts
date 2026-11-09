@@ -26,7 +26,7 @@ import {
   normalizeDisplaySex,
   studentsByGrace,
 } from "./helpers";
-import { getSectionRosterWithStatus, getCachedLearnersPage } from "../../lib/syncCache";
+import { getSectionRosterWithStatus, getCachedLearnersPage, getCachedIntegrationV1Sections } from "../../lib/syncCache";
 import { normalizeProgramCode } from "../../lib/programCode";
 
 export default function registerMainRoutes(router: Router): void {
@@ -597,15 +597,10 @@ router.get("/school-years", authenticateToken, async (req: AuthRequest, res: Res
 
     const schoolYears = sections.map(s => s.schoolYear);
 
+    // DB-only: this endpoint must stay fast. The active year is already synced
+    // into the DB on every EnrollPro sync, so a live EnrollPro lookup here only
+    // adds seconds of latency (and times out on slow/offline networks).
     const allYears = new Set(schoolYears);
-    try {
-      const resolved = await resolveEnrollProSchoolYear();
-      if (resolved.yearLabel) {
-        allYears.add(resolved.yearLabel);
-      }
-    } catch (error) {
-      logger.warn("[RegistrarSchoolYears] Failed to resolve active EnrollPro school year:", (error as Error).message);
-    }
 
     let activeSchoolYear: string | null = null;
     try {
@@ -613,6 +608,7 @@ router.get("/school-years", authenticateToken, async (req: AuthRequest, res: Res
     } catch {
       // ignore — fallback to null
     }
+    if (activeSchoolYear) allYears.add(activeSchoolYear);
 
     res.json({
       schoolYears: Array.from(allYears).sort().reverse(),
@@ -1747,6 +1743,7 @@ router.get("/student-grades/:sectionId/:term", authenticateToken, async (req: Au
       },
       include: {
         subject: true,
+        _count: { select: { grades: true } },
         grades: {
           where: gradeWhereClause,
           select: {
@@ -1764,7 +1761,15 @@ router.get("/student-grades/:sectionId/:term", authenticateToken, async (req: Au
       orderBy: {
         subject: { name: "asc" },
       },
-    })).filter((ca: any) => !(ca.subject?.code ?? '').toUpperCase().startsWith('HG'));
+    })).filter((ca: any) => {
+      const code = (ca.subject?.code ?? "").toUpperCase();
+      if (code.startsWith("HG")) return false;
+      // Match the term-finalization overview: inactive assignments with no
+      // grades at all are stale ATLAS rows (retired TLE Exploratory / ComEd).
+      // They cannot be finalized and must not appear as phantom "No grades".
+      if (!ca.isActive && ca._count.grades === 0) return false;
+      return true;
+    });
 
     // Build per-student grade map
     const students = enrollments.map((enrollment) => {
@@ -2004,7 +2009,7 @@ router.get("/sections", authenticateToken, async (req: AuthRequest, res: Respons
     const epSectionNameToId = new Map<string, number>();
     try {
       const resolvedSY = await resolveEnrollProSchoolYear(currentSchoolYear);
-      const epSections = await getAllIntegrationV1Sections(resolvedSY.id);
+      const epSections = await getCachedIntegrationV1Sections(resolvedSY.id);
       for (const ep of epSections) {
         if (ep.name && ep.id) {
           epSectionNameToId.set(String(ep.name), Number(ep.id));

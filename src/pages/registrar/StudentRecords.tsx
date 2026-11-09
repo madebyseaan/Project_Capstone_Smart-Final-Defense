@@ -285,52 +285,60 @@ export default function StudentRecords() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
-      <PageHeader
-        title="Student Records"
-        description="Manage and view all student information"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => void handleSync()}
-              variant="default"
-              size="sm"
-              className="font-semibold text-xs shadow-sm shadow-primary/20"
-              disabled={syncStatus === "syncing"}
-            >
-              <CloudDownload className="w-4 h-4 mr-1.5" />
-              Sync from EnrollPro
-            </Button>
-            <Button
-              onClick={() => void loadStudents()}
-              variant="outline"
-              size="sm"
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-            >
-              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-            </Button>
-            <Tooltip content="Export student records to CSV or Excel format">
-              <Button variant="outline" size="sm" className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs">
-                <Download className="w-4 h-4 mr-1.5" />
-                Export
-              </Button>
-            </Tooltip>
-          </div>
-        }
-      />
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-5">
+          <PageHeader
+            title="Student Records"
+            description="Manage and view all student information"
+            variant="plain"
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => void handleSync()}
+                  variant="default"
+                  size="sm"
+                  className="font-semibold text-xs shadow-sm shadow-primary/20"
+                  disabled={syncStatus === "syncing"}
+                >
+                  <CloudDownload className="w-4 h-4 mr-1.5" />
+                  Sync from EnrollPro
+                </Button>
+                <Button
+                  onClick={() => void loadStudents()}
+                  variant="outline"
+                  size="sm"
+                  className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+                </Button>
+                <Tooltip content="Export student records to CSV or Excel format">
+                  <Button variant="outline" size="sm" className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs">
+                    <Download className="w-4 h-4 mr-1.5" />
+                    Export
+                  </Button>
+                </Tooltip>
+              </div>
+            }
+          />
+        </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Students"
-          value={stats.total}
-          numericValue={stats.total}
-          icon={<Users className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard label="Male" value={stats.male} numericValue={stats.male} icon={<User className="w-5 h-5 text-blue-600" />} iconClassName="bg-blue-50" />
-        <StatCard label="Female" value={stats.female} numericValue={stats.female} icon={<UserRound className="w-5 h-5 text-pink-600" />} iconClassName="bg-pink-50" />
-        <StatCard label="Sections" value={stats.sections} numericValue={stats.sections} icon={<Layers className="w-5 h-5 text-primary" />} iconClassName="bg-primary/10" />
-      </div>
+        {/* Stats Row */}
+        <div className="border-t border-border p-4 lg:p-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard
+              label="Total Students"
+              value={stats.total}
+              numericValue={stats.total}
+              icon={<Users className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard label="Male" value={stats.male} numericValue={stats.male} icon={<User className="w-5 h-5 text-blue-600" />} iconClassName="bg-blue-50" className="border border-border bg-muted/30 shadow-none" />
+            <StatCard label="Female" value={stats.female} numericValue={stats.female} icon={<UserRound className="w-5 h-5 text-pink-600" />} iconClassName="bg-pink-50" className="border border-border bg-muted/30 shadow-none" />
+            <StatCard label="Sections" value={stats.sections} numericValue={stats.sections} icon={<Layers className="w-5 h-5 text-primary" />} iconClassName="bg-primary/10" className="border border-border bg-muted/30 shadow-none" />
+          </div>
+        </div>
+      </Card>
 
       {/* Main Table Card */}
       <Card className="border-0 shadow-sm bg-card overflow-hidden rounded-xl p-0">

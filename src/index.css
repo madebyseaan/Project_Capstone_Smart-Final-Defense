@@ -62,8 +62,11 @@
   /* Accessibility text scale (1 = 100%) — driven by TextScaleContext / AccessibilityMenu */
   --text-scale: 1;
 
+  /* Fluid default size: 16px up to 1536px, then grows to 20.8px (130%) at 1920px */
+  --base-font-size: clamp(16px, 1.25vw - 3.2px, 20.8px);
+
   font: 16px/1.6 var(--sans);
-  font-size: calc(16px * var(--text-scale));
+  font-size: calc(var(--base-font-size) * var(--text-scale));
   letter-spacing: -0.011em;
   color-scheme: light;
   color: var(--text);
@@ -397,39 +400,48 @@ code {
   background-clip: text;
 }
 
-/* Smooth scrollbar */
+/* Minimal scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+}
+
+/* Standard scrollbar properties (Firefox) — kept out of Chromium so the
+   WebKit rules above stay authoritative there. Applied to every element
+   because scrollbar-width is not inherited. */
+@supports (-moz-appearance: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
+  }
 }
 
 /* Thin scrollbar for sidebars */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 2px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #e2e8f0;
-  border-radius: 4px;
+  background: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+  border-radius: 999px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #cbd5e1;
+  background: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
 }
 
 /* Portal backdrop — mirrors the login pixel grid, with a dark-mode surface */
@@ -608,6 +620,7 @@ code {
   /* Official form printouts stay at a fixed size — the on-screen text scale never affects print */
   :root {
     --text-scale: 1 !important;
+    font-size: 16px !important;
   }
 
   body {

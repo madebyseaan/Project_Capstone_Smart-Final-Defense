@@ -288,59 +288,68 @@ export default function Transferees() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
-      <PageHeader
-        title="Transferees"
-        description="Learners who transferred into the school this school year (T/I)"
-        actions={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Badge variant="outline" className="px-3 py-1 text-xs font-medium bg-primary/5 text-primary border-primary/20">
-              {allYears ? "All Years (History)" : `S.Y. ${data?.schoolYear || "—"}`}
-            </Badge>
-            <Button
-              onClick={() => void handleSync()}
-              variant="default"
-              size="sm"
-              className="font-semibold text-xs shadow-sm shadow-primary/20"
-              disabled={syncStatus === "syncing"}
-            >
-              <CloudDownload className="w-4 h-4 mr-1.5" />
-              Sync from EnrollPro
-            </Button>
-            <Button
-              onClick={() => void loadData()}
-              variant="outline"
-              size="sm"
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-            >
-              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-            </Button>
-          </div>
-        }
-      />
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-5">
+          <PageHeader
+            title="Transferees"
+            description="Learners who transferred into the school this school year (T/I)"
+            variant="plain"
+            actions={
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Badge variant="outline" className="px-3 py-1 text-xs font-medium bg-primary/5 text-primary border-primary/20">
+                  {allYears ? "All Years (History)" : `S.Y. ${data?.schoolYear || "—"}`}
+                </Badge>
+                <Button
+                  onClick={() => void handleSync()}
+                  variant="default"
+                  size="sm"
+                  className="font-semibold text-xs shadow-sm shadow-primary/20"
+                  disabled={syncStatus === "syncing"}
+                >
+                  <CloudDownload className="w-4 h-4 mr-1.5" />
+                  Sync from EnrollPro
+                </Button>
+                <Button
+                  onClick={() => void loadData()}
+                  variant="outline"
+                  size="sm"
+                  className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+                </Button>
+              </div>
+            }
+          />
+        </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 gap-4">
-        <StatCard
-          label={
-            allYears
-              ? "Transferees (all years)"
-              : schoolYearFilter === "current"
-                ? "Transferees (this SY)"
-                : `Transferees (${schoolYearFilter})`
-          }
-          value={total}
-          numericValue={total}
-          icon={<ArrowLeftRight className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Incomplete records"
-          value={incompleteCount}
-          numericValue={incompleteCount}
-          icon={<AlertTriangle className="w-5 h-5 text-amber-600" />}
-          iconClassName="bg-amber-500/10"
-        />
-      </div>
+        {/* Stats Row */}
+        <div className="border-t border-border p-4 lg:p-5">
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              label={
+                allYears
+                  ? "Transferees (all years)"
+                  : schoolYearFilter === "current"
+                    ? "Transferees (this SY)"
+                    : `Transferees (${schoolYearFilter})`
+              }
+              value={total}
+              numericValue={total}
+              icon={<ArrowLeftRight className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard
+              label="Incomplete records"
+              value={incompleteCount}
+              numericValue={incompleteCount}
+              icon={<AlertTriangle className="w-5 h-5 text-amber-600" />}
+              iconClassName="bg-amber-500/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+          </div>
+        </div>
+      </Card>
 
       {data?.unmatchedFromLastSync && data.unmatchedFromLastSync.length > 0 && (
         <Card className="border border-amber-200 bg-amber-50 rounded-xl">

@@ -28,6 +28,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/layout/StatCard";
 import { publicSettingsApi, registrarApi } from "@/lib/api";
+import { gradeLevelLabel } from "@/lib/gradeColor";
 import type {
   TermFinalizationOverview,
   TermFinalizationSection,
@@ -39,6 +40,7 @@ import TermFinalizationSectionCard from "./components/TermFinalizationSectionCar
 import TermGradesPreviewModal from "./components/TermGradesPreviewModal";
 
 const TERM_OPTIONS: TermName[] = ["T1", "T2", "T3"];
+const GRADE_OPTIONS = ["GRADE_7", "GRADE_8", "GRADE_9", "GRADE_10"] as const;
 
 interface PendingAction {
   kind: "finalize" | "unfinalize";
@@ -146,13 +148,14 @@ export default function TermFinalization() {
   const [overview, setOverview] = useState<TermFinalizationOverview | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState("");
+  const [gradeFilter, setGradeFilter] = useState("all");
+  const [sectionFilter, setSectionFilter] = useState("all");
   const [loadingYears, setLoadingYears] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [gradePreviewSection, setGradePreviewSection] =
-    useState<TermFinalizationSection | null>(null);
+  const [previewSectionId, setPreviewSectionId] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<"finalize" | "unfinalize" | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -192,12 +195,17 @@ export default function TermFinalization() {
   }, []);
 
   useEffect(() => {
+    setPendingAction(null);
+    setPreviewSectionId(null);
+    setGradeFilter("all");
+    setSectionFilter("all");
+  }, [selectedSchoolYear, selectedTerm]);
+
+  useEffect(() => {
     if (!selectedSchoolYear || !selectedTerm) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setPendingAction(null);
-    setGradePreviewSection(null);
 
     registrarApi
       .getTermFinalization({ schoolYear: selectedSchoolYear, term: selectedTerm })
@@ -224,16 +232,53 @@ export default function TermFinalization() {
     };
   }, [selectedSchoolYear, selectedTerm, refreshKey]);
 
+  const sectionOptions = useMemo(() => {
+    const sections = (overview?.sections ?? []).filter(
+      (section) => gradeFilter === "all" || section.gradeLevel === gradeFilter,
+    );
+    return [...sections].sort((a, b) => a.sectionName.localeCompare(b.sectionName));
+  }, [overview, gradeFilter]);
+
   const filteredSections = useMemo(() => {
     const sections = overview?.sections ?? [];
     const query = search.trim().toLowerCase();
-    if (!query) return sections;
-    return sections.filter((section) =>
-      [section.sectionName, section.gradeLevel, section.adviserName, section.program]
+    return sections.filter((section) => {
+      if (gradeFilter !== "all" && section.gradeLevel !== gradeFilter) return false;
+      if (sectionFilter !== "all" && section.sectionId !== sectionFilter) return false;
+      if (!query) return true;
+      return [section.sectionName, section.gradeLevel, section.adviserName, section.program]
         .filter(Boolean)
-        .some((value) => (value as string).toLowerCase().includes(query)),
+        .some((value) => (value as string).toLowerCase().includes(query));
+    });
+  }, [overview, search, gradeFilter, sectionFilter]);
+
+  const hasActiveFilters =
+    gradeFilter !== "all" || sectionFilter !== "all" || search.trim().length > 0;
+
+  const clearFilters = () => {
+    setGradeFilter("all");
+    setSectionFilter("all");
+    setSearch("");
+  };
+
+  const previewSection = useMemo(() => {
+    if (!previewSectionId) return null;
+    return (
+      filteredSections.find((section) => section.sectionId === previewSectionId) ??
+      overview?.sections.find((section) => section.sectionId === previewSectionId) ??
+      null
     );
-  }, [overview, search]);
+  }, [previewSectionId, filteredSections, overview]);
+
+  const previewIndex = previewSection
+    ? filteredSections.findIndex((section) => section.sectionId === previewSection.sectionId)
+    : -1;
+
+  const goToAdjacentPreviewSection = (offset: -1 | 1) => {
+    if (previewIndex < 0) return;
+    const nextSection = filteredSections[previewIndex + offset];
+    if (nextSection) setPreviewSectionId(nextSection.sectionId);
+  };
 
   const yearArchived = overview?.yearStatus === "ARCHIVED" || overview?.canFinalize === false;
   const deadline = overview?.deadline ?? null;
@@ -526,8 +571,8 @@ export default function TermFinalization() {
 
       <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
         <div className="p-4 lg:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:max-w-[560px]">
+          <div className="space-y-3">
+            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground" htmlFor="term-finalization-year">
                   School Year
@@ -570,32 +615,101 @@ export default function TermFinalization() {
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="term-finalization-grade">
+                  Grade Level
+                </label>
+                <Select
+                  value={gradeFilter}
+                  onValueChange={(value) => {
+                    if (!value) return;
+                    setGradeFilter(value);
+                    setSectionFilter("all");
+                  }}
+                >
+                  <SelectTrigger id="term-finalization-grade" className="h-9 w-full" aria-label="Grade Level">
+                    <SelectValue placeholder="All Grades">
+                      {gradeFilter === "all" ? "All Grades" : gradeLevelLabel(gradeFilter)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Grades</SelectItem>
+                    {GRADE_OPTIONS.map((grade) => (
+                      <SelectItem key={grade} value={grade}>
+                        {gradeLevelLabel(grade)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="term-finalization-section">
+                  Section
+                </label>
+                <Select
+                  value={sectionFilter}
+                  onValueChange={(value) => value && setSectionFilter(value)}
+                >
+                  <SelectTrigger id="term-finalization-section" className="h-9 w-full" aria-label="Section">
+                    <SelectValue placeholder="All Sections">
+                      {sectionFilter === "all"
+                        ? "All Sections"
+                        : sectionOptions.find((section) => section.sectionId === sectionFilter)
+                            ?.sectionName ?? "All Sections"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sections</SelectItem>
+                    {sectionOptions.map((section) => (
+                      <SelectItem key={section.sectionId} value={section.sectionId}>
+                        {section.sectionName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto lg:justify-end">
-              {deadline && (
-                <Badge
-                  variant="outline"
-                  className={`h-9 gap-1.5 px-3 text-xs font-medium ${
-                    isDeadlinePassed
-                      ? "border-amber-200 bg-amber-50 text-amber-700"
-                      : "border-border bg-background text-muted-foreground"
-                  }`}
-                >
-                  <Clock className="h-3.5 w-3.5" />
-                  Deadline {formatDate(deadline)}
-                  {isDeadlinePassed ? " · passed" : " · upcoming"}
-                </Badge>
-              )}
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search section, adviser, or grade level"
-                  aria-label="Search sections"
-                  className="h-9 pl-9 text-sm"
-                />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                {deadline && (
+                  <Badge
+                    variant="outline"
+                    className={`h-9 gap-1.5 px-3 text-xs font-medium ${
+                      isDeadlinePassed
+                        ? "border-amber-200 bg-amber-50 text-amber-700"
+                        : "border-border bg-background text-muted-foreground"
+                    }`}
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                    Deadline {formatDate(deadline)}
+                    {isDeadlinePassed ? " · passed" : " · upcoming"}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+                <div className="relative w-full sm:w-72">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search section, adviser, or grade level"
+                    aria-label="Search sections"
+                    className="h-9 pl-9 text-sm"
+                  />
+                </div>
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="h-9 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    Clear filters
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -676,7 +790,7 @@ export default function TermFinalization() {
                   yearArchived={yearArchived}
                   busyKey={bulkBusy ? "__bulk__" : busyKey}
                   onToggle={() => toggleSection(section.sectionId)}
-                  onViewGrades={() => setGradePreviewSection(section)}
+                  onViewGrades={() => setPreviewSectionId(section.sectionId)}
                   onFinalizeSection={() => startSectionAction("finalize", section)}
                   onUnfinalizeSection={() => startSectionAction("unfinalize", section)}
                   onFinalizeSubject={(subject) => startSubjectAction("finalize", section, subject)}
@@ -690,13 +804,28 @@ export default function TermFinalization() {
 
       {selectedTerm && (
         <TermGradesPreviewModal
-          open={!!gradePreviewSection}
+          open={!!previewSection}
           onOpenChange={(open) => {
-            if (!open) setGradePreviewSection(null);
+            if (!open) setPreviewSectionId(null);
           }}
-          section={gradePreviewSection}
+          section={previewSection}
           term={selectedTerm}
           schoolYear={selectedSchoolYear}
+          refreshToken={refreshKey}
+          yearArchived={yearArchived}
+          positionLabel={
+            previewIndex >= 0 ? `${previewIndex + 1} of ${filteredSections.length}` : null
+          }
+          hasPrev={previewIndex > 0}
+          hasNext={previewIndex >= 0 && previewIndex < filteredSections.length - 1}
+          onPrev={() => goToAdjacentPreviewSection(-1)}
+          onNext={() => goToAdjacentPreviewSection(1)}
+          onFinalizeSection={() => {
+            if (previewSection) startSectionAction("finalize", previewSection);
+          }}
+          onUnfinalizeSection={() => {
+            if (previewSection) startSectionAction("unfinalize", previewSection);
+          }}
         />
       )}
 

@@ -363,88 +363,103 @@ export default function RemedialTracker() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
-      <PageHeader
-        title="Remedial Tracker"
-        description="Manage remedial classes for conditionally promoted students."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => void handleSync()}
-              variant="default"
-              size="sm"
-              className="font-semibold text-xs shadow-sm shadow-primary/20"
-              disabled={syncStatus === "syncing"}
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-5">
+          <PageHeader
+            title="Remedial Tracker"
+            description="Manage remedial classes for conditionally promoted students."
+            variant="plain"
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => void handleSync()}
+                  variant="default"
+                  size="sm"
+                  className="font-semibold text-xs shadow-sm shadow-primary/20"
+                  disabled={syncStatus === "syncing"}
+                >
+                  <CloudDownload className="w-4 h-4 mr-1.5" />
+                  Sync from EnrollPro
+                </Button>
+                <Button
+                  onClick={() => void load(page)}
+                  variant="outline"
+                  size="sm"
+                  className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+                </Button>
+              </div>
+            }
+          />
+        </div>
+
+        {/* View Mode Tabs */}
+        <div className="border-t border-border p-4 lg:p-5">
+          <div className="flex items-center gap-1 bg-muted p-1 rounded-lg w-fit">
+            <button
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                viewMode === "pending" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => { setViewMode("pending"); setPage(1); }}
             >
-              <CloudDownload className="w-4 h-4 mr-1.5" />
-              Sync from EnrollPro
-            </Button>
-            <Button
-              onClick={() => void load(page)}
-              variant="outline"
-              size="sm"
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+              Pending
+            </button>
+            <button
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                viewMode === "history" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => { setViewMode("history"); setPage(1); }}
             >
-              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-            </Button>
+              History
+            </button>
           </div>
-        }
-      />
+        </div>
 
-      {/* View Mode Tabs */}
-      <div className="flex items-center gap-1 bg-muted p-1 rounded-lg w-fit">
-        <button
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-            viewMode === "pending" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-          }`}
-          onClick={() => { setViewMode("pending"); setPage(1); }}
-        >
-          Pending
-        </button>
-        <button
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-            viewMode === "history" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-          }`}
-          onClick={() => { setViewMode("history"); setPage(1); }}
-        >
-          History
-        </button>
-      </div>
-
-      {/* Stats Row + Pending Table */}
-      {viewMode === "pending" && (<>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Students"
-          value={stats.total}
-          numericValue={stats.total}
-          icon={<Users className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Pending"
-          value={stats.pending}
-          numericValue={stats.pending}
-          icon={<Clock className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Completed"
-          value={stats.completed}
-          numericValue={stats.completed}
-          icon={<CheckCircle className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Remedial Rows"
-          value={stats.pendingRows + stats.completedRows}
-          numericValue={stats.pendingRows + stats.completedRows}
-          icon={<FlaskConical className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-      </div>
+        {/* Stats Row */}
+        {viewMode === "pending" && (
+          <div className="border-t border-border p-4 lg:p-5">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                label="Total Students"
+                value={stats.total}
+                numericValue={stats.total}
+                icon={<Users className="w-5 h-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                label="Pending"
+                value={stats.pending}
+                numericValue={stats.pending}
+                icon={<Clock className="w-5 h-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                label="Completed"
+                value={stats.completed}
+                numericValue={stats.completed}
+                icon={<CheckCircle className="w-5 h-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                label="Remedial Rows"
+                value={stats.pendingRows + stats.completedRows}
+                numericValue={stats.pendingRows + stats.completedRows}
+                icon={<FlaskConical className="w-5 h-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Main Table Card */}
-      <Card className="border border-slate-200/60 shadow-sm bg-card overflow-hidden rounded-2xl p-0">
+      {viewMode === "pending" && (<>
+      <Card className="border border-border bg-card overflow-hidden rounded-xl p-0 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>

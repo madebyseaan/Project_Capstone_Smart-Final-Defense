@@ -14,6 +14,7 @@ interface StatCardProps {
     direction: "up" | "down" | "neutral";
     hint?: string;
   };
+  compact?: boolean;
   className?: string;
 }
 
@@ -24,6 +25,7 @@ export function StatCard({
   icon,
   iconClassName,
   trend,
+  compact,
   className,
 }: StatCardProps) {
   const animated = useCountUp(numericValue ?? 0, 800, numericValue !== undefined);
@@ -38,16 +40,19 @@ export function StatCard({
         className
       )}
     >
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
+      <CardContent className={cn("p-4", compact && "p-3")}>
+        <div className="flex items-center justify-between gap-2">
+          <div className={cn("space-y-1", compact && "space-y-0.5")}>
             <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold text-foreground">{displayValue}</p>
+            <p className={cn("text-2xl font-bold text-foreground", compact && "text-xl")}>
+              {displayValue}
+            </p>
           </div>
           {icon && (
             <div
               className={cn(
                 "p-2 rounded-lg bg-muted",
+                compact && "p-1.5 [&_svg]:size-4",
                 iconClassName
               )}
             >

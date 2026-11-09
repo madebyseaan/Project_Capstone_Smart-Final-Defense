@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { memo } from "react";
 import { AlertTriangle, CheckCircle2, Info, Loader2 } from "lucide-react";
 import {
@@ -53,6 +53,10 @@ export interface AppModalProps {
   loading?: boolean;
   /** Hide footer entirely (view-only dialogs) */
   hideFooter?: boolean;
+  /** Custom footer rendered outside the scrollable body. Replaces the default footer. */
+  footer?: ReactNode;
+  /** Ref for the scrollable body when a custom footer is used. */
+  bodyRef?: Ref<HTMLDivElement>;
   testId?: string;
   confirmTestId?: string;
   children?: ReactNode;
@@ -71,17 +75,24 @@ export function AppModal({
   destructive = false,
   loading = false,
   hideFooter = false,
+  footer,
+  bodyRef,
   testId,
   confirmTestId,
   children,
 }: AppModalProps) {
   const { colors } = useTheme();
+  const hasCustomFooter = footer != null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid={testId}
-        className={`${SIZE_CLASSES[size]} max-h-[90vh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-8 border-0 shadow-2xl bg-card rounded-xl sm:rounded-2xl gap-0`}
+        className={`${SIZE_CLASSES[size]} max-h-[90vh] ${
+          hasCustomFooter
+            ? "overflow-hidden grid-rows-[auto_minmax(0,1fr)_auto]"
+            : "overflow-y-auto"
+        } overflow-x-hidden p-4 sm:p-6 md:p-8 border-0 shadow-2xl bg-card rounded-xl sm:rounded-2xl gap-0`}
       >
         {/* Header */}
         <div className="pb-4 sm:pb-5">
@@ -105,38 +116,47 @@ export function AppModal({
           </div>
         </div>
 
-        {children}
-
-        {/* Footer */}
-        {!hideFooter && (
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 mt-4 border-t border-border">
-            <Button
-              variant="outline"
-              className="rounded-xl"
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              data-testid={confirmTestId}
-              className="rounded-xl"
-              style={
-                destructive
-                  ? { backgroundColor: "#dc2626", color: "white" }
-                  : { backgroundColor: colors.primary, color: "white" }
-              }
-              disabled={loading || confirmDisabled}
-              onClick={() => onConfirm?.()}
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-              )}
-              {confirmLabel}
-            </Button>
+        {hasCustomFooter ? (
+          <div ref={bodyRef} className="min-h-0 overflow-y-auto overflow-x-hidden">
+            {children}
           </div>
+        ) : (
+          children
+        )}
+
+        {hasCustomFooter ? (
+          <div className="mt-4 border-t border-border pt-4">{footer}</div>
+        ) : (
+          !hideFooter && (
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 mt-4 border-t border-border">
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                data-testid={confirmTestId}
+                className="rounded-xl"
+                style={
+                  destructive
+                    ? { backgroundColor: "#dc2626", color: "white" }
+                    : { backgroundColor: colors.primary, color: "white" }
+                }
+                disabled={loading || confirmDisabled}
+                onClick={() => onConfirm?.()}
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                )}
+                {confirmLabel}
+              </Button>
+            </div>
+          )
         )}
       </DialogContent>
     </Dialog>

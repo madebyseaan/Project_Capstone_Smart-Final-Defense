@@ -16,7 +16,7 @@ import SF9Inspector from "./components/SF9Inspector";
 import SF10Inspector from "./components/SF10Inspector";
 import SF10Editor from "./components/SF10Editor";
 import { BulkSF9View, BulkSF10View } from "./components/BulkFormsView";
-import SFListView, { type ClassFormId, type Sf9Term, type StudentFormId } from "./components/SFListView";
+import SFListView, { type ClassFormId, type StudentFormId } from "./components/SFListView";
 import SF2Form from "./components/SF2Form";
 import SF6Form from "./components/SF6Form";
 
@@ -69,7 +69,6 @@ export default function SchoolForms() {
   const [formsTab, setFormsTab] = useState<"class" | "student">("class");
   const [activeClassForm, setActiveClassForm] = useState<ClassFormId>("sf1");
   const [studentForm, setStudentForm] = useState<StudentFormId>("sf9");
-  const [sf9Term, setSf9Term] = useState<Sf9Term>("T1");
   const [, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [schoolYear, setSchoolYear] = useState("");
@@ -264,10 +263,9 @@ export default function SchoolForms() {
     return () => window.clearTimeout(timer);
   }, [printIntent, viewMode, sf1Data, sf2Data, sf5Data, executePrint]);
 
-  const handleViewSF9 = async (studentId?: string, term?: Sf9Term) => {
+  const handleViewSF9 = async (studentId?: string) => {
     const id = studentId || selectedStudent;
     if (!id) return;
-    if (term) setSf9Term(term);
     setLoading(true);
     try {
       const response = await registrarApi.getSF9(id, schoolYear);
@@ -588,8 +586,6 @@ export default function SchoolForms() {
         onActiveClassFormChange={setActiveClassForm}
         studentForm={studentForm}
         onStudentFormChange={setStudentForm}
-        sf9Term={sf9Term}
-        onSf9TermChange={setSf9Term}
         schoolYear={schoolYear}
         schoolYears={schoolYears}
         onSchoolYearChange={(value) => {
@@ -854,8 +850,7 @@ export default function SchoolForms() {
             <div>
               <h2 className="text-xl font-bold text-foreground">SF9 - Learner&apos;s Progress Report Card</h2>
               <p className="text-sm text-muted-foreground">
-                {sf9Data.student.name} · {sf9Data.student.section} · {sf9Data.student.schoolYear} · Term{" "}
-                {sf9Term.replace("T", "")}
+                {sf9Data.student.name} · {sf9Data.student.section} · {sf9Data.student.schoolYear}
               </p>
             </div>
           </div>
@@ -873,7 +868,6 @@ export default function SchoolForms() {
                 data={sf9Data}
                 fullLogoUrl={fullLogoUrl}
                 highlightSubject={sf9Highlight}
-                focusTerm={sf9Term}
               />
             </div>
           </div>

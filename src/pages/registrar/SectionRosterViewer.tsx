@@ -46,19 +46,8 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/layout/StatCard";
 import { SyncProgressModal } from "@/components/common/SyncProgressModal";
 import { ProgramBadge } from "@/components/ProgramBadge";
+import { getGradeBadgeClass, gradeLevelLabel } from "@/lib/gradeColor";
 import { normalizeProgram, REGULAR_PROGRAM } from "@/lib/programColor";
-
-const gradeLabel = (g: string) => g.replace("GRADE_", "Grade ");
-
-function getGradeColors(gradeLevel: string) {
-  switch (gradeLevel) {
-    case "GRADE_7": return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    case "GRADE_8": return "bg-amber-50 text-amber-700 border-amber-200";
-    case "GRADE_9": return "bg-rose-50 text-rose-700 border-rose-200";
-    case "GRADE_10": return "bg-blue-50 text-blue-700 border-blue-200";
-    default: return "bg-muted/30 text-muted-foreground border-border";
-  }
-}
 
 export default function SectionRosterViewer() {
   const { colors } = useTheme();
@@ -219,64 +208,75 @@ export default function SectionRosterViewer() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
-      <PageHeader
-        title="Section Rosters"
-        description="Browse sections and view learner rosters"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => void handleSync()}
-              variant="default"
-              size="sm"
-              className="font-semibold text-xs shadow-sm shadow-primary/20"
-              disabled={syncStatus === "syncing"}
-            >
-              <CloudDownload className="w-4 h-4 mr-1.5" />
-              Sync from EnrollPro
-            </Button>
-            <Button
-              onClick={() => void loadSections()}
-              variant="outline"
-              size="sm"
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-            >
-              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-            </Button>
-          </div>
-        }
-      />
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-5">
+          <PageHeader
+            title="Section Rosters"
+            description="Browse sections and view learner rosters"
+            variant="plain"
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => void handleSync()}
+                  variant="default"
+                  size="sm"
+                  className="font-semibold text-xs shadow-sm shadow-primary/20"
+                  disabled={syncStatus === "syncing"}
+                >
+                  <CloudDownload className="w-4 h-4 mr-1.5" />
+                  Sync from EnrollPro
+                </Button>
+                <Button
+                  onClick={() => void loadSections()}
+                  variant="outline"
+                  size="sm"
+                  className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
+                </Button>
+              </div>
+            }
+          />
+        </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Sections"
-          value={stats.totalSections}
-          numericValue={stats.totalSections}
-          icon={<Layers className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Total Learners"
-          value={stats.totalLearners}
-          numericValue={stats.totalLearners}
-          icon={<Users className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="Grade Levels"
-          value={stats.gradeLevels}
-          numericValue={stats.gradeLevels}
-          icon={<GraduationCap className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-        <StatCard
-          label="With Adviser"
-          value={stats.withAdviser}
-          numericValue={stats.withAdviser}
-          icon={<UserCheck className="w-5 h-5 text-primary" />}
-          iconClassName="bg-primary/10"
-        />
-      </div>
+        {/* Stats Row */}
+        <div className="border-t border-border p-4 lg:p-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard
+              label="Total Sections"
+              value={stats.totalSections}
+              numericValue={stats.totalSections}
+              icon={<Layers className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard
+              label="Total Learners"
+              value={stats.totalLearners}
+              numericValue={stats.totalLearners}
+              icon={<Users className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard
+              label="Grade Levels"
+              value={stats.gradeLevels}
+              numericValue={stats.gradeLevels}
+              icon={<GraduationCap className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard
+              label="With Adviser"
+              value={stats.withAdviser}
+              numericValue={stats.withAdviser}
+              icon={<UserCheck className="w-5 h-5 text-primary" />}
+              iconClassName="bg-primary/10"
+              className="border border-border bg-muted/30 shadow-none"
+            />
+          </div>
+        </div>
+      </Card>
 
       {/* Main Table Card */}
       <Card className="border border-slate-200/60 shadow-sm bg-card overflow-hidden rounded-2xl p-0">
@@ -303,7 +303,7 @@ export default function SectionRosterViewer() {
               <Select value={activeGrade} onValueChange={(val) => val && setActiveGrade(val)}>
                 <SelectTrigger className="w-32 h-9 rounded-lg text-xs font-medium">
                   <SelectValue placeholder="All Grades">
-                    {activeGrade === "all" ? "All Grades" : gradeLabel(activeGrade)}
+                    {activeGrade === "all" ? "All Grades" : gradeLevelLabel(activeGrade)}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -381,8 +381,8 @@ export default function SectionRosterViewer() {
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-foreground truncate">{s.name}</p>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          <Badge className={`text-[10px] font-bold uppercase tracking-widest rounded-full ${getGradeColors(s.gradeLevel)}`}>
-                            {gradeLabel(s.gradeLevel)}
+                          <Badge className={`text-[10px] font-bold uppercase tracking-widest rounded-full ${getGradeBadgeClass(s.gradeLevel)}`}>
+                            {gradeLevelLabel(s.gradeLevel)}
                           </Badge>
                           <Badge variant="outline" className="text-[10px]">
                             {s._count?.enrollments ?? 0} {(s._count?.enrollments ?? 0) === 1 ? "learner" : "learners"}
@@ -440,9 +440,9 @@ export default function SectionRosterViewer() {
                             <TableCell className="py-3.5 px-4 text-left align-middle whitespace-nowrap">
                               <Badge
                                 variant="outline"
-                                className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${getGradeColors(s.gradeLevel)}`}
+                                className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${getGradeBadgeClass(s.gradeLevel)}`}
                               >
-                                {gradeLabel(s.gradeLevel)}
+                                {gradeLevelLabel(s.gradeLevel)}
                               </Badge>
                             </TableCell>
                             <TableCell className="py-3.5 px-4 text-sm text-muted-foreground text-left align-middle whitespace-nowrap">

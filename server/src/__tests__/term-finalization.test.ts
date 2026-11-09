@@ -206,6 +206,17 @@ describe("term finalization", () => {
       const subjectNames = section.subjects.map((s: any) => s.subjectName);
       expect(subjectNames).toContain(`Archived Graded Subject ${suffix}`);
       expect(subjectNames).not.toContain(`Archived Empty Subject ${suffix}`);
+
+      const preview = await request(app)
+        .get(`/api/registrar/student-grades/${sectionId}/T1`)
+        .query({ schoolYear: YEAR, mergeRotations: 0 })
+        .set(auth());
+      expect(preview.status).toBe(200);
+      const previewNames = preview.body.students[0].subjects.map(
+        (subject: any) => subject.subjectName,
+      );
+      expect(previewNames).toContain(`Archived Graded Subject ${suffix}`);
+      expect(previewNames).not.toContain(`Archived Empty Subject ${suffix}`);
     } finally {
       await prisma.grade.deleteMany({
         where: { classAssignmentId: { in: [emptyAssignment.id, gradedAssignment.id] } },

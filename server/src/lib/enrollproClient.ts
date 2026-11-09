@@ -15,8 +15,8 @@ import https from 'https';
 import http from 'http';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { logger } from './logger';
-import { reportExternalSuccess, reportExternalFailure } from './externalState';
-import { getActiveSchoolYearLabel } from './schoolYearResolver';
+import { reportExternalSuccess, reportExternalFailure, getExternalState } from './externalState';
+import { getActiveSchoolYearLabel, getActiveSchoolYear } from './schoolYearResolver';
 import { prisma } from './prisma';
 import { getEnrollProSchoolYearId } from '../config/schoolEnv';
 
@@ -108,9 +108,12 @@ const TOKEN_TTL_MS = 25 * 60 * 1000; // 25 minutes
 // page loads. Background sync wraps its steps in runWithSyncTimeout() to keep
 // the longer 20s budget for bulk pagination.
 
-const REQUEST_TIMEOUT_MS = parseInt(process.env.EP_REQUEST_TIMEOUT_MS ?? '3000', 10);
+// 3s was too tight: EnrollPro's integration feed regularly answers in 1–4s
+// over Tailscale, so healthy-but-slow calls were being reported as outages.
+const REQUEST_TIMEOUT_MS = parseInt(process.env.EP_REQUEST_TIMEOUT_MS ?? '8000', 10);
 const SYNC_TIMEOUT_MS = parseInt(process.env.EP_SYNC_TIMEOUT_MS ?? '20000', 10);
 const BREAKER_COOLDOWN_MS = parseInt(process.env.EP_BREAKER_COOLDOWN_MS ?? '60000', 10);
+const HEALTH_PROBE_TIMEOUT_MS = parseInt(process.env.EP_HEALTH_PROBE_TIMEOUT_MS ?? '10000', 10);
 
 const fetchScope = new AsyncLocalStorage<{ timeoutMs: number }>();
 
@@ -118,6 +121,7 @@ const fetchScope = new AsyncLocalStorage<{ timeoutMs: number }>();
 // calls fail instantly for the cooldown window instead of re-dialing a hung
 // server (each dial costs the full timeout). Background sync bypasses it.
 let epDownUntil = 0;
+let healthProbeInFlight: Promise<boolean> | null = null;
 
 function isConnectivityFailure(err: any): boolean {
   const msg = String(err?.message ?? '');
@@ -127,6 +131,33 @@ function isConnectivityFailure(err: any): boolean {
     msg.includes('socket hang up') ||
     ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EHOSTUNREACH', 'EPIPE'].includes(code)
   );
+}
+
+async function probeEnrollProHealth(): Promise<boolean> {
+  try {
+    const headers = await getIntegrationHeaders();
+    await performFetchJSON(
+      `${await getEnrollProBase()}/integration/v1/health`,
+      { headers },
+      HEALTH_PROBE_TIMEOUT_MS,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A single slow/heavy endpoint timing out does not mean EnrollPro is down.
+ * Confirm with the lightweight health probe before opening the breaker.
+ */
+function confirmEnrollProReachable(): Promise<boolean> {
+  if (!healthProbeInFlight) {
+    healthProbeInFlight = probeEnrollProHealth().finally(() => {
+      healthProbeInFlight = null;
+    });
+  }
+  return healthProbeInFlight;
 }
 
 /** Run background sync work with the long sync timeout instead of the fast-fail default. */
@@ -199,16 +230,27 @@ function fetchJSON(
 
   return performFetchJSON(url, options, timeoutMs).then(
     (value) => {
-      if (scopeTimeout == null && epDownUntil !== 0) {
+      // Any successful call — request path or background sync — proves the
+      // service is reachable, so clear a stale outage flag.
+      if (epDownUntil !== 0 || getExternalState('enrollpro').status === 'down') {
         epDownUntil = 0;
         reportExternalSuccess('enrollpro');
       }
       return value;
     },
     (err) => {
-      if (scopeTimeout == null && isConnectivityFailure(err)) {
-        if (epDownUntil === 0) reportExternalFailure('enrollpro', err);
-        epDownUntil = Date.now() + BREAKER_COOLDOWN_MS;
+      if (isConnectivityFailure(err)) {
+        // Suppress re-dials while the confirming health probe runs.
+        epDownUntil = Date.now() + HEALTH_PROBE_TIMEOUT_MS + 500;
+        void confirmEnrollProReachable().then((reachable) => {
+          if (reachable) {
+            epDownUntil = 0;
+            reportExternalSuccess('enrollpro');
+          } else {
+            reportExternalFailure('enrollpro', err);
+            epDownUntil = Date.now() + BREAKER_COOLDOWN_MS;
+          }
+        });
       }
       throw err;
     },
@@ -600,20 +642,31 @@ export async function resolveEnrollProSchoolYear(
     // Fall through to env defaults.
   }
 
-  // Last resort: use local DB resolver
+  // Last resort: use local DB resolver. The DB's EnrollPro externalId is
+  // authoritative; the env var may be stale (e.g. from a previous year).
   try {
-    const localLabel = await getActiveSchoolYearLabel();
+    const localYear = await getActiveSchoolYear();
+    const dbExternalId = localYear.externalId;
     return {
-      id: Number.isFinite(envId) ? envId : 3,
-      yearLabel: localLabel,
+      id: dbExternalId && dbExternalId > 0 ? dbExternalId : (Number.isFinite(envId) ? envId : 3),
+      yearLabel: localYear.label,
       source: 'env-fallback',
     };
   } catch {
-    return {
-      id: Number.isFinite(envId) ? envId : 3,
-      yearLabel: envLabel,
-      source: 'env-fallback',
-    };
+    try {
+      const localLabel = await getActiveSchoolYearLabel();
+      return {
+        id: Number.isFinite(envId) ? envId : 3,
+        yearLabel: localLabel,
+        source: 'env-fallback',
+      };
+    } catch {
+      return {
+        id: Number.isFinite(envId) ? envId : 3,
+        yearLabel: envLabel,
+        source: 'env-fallback',
+      };
+    }
   }
 }
 

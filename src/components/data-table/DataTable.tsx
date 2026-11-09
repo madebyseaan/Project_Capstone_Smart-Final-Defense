@@ -26,6 +26,7 @@ interface DataTableProps<T> {
   emptySearchTerm?: string;
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
+  isRowSelected?: (row: T) => boolean;
   toolbar?: ReactNode;
   pagination: ReturnType<typeof usePagination>;
   onRetry?: () => void;
@@ -48,6 +49,7 @@ export function DataTable<T>({
   emptySearchTerm,
   rowKey,
   onRowClick,
+  isRowSelected,
   toolbar,
   pagination,
   onRetry,
@@ -108,32 +110,38 @@ export function DataTable<T>({
                   searchTerm={emptySearchTerm}
                 />
               ) : (
-                displayRows.map((row) => (
-                  <TableRow
-                    key={rowKey(row)}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    className={cn(
-                      "border-b border-border/20 hover:bg-muted/50 transition-colors",
-                      onRowClick && "cursor-pointer"
-                    )}
-                  >
-                    {columns.map((col) => (
-                      <TableCell
-                        key={col.key}
-                        className={cn(CELL_CLASS, col.className)}
-                        style={
-                          col.align === "right"
-                            ? { textAlign: "right" }
-                            : col.align === "center"
-                            ? { textAlign: "center" }
-                            : undefined
-                        }
-                      >
-                        {col.cell(row)}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
+                displayRows.map((row) => {
+                  const selected = isRowSelected?.(row) ?? false;
+                  return (
+                    <TableRow
+                      key={rowKey(row)}
+                      onClick={onRowClick ? () => onRowClick(row) : undefined}
+                      aria-selected={selected || undefined}
+                      className={cn(
+                        "border-b border-border/20 hover:bg-muted/50 transition-colors",
+                        onRowClick && "cursor-pointer",
+                        selected &&
+                          "bg-primary/5 hover:bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]"
+                      )}
+                    >
+                      {columns.map((col) => (
+                        <TableCell
+                          key={col.key}
+                          className={cn(CELL_CLASS, col.className)}
+                          style={
+                            col.align === "right"
+                              ? { textAlign: "right" }
+                              : col.align === "center"
+                              ? { textAlign: "center" }
+                              : undefined
+                          }
+                        >
+                          {col.cell(row)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

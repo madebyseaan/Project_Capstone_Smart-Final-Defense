@@ -42,7 +42,6 @@ interface FormStudent {
 }
 
 type ClassFormId = "sf1" | "sf2" | "sf5" | "sf6";
-export type Sf9Term = "T1" | "T2" | "T3";
 type StudentFormId = "sf9" | "sf10";
 export type { ClassFormId, StudentFormId };
 
@@ -110,8 +109,6 @@ interface SFListViewProps {
   onActiveClassFormChange: (value: ClassFormId) => void;
   studentForm: StudentFormId;
   onStudentFormChange: (value: StudentFormId) => void;
-  sf9Term: Sf9Term;
-  onSf9TermChange: (value: Sf9Term) => void;
   schoolYear: string;
   schoolYears: string[];
   onSchoolYearChange: (value: string) => void;
@@ -138,7 +135,7 @@ interface SFListViewProps {
   onPrintSF1: () => void;
   onPrintSF2: () => void;
   onPrintSF5: () => void;
-  onViewSF9: (id?: string, term?: Sf9Term) => void;
+  onViewSF9: (id?: string) => void;
   onViewSF10: (id?: string) => void;
   onBulkPrint: (formType: "sf9" | "sf10") => void;
   onBulkPrintAll: (formType: "sf9" | "sf10") => void;
@@ -152,8 +149,6 @@ export default function SFListView({
   onActiveClassFormChange,
   studentForm,
   onStudentFormChange,
-  sf9Term,
-  onSf9TermChange,
   schoolYear,
   schoolYears,
   onSchoolYearChange,
@@ -193,6 +188,7 @@ export default function SFListView({
   const disableGradeSection = isSchoolWideClassForm;
 
   const selectedSectionName = sections.find((s) => s.id === selectedSection)?.name;
+  const selectedSectionProgram = sections.find((s) => s.id === selectedSection)?.program ?? null;
 
   let filterHint: string | null = null;
   if (isSchoolWideClassForm) {
@@ -216,44 +212,50 @@ export default function SFListView({
   };
 
   const previewStudent = (studentId: string) => {
-    if (studentForm === "sf9") onViewSF9(studentId, sf9Term);
+    if (studentForm === "sf9") onViewSF9(studentId);
     else onViewSF10(studentId);
   };
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 animate-fade-in">
-      <PageHeader
-        title="DepEd School Forms"
-        description="Generate, preview, and print official school forms"
-      />
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-5">
+          <PageHeader
+            title="DepEd School Forms"
+            description="Generate, preview, and print official school forms"
+            variant="plain"
+          />
+        </div>
 
-      {error && (
-        <Card className="border-destructive/30 bg-destructive/5 p-0">
-          <CardContent className="flex items-center gap-3 p-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-4 w-4 text-destructive" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Error loading data</p>
-              <p className="text-xs text-muted-foreground">{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        {error && (
+          <div className="border-t border-border p-4 lg:p-5">
+            <Card className="border-destructive/30 bg-destructive/5 p-0">
+              <CardContent className="flex items-center gap-3 p-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Error loading data</p>
+                  <p className="text-xs text-muted-foreground">{error}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-      <FilterTabs
+        <div className="border-t border-border p-4 lg:p-5">
+          <FilterTabs
         value={activeTab}
         onValueChange={(value) => onTabChange(value as "class" | "student")}
         items={FORMS_TAB_ITEMS}
         className="space-y-4"
       >
-        <div className="rounded-xl border border-border bg-card px-3 py-2.5">
-          <div
-            className={cn(
-              "grid grid-cols-1 gap-3",
-              isClassTab ? "sm:grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-4"
-            )}
-          >
+        <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5">
+            <div
+              className={cn(
+                "grid grid-cols-1 gap-3 sm:grid-cols-3"
+              )}
+            >
             <div className="min-w-0">
               <label
                 htmlFor="forms-school-year"
@@ -354,35 +356,6 @@ export default function SFListView({
                 </SelectContent>
               </Select>
             </div>
-
-            {!isClassTab && (
-              <div className="min-w-0">
-                <label
-                  htmlFor="sf9-term"
-                  className="mb-1 block text-[11px] font-medium text-muted-foreground"
-                >
-                  Term
-                </label>
-                <Select
-                  value={sf9Term}
-                  onValueChange={(v: string | null) => v && onSf9TermChange(v as Sf9Term)}
-                  disabled={studentForm !== "sf9"}
-                >
-                  <SelectTrigger
-                    id="sf9-term"
-                    title={studentForm !== "sf9" ? "Term filter applies to SF9 only" : undefined}
-                    className="h-9 rounded-lg text-xs font-medium normal-case"
-                  >
-                    <SelectValue>{`Term ${sf9Term.replace("T", "")}`}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="T1">Term 1</SelectItem>
-                    <SelectItem value="T2">Term 2</SelectItem>
-                    <SelectItem value="T3">Term 3</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
 
           {filterHint && (
@@ -516,7 +489,7 @@ export default function SFListView({
               onToggleStudent={onToggleStudent}
               onClearSelection={onClearSelection}
               studentForm={studentForm}
-              sf9Term={sf9Term}
+              program={selectedSectionProgram}
               onPreview={previewStudent}
               onBulkPrint={onBulkPrint}
               onBulkPrintAll={onBulkPrintAll}
@@ -525,7 +498,9 @@ export default function SFListView({
             />
           )}
         </TabsContent>
-      </FilterTabs>
+        </FilterTabs>
+        </div>
+      </Card>
     </div>
   );
 }

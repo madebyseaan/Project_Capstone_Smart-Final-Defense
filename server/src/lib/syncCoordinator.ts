@@ -22,7 +22,7 @@ import { runStudentProfileSync } from './studentProfileSync';
 import { runPruneFromLiveSources } from './prune';
 import { broadcastSyncStatus } from './sseManager';
 import { prisma } from './prisma';
-import { invalidatePrefix } from './syncCache';
+import { invalidatePrefix, warmEosyCaches } from './syncCache';
 import { runWithSyncTimeout } from './enrollproClient';
 import { setExternalRecoveryHandler } from './externalState';
 import { broadcastSseEvent } from './sseManager';
@@ -464,7 +464,12 @@ export async function runUnifiedSync(options?: {
     syncRunning = false;
     // Per-source invalidation (P0-2): refresh only what actually synced.
     // Skipped/partial cycles keep last-known-good data for offline resilience.
-    if (epStepRan) invalidatePrefix('enrollpro:');
+    if (epStepRan) {
+      // EOSY caches are read-only derivatives that the sync does not update;
+      // wiping them every cycle forces slow live refetches on page mount.
+      invalidatePrefix('enrollpro:', ['enrollpro:eosy:']);
+      void warmEosyCaches();
+    }
     if (atlasStepRan) invalidatePrefix('atlas:');
     // 'aims:' keys are TTL-managed and never flushed by sync cycles.
   }
@@ -695,7 +700,7 @@ function buildUrl(base: string, path: string): string {
 async function pingUrl(url: string, name: string, headers?: Record<string, string>): Promise<DependencyHealth> {
   const started = Date.now();
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers });
+    const response = await fetch(url, { signal: AbortSignal.timeout(12000), headers });
     return {
       name,
       url,

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { LoadingSkeleton, EmptyState } from "@/components/data-table";
 import { Dash } from "@/components/data-table/Dash";
+import { ProgramBadge } from "@/components/ProgramBadge";
 
 interface FormStudent {
   id: string;
@@ -35,7 +36,7 @@ interface StudentSelectionTableProps {
   onToggleStudent: (id: string) => void;
   onClearSelection: () => void;
   studentForm: "sf9" | "sf10";
-  sf9Term?: "T1" | "T2" | "T3";
+  program?: string | null;
   onPreview: (studentId: string) => void;
   onBulkPrint: (formType: "sf9" | "sf10") => void;
   onBulkPrintAll: (formType: "sf9" | "sf10") => void;
@@ -57,7 +58,7 @@ export function StudentSelectionTable({
   onToggleStudent,
   onClearSelection,
   studentForm,
-  sf9Term,
+  program,
   onPreview,
   onBulkPrint,
   onBulkPrintAll,
@@ -92,6 +93,7 @@ export function StudentSelectionTable({
               ({filteredStudents.length}
               {searchQuery ? ` of ${totalStudents}` : ""})
             </span>
+            {program && <ProgramBadge program={program} />}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -200,7 +202,16 @@ export function StudentSelectionTable({
                         </TableCell>
                         <TableCell className="hidden px-3 py-2 sm:table-cell">
                           {student.gender ? (
-                            <Badge variant="outline" className="text-[11px] font-medium">
+                            <Badge
+                              variant="outline"
+                              className={`text-[11px] font-medium ${
+                                student.gender.toLowerCase() === "male"
+                                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                                  : student.gender.toLowerCase() === "female"
+                                    ? "border-pink-200 bg-pink-50 text-pink-700"
+                                    : ""
+                              }`}
+                            >
                               {student.gender}
                             </Badge>
                           ) : (
@@ -217,11 +228,7 @@ export function StudentSelectionTable({
                             className="h-8 text-xs"
                             onClick={() => onPreview(student.id)}
                             aria-label={`Preview ${form.code} for ${student.lastName}, ${student.firstName}`}
-                            title={
-                              studentForm === "sf9" && sf9Term
-                                ? `Preview ${form.code} · Term ${sf9Term.replace("T", "")}`
-                                : `Preview ${form.code}`
-                            }
+                            title={`Preview ${form.code}`}
                           >
                             <Eye className="h-3.5 w-3.5" aria-hidden="true" />
                             Preview

@@ -13,6 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ProgramBadge } from "@/components/ProgramBadge";
+import { getGradeBadgeClass, gradeLevelLabel } from "@/lib/gradeColor";
 import {
   Table,
   TableBody,
@@ -39,10 +41,6 @@ interface TermFinalizationSectionCardProps {
   onUnfinalizeSection: () => void;
   onFinalizeSubject: (subject: TermFinalizationSubject) => void;
   onUnfinalizeSubject: (subject: TermFinalizationSubject) => void;
-}
-
-function gradeLevelLabel(value: string): string {
-  return value.replace(/^GRADE_/, "Grade ");
 }
 
 function sectionStatus(section: TermFinalizationSection, archived: boolean) {
@@ -129,7 +127,7 @@ export default function TermFinalizationSectionCard({
         <Button
           size="sm"
           variant="outline"
-          className="h-7 text-xs text-amber-700 border-amber-200 hover:bg-amber-50"
+          className="h-7 text-xs text-muted-foreground hover:text-foreground"
           disabled={actionsDisabled || !!busyKey || section.eosyFinalized}
           title={
             section.eosyFinalized
@@ -177,14 +175,16 @@ export default function TermFinalizationSectionCard({
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-foreground">{section.sectionName}</span>
-                <Badge variant="outline" className="text-[10px] font-medium">
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
+                    getGradeBadgeClass(section.gradeLevel),
+                  )}
+                >
                   {gradeLevelLabel(section.gradeLevel)}
                 </Badge>
-                {section.program !== "REGULAR" && (
-                  <Badge variant="outline" className="text-[10px] font-medium">
-                    {section.program}
-                  </Badge>
-                )}
+                <ProgramBadge program={section.program} />
                 {section.eosyFinalized ? (
                   <Badge className="bg-primary/10 text-primary border-primary/30 text-[10px] font-medium">
                     EOSY finalized
@@ -274,7 +274,7 @@ export default function TermFinalizationSectionCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 text-xs text-amber-700 border-amber-200 hover:bg-amber-50"
+                className="h-8 text-xs text-muted-foreground hover:text-foreground"
                 disabled={actionsDisabled || sectionBusy || section.eosyFinalized}
                 title={
                   section.eosyFinalized

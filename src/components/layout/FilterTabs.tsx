@@ -4,7 +4,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 const listClass =
-  "w-full justify-start gap-2 p-0 bg-transparent group-data-horizontal/tabs:h-auto overflow-x-auto";
+  "w-full justify-start gap-2 p-0 bg-transparent group-data-horizontal/tabs:h-auto overflow-x-auto overflow-y-hidden";
 const triggerClass =
   "flex-1 gap-2 px-4 py-2.5 text-sm font-semibold whitespace-nowrap border border-border bg-card text-foreground shadow-xs transition-colors hover:bg-muted/60 data-active:border-primary data-active:bg-primary data-active:text-primary-foreground data-active:shadow-sm data-active:hover:border-primary data-active:hover:bg-primary data-active:hover:text-primary-foreground dark:border-border dark:bg-card dark:text-foreground dark:data-active:border-primary dark:data-active:bg-primary dark:data-active:text-primary-foreground dark:data-active:hover:border-primary dark:data-active:hover:bg-primary dark:data-active:hover:text-primary-foreground";
 

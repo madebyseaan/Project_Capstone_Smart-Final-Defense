@@ -30,7 +30,7 @@ function evaluateStatus(online: boolean, httpStatus: number | null): ExternalHea
 async function pingUrl(name: string, url: string, headers?: Record<string, string>): Promise<ExternalHealthCheck> {
   const started = Date.now();
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers });
+    const response = await fetch(url, { signal: AbortSignal.timeout(12000), headers });
     const status = evaluateStatus(response.ok, response.status);
     return {
       name,

@@ -1,17 +1,15 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Archive,
   CheckCircle2,
-  ClipboardCheck,
   FileWarning,
-  Loader2,
-  RefreshCw,
   Search,
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -31,13 +29,19 @@ import type {
 } from "@/lib/eosyTypes";
 
 interface EOSYFinalizationStatusPanelProps {
+  header?: ReactNode;
   overview: EosyFinalizationOverview | null;
   loading: boolean;
   error: string | null;
   yearLabel: string;
+  schoolYears: any[];
+  selectedSchoolYearId: string;
+  onSchoolYearChange: (value: string) => void;
+  schoolYearsLoading?: boolean;
   onRefresh: () => void;
   onOpenSection: (section: EosyFinalizationSectionStatus) => void;
   canOpenSection: (section: EosyFinalizationSectionStatus) => boolean;
+  isSectionSelected?: (section: EosyFinalizationSectionStatus) => boolean;
 }
 
 const STATE_CONFIG: Record<
@@ -80,13 +84,19 @@ function needsAttention(section: EosyFinalizationSectionStatus): boolean {
 }
 
 export default function EOSYFinalizationStatusPanel({
+  header,
   overview,
   loading,
   error,
   yearLabel,
+  schoolYears,
+  selectedSchoolYearId,
+  onSchoolYearChange,
+  schoolYearsLoading,
   onRefresh,
   onOpenSection,
   canOpenSection,
+  isSectionSelected,
 }: EOSYFinalizationStatusPanelProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -233,6 +243,7 @@ export default function EOSYFinalizationStatusPanel({
             title={enabled ? undefined : "This section is not available in EnrollPro."}
             aria-label={`Open ${section.sectionName}`}
             data-testid="eosy-status-open"
+            className="border-primary/40 font-medium text-primary hover:bg-primary/10 hover:text-primary"
             onClick={(event) => {
               event.stopPropagation();
               if (enabled) onOpenSection(section);
@@ -247,87 +258,58 @@ export default function EOSYFinalizationStatusPanel({
 
   return (
     <div className="space-y-4" data-testid="eosy-finalization-status">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <ClipboardCheck className="h-5 w-5" />
+      <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
+        {header && <div className="p-4 lg:p-5">{header}</div>}
+
+        {summary && (
+          <div className="border-t border-border p-4 lg:p-5" data-testid="eosy-status-summary">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                compact
+                label="Sections"
+                value={summary.totalSections}
+                numericValue={summary.totalSections}
+                icon={<Users className="h-5 w-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                compact
+                label="Finalized"
+                value={summary.finalizedSections}
+                numericValue={summary.finalizedSections}
+                icon={<CheckCircle2 className="h-5 w-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                compact
+                label="Still Needs Work"
+                value={stillNeedsWork}
+                numericValue={stillNeedsWork}
+                icon={<AlertTriangle className="h-5 w-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+              <StatCard
+                compact
+                label="Snapshot Gaps"
+                value={summary.snapshotGapSections}
+                numericValue={summary.snapshotGapSections}
+                icon={<FileWarning className="h-5 w-5 text-primary" />}
+                iconClassName="bg-primary/10"
+                className="border border-border bg-muted/30 shadow-none"
+              />
+            </div>
           </div>
-          <div>
-            <h2 className="text-base font-semibold text-foreground">
-              EOSY Finalization Status
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {yearLabel
-                ? `Every SMART section for ${yearLabel} — check at a glance for missed sections.`
-                : "Select a school year to check every section."}
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRefresh}
-          disabled={loading || !yearLabel}
-          data-testid="eosy-status-refresh"
-        >
-          {loading ? (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-          )}
-          Refresh
-        </Button>
-      </div>
+        )}
 
-      {summary && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" data-testid="eosy-status-summary">
-          <StatCard
-            label="Sections"
-            value={summary.totalSections}
-            numericValue={summary.totalSections}
-            icon={<Users className="h-5 w-5 text-primary" />}
-            iconClassName="bg-primary/10"
-          />
-          <StatCard
-            label="Finalized"
-            value={summary.finalizedSections}
-            numericValue={summary.finalizedSections}
-            icon={<CheckCircle2 className="h-5 w-5 text-primary" />}
-            iconClassName="bg-primary/10"
-          />
-          <StatCard
-            label="Still Needs Work"
-            value={stillNeedsWork}
-            numericValue={stillNeedsWork}
-            icon={<AlertTriangle className="h-5 w-5 text-primary" />}
-            iconClassName="bg-primary/10"
-          />
-          <StatCard
-            label="Snapshot Gaps"
-            value={summary.snapshotGapSections}
-            numericValue={summary.snapshotGapSections}
-            icon={<FileWarning className="h-5 w-5 text-primary" />}
-            iconClassName="bg-primary/10"
-          />
-        </div>
-      )}
-
-      {overview?.yearStatus === "ARCHIVED" && (
-        <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
-          <Archive className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">
-            This school year is archived. Status is shown for review only.
-          </p>
-        </div>
-      )}
-
-      {!loading && !error && summary && summary.totalSections > 0 && (
-        <div data-testid="eosy-status-banner">
-          {summary.readyForRollover ? (
-            <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-              <div>
-                <p className="text-sm font-semibold text-emerald-800">
+        {summary && !loading && !error && summary.totalSections > 0 && (
+          <div className="border-t border-border p-4 lg:p-5" data-testid="eosy-status-banner">
+            {summary.readyForRollover ? (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                <p className="text-xs font-semibold text-emerald-800">
                   All sections are finalized — nothing missed.
                 </p>
                 <p className="text-xs text-emerald-700">
@@ -338,12 +320,10 @@ export default function EOSYFinalizationStatusPanel({
                   {summary.snapshotGapSections === 0 ? " · snapshots complete" : ""}
                 </p>
               </div>
-            </div>
-          ) : summary.allPromotionsFinalized ? (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <div>
-                <p className="text-sm font-semibold text-amber-800">
+            ) : summary.allPromotionsFinalized ? (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <FileWarning className="h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs font-semibold text-amber-800">
                   {summary.snapshotGapSections} section
                   {summary.snapshotGapSections === 1 ? "" : "s"} missing EOSY snapshots.
                 </p>
@@ -351,12 +331,10 @@ export default function EOSYFinalizationStatusPanel({
                   Promotion statuses are saved, but rollover will stay blocked until the snapshot gaps are resolved.
                 </p>
               </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <div>
-                <p className="text-sm font-semibold text-amber-800">
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs font-semibold text-amber-800">
                   {summary.partialSections + summary.notStartedSections} section
                   {summary.partialSections + summary.notStartedSections === 1 ? "" : "s"} still{" "}
                   {summary.partialSections + summary.notStartedSections === 1 ? "needs" : "need"}{" "}
@@ -372,8 +350,17 @@ export default function EOSYFinalizationStatusPanel({
                     : ""}
                 </p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )}
+      </Card>
+
+      {overview?.yearStatus === "ARCHIVED" && (
+        <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
+          <Archive className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">
+            This school year is archived. Status is shown for review only.
+          </p>
         </div>
       )}
 
@@ -383,7 +370,11 @@ export default function EOSYFinalizationStatusPanel({
         loading={loading}
         error={error}
         title="Section Status"
-        description="Status is from SMART records; section detail uses EnrollPro records."
+        description={
+          yearLabel
+            ? `Every SMART section for ${yearLabel}. Status is from SMART records; detail uses EnrollPro.`
+            : "Status is from SMART records; detail uses EnrollPro."
+        }
         emptyTitle={
           sections.length === 0
             ? "No SMART sections for this school year"
@@ -396,14 +387,46 @@ export default function EOSYFinalizationStatusPanel({
         }
         emptySearchTerm={search}
         rowKey={(section) => section.sectionId}
+        isRowSelected={isSectionSelected}
         onRowClick={(section) => {
           if (canOpenSection(section)) onOpenSection(section);
         }}
         onRetry={onRefresh}
         pagination={pagination}
         toolbar={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <div className="relative w-full sm:w-52">
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
+            <Select
+              value={selectedSchoolYearId}
+              onValueChange={(value) => {
+                if (value) onSchoolYearChange(value);
+              }}
+              disabled={schoolYearsLoading || schoolYears.length === 0}
+            >
+              <SelectTrigger
+                className="h-9 w-full text-xs font-medium sm:w-[180px]"
+                aria-label="School year"
+                data-testid="eosy-school-year-filter"
+              >
+                <SelectValue placeholder="School Year">
+                  {(() => {
+                    const sy = schoolYears.find(
+                      (year) => String(year.id) === selectedSchoolYearId,
+                    );
+                    return sy
+                      ? `${sy.yearLabel}${sy.status === "ACTIVE" ? " (Active)" : ""}`
+                      : "School Year";
+                  })()}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {schoolYears.map((sy) => (
+                  <SelectItem key={sy.id} value={String(sy.id)}>
+                    {sy.yearLabel} {sy.status === "ACTIVE" ? "(Active)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="relative w-full sm:w-56">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
