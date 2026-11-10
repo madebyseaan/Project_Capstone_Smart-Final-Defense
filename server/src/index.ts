@@ -26,6 +26,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth";
 import ssoRoutes from "./routes/sso";
+import atlasSsoRoutes from "./routes/atlasSso";
 import gradesRoutes from "./routes/grades";
 import advisoryRoutes from "./routes/advisory";
 import registrarRoutes from "./routes/registrar";
@@ -78,11 +79,14 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/auth", ssoRoutes);
+app.use("/api/auth", atlasSsoRoutes);
 // Same SSO handlers are also reachable without the /api prefix and under the
 // AIMS-style /api/v1 prefix so EnrollPro deployments that register alternate
 // callback/exchange URLs keep working.
 app.use("/auth", ssoRoutes);
 app.use("/api/v1/auth", ssoRoutes);
+app.use("/auth", atlasSsoRoutes);
+app.use("/api/v1/auth", atlasSsoRoutes);
 
 app.use("/api/grades", gradesRoutes);
 app.use("/api/advisory", advisoryRoutes);

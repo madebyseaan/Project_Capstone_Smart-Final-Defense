@@ -19,6 +19,7 @@ const SsoSessionPage = lazy(() => import('./pages/auth/SsoSessionPage'))
 const EnrollProAuthorizePage = lazy(() => import('./pages/auth/EnrollProAuthorizePage'))
 const SsoCallbackForwardPage = lazy(() => import('./pages/auth/SsoCallbackForwardPage'))
 const SsoErrorPage = lazy(() => import('./pages/auth/SsoErrorPage'))
+const AtlasAuthorizePage = lazy(() => import('./pages/auth/AtlasAuthorizePage'))
 
 // Teacher pages
 const TeacherDashboard = lazy(() => import('./pages/teacher/Dashboard'))
@@ -112,6 +113,9 @@ function App() {
         {/* Alias for EnrollPro deployments configured with /auth/sso/authorize */}
         <Route path="/auth/sso/authorize" element={<EnrollProAuthorizePage />} />
         <Route path="/auth/enrollpro/error" element={<SsoErrorPage />} />
+
+        {/* SMART -> ATLAS admin-only SSO */}
+        <Route path="/auth/atlas/authorize" element={<AtlasAuthorizePage />} />
       
       {/* Teacher routes */}
       <Route path="/teacher" element={<TeacherLayout />}>

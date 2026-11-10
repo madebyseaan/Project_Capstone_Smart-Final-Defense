@@ -41,7 +41,7 @@ export const ssoAuthorizeLimiter = rateLimit({
   message: { code: 'COMPANION_SSO_RATE_LIMITED', message: 'Too many sign-in attempts. Please try again shortly.' },
 });
 
-/** SSO reverse exchange: 60 per minute per IP (server-to-server call from EnrollPro) */
+/** SSO reverse exchange: 60 per minute per IP (server-to-server call from a companion) */
 export const ssoExchangeLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,

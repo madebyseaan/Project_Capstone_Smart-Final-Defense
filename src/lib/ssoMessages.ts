@@ -32,3 +32,30 @@ export function plainSsoMessage(code: string | null | undefined): string {
       return "Could not complete sign-in with EnrollPro. Please try again.";
   }
 }
+
+/**
+ * Plain, non-sensitive user-facing messages for the SMART -> ATLAS admin-only
+ * SSO flow. Never render raw HTTP responses, codes, secrets, or callback URLs.
+ */
+export function plainAtlasSsoMessage(code: string | null | undefined): string {
+  switch (code) {
+    case "COMPANION_REVERSE_SSO_ROLE_DENIED":
+      return "ATLAS is available to SMART administrators only.";
+    case "COMPANION_REVERSE_SSO_ACCOUNT_UNAVAILABLE":
+      return "Your SMART account is not available. Please contact your school administrator.";
+    case "COMPANION_SSO_CODE_INVALID":
+      return "This sign-in link expired or was already used. Please start again from SMART.";
+    case "COMPANION_SSO_CLIENT_INVALID":
+      return "ATLAS sign-in is misconfigured. Please contact your school administrator.";
+    case "COMPANION_REVERSE_SSO_CALLBACK_INVALID":
+      return "ATLAS sign-in could not be started. Please start again from SMART.";
+    case "COMPANION_REVERSE_SSO_NOT_CONFIGURED":
+    case "COMPANION_SSO_NOT_CONFIGURED":
+      return "ATLAS sign-in is not configured. Please contact your school administrator.";
+    case "ACTIVE_SCHOOL_YEAR_REQUIRED":
+    case "ACTIVE_SCHOOL_YEAR_CONFLICT":
+      return "No active school year is available. Please contact your school administrator.";
+    default:
+      return "Could not open ATLAS. Please try again.";
+  }
+}

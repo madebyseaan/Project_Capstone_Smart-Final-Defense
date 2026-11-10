@@ -74,7 +74,7 @@ The current contract does not directly launch one companion from another compani
 
 There is currently no:
 
-- direct AIMS-to-SMART or SMART-to-ATLAS SSO contract
+- operational direct companion-to-companion SSO (the SMART-to-ATLAS admin-only flow is implemented on SMART; ATLAS implementation and end-to-end verification are pending)
 - shared cross-domain cookie
 - shared OpenID Connect provider
 - coordinated single logout
@@ -1043,10 +1043,11 @@ Do not implement any of the following:
 - [EnrollPro Companion SSO Flow](ENROLLPRO-COMPANION-SSO-FLOW.md)
 - [AIMS EnrollPro SSO](AIMS-ENROLLPRO-SSO.md)
 - [SMART EnrollPro SSO](SMART-ENROLLPRO-SSO.md)
+- [SMART ATLAS SSO (Admin Only)](SMART-ATLAS-SSO.md)
 - [ATLAS EnrollPro SSO](ATLAS-ENROLLPRO-SSO.md)
 - [MRF EnrollPro SSO](MRF-ENROLLPRO-SSO.md)
 - [Response to AIMS SSO Questions](ENROLLPRO-RESPONSE-TO-AIMS-SSO.md)
 
 ## Final Implementation Rule
 
-The EnrollPro sidebar may use the existing outbound one-time-code flow now. EnrollPro now implements the protected reverse start, callback, identity-link, and local-session flow. AIMS, SMART, ATLAS, and MRF must implement the documented reverse authorization and exchange endpoints before enabling their EnrollPro sidebar item. Direct companion-to-companion items remain disabled until Phase 3 central federation is implemented. Visual completion of a sidebar is not sufficient evidence that SSO is secure or operational.
+The EnrollPro sidebar may use the existing outbound one-time-code flow now. EnrollPro now implements the protected reverse start, callback, identity-link, and local-session flow. AIMS, SMART, ATLAS, and MRF must implement the documented reverse authorization and exchange endpoints before enabling their EnrollPro sidebar item. Direct companion-to-companion items remain disabled until Phase 3 central federation is implemented, except the SMART-to-ATLAS admin-only flow defined in `SMART-ATLAS-SSO.md`; it is implemented on SMART and stays disabled until ATLAS implements its side and end-to-end verification passes. Visual completion of a sidebar is not sufficient evidence that SSO is secure or operational.

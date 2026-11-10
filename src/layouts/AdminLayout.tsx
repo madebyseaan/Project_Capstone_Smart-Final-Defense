@@ -470,7 +470,7 @@ export default function AdminLayout() {
               </div>
             </div>
           ))}
-          <IntegratedSystemsNav collapsed={sidebarCollapsed} />
+          <IntegratedSystemsNav collapsed={sidebarCollapsed} portal="admin" />
         </nav>
 
         {/* User Profile at Bottom */}

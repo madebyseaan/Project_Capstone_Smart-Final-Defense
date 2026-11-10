@@ -287,7 +287,7 @@ export default function TeacherLayout() {
               </div>
             </div>
           ))}
-          <IntegratedSystemsNav collapsed={sidebarCollapsed} />
+          <IntegratedSystemsNav collapsed={sidebarCollapsed} portal="teacher" />
         </nav>
 
         {/* User Profile at Bottom */}

@@ -296,7 +296,7 @@ export default function RegistrarLayout() {
               </div>
             </div>
           ))}
-          <IntegratedSystemsNav collapsed={sidebarCollapsed} />
+          <IntegratedSystemsNav collapsed={sidebarCollapsed} portal="registrar" />
         </nav>
 
         {/* User Profile at Bottom */}

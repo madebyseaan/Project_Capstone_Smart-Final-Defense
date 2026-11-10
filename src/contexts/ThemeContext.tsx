@@ -21,6 +21,8 @@ interface ThemeContextType {
   currentSchoolYear: string;
   /** Public EnrollPro origin, used for the Integrated Systems sidebar (reverse SSO launch). */
   enrollproPublicUrl: string;
+  /** ATLAS admin SSO entry point, exposed by the server only when configured. */
+  atlasSsoStartUrl: string;
   loading: boolean;
   refreshTheme: () => Promise<void>;
 }
@@ -43,6 +45,7 @@ const ThemeContext = createContext<ThemeContextType>({
   schoolId: "",
   currentSchoolYear: "",
   enrollproPublicUrl: DEFAULT_ENROLLPRO_PUBLIC_URL,
+  atlasSsoStartUrl: "",
   loading: true,
   refreshTheme: async () => {},
 });
@@ -185,6 +188,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [enrollproPublicUrl, setEnrollproPublicUrl] = useState(
     () => import.meta.env.VITE_ENROLLPRO_PUBLIC_URL || DEFAULT_ENROLLPRO_PUBLIC_URL,
   );
+  const [atlasSsoStartUrl, setAtlasSsoStartUrl] = useState(
+    () => import.meta.env.VITE_ATLAS_SSO_START_URL || "",
+  );
   const [loading, setLoading] = useState(true);
 
   // Apply cached theme immediately so there's no flash on refresh
@@ -196,7 +202,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   const refreshTheme = async () => {
     try {
-      const response = await axios.get<{ settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string; currentSchoolYear?: string; enrollproPublicUrl?: string } }>(SETTINGS_URL, {
+      const response = await axios.get<{ settings: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string; schoolName?: string; address?: string; division?: string; region?: string; schoolId?: string; currentSchoolYear?: string; enrollproPublicUrl?: string; atlasSsoStartUrl?: string | null } }>(SETTINGS_URL, {
         withCredentials: true,
       });
       const settings = response.data.settings;
@@ -225,6 +231,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       if (settings.enrollproPublicUrl) {
         setEnrollproPublicUrl(settings.enrollproPublicUrl.replace(/\/+$/, ""));
       }
+      setAtlasSsoStartUrl(settings.atlasSsoStartUrl?.trim() ?? "");
 
       // Persist to localStorage so refresh loads instantly
       saveThemeCache({ colors: newColors, logoUrl: newLogoUrl, schoolName: newSchoolName, schoolAddress: newAddress, schoolDivision: newDivision, schoolRegion: newRegion, schoolId: newSchoolId, currentSchoolYear: newSchoolYear });
@@ -327,7 +334,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ colors, logoUrl, schoolName, schoolAddress, schoolDivision, schoolRegion, schoolId, currentSchoolYear, enrollproPublicUrl, loading, refreshTheme }}>
+    <ThemeContext.Provider value={{ colors, logoUrl, schoolName, schoolAddress, schoolDivision, schoolRegion, schoolId, currentSchoolYear, enrollproPublicUrl, atlasSsoStartUrl, loading, refreshTheme }}>
       {children}
     </ThemeContext.Provider>
   );

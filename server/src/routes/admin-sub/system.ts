@@ -11,6 +11,7 @@ import { addSettingsSseClient, removeSettingsSseClient, broadcastSettingsUpdate 
 import { syncEnrollProBranding } from "../../lib/enrollproBrandingSync";
 import { invalidateEnrollProCredentials } from "../../lib/enrollproClient";
 import { getEnrollProPublicUrl } from "../../lib/companionSso";
+import { getAtlasSsoConfig } from "../../services/atlasSsoService";
 import { getRecentSyncHistory, runUnifiedSync } from "../../lib/syncCoordinator";
 import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
@@ -123,6 +124,11 @@ export default function (router: Router) {
         // Non-fatal: active school year may not be linked yet.
       }
 
+      // Only expose the launch URL when the callback and secret are also
+      // configured; otherwise the sidebar item stays disabled.
+      const atlasSso = getAtlasSsoConfig();
+      const atlasSsoStartUrl = atlasSso.configured ? atlasSso.startUrl : null;
+
       res.json({
         settings: settings
           ? {
@@ -140,8 +146,9 @@ export default function (router: Router) {
               currentTerm: settings.currentTerm,
               termDatesDerived: settings.termDatesDerived,
               enrollproPublicUrl: getEnrollProPublicUrl(),
+              atlasSsoStartUrl,
             }
-          : { enrollproPublicUrl: getEnrollProPublicUrl() },
+          : { enrollproPublicUrl: getEnrollProPublicUrl(), atlasSsoStartUrl },
         termLabels,
       });
     } catch (error) {
