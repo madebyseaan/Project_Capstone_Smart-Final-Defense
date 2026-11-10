@@ -4,10 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeOff, LogIn, User, Lock, AlertCircle, CheckCircle, FileText, Sparkles, Loader2, UserCheck, FolderOpen, ClipboardCheck } from "lucide-react";
+import { Eye, EyeOff, LogIn, User, Lock, AlertCircle, CheckCircle, FileText, Sparkles, UserCheck, FolderOpen, ClipboardCheck } from "lucide-react";
 import axios from "axios";
+import * as m from "motion/react-m";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
+import { LoginAurora, LoginMotionShell, useLoginEntrance } from "@/components/auth/LoginMotion";
 
 const API_URL = "/api";
 
@@ -28,6 +30,7 @@ interface LoginResponse {
 export default function RegistrarLoginPage() {
   const navigate = useNavigate();
   const { logoUrl, schoolName } = useTheme();
+  const entrance = useLoginEntrance();
   const acronym = "SMART";
   const fullLogoUrl = logoUrl ? (logoUrl.startsWith("http") ? logoUrl : `${SERVER_URL}${logoUrl}`) : null;
   const [showPassword, setShowPassword] = useState(false);
@@ -72,9 +75,7 @@ export default function RegistrarLoginPage() {
         return;
       }
 
-      setTimeout(() => {
-        navigate("/registrar");
-      }, 1000);
+      navigate("/registrar", { replace: true });
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {
         const data = err.response.data as { message?: string } | undefined;
@@ -88,9 +89,10 @@ export default function RegistrarLoginPage() {
   };
 
   return (
-    <div
-      className="min-h-dvh w-full flex bg-background lg:h-screen lg:overflow-hidden"
-      style={{
+    <LoginMotionShell>
+      <div
+        className="min-h-dvh w-full flex bg-background lg:h-screen lg:overflow-hidden"
+        style={{
         backgroundImage:
           'linear-gradient(to bottom right, #f8fafc 0%, rgba(var(--theme-primary-rgb), 0.08) 50%, rgba(var(--theme-primary-rgb), 0.06) 100%)',
         '--primary': 'var(--theme-primary)',
@@ -183,18 +185,23 @@ export default function RegistrarLoginPage() {
           </svg>
         </div>
 
-        <div className="relative z-10 w-full max-w-[420px]">
+        <LoginAurora variant="card" />
+
+        <m.div {...entrance.fadeUp(0.1, 14, 0.98)} className="relative z-10 w-full max-w-[420px]">
           {/* Login card with premium styling */}
           <Card className="border border-border/60 shadow-[0_24px_48px_-16px_rgba(15,23,42,0.18)] bg-card rounded-3xl overflow-hidden">
             <CardHeader className="text-left px-5 pt-6 pb-0 sm:px-7 lg:pt-7 bg-transparent border-b-0">
               <div className="flex items-center gap-3">
-                <div className="flex shrink-0 items-center justify-center w-12 h-12 lg:w-14 lg:h-14 rounded-2xl overflow-hidden bg-card border border-border shadow-sm p-1">
+                <m.div
+                  {...entrance.fadeUp(0.22, 8, 0.92)}
+                  className="flex shrink-0 items-center justify-center w-12 h-12 lg:w-14 lg:h-14 rounded-2xl overflow-hidden bg-card border border-border shadow-sm p-1"
+                >
                   {fullLogoUrl ? (
                     <img src={fullLogoUrl} alt={schoolName} className="w-full h-full object-contain" />
                   ) : (
                     <Sparkles className="w-5 h-5 text-primary" />
                   )}
-                </div>
+                </m.div>
                 <div className="min-w-0">
                   <span className="flex items-center gap-2 text-base lg:text-lg font-bold tracking-tight text-foreground">
                     {acronym}
@@ -219,26 +226,34 @@ export default function RegistrarLoginPage() {
             <CardContent className="px-5 pb-6 pt-5 sm:px-7 lg:pb-7">
               {/* Error Message */}
               {error && (
-                <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-xl border border-destructive/20 bg-destructive/5 px-3.5 py-3 animate-login-scale-in">
+                <m.div
+                  {...entrance.fadeUp(0, -4)}
+                  role="alert"
+                  className="mb-4 flex items-start gap-2.5 rounded-xl border border-destructive/20 bg-destructive/5 px-3.5 py-3"
+                >
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
                   <span className="text-sm font-medium text-destructive">{error}</span>
-                </div>
+                </m.div>
               )}
 
               {/* Success Message */}
               {success && (
-                <div role="status" className="mb-4 flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3 animate-login-scale-in">
+                <m.div
+                  {...entrance.fadeUp(0, -4)}
+                  role="status"
+                  className="mb-4 flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3"
+                >
                   <CheckCircle className="w-4 h-4 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
                   <div>
                     <p className="text-sm font-semibold text-foreground">Access granted!</p>
                     <p className="text-xs text-muted-foreground">Loading registrar tools...</p>
                   </div>
-                </div>
+                </m.div>
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Employee ID Field */}
-                <div className="space-y-1.5">
+                <m.div {...entrance.fadeUp(0.28)} className="space-y-1.5">
                   <Label htmlFor="email" className="text-sm font-medium text-foreground">
                     Employee ID or Email
                   </Label>
@@ -262,10 +277,10 @@ export default function RegistrarLoginPage() {
                       required
                     />
                   </div>
-                </div>
+                </m.div>
 
                 {/* Password Field */}
-                <div className="space-y-1.5">
+                <m.div {...entrance.fadeUp(0.34)} className="space-y-1.5">
                   <Label htmlFor="password" className="text-sm font-medium text-foreground">
                     Password
                   </Label>
@@ -298,19 +313,21 @@ export default function RegistrarLoginPage() {
                   <p className="pt-0.5 text-right text-xs leading-relaxed text-muted-foreground">
                     <span className="font-medium text-foreground">Forgot password?</span> Contact the System Admin.
                   </p>
-                </div>
+                </m.div>
 
                 {/* Login Button */}
+                <m.div
+                  {...entrance.fadeUp(0.4)}
+                  whileHover={entrance.reduce ? undefined : { scale: 1.01 }}
+                  whileTap={entrance.reduce ? undefined : { scale: 0.985 }}
+                >
                 <Button
                   type="submit"
                   disabled={isLoading}
                   className="w-full h-12 lg:h-11 font-semibold text-sm rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.99] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="animate-spin h-4 w-4" />
-                      Signing in...
-                    </span>
+                    <span>Signing in...</span>
                   ) : (
                     <span className="flex items-center gap-2">
                       <LogIn className="w-4 h-4" />
@@ -318,11 +335,13 @@ export default function RegistrarLoginPage() {
                     </span>
                   )}
                 </Button>
+                </m.div>
               </form>
             </CardContent>
           </Card>
-        </div>
+        </m.div>
       </div>
-    </div>
+      </div>
+    </LoginMotionShell>
   );
 }

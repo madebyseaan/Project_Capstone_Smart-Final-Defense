@@ -326,16 +326,18 @@ export default function TeacherDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[80vh]">
-        <div className="text-center">
-          <div className="relative w-24 h-24 mx-auto mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-muted" />
-            <div className="absolute inset-0 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Sparkles className="w-8 h-8 text-indigo-500 animate-pulse" />
-            </div>
+      <div className="flex min-h-[60vh] items-center justify-center px-6">
+        <div className="w-full max-w-sm text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
+            <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />
           </div>
-          <p className="text-muted-foreground font-medium text-lg animate-pulse">Igniting your dashboard...</p>
+          <p className="mt-4 text-sm font-semibold text-foreground">Preparing your dashboard</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Loading your classes and advisory data.
+          </p>
+          <div className="mx-auto mt-5 h-1 w-44 overflow-hidden rounded-full bg-muted">
+            <div className="dashboard-loading-bar h-full w-1/2 rounded-full bg-primary" />
+          </div>
         </div>
       </div>
     );

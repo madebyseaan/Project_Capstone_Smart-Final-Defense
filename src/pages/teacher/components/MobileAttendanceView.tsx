@@ -346,7 +346,7 @@ export default function MobileAttendanceView({
                                 aria-pressed={selected}
                                 aria-label={option.label}
                                 className={cn(
-                                  "flex min-h-12 items-center justify-center rounded-xl border px-1 text-[0.8rem] font-semibold transition-[background-color,border-color,color,transform] duration-200 active:scale-[0.96]",
+                                  "flex min-h-12 items-center justify-center rounded-xl border px-1 text-[0.8rem] font-semibold transition-[background-color,border-color,color,transform] duration-200 motion-reduce:transition-none active:scale-[0.96]",
                                   selected
                                     ? option.activeClass
                                     : "border-border bg-background text-muted-foreground",

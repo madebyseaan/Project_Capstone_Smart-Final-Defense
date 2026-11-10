@@ -177,6 +177,65 @@ body {
   }
 }
 
+.login-aurora {
+  position: absolute;
+  width: 26rem;
+  height: 26rem;
+  border-radius: 9999px;
+  will-change: transform, opacity;
+}
+
+.login-aurora-brand {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.22), transparent 68%);
+}
+
+.login-aurora-card {
+  background: radial-gradient(circle, rgba(var(--theme-primary-rgb), 0.32), transparent 68%);
+}
+
+.login-aurora-a {
+  top: -8rem;
+  left: -8rem;
+  animation: login-aurora-a 18s ease-in-out infinite;
+}
+
+.login-aurora-b {
+  right: -10rem;
+  bottom: -10rem;
+  animation: login-aurora-b 22s ease-in-out infinite;
+}
+
+@keyframes login-aurora-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.35; }
+  50% { transform: translate3d(4%, 3%, 0) scale(1.08); opacity: 0.55; }
+}
+
+@keyframes login-aurora-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.3; }
+  50% { transform: translate3d(-4%, -3%, 0) scale(1.1); opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-aurora {
+    animation: none;
+  }
+}
+
+.dashboard-loading-bar {
+  animation: dashboard-loading-slide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes dashboard-loading-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(260%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-loading-bar {
+    animation: none;
+  }
+}
+
 @keyframes smart-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -200,34 +259,31 @@ body {
 
 @media (max-width: 1023px) and (prefers-reduced-motion: no-preference) {
   .motion-page {
-    animation: smart-fade-in 220ms ease-out both;
+    animation: smart-fade-in 140ms ease-out both;
   }
 
   .motion-stagger > * {
-    animation: smart-rise-in 300ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    animation: smart-rise-in 200ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   }
 
-  .motion-stagger > *:nth-child(1) { animation-delay: 20ms; }
-  .motion-stagger > *:nth-child(2) { animation-delay: 60ms; }
-  .motion-stagger > *:nth-child(3) { animation-delay: 100ms; }
-  .motion-stagger > *:nth-child(4) { animation-delay: 140ms; }
-  .motion-stagger > *:nth-child(5) { animation-delay: 180ms; }
-  .motion-stagger > *:nth-child(6) { animation-delay: 220ms; }
-  .motion-stagger > *:nth-child(7) { animation-delay: 260ms; }
-  .motion-stagger > *:nth-child(8) { animation-delay: 300ms; }
-  .motion-stagger > *:nth-child(9) { animation-delay: 340ms; }
-  .motion-stagger > *:nth-child(10) { animation-delay: 380ms; }
+  .motion-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .motion-stagger > *:nth-child(2) { animation-delay: 25ms; }
+  .motion-stagger > *:nth-child(3) { animation-delay: 50ms; }
+  .motion-stagger > *:nth-child(4) { animation-delay: 75ms; }
+  .motion-stagger > *:nth-child(5) { animation-delay: 100ms; }
+  .motion-stagger > *:nth-child(6) { animation-delay: 125ms; }
+  .motion-stagger > *:nth-child(n + 7) { animation: none; }
 
   .motion-nav-pop {
-    animation: smart-nav-pop 280ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    animation: smart-nav-pop 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   }
 
   .motion-backdrop {
-    animation: smart-backdrop-in 200ms ease-out both;
+    animation: smart-backdrop-in 140ms ease-out both;
   }
 
   .motion-ring {
-    transition: stroke-dashoffset 700ms ease-out;
+    transition: stroke-dashoffset 450ms ease-out;
   }
 }
 
