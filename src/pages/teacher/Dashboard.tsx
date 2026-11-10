@@ -389,6 +389,7 @@ export default function TeacherDashboard() {
           passingRate={stats?.summary.overallPassingRate ?? 0}
           submissionRate={stats?.summary.gradeSubmissionRate ?? 0}
           classInfo={classInfo}
+          todayClasses={todayClasses}
           classStats={stats?.classStats ?? []}
           mastery={masteryData}
           honors={mobileHonors}

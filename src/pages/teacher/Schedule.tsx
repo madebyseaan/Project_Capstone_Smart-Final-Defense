@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun, Coffee, UtensilsCrossed, Info, MoveHorizontal } from "lucide-react";
+﻿import { useState, useEffect } from "react";
+import { CalendarDays, Clock, RefreshCw, BookOpen, MapPin, AlertTriangle, CalendarClock, Sun, Coffee, UtensilsCrossed, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,165 +8,27 @@ import { useSyncStream } from "@/hooks/useSyncStream";
 import {
   scheduleApi,
   type ScheduleDataDto,
-  type ScheduleEntryDto,
-  type ScheduleSpecialEvent,
   type ScheduleTermInfo,
 } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
-import { cn } from "@/lib/utils";
 import ScheduleDraftPanel from "./components/ScheduleDraftPanel";
+import MobileSchedule from "./components/MobileSchedule";
+import {
+  DAYS,
+  DAY_LABELS,
+  DAY_SHORT,
+  formatGradeShort,
+  formatSectionLabel,
+  formatTime12h,
+  getDayKey,
+  getGradeColors,
+  getTimeSlots,
+  roomDisplay,
+  shortenSubject,
+  stripGradeSuffix,
+} from "./components/ScheduleShared";
 
-// ---------------------------------------------------------------------------
-// Types (server DTOs — ATLAS term-aware published-schedule contract)
-// ---------------------------------------------------------------------------
-type ScheduleEntry = ScheduleEntryDto;
 type ScheduleData = ScheduleDataDto;
-
-// ---------------------------------------------------------------------------
-// Time slot types — class slots and break slots (contract §4.4 specialEvents)
-// ---------------------------------------------------------------------------
-interface ClassSlot {
-  type: "class";
-  start: string;
-  end: string;
-  entries: Record<string, ScheduleEntry>;
-  /** Contract special-event window matching this row exactly (§4.4). */
-  event?: ScheduleSpecialEvent | undefined;
-}
-
-interface BreakSlot {
-  type: "break";
-  start: string;
-  end: string;
-  /** Contract event name — the display label (never invented). */
-  eventName: string;
-  breakType: "recess" | "lunch" | "other";
-  durationMin: number;
-  /** Days the window applies to (`specialEvents[].days`). */
-  days: string[];
-}
-
-type TimeSlot = ClassSlot | BreakSlot;
-
-// ---------------------------------------------------------------------------
-// Constants — matching ClassRecordsList.tsx exactly
-// ---------------------------------------------------------------------------
-const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] as const;
-const DAY_LABELS: Record<string, string> = {
-  MONDAY: "Monday", TUESDAY: "Tuesday", WEDNESDAY: "Wednesday", THURSDAY: "Thursday", FRIDAY: "Friday",
-};
-const DAY_SHORT: Record<string, string> = {
-  MONDAY: "Mon", TUESDAY: "Tue", WEDNESDAY: "Wed", THURSDAY: "Thu", FRIDAY: "Fri",
-};
-
-// Grade colors — same palette as ClassRecordsList.tsx
-function getGradeColors(gradeLevel: string) {
-  switch (gradeLevel) {
-    case "GRADE_7": return {
-      badge: "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20",
-      cell: "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:hover:bg-emerald-500/15",
-      dot: "bg-emerald-400",
-      text: "text-emerald-800 dark:text-emerald-200",
-    };
-    case "GRADE_8": return {
-      badge: "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20",
-      cell: "bg-amber-50/40 border-amber-200 hover:bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/20 dark:hover:bg-amber-500/15",
-      dot: "bg-amber-400",
-      text: "text-amber-800 dark:text-amber-200",
-    };
-    case "GRADE_9": return {
-      badge: "bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20",
-      cell: "bg-rose-50/40 border-rose-200 hover:bg-rose-50 dark:bg-rose-500/10 dark:border-rose-500/20 dark:hover:bg-rose-500/15",
-      dot: "bg-rose-400",
-      text: "text-rose-800 dark:text-rose-200",
-    };
-    case "GRADE_10": return {
-      badge: "bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20",
-      cell: "bg-blue-50/40 border-blue-200 hover:bg-blue-50 dark:bg-blue-500/10 dark:border-blue-500/20 dark:hover:bg-blue-500/15",
-      dot: "bg-blue-400",
-      text: "text-blue-800 dark:text-blue-200",
-    };
-    default: return {
-      badge: "bg-indigo-50 text-indigo-700 border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/20",
-      cell: "bg-indigo-50/40 border-indigo-200 hover:bg-indigo-50 dark:bg-indigo-500/10 dark:border-indigo-500/20 dark:hover:bg-indigo-500/15",
-      dot: "bg-indigo-400",
-      text: "text-indigo-800 dark:text-indigo-200",
-    };
-  }
-}
-
-function formatGradeShort(gradeLevel: string): string {
-  const map: Record<string, string> = { GRADE_7: "G7", GRADE_8: "G8", GRADE_9: "G9", GRADE_10: "G10" };
-  return map[gradeLevel] ?? gradeLevel;
-}
-
-const gradeLevelLabels: Record<string, string> = {
-  GRADE_7: "Grade 7",
-  GRADE_8: "Grade 8",
-  GRADE_9: "Grade 9",
-  GRADE_10: "Grade 10",
-};
-
-function formatSectionLabel(gradeLevel: string, sectionName: string): string {
-  return `${gradeLevelLabels[gradeLevel] ?? gradeLevel} - ${sectionName}`;
-}
-
-const ABBREVIATIONS: Record<string, string> = {
-  "Environmental Science": "Env. Science",
-  "Applied Chemistry": "App. Chemistry",
-  "Physical Science": "Phys. Science",
-  "General Science": "Gen. Science",
-  "Earth Science": "Earth Sci.",
-  "Life Science": "Life Sci.",
-  "Social Studies": "Social Std.",
-  "Filipino": "Filipino",
-  "Araling Panlipunan": "Aral. Pan.",
-  "Edukasyon sa Pagpapakatao": "ESP",
-  "Technology and Livelihood Education": "TLE",
-  "Understanding Culture Society and Politics": "UCSP",
-  "Komunikasyon at Pananaliksik": "Kom. Pan.",
-  "Reading and Writing Skills": "Read & Write",
-  "Contemporary Arts": "Contemp. Arts",
-  "Media and Information Literacy": "MIL",
-  "Physical Education": "P.E.",
-  "Mathematics": "Math",
-  "English": "English",
-  "Science": "Science",
-};
-
-function stripGradeSuffix(name: string): string {
-  return name.replace(/\s*\d+$/, "").trim();
-}
-
-function shortenSubject(name: string): string {
-  if (name.length <= 15) return name;
-  for (const [full, short] of Object.entries(ABBREVIATIONS)) {
-    if (name.startsWith(full)) {
-      return name.replace(full, short);
-    }
-  }
-  return name;
-}
-
-function getDayKey(): string {
-  const day = new Date().getDay();
-  const map = ["", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "", ""];
-  return map[day] ?? "";
-}
-
-/** Convert "08:15" to "8:15 AM" */
-function formatTime12h(time24: string): string {
-  const [h, m] = time24.split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
-}
-
-/** Convert "HH:MM" to total minutes since midnight for gap calculation */
-function timeToMinutes(time: string): number {
-  const [h, m] = time.split(":").map(Number);
-  return h * 60 + m;
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -179,8 +41,6 @@ export default function TeacherSchedule() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
-  const [mobileView, setMobileView] = useState<"agenda" | "week">("agenda");
-  const [selectedDay, setSelectedDay] = useState<string>(getDayKey() || "MONDAY");
 
   const fetchSchedule = async (termIndex?: number | null) => {
     try {
@@ -204,9 +64,6 @@ export default function TeacherSchedule() {
 
   const todayKey = getDayKey();
   const todayClasses = schedule?.byDay[todayKey] ?? [];
-  const selectedDayClasses = [...(schedule?.byDay[selectedDay] ?? [])].sort(
-    (a, b) => a.startTime.localeCompare(b.startTime),
-  );
   const gridRows = getTimeSlots(schedule?.entries ?? [], schedule?.specialEvents ?? [], schedule?.timeSlots ?? []);
   const gradeLevels = [...new Set((schedule?.entries ?? []).map(e => e.section.gradeLevel))].sort();
   const terms: ScheduleTermInfo[] = schedule?.terms ?? [];
@@ -295,12 +152,6 @@ export default function TeacherSchedule() {
     <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-8">
       {termChips}
       {gradeLegend}
-    </div>
-  ) : null;
-
-  const mobileFilterBar = filterContent ? (
-    <div className="rounded-2xl border border-border bg-card px-4 py-3 shadow-sm lg:hidden">
-      {filterContent}
     </div>
   ) : null;
 
@@ -413,27 +264,23 @@ export default function TeacherSchedule() {
 
   // ---- Main render ----
   return (
-    <div className="space-y-6 animate-fade-in pb-12">
-      {/* Compact mobile header */}
-      <div className="flex items-center justify-between gap-3 lg:hidden">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground">
-            S.Y. {schedule.schoolYear} · {schedule.count} classes/week
-          </p>
-          <h1 className="mt-0.5 text-xl font-semibold text-foreground">Weekly schedule</h1>
-        </div>
-        <Button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          variant="outline"
-          size="icon"
-          aria-label="Refresh schedule"
-          className="h-12 w-12 shrink-0 rounded-xl"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-        </Button>
+    <div className="animate-fade-in pb-12">
+      <div className="lg:hidden">
+        <MobileSchedule
+          totalClasses={schedule.count}
+          terms={terms}
+          activeTerm={activeTerm}
+          onTermChange={setSelectedTerm}
+          todayKey={todayKey}
+          byDay={schedule.byDay}
+          gridRows={gridRows}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          notices={notices}
+        />
       </div>
 
+      <div className="hidden space-y-6 lg:block">
       {/* Desktop header */}
       <div className="hidden lg:block">
         <PageHeader
@@ -455,122 +302,9 @@ export default function TeacherSchedule() {
       </div>
 
       {notices}
-      {mobileFilterBar}
-
-      {/* Mobile view switch */}
-      <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 lg:hidden">
-        {(["agenda", "week"] as const).map((view) => (
-          <button
-            key={view}
-            type="button"
-            onClick={() => setMobileView(view)}
-            aria-pressed={mobileView === view}
-            className={cn(
-              "min-h-12 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors",
-              mobileView === view ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
-            )}
-          >
-            {view === "agenda" ? "Day agenda" : "Week grid"}
-          </button>
-        ))}
-      </div>
-
-      {/* Mobile day agenda */}
-      {mobileView === "agenda" && (
-        <Card className="rounded-2xl border border-border bg-card shadow-sm lg:hidden">
-          <CardContent className="p-0">
-            <div className="grid grid-cols-5 gap-1 border-b border-border p-2">
-              {DAYS.map((day) => {
-                const active = selectedDay === day;
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => setSelectedDay(day)}
-                    aria-pressed={active}
-                    aria-label={DAY_LABELS[day]}
-                    className={cn(
-                      "flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors",
-                      active
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted/50 text-muted-foreground active:bg-muted",
-                    )}
-                  >
-                    <span>{DAY_SHORT[day]}</span>
-                    {day === todayKey && (
-                      <span className={cn("text-[9px] font-bold uppercase tracking-wide", active ? "text-primary-foreground/80" : "text-primary")}>
-                        Today
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-semibold text-foreground">{DAY_LABELS[selectedDay]}</h2>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedDayClasses.length} {selectedDayClasses.length === 1 ? "class" : "classes"}
-                  </p>
-                </div>
-                <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide">
-                  {selectedDay === todayKey ? "Today" : "Selected day"}
-                </Badge>
-              </div>
-
-              {selectedDayClasses.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
-                  <Sun className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm font-semibold text-foreground">No classes scheduled</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Enjoy the free day.</p>
-                </div>
-              ) : (
-                <ol className="space-y-2">
-                  {selectedDayClasses.map((entry, idx) => {
-                    const gc = getGradeColors(entry.section.gradeLevel);
-                    return (
-                      <li key={entry.id} className={cn("flex gap-3 rounded-xl border p-3", gc.cell)}>
-                        <div className="w-16 shrink-0 border-r border-border/60 pr-2 text-xs font-semibold text-muted-foreground">
-                          <p className="whitespace-nowrap text-foreground">{formatTime12h(entry.startTime)}</p>
-                          <p className="mt-0.5 whitespace-nowrap">{formatTime12h(entry.endTime)}</p>
-                          <p className="mt-1 text-[10px] font-medium uppercase tracking-wide">#{idx + 1}</p>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className={cn("truncate text-sm font-semibold", gc.text)} title={entry.subject.name}>
-                            {stripGradeSuffix(entry.subject.name)}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs font-medium text-muted-foreground">
-                            {formatSectionLabel(entry.section.gradeLevel, entry.section.name)}
-                          </p>
-                          {roomDisplay(entry) && (
-                            <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                              <MapPin className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{roomDisplay(entry)!.text}</span>
-                            </p>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Grade Level Legend */}
-      {mobileView === "week" && (
-        <p className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground lg:hidden">
-          <MoveHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-          Swipe to see the full week
-        </p>
-      )}
 
       {/* Weekly Timetable Grid */}
-      <div className={cn(mobileView === "week" ? "block" : "hidden", "lg:block")}>
+      <div>
       <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -796,132 +530,13 @@ export default function TeacherSchedule() {
         </Card>
       )}
 
-      {/* Draft (unpublished) timetable preview — ATLAS §8A */}
-      {draftPanel}
+      </div>
+
+      <div className="mt-6">
+        {/* Draft (unpublished) timetable preview — ATLAS §8A */}
+        {draftPanel}
+      </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Minimum gap (minutes) to qualify as a fallback break row */
-const BREAK_THRESHOLD_MIN = 15;
-
-function classifyBreak(eventName: string): BreakSlot["breakType"] {
-  const n = eventName.toLowerCase();
-  if (n.includes("lunch")) return "lunch";
-  if (n.includes("health") || n.includes("recess")) return "recess";
-  return "other";
-}
-
-/**
- * Build the grid rows from the contract's own windows (§4.4):
- *  - class rows keyed by their exact start-end window;
- *  - break rows from `specialEvents[]` — the published school-wide union of
- *    non-teaching windows. Distinct windows are kept as distinct rows (two
- *    "Lunch Break" rows are real: different grade/shift groups); day scope is
- *    honored through `days`. Never invent or merge a window.
- * The old gap heuristic is used ONLY as a fallback when ATLAS published no
- * special events at all (e.g. first sync before the contract state lands).
- */
-function getTimeSlots(
-  entries: ScheduleEntry[],
-  specialEvents: ScheduleSpecialEvent[],
-  contractSlots: { startTime: string; endTime: string }[],
-): TimeSlot[] {
-  // 1. Class windows by exact start-end pair
-  const slotMap = new Map<string, ClassSlot>();
-  for (const entry of entries) {
-    const key = `${entry.startTime}-${entry.endTime}`;
-    if (!slotMap.has(key)) {
-      slotMap.set(key, { type: "class", start: entry.startTime, end: entry.endTime, entries: {} });
-    }
-    slotMap.get(key)!.entries[entry.day.toUpperCase()] = entry;
-  }
-
-  const result: TimeSlot[] = [];
-
-  if (specialEvents.length > 0) {
-    // 2a. Break rows from the published specialEvents union (§4.4).
-    const breakRows = new Map<string, BreakSlot>();
-    for (const evt of specialEvents) {
-      const key = `${evt.startTime}-${evt.endTime}`;
-      const existing = breakRows.get(key);
-      if (existing) {
-        // Same window emitted for overlapping scopes — union the day scope.
-        // The ROW stays single; the distinct-window rule is about windows.
-        existing.days = [...new Set([...existing.days, ...evt.days])];
-        continue;
-      }
-      breakRows.set(key, {
-        type: "break",
-        start: evt.startTime,
-        end: evt.endTime,
-        eventName: evt.eventName,
-        breakType: classifyBreak(evt.eventName),
-        durationMin: timeToMinutes(evt.endTime) - timeToMinutes(evt.startTime),
-        days: [...evt.days],
-      });
-    }
-
-    // Contract period windows anchor the row set (§4.4: use timeSlots to render
-    // a correct grid); rows with no class and no event are skipped as noise.
-    const windowKeys = new Set<string>([
-      ...slotMap.keys(),
-      ...breakRows.keys(),
-      ...contractSlots.map(s => `${s.startTime}-${s.endTime}`),
-    ]);
-    for (const key of windowKeys) {
-      const classSlot = slotMap.get(key);
-      const breakSlot = breakRows.get(key);
-      if (classSlot) {
-        // Class wins the row; a matching event still colors empty day cells.
-        if (breakSlot) classSlot.event = specialEvents.find(e => e.startTime === breakSlot.start && e.endTime === breakSlot.end);
-        result.push(classSlot);
-      } else if (breakSlot) {
-        result.push(breakSlot);
-      }
-    }
-    return result.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
-  }
-
-  // 2b. Fallback: derive break rows from gaps between class slots (legacy).
-  const classSlots = Array.from(slotMap.values()).sort((a, b) => a.start.localeCompare(b.start));
-  if (classSlots.length === 0) return [];
-
-  result.push(classSlots[0]);
-  for (let i = 1; i < classSlots.length; i++) {
-    const prevEnd = timeToMinutes(classSlots[i - 1].end);
-    const nextStart = timeToMinutes(classSlots[i].start);
-    const gap = nextStart - prevEnd;
-
-    if (gap >= BREAK_THRESHOLD_MIN) {
-      const breakType = gap >= 45 ? "lunch" : "recess";
-      result.push({
-        type: "break",
-        start: classSlots[i - 1].end,
-        end: classSlots[i].start,
-        eventName: breakType === "lunch" ? "Lunch Break" : "Recess",
-        breakType,
-        durationMin: gap,
-        days: [...DAYS],
-      });
-    }
-    result.push(classSlots[i]);
-  }
-
-  return result;
-}
-
-/** Room label per contract §4.3 — never present a raw ATLAS surrogate id as a room. */
-function roomDisplay(entry: ScheduleEntry): { text: string; title: string } | null {
-  if (entry.roomLabel) {
-    return { text: entry.roomLabel, title: entry.roomBuilding ? `${entry.roomLabel} — ${entry.roomBuilding}` : entry.roomLabel };
-  }
-  if (entry.roomId != null) {
-    return { text: "Room", title: `ATLAS room id ${entry.roomId} — name not mapped yet` };
-  }
-  return null;
-}
