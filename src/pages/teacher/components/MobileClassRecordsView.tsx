@@ -206,7 +206,7 @@ export default function MobileClassRecordsView({
   const archivedCount = archivedClasses.length;
 
   return (
-    <div className="space-y-5 lg:hidden">
+    <div className="motion-stagger space-y-5 lg:hidden">
       <div className={cn("flex items-center gap-3 p-4", SURFACE)}>
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_12px_24px_-14px_rgba(0,0,0,0.55)]">
           <BookOpen className="h-6 w-6" aria-hidden="true" />

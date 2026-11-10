@@ -22,6 +22,9 @@ import PixelGridBackground from "@/components/layout/PixelGridBackground";
 import AccessibilityMenu from "@/components/layout/AccessibilityMenu";
 import NotificationBell from "@/components/layout/NotificationBell";
 import TeacherBottomNav from "@/components/layout/TeacherBottomNav";
+import InstallAppButton from "@/components/pwa/InstallAppButton";
+import OfflineBanner from "@/components/pwa/OfflineBanner";
+import { registerTeacherPwa } from "@/pwa/registerTeacherPwa";
 import { useHasAdvisory } from "@/hooks/useHasAdvisory";
 interface UserData {
   id: string;
@@ -82,6 +85,10 @@ export default function TeacherLayout() {
 
   useEffect(() => {
     localStorage.setItem("smart_active_portal", "teacher");
+  }, []);
+
+  useEffect(() => {
+    registerTeacherPwa();
   }, []);
 
   useEffect(() => {
@@ -160,12 +167,12 @@ export default function TeacherLayout() {
     : user.username;
 
   return (
-    <div className="isolate min-h-dvh">
+    <div className="isolate min-h-dvh overflow-x-clip pt-[env(safe-area-inset-top)]">
       <PixelGridBackground />
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden transition-opacity"
+          className="motion-backdrop fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -173,7 +180,7 @@ export default function TeacherLayout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 bg-card border-r border-border transition-[width,transform] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] flex flex-col shadow-sm will-change-[width,transform]",
+          "fixed inset-y-0 left-0 z-50 bg-card border-r border-border transition-[width,transform] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] flex flex-col shadow-sm will-change-[width,transform] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           sidebarCollapsed ? "lg:w-[70px] w-[min(86vw,320px)]" : "w-[min(86vw,320px)] lg:w-[280px]"
         )}
@@ -295,6 +302,7 @@ export default function TeacherLayout() {
           "p-4 border-t border-border transition-all duration-200 bg-muted/20 overflow-hidden",
           sidebarCollapsed ? "px-2 py-3" : "p-4"
         )}>
+          <InstallAppButton collapsed={sidebarCollapsed} />
           <div className={cn(
             "flex items-center transition-all duration-200 px-1 py-1",
             sidebarCollapsed ? "flex-col gap-1 justify-center" : "w-full"
@@ -343,7 +351,7 @@ export default function TeacherLayout() {
         sidebarCollapsed ? "lg:pl-[70px]" : "lg:pl-[280px]"
       )}>
         {/* Top navbar */}
-        <header className="sticky top-0 z-30 h-14 border-b border-border bg-background/85 backdrop-blur-md px-3 lg:h-16 lg:px-6">
+        <header className="sticky top-[env(safe-area-inset-top)] z-30 h-14 border-b border-border bg-background/85 backdrop-blur-md px-3 lg:h-16 lg:px-6">
           <div className="h-full flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2 sm:gap-4">
               <button
@@ -409,9 +417,13 @@ export default function TeacherLayout() {
           </div>
         </header>
 
+        <OfflineBanner />
+
         {/* Page content — bottom padding clears the mobile nav + safe area */}
         <main className="flex-1 p-4 pb-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:p-8 lg:pb-8">
-          <Outlet />
+          <div key={location.pathname} className="motion-page min-h-full">
+            <Outlet />
+          </div>
         </main>
       </div>
 

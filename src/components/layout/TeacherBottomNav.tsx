@@ -67,7 +67,7 @@ export default function TeacherBottomNav({ userName, schoolYear, onLogout }: Tea
     <>
       <nav
         aria-label="Teacher navigation"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] lg:hidden"
       >
         <div className="mx-auto flex h-16 max-w-lg items-stretch justify-around px-1">
           {primary.map((item) => {
@@ -84,7 +84,7 @@ export default function TeacherBottomNav({ userName, schoolYear, onLogout }: Tea
                     : "text-muted-foreground active:bg-muted",
                 )}
               >
-                <item.icon className={cn("h-5 w-5", active && "stroke-[2.4]")} aria-hidden="true" />
+                <item.icon className={cn("h-5 w-5", active && "motion-nav-pop stroke-[2.4]")} aria-hidden="true" />
                 <span className="truncate">{item.name}</span>
               </Link>
             );

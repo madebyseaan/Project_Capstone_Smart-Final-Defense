@@ -219,6 +219,69 @@ This shouldn't happen with the script (it uses `deleteMany` in FK-safe order), b
 
 ---
 
+## Teacher PWA (Online-Only)
+
+**Scope:** Teacher portal only. Grades, attendance, and all school data still require internet. Admin and registrar are unchanged.
+
+**Live URL:** `https://laptop-pfvh73qk.buru-degree.ts.net` (Tailscale Funnel -> `127.0.0.1:5003`).
+
+### Install
+
+- Android Chrome/Edge: open the teacher login, sign in, tap **Install app** in the sidebar, confirm.
+- iPhone/iPad Safari: tap Share -> **Add to Home Screen** -> **Add**. The in-app Install button shows these steps.
+- The app opens standalone and can show its cached shell without internet. Data pages still need a connection.
+
+### Update
+
+- A new deploy changes the hashed assets and `sw.js`.
+- Teachers see **"A new version of SMART is available."** with a **Reload** action. It never force-reloads.
+- If the prompt is missed, closing and reopening the app refreshes it.
+
+### Build and Serve
+
+```bash
+pnpm install
+pnpm run build
+pnpm run check:pwa
+```
+
+- The backend serves `dist` at `:5003`; no separate client process is required in production.
+- Rebuilding updates the live site immediately because Express serves from the repository `dist`.
+- PWA icons come from `public/pwa/school-logo.png`. If the school logo changes, replace that file, run `node scripts/generate-pwa-icons.mjs`, rebuild, and reinstall the app on phones (installed icons are cached).
+- If `pnpm install` adds dependencies while a dev server is running, restart `pnpm run dev` (Vite may hold stale module paths).
+
+### Verification
+
+```bash
+pnpm run typecheck
+pnpm run lint
+pnpm run build
+pnpm run check:pwa
+npx playwright test e2e/pwa.spec.ts
+```
+
+Expected:
+- Manifest is served as `application/manifest+json`.
+- Service worker scope is `/teacher`.
+- Cache storage has no `/api` or `/uploads` entries.
+- Admin/registrar have no install entry and no teacher SW registration.
+- Offline reload shows the app shell and the offline banner.
+
+### Rollback
+
+- Revert the PWA commit and rebuild `dist`; no database migration is involved.
+- Browser cleanup (only if needed): DevTools -> Application -> Service Workers -> Unregister, then clear site data.
+- If a kill-switch build is required later, configure `selfDestroying` in `vite-plugin-pwa` and deploy once; it removes the SW on the next visit.
+
+### Known Limits
+
+- The app shell opens offline, but grades and attendance do not.
+- The first visit activates the service worker; the page is controlled after the next reload or app launch.
+- If the host laptop is off or Funnel stops, the URL is unreachable.
+- Funnel is suitable for a pilot/single school. For a long-term large rollout, use a stable domain and standard hosting.
+
+---
+
 ## Strict SSOT / Auto-Prune
 
 The prune engine enforces EnrollPro as the single source of truth for PEOPLE in the active school year. Every sync cycle (~5 min), it compares local data against EnrollPro and automatically removes stale entries.

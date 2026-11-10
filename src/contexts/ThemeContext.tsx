@@ -150,8 +150,8 @@ function updateBrowserMetadata(schoolName: string, logoUrl: string | null) {
   } else {
     const link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
     if (link) {
-      link.href = "/favicon.svg";
-      link.type = "image/svg+xml";
+      link.href = "/pwa/school-logo.png";
+      link.type = "image/png";
     }
   }
 }

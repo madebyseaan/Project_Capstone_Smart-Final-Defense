@@ -10,7 +10,6 @@
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { StickyActionBar } from "@/components/mobile";
 import { cn } from "@/lib/utils";
 import { SURFACE } from "./MobileDashboardTokens";
 import { ProgressRing, SectionHeading } from "./MobileDashboardWidgets";
@@ -114,7 +113,7 @@ export default function MobileAttendanceView({
   const presentPercent = learnerCount > 0 ? (statusStats.present / learnerCount) * 100 : 0;
 
   return (
-    <div className="space-y-4 lg:hidden">
+    <div className="motion-stagger space-y-4 lg:hidden">
       <div className={cn("flex items-center gap-3 p-4", SURFACE)}>
         <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_12px_24px_-14px_rgba(0,0,0,0.55)]">
           <span className="text-[0.8rem] font-semibold uppercase leading-none tracking-wide text-primary-foreground/85">
@@ -238,6 +237,25 @@ export default function MobileAttendanceView({
               </Button>
             </div>
 
+            <Button
+              type="button"
+              onClick={onSaveAndNext}
+              disabled={saving}
+              className="h-12 w-full gap-2 rounded-xl text-sm font-semibold"
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Saving.
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                  Save & next day
+                </>
+              )}
+            </Button>
+
             <div className="relative">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -328,7 +346,7 @@ export default function MobileAttendanceView({
                                 aria-pressed={selected}
                                 aria-label={option.label}
                                 className={cn(
-                                  "flex min-h-12 items-center justify-center rounded-xl border px-1 text-[0.8rem] font-semibold transition-colors active:scale-[0.98]",
+                                  "flex min-h-12 items-center justify-center rounded-xl border px-1 text-[0.8rem] font-semibold transition-[background-color,border-color,color,transform] duration-200 active:scale-[0.96]",
                                   selected
                                     ? option.activeClass
                                     : "border-border bg-background text-muted-foreground",
@@ -358,35 +376,6 @@ export default function MobileAttendanceView({
             </div>
           </div>
 
-          <StickyActionBar>
-            <div className="flex items-center gap-3">
-              <div className="flex min-w-0 flex-1 items-center gap-2 text-[0.8rem] font-medium text-muted-foreground">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
-                <span>
-                  <strong className="font-semibold text-foreground">{statusStats.present}</strong>{" "}
-                  of {learnerCount} present
-                </span>
-              </div>
-              <Button
-                type="button"
-                onClick={onSaveAndNext}
-                disabled={saving}
-                className="h-12 min-w-[150px] rounded-xl text-sm font-semibold"
-              >
-                {saving ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-                    Saving…
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Save & next day
-                  </>
-                )}
-              </Button>
-            </div>
-          </StickyActionBar>
         </>
       ) : (
         <div className={cn("px-4 py-10 text-center", SURFACE)}>

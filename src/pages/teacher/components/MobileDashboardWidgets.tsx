@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,15 @@ export function ProgressRing({
 }) {
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (clampPercent(value) / 100) * circumference;
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const offset =
+    circumference - ((entered ? clampPercent(value) : 0) / 100) * circumference;
 
   return (
     <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
@@ -55,7 +63,7 @@ export function ProgressRing({
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className="stroke-current transition-[stroke-dashoffset] duration-700 ease-out"
+          className="motion-ring stroke-current"
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">{children}</div>

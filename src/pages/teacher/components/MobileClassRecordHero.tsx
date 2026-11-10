@@ -73,7 +73,7 @@ export default function MobileClassRecordHero({
       : "—";
 
   return (
-    <div className="space-y-3 lg:hidden">
+    <div className="motion-stagger space-y-3 lg:hidden">
       <div className={cn("relative overflow-hidden p-4", SURFACE)}>
         <div className="flex items-center justify-between gap-3">
           <Link

@@ -15,10 +15,12 @@
     "build": "vite build",
     "typecheck": "tsc -b",
     "lint": "eslint .",
-    "verify": "npm run typecheck && npm run build && npm --prefix server run build && npm run lint && npm --prefix server test",
+    "check:pwa": "node scripts/check-pwa-build.mjs && node scripts/check-pwa-scope.mjs",
+    "verify": "npm run typecheck && npm run build && npm run check:pwa && npm --prefix server run build && npm run lint && npm --prefix server test",
     "verify:grading-mode": "powershell -ExecutionPolicy Bypass -File scripts/verify-grading-mode.ps1",
     "deploy:check": "pnpm --prefix server run data:check",
     "test:e2e": "playwright test",
+    "test:e2e:pwa": "playwright test e2e/pwa.spec.ts",
     "test:offline": "node e2e/offline/run-rig.mjs",
     "test:e2e:offline": "node e2e/offline/run-playwright.mjs",
     "preview": "vite preview"
@@ -64,7 +66,9 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",
     "vite": "^8.0.1",
+    "vite-plugin-pwa": "^2.0.0",
     "wait-on": "^9.1.0",
+    "workbox-window": "^7.4.1",
     "xlsx": "^0.18.5"
   }
 }

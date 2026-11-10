@@ -157,7 +157,7 @@ export default function MobileSchedule({
   const isToday = selectedDay === todayKey;
 
   return (
-    <div className="space-y-5">
+    <div className="motion-stagger space-y-5">
       <header className={cn("relative overflow-hidden p-4", CARD)}>
         <div
           aria-hidden="true"

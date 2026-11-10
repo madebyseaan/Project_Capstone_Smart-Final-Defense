@@ -238,7 +238,7 @@ export function MobileDashboard({
         className="pointer-events-none absolute inset-x-0 top-0 h-52 bg-gradient-to-b from-primary/[0.06] via-primary/[0.02] to-transparent"
       />
 
-      <div className="relative space-y-5">
+      <div className="motion-stagger relative space-y-5">
         <header className="pt-1">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
