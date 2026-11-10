@@ -42,7 +42,7 @@ export default function IntegratedSystemsNav({ collapsed }: IntegratedSystemsNav
   };
 
   return (
-    <div className="mb-5">
+    <div className={collapsed ? "border-t border-border/60 mt-1" : "mb-5"}>
       {!collapsed && (
         <span className="px-4 mb-1 text-[0.625rem] font-bold text-[#0F1729]/60 uppercase tracking-normal block whitespace-nowrap">
           Integrated Systems
@@ -57,7 +57,7 @@ export default function IntegratedSystemsNav({ collapsed }: IntegratedSystemsNav
           title={collapsed ? "EnrollPro" : "Open EnrollPro"}
           className={cn(
             "flex items-center rounded-full text-[14px] font-medium transition-all duration-200 group overflow-hidden py-1.5 text-[#0F1729] hover:bg-white/80",
-            collapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4 w-full",
+            collapsed ? "px-0 justify-center h-9 w-9 mx-auto" : "px-4 w-full",
           )}
         >
           <div className={cn("flex items-center transition-all duration-200", collapsed ? "justify-center" : "w-full")}>
@@ -99,7 +99,7 @@ export default function IntegratedSystemsNav({ collapsed }: IntegratedSystemsNav
               title={statusText}
               className={cn(
                 "flex items-center rounded-full text-[14px] font-medium select-none py-1.5 text-[#0F1729]",
-                collapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4",
+                collapsed ? "px-0 justify-center h-9 w-9 mx-auto" : "px-4",
                 isCurrent ? "" : "opacity-40 cursor-not-allowed",
               )}
             >

@@ -206,6 +206,7 @@ export default function RegistrarLayout() {
           <button
             className="lg:hidden ml-auto p-2 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
             onClick={() => setSidebarOpen(false)}
+            aria-label="Close navigation"
           >
             <X className="w-5 h-5" />
           </button>
@@ -214,7 +215,7 @@ export default function RegistrarLayout() {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-2 px-3 custom-scrollbar overflow-x-hidden">
           {navigationGroups.map((group) => (
-            <div key={group.title} className="mb-5 first:mt-2">
+            <div key={group.title} className={cn(sidebarCollapsed ? "border-t border-border/60 mt-1 first:mt-0 first:border-t-0" : "mb-5 first:mt-2")}>
               {!sidebarCollapsed && (
                 <span className="px-4 mb-1 text-[0.625rem] font-bold text-[#0F1729]/60 uppercase tracking-normal block whitespace-nowrap">
                   {group.title}
@@ -262,7 +263,7 @@ export default function RegistrarLayout() {
                         key={item.name}
                         className={cn(
                           "flex items-center rounded-full text-[14px] font-medium opacity-40 cursor-not-allowed select-none py-1.5 text-[#0F1729]",
-                          sidebarCollapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4"
+                          sidebarCollapsed ? "px-0 justify-center h-9 w-9 mx-auto" : "px-4"
                         )}
                         title={`${item.name} (Unavailable)`}
                       >
@@ -277,7 +278,7 @@ export default function RegistrarLayout() {
                       to={item.href}
                       className={cn(
                         "flex items-center rounded-full text-[14px] font-medium transition-all duration-200 group overflow-hidden py-1.5",
-                        sidebarCollapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4",
+                        sidebarCollapsed ? "px-0 justify-center h-9 w-9 mx-auto" : "px-4",
                         isActive 
                           ? "text-white shadow-sm" 
                           : "text-[#0F1729] hover:bg-white/80"
@@ -301,11 +302,11 @@ export default function RegistrarLayout() {
         {/* User Profile at Bottom */}
         <div className={cn(
           "p-4 border-t border-slate-100 transition-all duration-200 bg-white/20 overflow-hidden",
-          sidebarCollapsed ? "px-2 py-4" : "p-4"
+          sidebarCollapsed ? "px-2 py-3" : "p-4"
         )}>
           <div className={cn(
             "flex items-center transition-all duration-200 px-1 py-1",
-            sidebarCollapsed ? "justify-center" : "w-full"
+            sidebarCollapsed ? "flex-col gap-1 justify-center" : "w-full"
           )}>
             <div className="w-9 h-9 flex flex-shrink-0 items-center justify-center">
               <Avatar className="w-9 h-9 border border-white shadow-sm transition-transform duration-200" style={{ transform: sidebarCollapsed ? 'scale(0.9)' : 'scale(1)' }}>
@@ -315,8 +316,8 @@ export default function RegistrarLayout() {
               </Avatar>
             </div>
             <div className={cn(
-              "flex-1 min-w-0 flex items-center justify-between transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
-              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-3"
+              "min-w-0 flex-1 items-center justify-between transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
+              sidebarCollapsed ? "hidden" : "flex opacity-100 scale-100 translate-x-0 ml-3"
             )}>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-[#0F1729] truncate leading-none mb-1">{userDisplayName}</p>
@@ -326,10 +327,21 @@ export default function RegistrarLayout() {
                 onClick={handleLogout}
                 className="p-1.5 rounded-lg hover:bg-white hover:text-red-600 text-slate-400 transition-colors duration-200 ml-1"
                 title="Sign Out"
+                aria-label="Sign out"
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
+            {sidebarCollapsed && (
+              <button
+                onClick={handleLogout}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors duration-200 hover:bg-white hover:text-red-600"
+                title="Sign Out"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </aside>
@@ -342,9 +354,10 @@ export default function RegistrarLayout() {
         {/* Top navbar */}
         <header className="sticky top-0 z-30 h-16 bg-white border-b border-slate-200 px-4 lg:px-6">
           <div className="h-full flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex min-w-0 items-center gap-4">
               <button
                 className="p-2 rounded-xl hover:bg-slate-100 text-slate-600 transition-all active:scale-95"
+                aria-label="Open navigation"
                 onClick={() => {
                   if (window.innerWidth >= 1024) {
                     toggleSidebarCollapse();
@@ -357,9 +370,9 @@ export default function RegistrarLayout() {
               </button>
               
               {/* Page Title */}
-              <div className="flex flex-col">
+              <div className="flex min-w-0 flex-col">
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Registrar Portal</span>
-                <span className="text-base font-bold text-slate-900 -mt-1">
+                <span className="block truncate text-base font-bold text-slate-900 -mt-1">
                   {getCurrentPageTitle()}
                 </span>
               </div>
@@ -380,7 +393,7 @@ export default function RegistrarLayout() {
                 </span>
               )}
               {/* User Avatar and Name */}
-              <div className="flex items-center gap-3 pl-3 border-l border-slate-100">
+              <div className="hidden min-[360px]:flex items-center gap-3 pl-3 border-l border-slate-100">
                 <div className="hidden sm:flex flex-col items-end mr-1">
                   <span className="text-sm font-bold text-slate-900 leading-none">
                     {user.firstName || user.username}

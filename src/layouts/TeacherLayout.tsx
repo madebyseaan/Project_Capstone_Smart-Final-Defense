@@ -232,7 +232,7 @@ export default function TeacherLayout() {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-2 px-3 custom-scrollbar overflow-x-hidden">
           {visibleNavigationGroups.map((group) => (
-            <div key={group.title} className="mb-5 first:mt-2">
+            <div key={group.title} className={cn(sidebarCollapsed ? "border-t border-border/60 mt-1 first:mt-0 first:border-t-0" : "mb-5 first:mt-2")}>
               {!sidebarCollapsed && (
                 <span className="px-4 mb-1 text-[0.625rem] font-semibold text-muted-foreground uppercase tracking-wide block whitespace-nowrap">
                   {group.title}
@@ -254,7 +254,7 @@ export default function TeacherLayout() {
                       to={item.href}
                       className={cn(
                         "flex min-h-12 items-center rounded-full text-[14px] font-medium transition-all duration-200 group overflow-hidden py-2 lg:min-h-0 lg:py-1.5",
-                        sidebarCollapsed ? "px-0 justify-center h-10 w-10 mx-auto" : "px-4",
+                        sidebarCollapsed ? "px-0 justify-center h-9 w-9 mx-auto" : "px-4",
                         isActive 
                           ? "text-white shadow-sm" 
                           : "text-foreground hover:bg-muted"
@@ -293,11 +293,11 @@ export default function TeacherLayout() {
         {/* User Profile at Bottom */}
         <div className={cn(
           "p-4 border-t border-border transition-all duration-200 bg-muted/20 overflow-hidden",
-          sidebarCollapsed ? "px-2 py-4" : "p-4"
+          sidebarCollapsed ? "px-2 py-3" : "p-4"
         )}>
           <div className={cn(
             "flex items-center transition-all duration-200 px-1 py-1",
-            sidebarCollapsed ? "justify-center" : "w-full"
+            sidebarCollapsed ? "flex-col gap-1 justify-center" : "w-full"
           )}>
             <div className="w-9 h-9 flex flex-shrink-0 items-center justify-center">
               <Avatar className="w-9 h-9 border border-border shadow-sm transition-transform duration-200" style={{ transform: sidebarCollapsed ? 'scale(0.9)' : 'scale(1)' }}>
@@ -307,8 +307,8 @@ export default function TeacherLayout() {
               </Avatar>
             </div>
             <div className={cn(
-              "flex-1 min-w-0 flex items-center justify-between transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
-              sidebarCollapsed ? "opacity-0 scale-90 -translate-x-4 pointer-events-none w-0 m-0" : "opacity-100 scale-100 translate-x-0 ml-3"
+              "min-w-0 flex-1 items-center justify-between transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
+              sidebarCollapsed ? "hidden" : "flex opacity-100 scale-100 translate-x-0 ml-3"
             )}>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-foreground truncate leading-none mb-1">{userDisplayName}</p>
@@ -323,6 +323,16 @@ export default function TeacherLayout() {
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
+            {sidebarCollapsed && (
+              <button
+                onClick={handleLogout}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-destructive"
+                title="Sign Out"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </aside>

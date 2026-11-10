@@ -30,6 +30,7 @@ export function SearchInput({
       <Input
         ref={inputRef}
         placeholder={placeholder}
+        aria-label={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn("pl-8 h-9 w-56 rounded-lg text-xs", inputClassName)}

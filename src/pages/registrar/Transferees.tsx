@@ -206,13 +206,13 @@ export default function Transferees() {
   ];
 
   const colWidths = {
-    lrn: allYears ? "w-[11%]" : "w-[12%]",
-    name: allYears ? "w-[22%]" : "w-[26%]",
-    section: allYears ? "w-[13%]" : "w-[16%]",
-    sy: "w-[11%]",
+    lrn: allYears ? "w-[10%]" : "w-[12%]",
+    name: allYears ? "w-[20%]" : "w-[26%]",
+    section: allYears ? "w-[12%]" : "w-[14%]",
+    sy: "w-[10%]",
     transferred: allYears ? "w-[11%]" : "w-[12%]",
-    status: allYears ? "w-[13%]" : "w-[16%]",
-    action: "w-[240px]",
+    status: allYears ? "w-[15%]" : "w-[14%]",
+    action: "w-[22%]",
   };
 
   const handleSync = async () => {
@@ -287,7 +287,7 @@ export default function Transferees() {
   const total = transferees.length;
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
         <div className="p-4 lg:p-5">
           <PageHeader
@@ -376,7 +376,7 @@ export default function Transferees() {
       {/* Main Table Card */}
       <Card className="border-0 shadow-sm bg-card overflow-hidden rounded-xl p-0">
         <div className="px-6 py-4 border-b border-border/30">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <h2 className="text-base font-semibold text-foreground">Transferee List</h2>
                 <p className="text-sm text-muted-foreground">
@@ -413,6 +413,7 @@ export default function Transferees() {
                 <div className="relative">
                   <Input
                     placeholder="Search name or LRN..."
+                    aria-label="Search transferees by name or LRN"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-8 pr-4 h-9 w-full sm:w-64 rounded-lg text-xs"
@@ -549,7 +550,7 @@ export default function Transferees() {
 
           {/* Desktop table */}
           <div className="hidden md:block overflow-x-auto">
-            <Table className="w-full table-fixed">
+            <Table className="w-full min-w-[1000px] table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-muted/50 border-b border-border/30 bg-muted/50">
                   <TableHead className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 ${colWidths.lrn} text-left`}>LRN</TableHead>

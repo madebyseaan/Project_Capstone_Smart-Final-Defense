@@ -63,9 +63,9 @@ export function TablePagination({
         <span className="font-medium text-foreground">{totalRows}</span> results
       </p>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
+          <span className="hidden text-sm text-muted-foreground sm:inline">
             Rows per page:
           </span>
           <Select
@@ -85,13 +85,14 @@ export function TablePagination({
           </Select>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-center gap-1">
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
             onClick={() => onPageChange(1)}
             disabled={page === 1}
+            aria-label="Go to first page"
           >
             <ChevronsLeft className="h-4 w-4" />
           </Button>
@@ -101,6 +102,7 @@ export function TablePagination({
             className="h-8 w-8"
             onClick={() => onPageChange(page - 1)}
             disabled={page === 1}
+            aria-label="Go to previous page"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -117,6 +119,8 @@ export function TablePagination({
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => onPageChange(p)}
+                aria-label={`Go to page ${p}`}
+                aria-current={page === p ? "page" : undefined}
               >
                 {p}
               </Button>
@@ -129,6 +133,7 @@ export function TablePagination({
             className="h-8 w-8"
             onClick={() => onPageChange(page + 1)}
             disabled={page === totalPages}
+            aria-label="Go to next page"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -138,6 +143,7 @@ export function TablePagination({
             className="h-8 w-8"
             onClick={() => onPageChange(totalPages)}
             disabled={page === totalPages}
+            aria-label="Go to last page"
           >
             <ChevronsRight className="h-4 w-4" />
           </Button>

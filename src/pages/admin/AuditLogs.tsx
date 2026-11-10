@@ -345,7 +345,7 @@ export default function AuditLogs() {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <PageHeader
         title="Audit Logs"
         description={`Who did what, from where, on what device${liveCount > 0 ? ` — ${liveCount} new live` : ""}`}

@@ -58,8 +58,8 @@ const SystemHealth = lazy(() => import('./pages/admin/SystemHealth'))
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50">
-      <div className="w-8 h-8 border-4 border-gray-200 border-t-emerald-500 rounded-full animate-spin" />
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="w-8 h-8 border-4 border-border border-t-primary rounded-full animate-spin" />
     </div>
   )
 }

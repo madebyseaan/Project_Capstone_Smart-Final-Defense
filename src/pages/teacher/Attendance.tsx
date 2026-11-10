@@ -414,7 +414,7 @@ export default function Attendance() {
   }, [attendanceData, searchQuery]);
 
   return (
-    <div className="space-y-5 animate-fade-in max-w-7xl mx-auto pb-4 lg:space-y-6 lg:pb-12">
+    <div className="space-y-5 animate-fade-in pb-4 lg:space-y-6 lg:pb-12">
       <div className="hidden lg:block">
         <PageHeader
           title="Daily Attendance"
@@ -475,7 +475,7 @@ export default function Attendance() {
 
       {/* Main roster */}
       <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <CardHeader className="border-b border-border bg-muted/30 p-4 lg:p-6">
+        <CardHeader className="grid-cols-1 border-b border-border bg-muted/30 p-4 lg:p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0">
               <CardTitle className="truncate text-lg font-semibold text-foreground lg:text-xl">
@@ -542,7 +542,7 @@ export default function Attendance() {
 
           {/* Mobile date + search + bulk actions */}
           <div className="space-y-3 lg:hidden">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative min-w-0 flex-1">
                 <Input
                   type="date"
@@ -554,23 +554,25 @@ export default function Attendance() {
                 />
                 <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               </div>
-              <Button
-                onClick={markAllPresent}
-                variant="outline"
-                className="h-12 shrink-0 rounded-xl px-3 text-xs font-semibold"
-                disabled={!attendanceData || loading}
-              >
-                <CheckCircle2 className="mr-1.5 h-4 w-4 text-emerald-500" />
-                All
-              </Button>
-              <Button
-                onClick={clearAttendance}
-                variant="outline"
-                className="h-12 shrink-0 rounded-xl px-3 text-xs font-semibold"
-                disabled={!attendanceData || loading}
-              >
-                Clear
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={markAllPresent}
+                  variant="outline"
+                  className="h-12 shrink-0 rounded-xl px-3 text-xs font-semibold"
+                  disabled={!attendanceData || loading}
+                >
+                  <CheckCircle2 className="mr-1.5 h-4 w-4 text-emerald-500" />
+                  All
+                </Button>
+                <Button
+                  onClick={clearAttendance}
+                  variant="outline"
+                  className="h-12 shrink-0 rounded-xl px-3 text-xs font-semibold"
+                  disabled={!attendanceData || loading}
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -842,5 +844,3 @@ export default function Attendance() {
     </div>
   );
 }
-
-

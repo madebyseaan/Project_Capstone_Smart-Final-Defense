@@ -179,6 +179,7 @@ export default function EOSYLearnerRecordsTab({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
               placeholder="Search learners..."
+              aria-label="Search learners"
               className="pl-8 h-9 w-56 rounded-lg text-xs"
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}

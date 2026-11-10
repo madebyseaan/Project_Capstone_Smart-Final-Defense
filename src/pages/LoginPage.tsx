@@ -280,6 +280,8 @@ export default function LoginPage() {
                       }}
                       className="pl-11 h-11 bg-muted/60 border-transparent hover:bg-muted focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none rounded-full transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
                       autoComplete="username"
+                      name="identifier"
+                      spellCheck={false}
                       required
                     />
                   </div>
@@ -303,15 +305,17 @@ export default function LoginPage() {
                       }}
                       className="pl-11 pr-11 h-11 bg-muted/60 border-transparent hover:bg-muted focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none rounded-full transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
                       autoComplete="current-password"
+                      name="password"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200"
-                      tabIndex={-1}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
                     </button>
                   </div>
                 </div>

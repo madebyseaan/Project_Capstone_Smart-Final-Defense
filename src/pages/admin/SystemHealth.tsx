@@ -142,7 +142,7 @@ export default function SystemHealth() {
 
   if (loading && !health) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <div className="space-y-6 animate-fade-in w-full">
         <div className="h-10 w-72 rounded-lg bg-muted/30 animate-pulse" />
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((n) => (
@@ -154,7 +154,7 @@ export default function SystemHealth() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <PageHeader
         title="System Health"
         description="Live pulse of SMART, EnrollPro, Atlas, and AIMS."

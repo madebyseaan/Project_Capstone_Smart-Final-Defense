@@ -373,7 +373,7 @@ export default function ClassRecordsList() {
   const hasArchived = archivedClasses.length > 0;
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 animate-fade-in pb-12">
       {/* Grade Submission Deadline Banner */}
       {gradeDeadline && (
         <GradeDeadlineBanner deadline={gradeDeadline} hideLink />
@@ -492,7 +492,7 @@ export default function ClassRecordsList() {
       {viewMode === "grid" && (
         <div className="hidden space-y-10 lg:block">
           {termFilteredClasses.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-8">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 lg:gap-8">
               {termFilteredClasses.map((assignment) => (
                 <AssignmentCard key={assignment.id} assignment={assignment} archived={false} currentTerm={currentTerm} />
               ))}
@@ -992,9 +992,3 @@ export default function ClassRecordsList() {
     </div>
   );
 }
-
-
-
-
-
-

@@ -362,7 +362,7 @@ export default function RemedialTracker() {
   );
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
         <div className="p-4 lg:p-5">
           <PageHeader
@@ -494,6 +494,7 @@ export default function RemedialTracker() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
                   placeholder="Search name or LRN..."
+                  aria-label="Search learners by name or LRN"
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);

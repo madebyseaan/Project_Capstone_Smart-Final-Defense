@@ -204,7 +204,7 @@ export default function SchoolYears() {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       {message && (
         <div
           className={`p-4 rounded-xl flex items-center gap-2 border-2 ${

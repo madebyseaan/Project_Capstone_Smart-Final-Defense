@@ -133,7 +133,7 @@ export default function AttendanceReports() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 animate-fade-in pb-12">
       <div className="hidden lg:block">
         <PageHeader
           title="Attendance Reports"
@@ -518,7 +518,3 @@ export default function AttendanceReports() {
     </div>
   );
 }
-
-
-
-

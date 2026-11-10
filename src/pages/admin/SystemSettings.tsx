@@ -221,7 +221,7 @@ export default function SystemSettings() {
 
   if (error || !settings) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <div className="space-y-6 animate-fade-in w-full">
         <PageError
           title="Unable to Load System Settings"
           message={error || "No settings found"}
@@ -233,7 +233,7 @@ export default function SystemSettings() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <PageHeader
         title="System Settings"
         description="School identity, academic calendar, access locks, and security"

@@ -266,7 +266,7 @@ export default function MyAdvisory() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 animate-fade-in pb-12">
       {/* Compact mobile summary */}
       <section className="rounded-2xl border border-border bg-card p-4 shadow-sm lg:hidden">
         <div className="flex items-start gap-3">

@@ -311,7 +311,7 @@ export default function TeacherSchedule() {
   // ---- Loading ----
   if (loading) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+      <div className="space-y-6 animate-fade-in pb-12">
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             <div className="relative w-24 h-24 mx-auto mb-6">
@@ -331,7 +331,7 @@ export default function TeacherSchedule() {
   // ---- Error ----
   if (error) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+      <div className="space-y-6 animate-fade-in pb-12">
         <Card className="rounded-2xl border border-border bg-card shadow-sm">
           <CardContent className="py-32 text-center">
             <div className="w-24 h-24 bg-red-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-sm">
@@ -351,7 +351,7 @@ export default function TeacherSchedule() {
   // ---- Empty ----
   if (!schedule || schedule.count === 0) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+      <div className="space-y-6 animate-fade-in pb-12">
         {/* Header */}
         <PageHeader
           title="My Schedule"
@@ -413,7 +413,7 @@ export default function TeacherSchedule() {
 
   // ---- Main render ----
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 animate-fade-in pb-12">
       {/* Compact mobile header */}
       <div className="flex items-center justify-between gap-3 lg:hidden">
         <div className="min-w-0">
@@ -925,7 +925,3 @@ function roomDisplay(entry: ScheduleEntry): { text: string; title: string } | nu
   }
   return null;
 }
-
-
-
-

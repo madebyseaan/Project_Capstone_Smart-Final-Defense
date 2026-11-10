@@ -128,7 +128,7 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <div className="space-y-6 animate-fade-in w-full">
         <div className="relative overflow-hidden rounded-2xl h-40 bg-muted/30" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -145,7 +145,7 @@ export default function AdminDashboard() {
 
   if (error || !data) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <div className="space-y-6 animate-fade-in w-full">
         <PageError
           title="Unable to Load Dashboard"
           message={error || "Failed to load data"}
@@ -240,7 +240,7 @@ export default function AdminDashboard() {
   const uptime = systemStatus.uptime;
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       {/* ── Hero: live context ── */}
       <div
         className="relative overflow-hidden rounded-2xl p-6 text-white animate-in fade-in slide-in-from-bottom-1 duration-300"

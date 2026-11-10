@@ -342,14 +342,14 @@ export default function ClassAssignments() {
 
   if (error && !loading && assignments.length === 0) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <div className="space-y-6 animate-fade-in w-full">
         <PageError title="Unable to Load Teaching Load" message={error} onRetry={() => void loadData()} retryLabel="Retry" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <PageHeader
         title="Teaching Load"
         description="Read-only mirror of teaching assignments synchronized from ATLAS"
@@ -422,7 +422,7 @@ export default function ClassAssignments() {
             value={tab}
             onValueChange={setTab}
             items={CLASS_TAB_ITEMS}
-            listClassName="w-fit"
+            listClassName="w-full sm:w-fit"
             header={
               <SearchInput
                 value={search}

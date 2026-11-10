@@ -311,7 +311,7 @@ export default function TransmutationTable() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <PageHeader
         title="Transmutation Table"
         description="DepEd grading mode and transmutation — initial grade to term grade"
@@ -471,6 +471,7 @@ export default function TransmutationTable() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search grades..."
+                  aria-label="Search grades"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9 w-48 rounded-xl border-border"
@@ -566,6 +567,7 @@ export default function TransmutationTable() {
                             type="number"
                             step="0.01"
                             value={row.minGrade}
+                            aria-label={`Minimum initial grade for row ${realIndex + 1}`}
                             disabled={!canEditTable}
                             onChange={(e) =>
                               updateCell(realIndex, "minGrade", parseFloat(e.target.value) || 0)
@@ -578,6 +580,7 @@ export default function TransmutationTable() {
                             type="number"
                             step="0.01"
                             value={row.maxGrade}
+                            aria-label={`Maximum initial grade for row ${realIndex + 1}`}
                             disabled={!canEditTable}
                             onChange={(e) =>
                               updateCell(realIndex, "maxGrade", parseFloat(e.target.value) || 0)
@@ -589,6 +592,7 @@ export default function TransmutationTable() {
                           <Input
                             type="number"
                             value={row.transmutedGrade}
+                            aria-label={`Transmuted grade for row ${realIndex + 1}`}
                             disabled={!canEditTable}
                             onChange={(e) =>
                               updateCell(
@@ -625,6 +629,7 @@ export default function TransmutationTable() {
                             size="icon"
                             onClick={() => deleteRow(realIndex)}
                             disabled={!canEditTable}
+                            aria-label={`Delete transmutation row ${realIndex + 1}`}
                             className="w-8 h-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                           >
                             <Trash2 className="w-4 h-4" />

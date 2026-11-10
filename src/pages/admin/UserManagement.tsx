@@ -228,7 +228,7 @@ export default function UserManagement() {
 
   if (error) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <div className="space-y-6 animate-fade-in w-full">
         <PageError
           title="Unable to Load Users"
           message={error}
@@ -240,7 +240,7 @@ export default function UserManagement() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <PageHeader
         title="Users"
         description="View system users and their EnrollPro personnel profiles"

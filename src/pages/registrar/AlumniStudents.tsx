@@ -179,7 +179,7 @@ export default function AlumniStudents() {
   const totalPages = Math.max(1, Math.ceil(total / rowsPerPage));
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <SyncProgressModal isOpen={syncModalOpen} onClose={() => { setSyncModalOpen(false); setSyncStatus("idle"); }} status={syncStatus} errorMessage={syncError} />
 
       <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
@@ -265,7 +265,7 @@ export default function AlumniStudents() {
 
             <div className="flex flex-wrap items-center gap-3">
               {/* Tabs - Pill style */}
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-muted">
+              <div className="flex max-w-full items-center gap-1 overflow-x-auto p-1 rounded-lg bg-muted">
                 {tabConfig.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.key;
@@ -273,7 +273,7 @@ export default function AlumniStudents() {
                     <button
                       key={tab.key}
                       onClick={() => { setActiveTab(tab.key); setPage(0); }}
-                        className={`flex items-center gap-1.5 px-3 h-7 rounded-md text-xs font-medium transition-all ${
+                        className={`flex shrink-0 items-center gap-1.5 px-3 h-7 rounded-md text-xs font-medium transition-all ${
                         isActive
                           ? "bg-card shadow-sm text-foreground"
                           : "text-muted-foreground hover:text-foreground"
@@ -297,6 +297,7 @@ export default function AlumniStudents() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
                   placeholder="Search name or LRN..."
+                  aria-label="Search former students by name or LRN"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -325,17 +326,17 @@ export default function AlumniStudents() {
         </div>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <Table className="w-full table-fixed">
+            <Table className="w-full min-w-[1100px] table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-muted/50 border-b border-border bg-muted/50">
-                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[14%] text-left">LRN</TableHead>
-                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[30%] text-left">Learner Name</TableHead>
-                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[8%] text-left">Sex</TableHead>
-                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-left">Prior Grade</TableHead>
-                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[12%] text-left">Prior Section</TableHead>
-                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-left whitespace-nowrap">Last SY</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[12%] text-left">LRN</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[24%] text-left">Learner Name</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[7%] text-left">Sex</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[9%] text-left">Prior Grade</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[11%] text-left">Prior Section</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[9%] text-left whitespace-nowrap">Last SY</TableHead>
                  <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[8%] text-left">Program</TableHead>
-                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[12%] text-left">Status</TableHead>
+                 <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-left">Status</TableHead>
                  <TableHead className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-3.5 px-4 w-[10%] text-left">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -429,8 +430,8 @@ export default function AlumniStudents() {
 
           {/* Pagination */}
           {!loading && total > 0 && (
-            <div className="border-t border-border px-6 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 <span>
                   Showing {page * rowsPerPage + 1}–{Math.min((page + 1) * rowsPerPage, total)} of{" "}
                   <span className="font-medium text-foreground">{total}</span> learners

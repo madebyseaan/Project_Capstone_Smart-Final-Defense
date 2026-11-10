@@ -284,7 +284,7 @@ export default function StudentRecords() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
         <div className="p-4 lg:p-5">
           <PageHeader
@@ -292,7 +292,7 @@ export default function StudentRecords() {
             description="Manage and view all student information"
             variant="plain"
             actions={
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   onClick={() => void handleSync()}
                   variant="default"
@@ -370,6 +370,7 @@ export default function StudentRecords() {
                 <Input
                   ref={searchInputRef}
                   placeholder="Search name or LRN..."
+                  aria-label="Search students by name or LRN"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-8 pr-14 h-9 w-56 rounded-lg text-xs"
@@ -524,8 +525,8 @@ export default function StudentRecords() {
           
           {/* Pagination */}
           {!loading && filteredStudents.length > 0 && (
-            <div className="border-t border-border/30 px-6 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/30 px-4 py-3 sm:px-6">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 <span>
                   Showing {(currentPage - 1) * limit + 1}–{Math.min(currentPage * limit, filteredStudents.length)} of{" "}
                   <span className="font-medium text-foreground">{filteredStudents.length}</span> learners

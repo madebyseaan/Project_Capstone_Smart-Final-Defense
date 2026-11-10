@@ -32,11 +32,11 @@ export function SchoolInformationSection({
       {/* ── Synced from EnrollPro (read-only) ─────────────────────────────── */}
       <Card className="p-0 gap-0 border border-border shadow-sm rounded-xl bg-card overflow-hidden">
         <CardHeader className="px-6 py-4 border-b border-border bg-primary/5">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <div className="p-3 rounded-xl bg-primary/10 text-primary">
               <Link2 className="w-6 h-6" />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <CardTitle className="text-lg text-foreground">Synced from EnrollPro</CardTitle>
               <CardDescription className="normal-case">
                 EnrollPro is the source of truth for these fields

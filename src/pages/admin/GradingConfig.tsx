@@ -245,7 +245,7 @@ export default function GradingConfig() {
 
   if (error) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+      <div className="space-y-6 animate-fade-in w-full">
         <PageError
           title="Unable to Load Grading Configuration"
           message={error}
@@ -257,7 +257,7 @@ export default function GradingConfig() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <PageHeader
         title="Grading Configuration"
         description="Configure grading component weights for each subject type"
@@ -342,8 +342,9 @@ export default function GradingConfig() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {(["T1", "T2", "T3"] as const).map((term) => (
                   <div key={term} className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{term}</Label>
+                    <Label htmlFor={`term-label-${term}`} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{term}</Label>
                     <Input
+                      id={`term-label-${term}`}
                       value={termLabels[term]}
                       onChange={(e) => {
                         setTermLabels(prev => ({ ...prev, [term]: e.target.value }));

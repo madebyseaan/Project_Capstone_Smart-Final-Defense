@@ -52,7 +52,7 @@ export default function RolloverReadinessCard() {
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => void load()} disabled={loading}>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => void load()} disabled={loading} aria-label="Refresh school year status">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
           </Button>
         </div>

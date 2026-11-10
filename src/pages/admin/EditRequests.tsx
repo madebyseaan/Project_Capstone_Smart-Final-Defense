@@ -230,7 +230,7 @@ export default function EditRequests() {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <PageHeader
         title="Grade Edit Requests"
         description="Review and manage teacher requests to edit past-term grades"

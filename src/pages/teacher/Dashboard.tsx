@@ -377,7 +377,7 @@ export default function TeacherDashboard() {
   });
 
   return (
-    <div className="animate-fade-in max-w-7xl mx-auto pb-12">
+    <div className="animate-fade-in pb-12">
       {!isDesktop && (
         <MobileDashboard
           teacherName={data.teacher.name}
@@ -1159,7 +1159,3 @@ export default function TeacherDashboard() {
     </div>
   );
 }
-
-
-
-

@@ -575,7 +575,7 @@ export default function EOSYFinalization() {
 
   return (
     <div
-      className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full"
+      className="space-y-6 animate-fade-in w-full"
       data-testid="eosy-finalization-page"
     >
       <EOSYFinalizationStatusPanel

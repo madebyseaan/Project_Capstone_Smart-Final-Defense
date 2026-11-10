@@ -207,7 +207,7 @@ export default function SectionRosterViewer() {
   }, [sections]);
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto w-full">
+    <div className="space-y-6 animate-fade-in w-full">
       <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
         <div className="p-4 lg:p-5">
           <PageHeader
@@ -295,6 +295,7 @@ export default function SectionRosterViewer() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
                   placeholder="Search section or adviser..."
+                  aria-label="Search sections or advisers"
                   value={sectionSearch}
                   onChange={(e) => setSectionSearch(e.target.value)}
                   className="pl-8 h-9 w-56 rounded-lg text-xs"
@@ -315,7 +316,7 @@ export default function SectionRosterViewer() {
                 </SelectContent>
               </Select>
               <Select value={activeProgram} onValueChange={(val) => val && setActiveProgram(val)}>
-                <SelectTrigger className="w-32 h-9 rounded-lg text-xs font-medium">
+                <SelectTrigger className="w-40 h-9 rounded-lg text-xs font-medium">
                   <SelectValue placeholder="All Programs">
                     {activeProgram === "all" ? "All Programs" : activeProgram}
                   </SelectValue>
@@ -584,6 +585,7 @@ export default function SectionRosterViewer() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <Input
                     placeholder="Search learners..."
+                    aria-label="Search learners"
                     value={rosterSearch}
                     onChange={(e) => { setRosterSearch(e.target.value); setCurrentPage(1); }}
                     className="pl-8 h-9 w-56 rounded-lg text-xs"
