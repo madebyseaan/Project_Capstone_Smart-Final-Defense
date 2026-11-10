@@ -9,7 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ClassRecord, AimsAssessmentInfo } from "@/lib/api";
+import type { ClassRecord, AimsAssessmentInfo, ScoreItem } from "@/lib/api";
+import { computeExamPS } from "@/lib/gradeMath";
 import { cn } from "@/lib/utils";
 
 interface ClassRecordMobileListProps {
@@ -111,7 +112,11 @@ export function ClassRecordMobileList({
             const ptMax = ptScores.reduce((acc, s) => acc + (Number(s.maxScore) || 0), 0);
             const qaScore = grade?.quarterlyAssessScore ?? null;
             const qaMax = grade?.quarterlyAssessMax ?? null;
-            const hasScores = wwMax > 0 || ptMax > 0 || qaScore !== null;
+            const examScores = (grade?.examScores ?? []) as ScoreItem[];
+            const examPS = computeExamPS(examScores);
+            const examDisplay = examPS ?? qaScore;
+            const examMax = examPS !== null ? 100 : qaMax;
+            const hasScores = wwMax > 0 || ptMax > 0 || examDisplay !== null;
 
             const wwAims = aimsAssessments.filter((a) => a.category === "WW").length;
             const ptAims = aimsAssessments.filter((a) => a.category === "PT").length;
@@ -146,7 +151,7 @@ export function ClassRecordMobileList({
                         {ptAims > 0 && <span className="ml-1 text-[10px] text-[var(--ledger-aims)]">+{ptAims}</span>}
                       </span>
                       <span className="text-xs font-semibold text-[var(--ledger-ta)]">
-                        TA {qaScore !== null ? (qaMax ? `${qaScore}/${qaMax}` : String(qaScore)) : "—"}
+                        EX {examDisplay !== null ? (examMax ? `${examDisplay}/${examMax}` : String(examDisplay)) : "—"}
                         {qaAims > 0 && <span className="ml-1 text-[10px] text-[var(--ledger-aims)]">+{qaAims}</span>}
                       </span>
                     </div>

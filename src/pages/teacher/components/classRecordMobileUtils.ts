@@ -1,7 +1,7 @@
 import type { ClassRecord, ScoreItem } from "@/lib/api";
 import { getDisplayFinalGrade, getQuarterGrade } from "@/lib/gradeMath";
 
-type ScoreCategory = "WW" | "PT" | "QA";
+type ScoreCategory = "WW" | "PT" | "QA" | "EX";
 
 export { getDisplayFinalGrade, getQuarterGrade };
 
@@ -23,6 +23,10 @@ export function getScoreFromGrade(
   }
   if (category === "PT") {
     const score = Number((grade.perfTaskScores as ScoreItem[] | undefined)?.[index]?.score ?? 0);
+    return score > 0 ? String(score) : "";
+  }
+  if (category === "EX") {
+    const score = Number((grade.examScores as ScoreItem[] | undefined)?.[index]?.score ?? 0);
     return score > 0 ? String(score) : "";
   }
   const score = Number(grade.quarterlyAssessScore ?? 0);

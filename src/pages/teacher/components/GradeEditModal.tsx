@@ -2,7 +2,11 @@ import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FullScreenSheet } from "@/components/mobile";
 import { cn } from "@/lib/utils";
+import { EXAM_SUB_TESTS } from "@/lib/gradeMath";
 import type { ClassRecord, AimsRowScore, AimsAssessmentInfo } from "@/lib/api";
+
+type MobileScoreCategory = "WW" | "PT" | "QA" | "EX";
+type MobileEditorTab = "WW" | "PT" | "EX";
 
 interface AssessmentTaskMeta {
   description: string;
@@ -14,8 +18,8 @@ interface GradeEditModalProps {
   onOpenChange: (open: boolean) => void;
   selectedRecord: ClassRecord | null;
   selectedTerm: string;
-  mobileEditorTab: "WW" | "PT" | "QA";
-  onTabChange: (tab: "WW" | "PT" | "QA") => void;
+  mobileEditorTab: MobileEditorTab;
+  onTabChange: (tab: MobileEditorTab) => void;
   wwCount: number;
   ptCount: number;
   wwMeta: AssessmentTaskMeta[];
@@ -23,12 +27,12 @@ interface GradeEditModalProps {
   qaMeta: { description: string; date: string };
   mobileScoreDraft: Record<string, string>;
   invalidCells: Record<string, string>;
-  getCellKey: (sid: string, cat: "WW" | "PT" | "QA", idx: number) => string;
-  getMobileDraftKey: (studentId: string, category: "WW" | "PT" | "QA", index: number) => string;
-  getScoreFromGrade: (record: ClassRecord, category: "WW" | "PT" | "QA", index: number) => string;
-  getMaxForCell: (cat: "WW" | "PT" | "QA", idx: number) => number;
-  onMobileScoreDraftChange: (studentId: string, category: "WW" | "PT" | "QA", index: number, value: string) => void;
-  onMobileScoreCommit: (record: ClassRecord, category: "WW" | "PT" | "QA", index: number) => void;
+  getCellKey: (sid: string, cat: MobileScoreCategory, idx: number) => string;
+  getMobileDraftKey: (studentId: string, category: MobileScoreCategory, index: number) => string;
+  getScoreFromGrade: (record: ClassRecord, category: MobileScoreCategory, index: number) => string;
+  getMaxForCell: (cat: MobileScoreCategory, idx: number) => number;
+  onMobileScoreDraftChange: (studentId: string, category: MobileScoreCategory, index: number, value: string) => void;
+  onMobileScoreCommit: (record: ClassRecord, category: MobileScoreCategory, index: number) => void;
   onApplyColumnMeta: (category: "WW" | "PT" | "QA", index: number, description: string, date: string) => void;
   isViewOnly?: boolean;
   /** R3-4: Optional AIMS scores for this student — renders read-only block above tabs */
@@ -139,7 +143,7 @@ export function GradeEditModal({
         );
       });
 
-  const renderScoreInput = (category: "WW" | "PT" | "QA", index: number, label: string) => {
+  const renderScoreInput = (category: MobileScoreCategory, index: number, label: string) => {
     const key = getMobileDraftKey(selectedRecord.student.id, category, index);
     const maxAllowed = getMaxForCell(category, index);
     const invalid = invalidCells[getCellKey(selectedRecord.student.id, category, index)];
@@ -171,13 +175,15 @@ export function GradeEditModal({
     );
   };
 
+  const isExamTab = mobileEditorTab === "EX";
+
   const tasks =
     mobileEditorTab === "WW"
       ? Array.from({ length: wwCount }).map((_, i) => ({
           index: i,
           description: wwMeta[i]?.description || `WW ${i + 1}`,
           date: wwMeta[i]?.date || "",
-          label: `Quiz ${i + 1}`,
+          label: `WW ${i + 1}`,
           category: "WW" as const,
         }))
       : mobileEditorTab === "PT"
@@ -188,15 +194,9 @@ export function GradeEditModal({
             label: `PT ${i + 1}`,
             category: "PT" as const,
           }))
-        : [
-            {
-              index: 0,
-              description: qaMeta.description,
-              date: qaMeta.date || "",
-              label: "TA",
-              category: "QA" as const,
-            },
-          ];
+        : [];
+
+  const aimsTab = mobileEditorTab === "EX" ? "QA" : mobileEditorTab;
 
   return (
     <FullScreenSheet
@@ -244,7 +244,7 @@ export function GradeEditModal({
       }
     >
       <div role="tablist" aria-label="Score category" className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
-        {(["WW", "PT", "QA"] as const).map((tab) => {
+        {(["WW", "PT", "EX"] as const).map((tab) => {
           const active = mobileEditorTab === tab;
           return (
             <button
@@ -258,16 +258,35 @@ export function GradeEditModal({
                 active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground",
               )}
             >
-              {tab === "WW" ? "Quiz" : tab === "QA" ? "TA" : "PT"}
+              {tab === "EX" ? "Exam" : tab}
             </button>
           );
         })}
       </div>
 
       <div className="space-y-4">
-        {tasks.length === 0 ? (
+        {isExamTab ? (
+          <>
+            <AssessmentDetails
+              label="Exam"
+              description={qaMeta.description}
+              date={qaMeta.date}
+              disabled={isViewOnly}
+              onDescriptionChange={(value) => onApplyColumnMeta("QA", 0, value, qaMeta.date)}
+              onDateChange={(value) => onApplyColumnMeta("QA", 0, qaMeta.description, value)}
+            />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              ST1 and ST2 are summative tests; TE is the term examination.
+            </p>
+            {EXAM_SUB_TESTS.map((sub, i) => (
+              <div key={sub.name}>
+                {renderScoreInput("EX", i, `${sub.name} score`)}
+              </div>
+            ))}
+          </>
+        ) : tasks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
-            <p className="text-sm font-semibold text-foreground">No {mobileEditorTab === "WW" ? "quiz" : "performance task"} columns yet</p>
+            <p className="text-sm font-semibold text-foreground">No {mobileEditorTab === "WW" ? "written work" : "performance task"} columns yet</p>
             <p className="mt-1 text-xs text-muted-foreground">Add assessment columns from the class record tools.</p>
           </div>
         ) : (
@@ -286,12 +305,12 @@ export function GradeEditModal({
           ))
         )}
 
-        {aimsForTab(mobileEditorTab).length > 0 && (
+        {aimsForTab(aimsTab).length > 0 && (
           <div className="space-y-2 rounded-xl border border-border bg-card p-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               AIMS scores (read-only)
             </p>
-            {aimsForTab(mobileEditorTab)}
+            {aimsForTab(aimsTab)}
           </div>
         )}
 

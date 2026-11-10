@@ -1,8 +1,15 @@
 import { useState, useMemo, useCallback } from "react";
 import type { ClassRecord } from "@/lib/api";
+import { EXAM_SUB_TESTS } from "@/lib/gradeMath";
 import { getMobileDraftKey, getScoreFromGrade } from "../components/classRecordMobileUtils";
 
-type ScoreCategory = "WW" | "PT" | "QA";
+type ScoreCategory = "WW" | "PT" | "QA" | "EX";
+
+function categoryLabel(category: ScoreCategory, index: number): string {
+  if (category === "QA") return "TA";
+  if (category === "EX") return EXAM_SUB_TESTS[index]?.name ?? `EX ${index + 1}`;
+  return `${category} ${index + 1}`;
+}
 
 export function useMobileEditor(opts: {
   sortedRecords: ClassRecord[];
@@ -20,7 +27,7 @@ export function useMobileEditor(opts: {
 
   const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
   const [mobileEditorStudentId, setMobileEditorStudentId] = useState<string | null>(null);
-  const [mobileEditorTab, setMobileEditorTab] = useState<"WW" | "PT" | "QA">("WW");
+  const [mobileEditorTab, setMobileEditorTab] = useState<"WW" | "PT" | "EX">("WW");
   const [mobileScoreDraft, setMobileScoreDraft] = useState<Record<string, string>>({});
 
   const selectedMobileRecord = useMemo(
@@ -68,7 +75,7 @@ export function useMobileEditor(opts: {
 
     if (Number.isNaN(normalized) || normalized < 0 || normalized > maxAllowed) {
       setMobileScoreDraft((prev) => ({ ...prev, [key]: "" }));
-      setError(`${category} ${category === "QA" ? "" : index + 1} score cannot exceed MAX (${maxAllowed}).`.trim());
+      setError(`${categoryLabel(category, index)} score cannot exceed MAX (${maxAllowed}).`);
       setInvalidCells((prev) => ({ ...prev, [getCellKey(record.student.id, category, index)]: `Score cannot exceed ${maxAllowed}.` }));
       return;
     }

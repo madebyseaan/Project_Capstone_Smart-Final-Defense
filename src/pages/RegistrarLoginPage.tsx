@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeOff, LogIn, User, Lock, AlertCircle, CheckCircle, GraduationCap, FileText, Sparkles, Loader2, UserCheck, FolderOpen, ClipboardCheck } from "lucide-react";
+import { Eye, EyeOff, LogIn, User, Lock, AlertCircle, CheckCircle, FileText, Sparkles, Loader2, UserCheck, FolderOpen, ClipboardCheck } from "lucide-react";
 import axios from "axios";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
@@ -89,7 +89,7 @@ export default function RegistrarLoginPage() {
 
   return (
     <div
-      className="h-screen w-full flex overflow-hidden bg-slate-50"
+      className="min-h-dvh w-full flex bg-background lg:h-screen lg:overflow-hidden"
       style={{
         backgroundImage:
           'linear-gradient(to bottom right, #f8fafc 0%, rgba(var(--theme-primary-rgb), 0.08) 50%, rgba(var(--theme-primary-rgb), 0.06) 100%)',
@@ -97,12 +97,6 @@ export default function RegistrarLoginPage() {
         '--accent': 'var(--theme-accent)'
       } as React.CSSProperties}
     >
-      <style>{`
-        .login-scale-in {
-          animation: login-scale-in 220ms ease-out forwards;
-        }
-      `}</style>
-
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-[55%] xl:w-3/5 relative overflow-hidden bg-primary shrink-0">
         {/* Solid brand background */}
@@ -163,7 +157,7 @@ export default function RegistrarLoginPage() {
 
       {/* Right Panel - Login Form */}
       <div
-        className="relative w-full lg:w-[45%] xl:w-2/5 flex items-center justify-center p-4 sm:p-6 lg:p-8 overflow-y-auto"
+        className="relative w-full lg:w-[45%] xl:w-2/5 flex items-center justify-center px-5 py-8 sm:px-6 lg:p-8 lg:overflow-y-auto"
       >
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           <svg
@@ -190,98 +184,79 @@ export default function RegistrarLoginPage() {
         </div>
 
         <div className="relative z-10 w-full max-w-[420px]">
-          {/* Mobile logo */}
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-6">
-            <div 
-              className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg overflow-hidden bg-white border border-slate-200"
-            >
-              {fullLogoUrl ? (
-                <img src={fullLogoUrl} alt={schoolName} className="w-full h-full object-cover" />
-              ) : (
-                <GraduationCap className="w-7 h-7 text-[var(--theme-primary)]" />
-              )}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-bold text-slate-900">{acronym}</span>
-                <span className="px-2 py-0.5 text-xs font-bold rounded bg-emerald-500 text-white">REGISTRAR</span>
-              </div>
-              <p className="text-xs text-slate-500">{schoolName}</p>
-            </div>
-          </div>
-
           {/* Login card with premium styling */}
-          <Card className="border border-black/[0.06] shadow-[0_24px_48px_-16px_rgba(15,23,42,0.18)] bg-white rounded-3xl overflow-hidden">
-            <CardHeader className="space-y-1 text-center pt-7 pb-2 px-7 bg-transparent border-b-0">
-              <div
-                className="w-16 h-16 mx-auto rounded-full flex items-center justify-center overflow-hidden"
-                style={{
-                  background: fullLogoUrl
-                    ? 'white'
-                    : 'var(--theme-primary)',
-                  boxShadow: '0 0 0 6px rgba(var(--theme-primary-rgb), 0.06), 0 12px 24px -8px rgba(var(--theme-primary-rgb), 0.35)',
-                  border: fullLogoUrl ? '2px solid rgba(var(--theme-primary-rgb), 0.2)' : 'none',
-                }}
-              >
-                {fullLogoUrl ? (
-                  <img src={fullLogoUrl} alt={schoolName} className="w-12 h-12 object-cover" />
-                ) : (
-                  <Sparkles className="w-6 h-6 text-white" />
-                )}
+          <Card className="border border-border/60 shadow-[0_24px_48px_-16px_rgba(15,23,42,0.18)] bg-card rounded-3xl overflow-hidden">
+            <CardHeader className="text-left px-5 pt-6 pb-0 sm:px-7 lg:pt-7 bg-transparent border-b-0">
+              <div className="flex items-center gap-3">
+                <div className="flex shrink-0 items-center justify-center w-12 h-12 lg:w-14 lg:h-14 rounded-2xl overflow-hidden bg-card border border-border shadow-sm p-1">
+                  {fullLogoUrl ? (
+                    <img src={fullLogoUrl} alt={schoolName} className="w-full h-full object-contain" />
+                  ) : (
+                    <Sparkles className="w-5 h-5 text-primary" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <span className="flex items-center gap-2 text-base lg:text-lg font-bold tracking-tight text-foreground">
+                    {acronym}
+                    <span className="rounded bg-emerald-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Registrar</span>
+                  </span>
+                  <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground leading-snug text-balance">
+                    {schoolName}
+                  </p>
+                </div>
               </div>
-              <CardTitle className="text-2xl font-bold text-slate-900 tracking-tight pt-2">
-                Welcome Back
-              </CardTitle>
-              <CardDescription className="normal-case tracking-normal text-slate-900 text-[15px] font-semibold mt-1.5 leading-snug">
-                Sign in to access the <span className="font-bold text-primary">Registrar Portal</span>
-              </CardDescription>
+
+              <div className="mt-5 border-t border-border/60 pt-5">
+                <CardTitle className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
+                  Welcome back
+                </CardTitle>
+                <CardDescription className="normal-case tracking-normal text-sm text-muted-foreground mt-1 leading-snug">
+                  Sign in to access the <span className="font-semibold text-primary">Registrar Portal</span>
+                </CardDescription>
+              </div>
             </CardHeader>
 
-            <CardContent className="px-7 pb-7 pt-4">
+            <CardContent className="px-5 pb-6 pt-5 sm:px-7 lg:pb-7">
               {/* Error Message */}
               {error && (
-                <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 login-scale-in">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="w-4 h-4 text-red-600" />
-                    </div>
-                    <span className="text-sm font-bold text-red-700">{error}</span>
-                  </div>
+                <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-xl border border-destructive/20 bg-destructive/5 px-3.5 py-3 animate-login-scale-in">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+                  <span className="text-sm font-medium text-destructive">{error}</span>
                 </div>
               )}
 
               {/* Success Message */}
               {success && (
-                <div className="mb-4 p-3 rounded-xl border flex items-center gap-2.5 login-scale-in bg-primary/10 border-primary/25">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary/15">
-                    <CheckCircle className="w-4 h-4 text-primary" />
-                  </div>
+                <div role="status" className="mb-4 flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3 animate-login-scale-in">
+                  <CheckCircle className="w-4 h-4 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
                   <div>
-                    <p className="text-sm font-semibold text-primary">Access granted!</p>
-                    <p className="text-xs text-slate-500">Loading registrar tools...</p>
+                    <p className="text-sm font-semibold text-foreground">Access granted!</p>
+                    <p className="text-xs text-muted-foreground">Loading registrar tools...</p>
                   </div>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-3">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Employee ID Field */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-sm font-bold text-slate-900">
+                  <Label htmlFor="email" className="text-sm font-medium text-foreground">
                     Employee ID or Email
                   </Label>
                   <div className="relative">
-                    <User className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <User className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="email"
                       type="text"
-                      placeholder="Employee ID or Email"
+                      placeholder="Enter your ID or email"
                       value={email}
                       onChange={(e) => {
                         setEmail(e.target.value);
                         if (error) setError(null);
                       }}
-                      className="pl-11 h-11 bg-muted/60 border-transparent hover:bg-muted focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none rounded-full transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
+                      className="pl-10 h-12 lg:h-11 bg-muted/60 border-transparent hover:bg-muted focus:bg-background focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none rounded-xl transition-all duration-200 placeholder:text-muted-foreground/70 text-foreground text-sm font-medium"
                       autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
                       name="identifier"
                       spellCheck={false}
                       required
@@ -291,11 +266,11 @@ export default function RegistrarLoginPage() {
 
                 {/* Password Field */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="password" className="text-sm font-bold text-slate-900">
+                  <Label htmlFor="password" className="text-sm font-medium text-foreground">
                     Password
                   </Label>
                   <div className="relative">
-                    <Lock className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
@@ -305,7 +280,7 @@ export default function RegistrarLoginPage() {
                         setPassword(e.target.value);
                         if (error) setError(null);
                       }}
-                      className="pl-11 pr-11 h-11 bg-muted/60 border-transparent hover:bg-muted focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none rounded-full transition-all duration-200 placeholder:text-slate-400 text-slate-800 text-sm font-medium"
+                      className="pl-10 pr-12 h-12 lg:h-11 bg-muted/60 border-transparent hover:bg-muted focus:bg-background focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none rounded-xl transition-all duration-200 placeholder:text-muted-foreground/70 text-foreground text-sm font-medium"
                       autoComplete="current-password"
                       name="password"
                       required
@@ -313,36 +288,23 @@ export default function RegistrarLoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200"
+                      className="absolute right-0.5 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-200"
                       aria-label={showPassword ? "Hide password" : "Show password"}
                       aria-pressed={showPassword}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
                     </button>
                   </div>
-                </div>
-
-                {/* Remember Me & Forgot Password */}
-                <div className="flex items-start justify-between gap-4 py-1">
-                  <label className="flex items-center gap-2.5 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      className="peer sr-only"
-                    />
-                    <div className="w-4 h-4 rounded-full border-2 border-primary/70 bg-white peer-checked:border-[5px] peer-checked:border-primary transition-all duration-150" />
-                    <span className="text-slate-900 group-hover:text-primary transition-colors font-semibold text-sm select-none">Remember me</span>
-                  </label>
-                  <div className="text-right leading-snug">
-                    <span className="block text-[13px] font-medium text-slate-500 select-none">Forgot password?</span>
-                    <span className="block text-[13px] text-slate-500 mt-0.5 select-none">Contact the System Admin.</span>
-                  </div>
+                  <p className="pt-0.5 text-right text-xs leading-relaxed text-muted-foreground">
+                    <span className="font-medium text-foreground">Forgot password?</span> Contact the System Admin.
+                  </p>
                 </div>
 
                 {/* Login Button */}
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full h-11 font-semibold text-sm rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.99] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="w-full h-12 lg:h-11 font-semibold text-sm rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.99] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
                     <span className="flex items-center gap-2">
