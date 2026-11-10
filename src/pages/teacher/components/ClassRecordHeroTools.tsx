@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { Link2, FileDown, FileUp, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -71,7 +71,7 @@ export function ClassRecordHeroTools({
         title={linked ? "Manage AIMS LMS connection" : "Connect an AIMS LMS course"}
         aria-label={linked ? "Manage AIMS connection" : "Connect AIMS"}
         className={cn(
-          "h-12 gap-1.5 rounded-xl border text-xs font-semibold shadow-xs lg:h-8 lg:rounded-lg lg:text-[11px]",
+          "h-12 gap-1.5 rounded-xl border text-[0.8rem] font-semibold shadow-xs lg:h-8 lg:rounded-lg lg:text-[11px]",
           linked
             ? "bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border-[var(--ledger-aims)] hover:bg-[var(--ledger-aims-bg)]"
             : "border-border bg-background text-muted-foreground hover:bg-muted"
@@ -89,7 +89,7 @@ export function ClassRecordHeroTools({
         disabled={downloading}
         title="Download the official DepEd E-Class-Record pre-filled with your roster"
         aria-label="Download pre-filled Excel"
-        className="h-12 gap-1.5 rounded-xl border border-border bg-background text-xs font-semibold text-muted-foreground shadow-xs hover:bg-muted lg:h-8 lg:rounded-lg lg:text-[11px]"
+        className="h-12 gap-1.5 rounded-xl border border-border bg-background text-[0.8rem] font-semibold text-muted-foreground shadow-xs hover:bg-muted lg:h-8 lg:rounded-lg lg:text-[11px]"
       >
         {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5 text-emerald-600" />}
         <span className="sm:hidden">Excel</span>
@@ -103,7 +103,7 @@ export function ClassRecordHeroTools({
         disabled={isViewOnly}
         title={isViewOnly ? "Read-only — importing is disabled" : "Import a filled E-Class-Record"}
         aria-label="Import filled Excel"
-        className="h-12 gap-1.5 rounded-xl border border-border bg-background text-xs font-semibold text-muted-foreground shadow-xs hover:bg-muted disabled:opacity-50 lg:h-8 lg:rounded-lg lg:text-[11px]"
+        className="h-12 gap-1.5 rounded-xl border border-border bg-background text-[0.8rem] font-semibold text-muted-foreground shadow-xs hover:bg-muted disabled:opacity-50 lg:h-8 lg:rounded-lg lg:text-[11px]"
       >
         <FileUp className="w-3.5 h-3.5 text-primary" />
         <span className="sm:hidden">Import</span>
@@ -166,4 +166,3 @@ export function ClassRecordHeroTools({
     </>
   );
 }
-

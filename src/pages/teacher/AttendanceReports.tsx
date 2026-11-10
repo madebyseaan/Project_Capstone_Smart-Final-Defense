@@ -1,7 +1,10 @@
-import { Fragment, useEffect, useState } from "react";
-import { Calendar, ChevronDown, ChevronUp, Download, FileSpreadsheet, Loader2, MoveHorizontal, User } from "lucide-react";
+﻿import { Fragment, useEffect, useState } from "react";
+import { Calendar, CalendarDays, ChevronDown, ChevronUp, Download, FileSpreadsheet, Loader2, MoveHorizontal, User, Users } from "lucide-react";
 import api, { advisoryApi, type SF2Data } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { cn } from "@/lib/utils";
+import { SURFACE } from "./components/MobileDashboardTokens";
+import { ProgressRing } from "./components/MobileDashboardWidgets";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -126,6 +129,14 @@ export default function AttendanceReports() {
   const totalDays = data?.schoolDays.length ?? 0;
   const enrolmentTotal = data?.summary.enrolmentTotal ?? 0;
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+  const attendancePct = data?.summary.percentageAttendance ?? 0;
+  const avgTone = !data
+    ? "text-muted-foreground"
+    : attendancePct >= 90
+      ? "text-emerald-500"
+      : attendancePct >= 75
+        ? "text-amber-500"
+        : "text-rose-500";
 
   const getAttendanceRate = (present: number) => {
     if (totalDays === 0) return "0";
@@ -146,7 +157,63 @@ export default function AttendanceReports() {
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-2 lg:gap-6">
+      <div className={cn("flex items-center gap-3 p-4 lg:hidden", SURFACE)}>
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_12px_24px_-14px_rgba(0,0,0,0.55)]">
+          <FileSpreadsheet className="h-6 w-6" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.8rem] font-medium text-muted-foreground">Advisory report</p>
+          <h1 className="mt-0.5 text-[1.4rem] font-semibold leading-tight tracking-tight text-foreground">
+            SF2 summary
+          </h1>
+          <p className="mt-1 text-[0.8rem] font-medium text-muted-foreground">
+            {section
+              ? `${gradeLevelLabels[section.gradeLevel] ?? section.gradeLevel} - ${section.name}`
+              : "Loading advisory section…"}
+          </p>
+        </div>
+      </div>
+
+      <div className={cn("p-4 lg:hidden", SURFACE)}>
+        <div className="flex items-center gap-4">
+          <ProgressRing
+            value={data ? attendancePct : 0}
+            size={88}
+            stroke={8}
+            className={avgTone}
+            trackClassName="stroke-muted"
+          >
+            <span className="text-[1.2rem] font-semibold leading-none tabular-nums text-foreground">
+              {data ? `${attendancePct}%` : "—"}
+            </span>
+            <span className="mt-1 text-[0.8rem] font-medium text-muted-foreground">attendance</span>
+          </ProgressRing>
+
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[0.8rem] font-medium text-muted-foreground">
+                <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                Students
+              </span>
+              <span className="text-[1rem] font-semibold tabular-nums text-foreground">
+                {data ? enrolmentTotal : "—"}
+              </span>
+            </div>
+            <div className="h-px bg-border/70" />
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[0.8rem] font-medium text-muted-foreground">
+                <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                School days
+              </span>
+              <span className="text-[1rem] font-semibold tabular-nums text-foreground">
+                {data ? totalDays : "—"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden grid-cols-3 gap-2 lg:grid lg:gap-6">
         <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <CardContent className="p-3 lg:p-6">
             <div className="flex items-center justify-between">
@@ -212,14 +279,14 @@ export default function AttendanceReports() {
 
             <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[8rem_6rem_auto]">
               <div className="space-y-1.5">
-                <label htmlFor="reportMonth" className="pl-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <label htmlFor="reportMonth" className="pl-1 text-[0.8rem] font-semibold uppercase tracking-wide text-muted-foreground lg:text-[10px]">
                   Month
                 </label>
                 <select
                   id="reportMonth"
                   value={month}
                   onChange={(e) => setMonth(Number(e.target.value))}
-                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+                  className="h-12 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground lg:h-10 lg:rounded-lg"
                 >
                   {MONTH_NAMES.map((name, i) => (
                     <option key={name} value={i + 1}>
@@ -230,14 +297,14 @@ export default function AttendanceReports() {
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="reportYear" className="pl-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <label htmlFor="reportYear" className="pl-1 text-[0.8rem] font-semibold uppercase tracking-wide text-muted-foreground lg:text-[10px]">
                   Year
                 </label>
                 <select
                   id="reportYear"
                   value={year}
                   onChange={(e) => setYear(Number(e.target.value))}
-                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+                  className="h-12 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground lg:h-10 lg:rounded-lg"
                 >
                   {yearOptions.map((y) => (
                     <option key={y} value={y}>
@@ -250,7 +317,7 @@ export default function AttendanceReports() {
               <Button
                 onClick={handleDownload}
                 disabled={!data}
-                className="col-span-2 h-10 rounded-lg text-xs font-semibold uppercase tracking-wide sm:col-span-1"
+                className="col-span-2 h-12 rounded-xl text-[0.8rem] font-semibold sm:col-span-1 lg:h-10 lg:rounded-lg lg:text-xs lg:uppercase lg:tracking-wide"
               >
                 <Download className="mr-2 h-4 w-4" />
                 Download Excel
@@ -283,7 +350,7 @@ export default function AttendanceReports() {
               <div className="md:hidden">
                 {data.groups.map((group) => (
                   <div key={`mobile-${group.key}`}>
-                    <p className="bg-muted/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <p className="bg-muted/60 px-4 py-2 text-[0.8rem] font-semibold uppercase tracking-wide text-muted-foreground">
                       {group.label} ({group.students.length})
                     </p>
                     <div className="divide-y divide-border">
@@ -300,9 +367,9 @@ export default function AttendanceReports() {
                                 <p className="line-clamp-2 text-sm font-semibold text-foreground">
                                   {student.lastName}, {student.firstName}
                                 </p>
-                                <p className="font-mono text-[11px] text-muted-foreground">{student.lrn}</p>
+                                <p className="font-mono text-[0.8rem] text-muted-foreground">{student.lrn}</p>
                                 {student.maxConsecutiveAbsent >= 5 && (
-                                  <span className="mt-1 inline-flex rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-600">
+                                  <span className="mt-1 inline-flex rounded bg-rose-50 px-1.5 py-0.5 text-[0.8rem] font-semibold uppercase tracking-wide text-rose-600">
                                     5+ consecutive absences
                                   </span>
                                 )}
@@ -311,38 +378,38 @@ export default function AttendanceReports() {
                                 <p className={`text-sm font-bold ${rate >= 90 ? "text-emerald-600" : rate >= 75 ? "text-amber-600" : "text-rose-600"}`}>
                                   {getAttendanceRate(student.present)}%
                                 </p>
-                                <p className="text-[10px] text-muted-foreground">{student.present}/{totalDays} days</p>
+                                <p className="text-[0.8rem] text-muted-foreground">{student.present}/{totalDays} days</p>
                               </div>
                               <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/student:rotate-180" aria-hidden="true" />
                             </summary>
                             <div className="space-y-3 bg-muted/30 px-4 pb-4">
                               <div className="grid grid-cols-4 gap-2">
                                 <div className="rounded-lg border border-border bg-card px-2 py-2 text-center">
-                                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">P</p>
+                                  <p className="text-[0.8rem] font-medium uppercase tracking-wide text-muted-foreground">P</p>
                                   <p className="text-sm font-bold text-emerald-600">{student.present}</p>
                                 </div>
                                 <div className="rounded-lg border border-border bg-card px-2 py-2 text-center">
-                                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">A</p>
+                                  <p className="text-[0.8rem] font-medium uppercase tracking-wide text-muted-foreground">A</p>
                                   <p className="text-sm font-bold text-rose-600">{student.absent}</p>
                                 </div>
                                 <div className="rounded-lg border border-border bg-card px-2 py-2 text-center">
-                                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">L</p>
+                                  <p className="text-[0.8rem] font-medium uppercase tracking-wide text-muted-foreground">L</p>
                                   <p className="text-sm font-bold text-amber-600">{student.tardy}</p>
                                 </div>
                                 <div className="rounded-lg border border-border bg-card px-2 py-2 text-center">
-                                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">E</p>
+                                  <p className="text-[0.8rem] font-medium uppercase tracking-wide text-muted-foreground">E</p>
                                   <p className="text-sm font-bold text-indigo-600">{excused}</p>
                                 </div>
                               </div>
                               <div>
-                                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                <p className="mb-1.5 flex items-center gap-1.5 text-[0.8rem] font-semibold uppercase tracking-wide text-muted-foreground">
                                   <User className="h-3 w-3" /> Daily marks
                                 </p>
                                 <ul className="grid grid-cols-2 gap-1">
                                   {data.schoolDays.map((d) => {
                                     const mark = student.marks[d.date] ?? "";
                                     return (
-                                      <li key={`${student.studentId}-${d.date}`} className="flex items-center justify-between rounded-md bg-card px-2 py-1 text-[11px]">
+                                      <li key={`${student.studentId}-${d.date}`} className="flex items-center justify-between rounded-md bg-card px-2 py-1 text-[0.8rem]">
                                         <span className="text-muted-foreground">{new Date(`${d.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</span>
                                         <MarkContent mark={mark} />
                                       </li>
@@ -503,12 +570,15 @@ export default function AttendanceReports() {
               </div>
             </>
           ) : (
-            <div className="py-32 text-center px-8">
-              <div className="w-24 h-24 bg-muted rounded-[2.5rem] flex items-center justify-center mx-auto mb-8">
-                <Calendar className="w-10 h-10 text-muted-foreground" />
+            <div className="flex flex-col items-center px-6 py-14 text-center lg:py-32">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted text-muted-foreground lg:mb-8 lg:h-24 lg:w-24 lg:rounded-[2.5rem]">
+                <Calendar className="h-7 w-7 lg:h-10 lg:w-10" aria-hidden="true" />
               </div>
-              <h3 className="font-bold text-foreground text-2xl mb-3">No Attendance Data</h3>
-              <p className="text-muted-foreground font-medium leading-relaxed">
+              <h3 className="text-[0.95rem] font-semibold text-foreground lg:mb-3 lg:text-2xl lg:font-bold">
+                <span className="lg:hidden">No attendance data</span>
+                <span className="hidden lg:inline">No Attendance Data</span>
+              </h3>
+              <p className="mt-1 max-w-xs text-[0.8rem] font-medium text-muted-foreground lg:mt-0 lg:max-w-none lg:text-base lg:leading-relaxed">
                 {data ? `No attendance recorded for ${data.monthLabel} ${data.year}.` : "Select a month to view the report."}
               </p>
             </div>

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+﻿import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FullScreenSheet } from "@/components/mobile";
 import { cn } from "@/lib/utils";
@@ -49,7 +49,7 @@ interface GradeEditModalProps {
   canNavigateNext?: boolean;
 }
 
-function AssessmentDetails({
+function TaskMetaDetails({
   label,
   description,
   date,
@@ -65,23 +65,20 @@ function AssessmentDetails({
   onDateChange: (value: string) => void;
 }) {
   return (
-    <details className="group/details rounded-xl border border-border bg-background">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 px-3 text-xs font-semibold [&::-webkit-details-marker]:hidden text-muted-foreground">
-        <span>{label} details</span>
-        <span className="flex items-center gap-2">
-          <span className="text-[10px] font-medium uppercase tracking-wide">Class-wide</span>
-          <ChevronDown className="h-4 w-4 transition-transform group-open/details:rotate-180" aria-hidden="true" />
-        </span>
+    <details className="group/details mt-2 rounded-xl border border-border/60 bg-background">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 px-3 text-[0.8rem] font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+        <span>Class-wide details</span>
+        <ChevronDown className="h-4 w-4 transition-transform group-open/details:rotate-180" aria-hidden="true" />
       </summary>
-      <div className="grid grid-cols-1 gap-2 border-t border-border p-3">
+      <div className="grid grid-cols-1 gap-2 border-t border-border/60 p-3">
         <input
           type="text"
           defaultValue={description}
           disabled={disabled}
           onBlur={(e) => onDescriptionChange(e.currentTarget.value)}
           aria-label={`${label} description`}
-          className="h-12 w-full rounded-lg border border-border bg-card px-3 text-base font-medium disabled:cursor-not-allowed disabled:opacity-60"
-          placeholder={`${label} description`}
+          className="h-12 w-full rounded-lg border border-border bg-card px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          placeholder="Description"
         />
         <input
           type="date"
@@ -89,7 +86,7 @@ function AssessmentDetails({
           disabled={disabled}
           onBlur={(e) => onDateChange(e.currentTarget.value)}
           aria-label={`${label} date`}
-          className="h-12 w-full rounded-lg border border-border bg-card px-3 text-base font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-12 w-full rounded-lg border border-border bg-card px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
         />
       </div>
     </details>
@@ -135,7 +132,7 @@ export function GradeEditModal({
             key={`aims-${category}-${a.assessmentId}`}
             className="flex items-center justify-between gap-2 rounded-lg bg-[var(--ledger-aims-bg)] px-3 py-2"
           >
-            <span className="truncate text-xs font-medium text-[var(--ledger-aims)]">{a.title}</span>
+            <span className="truncate text-[0.8rem] font-medium text-[var(--ledger-aims)]">{a.title}</span>
             <span className="shrink-0 text-sm font-semibold text-[var(--ledger-aims)]">
               {score ? `${score.pointsEarned}/${score.maxPoints}` : "—"}
             </span>
@@ -143,17 +140,12 @@ export function GradeEditModal({
         );
       });
 
-  const renderScoreInput = (category: MobileScoreCategory, index: number, label: string) => {
+  const renderScoreField = (category: MobileScoreCategory, index: number, label: string) => {
     const key = getMobileDraftKey(selectedRecord.student.id, category, index);
-    const maxAllowed = getMaxForCell(category, index);
     const invalid = invalidCells[getCellKey(selectedRecord.student.id, category, index)];
 
     return (
-      <label key={`score-${category}-${index}`} className="block space-y-1.5">
-        <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-          <span>{label}</span>
-          <span className="text-[10px] font-semibold uppercase tracking-wide">Max {maxAllowed}</span>
-        </span>
+      <div className="flex shrink-0 flex-col items-end gap-1">
         <input
           type="number"
           inputMode="decimal"
@@ -165,13 +157,13 @@ export function GradeEditModal({
           aria-invalid={!!invalid}
           aria-label={`${label} score`}
           className={cn(
-            "h-14 w-full rounded-xl border bg-background px-4 text-2xl font-bold text-foreground outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+            "h-14 w-24 rounded-xl border bg-background px-2 text-center text-2xl font-bold text-foreground outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60",
             invalid ? "border-destructive" : "border-border focus:border-primary",
           )}
           placeholder="0"
         />
-        {invalid && <span className="block text-xs font-medium text-destructive">{invalid}</span>}
-      </label>
+        {invalid && <span className="max-w-24 text-right text-[0.8rem] font-medium text-destructive">{invalid}</span>}
+      </div>
     );
   };
 
@@ -254,7 +246,7 @@ export function GradeEditModal({
               aria-selected={active}
               onClick={() => onTabChange(tab)}
               className={cn(
-                "min-h-12 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors",
+                "min-h-12 rounded-lg text-[0.8rem] font-semibold uppercase tracking-wide transition-colors",
                 active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground",
               )}
             >
@@ -264,50 +256,83 @@ export function GradeEditModal({
         })}
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {isExamTab ? (
           <>
-            <AssessmentDetails
-              label="Exam"
-              description={qaMeta.description}
-              date={qaMeta.date}
-              disabled={isViewOnly}
-              onDescriptionChange={(value) => onApplyColumnMeta("QA", 0, value, qaMeta.date)}
-              onDateChange={(value) => onApplyColumnMeta("QA", 0, qaMeta.description, value)}
-            />
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              ST1 and ST2 are summative tests; TE is the term examination.
-            </p>
+            <div className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.28)]">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[0.9rem] font-semibold text-foreground">Term exam</p>
+                <span className="text-[0.8rem] font-medium text-muted-foreground">ST1 · ST2 · TE</span>
+              </div>
+              <TaskMetaDetails
+                label="Exam"
+                description={qaMeta.description}
+                date={qaMeta.date}
+                disabled={isViewOnly}
+                onDescriptionChange={(value) => onApplyColumnMeta("QA", 0, value, qaMeta.date)}
+                onDateChange={(value) => onApplyColumnMeta("QA", 0, qaMeta.description, value)}
+              />
+            </div>
             {EXAM_SUB_TESTS.map((sub, i) => (
-              <div key={sub.name}>
-                {renderScoreInput("EX", i, `${sub.name} score`)}
+              <div
+                key={sub.name}
+                className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.28)]"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[0.9rem] font-semibold text-foreground">{sub.name}</p>
+                    <p className="mt-0.5 text-[0.8rem] font-medium text-muted-foreground">
+                      Max {getMaxForCell("EX", i)}
+                    </p>
+                  </div>
+                  {renderScoreField("EX", i, sub.name)}
+                </div>
               </div>
             ))}
           </>
         ) : tasks.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
-            <p className="text-sm font-semibold text-foreground">No {mobileEditorTab === "WW" ? "written work" : "performance task"} columns yet</p>
-            <p className="mt-1 text-xs text-muted-foreground">Add assessment columns from the class record tools.</p>
+          <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center">
+            <p className="text-sm font-semibold text-foreground">
+              No {mobileEditorTab === "WW" ? "written work" : "performance task"} columns yet
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Add assessment columns from the class record tools.
+            </p>
           </div>
         ) : (
           tasks.map((task) => (
-            <div key={`${task.category}-${task.index}`} className="space-y-3">
-              <AssessmentDetails
+            <div
+              key={`${task.category}-${task.index}`}
+              className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.28)]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[0.9rem] font-semibold text-foreground">{task.label}</p>
+                  <p className="mt-0.5 text-[0.8rem] font-medium text-muted-foreground">
+                    Max {getMaxForCell(task.category, task.index)}
+                  </p>
+                </div>
+                {renderScoreField(task.category, task.index, task.label)}
+              </div>
+              <TaskMetaDetails
                 label={task.label}
                 description={task.description}
                 date={task.date}
                 disabled={isViewOnly}
-                onDescriptionChange={(value) => onApplyColumnMeta(task.category, task.index, value, task.date)}
-                onDateChange={(value) => onApplyColumnMeta(task.category, task.index, task.description, value)}
+                onDescriptionChange={(value) =>
+                  onApplyColumnMeta(task.category, task.index, value, task.date)
+                }
+                onDateChange={(value) =>
+                  onApplyColumnMeta(task.category, task.index, task.description, value)
+                }
               />
-              {renderScoreInput(task.category, task.index, `${task.label} score`)}
             </div>
           ))
         )}
 
         {aimsForTab(aimsTab).length > 0 && (
-          <div className="space-y-2 rounded-xl border border-border bg-card p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <div className="space-y-2 rounded-2xl border border-border/70 bg-card p-3">
+            <p className="text-[0.8rem] font-semibold text-muted-foreground">
               AIMS scores (read-only)
             </p>
             {aimsForTab(aimsTab)}
@@ -315,7 +340,7 @@ export function GradeEditModal({
         )}
 
         {isViewOnly && (
-          <p className="rounded-xl bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
+          <p className="rounded-xl bg-muted px-3 py-2 text-[0.8rem] font-medium text-muted-foreground">
             This term is view only. Scores cannot be edited.
           </p>
         )}
@@ -323,5 +348,3 @@ export function GradeEditModal({
     </FullScreenSheet>
   );
 }
-
-

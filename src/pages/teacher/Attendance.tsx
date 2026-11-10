@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { SERVER_URL, getPortalToken, getCsrfToken } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { StickyActionBar } from "@/components/mobile";
+import MobileAttendanceView from "./components/MobileAttendanceView";
 import { cn } from "@/lib/utils";
 import axios from "axios";
 
@@ -442,39 +442,58 @@ export default function Attendance() {
         </div>
       )}
 
+      <MobileAttendanceView
+        sectionLabel={
+          attendanceData?.section
+            ? `${gradeLevelLabels[attendanceData.section.gradeLevel]} - ${attendanceData.section.name}`
+            : "Attendance"
+        }
+        learnerCount={attendanceData?.attendance.length ?? 0}
+        students={filteredStudents}
+        hasData={!!attendanceData}
+        loading={loading}
+        loadingMonthly={loadingMonthly}
+        selectedDate={selectedDate}
+        maxDate={getLocalDateStr()}
+        onDateChange={setSelectedDate}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        statusStats={stats}
+        monthlyStats={monthlyStats}
+        expandedRemarks={expandedRemarks}
+        onToggleRemark={(studentId) =>
+          setExpandedRemarks((prev) => ({ ...prev, [studentId]: !prev[studentId] }))
+        }
+        onStatusChange={handleStatusChange}
+        onRemarksChange={handleRemarksChange}
+        onMarkAllPresent={markAllPresent}
+        onClear={clearAttendance}
+        saving={saving}
+        onSaveAndNext={saveAndNextDay}
+      />
+
       {/* Quick Stats — compact strip on phones, cards on desktop */}
       {attendanceData && (
-        <>
-          <div className="grid grid-cols-4 divide-x divide-border rounded-2xl border border-border bg-card py-3 shadow-sm lg:hidden">
-            {attendanceStatItems.map((stat) => (
-              <div key={stat.label} className="px-2 text-center">
-                <p className="truncate text-base font-bold leading-none text-foreground">{stat.value}</p>
-                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{stat.short}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="hidden grid-cols-2 gap-3 lg:grid lg:grid-cols-4 lg:gap-4">
-            {attendanceStatItems.map((stat) => (
-              <Card key={stat.label} className="rounded-2xl border border-border bg-card shadow-sm">
-                <CardContent className="flex items-center justify-between gap-2 p-3 lg:p-4">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
-                    <p className="mt-0.5 text-lg font-bold leading-tight text-foreground lg:text-xl">{stat.value}</p>
-                    <p className="mt-0.5 hidden truncate text-[11px] text-muted-foreground sm:block">{stat.desc}</p>
-                  </div>
-                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", stat.iconClass)}>
-                    <stat.icon className={cn("h-4 w-4", loadingMonthly && stat.icon === RefreshCw && "animate-spin")} aria-hidden="true" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </>
+        <div className="hidden grid-cols-2 gap-3 lg:grid lg:grid-cols-4 lg:gap-4">
+          {attendanceStatItems.map((stat) => (
+            <Card key={stat.label} className="rounded-2xl border border-border bg-card shadow-sm">
+              <CardContent className="flex items-center justify-between gap-2 p-3 lg:p-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
+                  <p className="mt-0.5 text-lg font-bold leading-tight text-foreground lg:text-xl">{stat.value}</p>
+                  <p className="mt-0.5 hidden truncate text-[11px] text-muted-foreground sm:block">{stat.desc}</p>
+                </div>
+                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", stat.iconClass)}>
+                  <stat.icon className={cn("h-4 w-4", loadingMonthly && stat.icon === RefreshCw && "animate-spin")} aria-hidden="true" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
 
       {/* Main roster */}
-      <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:block">
         <CardHeader className="grid-cols-1 border-b border-border bg-muted/30 p-4 lg:p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0">
@@ -781,34 +800,6 @@ export default function Attendance() {
           )}
         </CardContent>
       </Card>
-
-      {/* Mobile sticky save */}
-      {attendanceData && (
-        <StickyActionBar>
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1 text-xs font-medium text-muted-foreground">
-              <span className="font-semibold text-foreground">{stats.present}</span> of {attendanceData.attendance.length} present
-            </div>
-            <Button
-              onClick={saveAndNextDay}
-              disabled={saving || !attendanceData}
-              className="h-12 min-w-[160px] rounded-xl text-xs font-semibold uppercase tracking-wide"
-            >
-              {saving ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Saving…
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save & next day
-                </>
-              )}
-            </Button>
-          </div>
-        </StickyActionBar>
-      )}
 
       {/* Clear Confirmation Dialog */}
       <Dialog open={showConfirmClear} onOpenChange={setShowConfirmClear}>

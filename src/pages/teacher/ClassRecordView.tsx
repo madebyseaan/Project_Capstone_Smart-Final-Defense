@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+﻿import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Loader2, AlertTriangle } from "lucide-react";
@@ -8,6 +8,7 @@ import { ClassRecordMobileList } from "./components/ClassRecordMobileList";
 import { GradeEditModal } from "./components/GradeEditModal";
 import { GradeStatusBanner } from "@/components/GradeStatusBanner";
 import { ClassRecordHero } from "./components/ClassRecordHero";
+import MobileClassRecordHero from "./components/MobileClassRecordHero";
 import { ClassRecordTour } from "./components/ClassRecordTour";
 import { EditRequestModal } from "./components/EditRequestModal";
 import { AssessmentHeader } from "./components/AssessmentHeader";
@@ -27,6 +28,7 @@ import { useScoreWriteQueue } from "./hooks/useScoreWriteQueue";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { ClassRecordHeroTools } from "./components/ClassRecordHeroTools";
 import { ClassDescriptorFooter } from "./components/ClassDescriptorFooter";
+import MobileClassDescriptor from "./components/MobileClassDescriptor";
 import { InheritedGradesNotice } from "./components/InheritedGradesNotice";
 import { MobileWarningDialog } from "./components/MobileWarningDialog";
 
@@ -371,6 +373,35 @@ export default function ClassRecordView() {
   if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><div className="text-center"><div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fetching class records…</p></div></div>;
   if (!classAssignment) return null;
 
+  const classToolsSlot = classAssignmentId ? (
+    <ClassRecordHeroTools
+      classAssignmentId={classAssignmentId}
+      selectedTerm={selectedTerm}
+      aimsData={aimsData ?? null}
+      isViewOnly={editAccess.isViewOnly}
+      openLinkDialogSignal={linkDialogSignal}
+      onChanged={handleToolsChanged}
+      beforeImport={flushPendingScores}
+      classContext={{
+        subjectName: classAssignment.subject.name,
+        sectionName: classAssignment.section.name,
+        gradeLevel: classAssignment.section.gradeLevel,
+        schoolYear: classAssignment.schoolYear,
+      }}
+    />
+  ) : undefined;
+
+  const rotationSlot =
+    lockedTerm && classAssignment.subject.rotationTermRank ? (
+      <RotationBanner
+        subjectName={classAssignment.subject.name}
+        rotationTermRank={classAssignment.subject.rotationTermRank}
+        termLabel={termLabels[lockedTerm as keyof typeof termLabels] ?? lockedTerm}
+        currentTermLabel={termLabels[currentTerm as keyof typeof termLabels] ?? currentTerm}
+        siblings={rotationSiblings}
+      />
+    ) : undefined;
+
   return (
     <div className="space-y-0 animate-fade-in w-full pb-4 lg:px-6 lg:pb-12">
       {isArchivedAssignment && (
@@ -385,45 +416,36 @@ export default function ClassRecordView() {
       )}
 
       <div className="overflow-clip bg-transparent lg:rounded-2xl lg:border lg:border-border lg:bg-card lg:shadow-xs">
-      <ClassRecordHero
-        classAssignment={classAssignment}
-        effectiveWeightsSource={effectiveWeights?.source ?? null}
-        activeWeights={activeWeights}
-        stats={stats}
-        onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }}
-        selectedTerm={selectedTerm}
-        onTermChange={handleTermChange}
-        lockedTerm={lockedTerm}
-        termLabels={termLabels}
-        isViewOnly={editAccess.isViewOnly}
-        userName={userName}
-        toolsSlot={classAssignmentId ? (
-          <ClassRecordHeroTools
-            classAssignmentId={classAssignmentId}
-            selectedTerm={selectedTerm}
-            aimsData={aimsData ?? null}
-            isViewOnly={editAccess.isViewOnly}
-            openLinkDialogSignal={linkDialogSignal}
-            onChanged={handleToolsChanged}
-            beforeImport={flushPendingScores}
-            classContext={{
-              subjectName: classAssignment.subject.name,
-              sectionName: classAssignment.section.name,
-              gradeLevel: classAssignment.section.gradeLevel,
-              schoolYear: classAssignment.schoolYear,
-            }}
-          />
-        ) : undefined}
-        rotationSlot={lockedTerm && classAssignment?.subject?.rotationTermRank ? (
-          <RotationBanner
-            subjectName={classAssignment.subject.name}
-            rotationTermRank={classAssignment.subject.rotationTermRank}
-            termLabel={termLabels[lockedTerm as keyof typeof termLabels] ?? lockedTerm}
-            currentTermLabel={termLabels[currentTerm as keyof typeof termLabels] ?? currentTerm}
-            siblings={rotationSiblings}
-          />
-        ) : undefined}
-      />
+      {isDesktop ? (
+        <ClassRecordHero
+          classAssignment={classAssignment}
+          effectiveWeightsSource={effectiveWeights?.source ?? null}
+          activeWeights={activeWeights}
+          stats={stats}
+          onStartTour={() => { if (window.innerWidth < 1024) { setShowMobileWarning(true); } else { setIsTourOpen(true); window.dispatchEvent(new Event("tour:start")); } }}
+          selectedTerm={selectedTerm}
+          onTermChange={handleTermChange}
+          lockedTerm={lockedTerm}
+          termLabels={termLabels}
+          isViewOnly={editAccess.isViewOnly}
+          userName={userName}
+          toolsSlot={classToolsSlot}
+          rotationSlot={rotationSlot}
+        />
+      ) : (
+        <MobileClassRecordHero
+          classAssignment={classAssignment}
+          activeWeights={activeWeights}
+          stats={stats}
+          selectedTerm={selectedTerm}
+          onTermChange={handleTermChange}
+          lockedTerm={lockedTerm}
+          termLabels={termLabels}
+          isViewOnly={editAccess.isViewOnly}
+          toolsSlot={classToolsSlot}
+          rotationSlot={rotationSlot}
+        />
+      )}
 
       <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={!isArchivedAssignment && editAccess.canRequestEdit ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} termDatesDerived={termDates?.derived} locks={classRecordQuery.data?.locks ?? null} variant="flush" />
 
@@ -444,12 +466,16 @@ export default function ClassRecordView() {
       ) : (
         <>
           {!isDesktop && (
-            <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onTermChange={handleTermChange} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} aimsByStudent={aimsByStudent} aimsAssessments={aimsAssessments} />
+            <ClassRecordMobileList records={sortedRecords} selectedTerm={selectedTerm} onOpenEditor={mobileEditor.openMobileEditor} getDisplayFinalGrade={getDisplayFinalGrade} getGradeColor={getGradeColor} isViewOnly={editAccess.isViewOnly} aimsByStudent={aimsByStudent} aimsAssessments={aimsAssessments} />
           )}
 
       <ClassRecordTable classAssignment={classAssignment} effectiveWeights={effectiveWeights} selectedTerm={selectedTerm} gradingMode={gradingMode} isViewOnly={editAccess.isViewOnly} separateByGender={separateByGender} onSeparateByGenderChange={setSeparateByGender} showAssessmentDetails={showAssessmentDetails} onToggleAssessmentDetails={() => setShowAssessmentDetails((p) => !p)} onClearScores={handleClearScores} ledgerHeaderRef={layout.ledgerHeaderRef} topNavHeight={layout.topNavHeight} ledgerHeaderHeight={Math.ceil(layout.ledgerHeaderHeight)} stickyOffset={layout.stickyOffset} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} hpsData={hpsData} sortedRecords={sortedRecords} maleRecords={maleRecords} femaleRecords={femaleRecords} onRemoveTask={removeTask} onAddTask={addTask} onHpsUpdate={handleHpsUpdate} onScoreCommit={commitScoreInput} onCellFocus={handleCellFocus} isCellInvalid={isCellInvalid} transmutationTable={transmutationTable} aimsAssessments={aimsAssessments} aimsByStudent={aimsByStudent} aimsAllAssessments={aimsAllAssessments} assessmentHeaderNode={<AssessmentHeader showAssessmentDetails={showAssessmentDetails} assessmentDetailsRef={layout.assessmentDetailsRef} metaEditorRef={layout.metaEditorRef} wwCount={metaHook.wwCount} ptCount={metaHook.ptCount} wwMeta={metaHook.wwMeta} ptMeta={metaHook.ptMeta} qaMeta={metaHook.qaMeta} setWwMeta={metaHook.setWwMeta} setPtMeta={metaHook.setPtMeta} setQaMeta={metaHook.setQaMeta} saveAssessmentDetails={saveAssessmentDetailsFlushed} savingMeta={metaHook.savingMeta} selectedColumn={metaHook.selectedColumn} setSelectedColumn={metaHook.setSelectedColumn} metaEditorDraft={metaHook.metaEditorDraft} setMetaEditorDraft={metaHook.setMetaEditorDraft} saveColumnMeta={saveColumnMetaFlushed} isViewOnly={editAccess.isViewOnly} />} />
 
-      <ClassDescriptorFooter average={stats?.avg ?? null} totalLearners={mergedRecords.length} />
+      {isDesktop ? (
+        <ClassDescriptorFooter average={stats?.avg ?? null} totalLearners={mergedRecords.length} />
+      ) : (
+        <MobileClassDescriptor average={stats?.avg ?? null} totalLearners={mergedRecords.length} />
+      )}
 
       <GradeEditModal
         open={mobileEditor.mobileEditorOpen}

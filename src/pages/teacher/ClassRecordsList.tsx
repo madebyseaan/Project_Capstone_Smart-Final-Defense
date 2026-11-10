@@ -35,6 +35,7 @@ import { GradeStatusBanner } from "@/components/GradeStatusBanner";
 import { useSyncStream } from "@/hooks/useSyncStream";
 import { GradeDeadlineBanner } from "@/components/GradeDeadlineBanner";
 import { PageHeader } from "@/components/layout/PageHeader";
+import MobileClassRecordsView from "./components/MobileClassRecordsView";
 
 const gradeLevelLabels: Record<string, string> = {
   GRADE_7: "Grade 7",
@@ -391,16 +392,15 @@ export default function ClassRecordsList() {
 
       {(activeClasses.length > 0 || hasArchived) && (
         <>
-          <div className="flex items-center justify-between gap-3 lg:hidden">
-            <p className="text-sm font-medium text-foreground">
-              {termFilteredClasses.length} {termFilter === "current" ? "classes this term" : "active classes"}
-            </p>
-            {hasArchived && (
-              <p className="text-xs font-medium text-muted-foreground">
-                {archivedClasses.length} archived
-              </p>
-            )}
-          </div>
+          <MobileClassRecordsView
+            activeClasses={termFilteredClasses}
+            archivedClasses={archivedClasses}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            termFilter={termFilter}
+            onTermFilterChange={setTermFilter}
+            onRequestDelete={(id, name) => setAssignmentToDelete({ id, name })}
+          />
           <div className="hidden lg:block">
             <PageHeader
               title="Class Records"
@@ -423,7 +423,7 @@ export default function ClassRecordsList() {
       )}
 
       {(activeClasses.length > 0 || hasArchived) && (
-        <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <Card className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:block">
           <CardContent className="p-4 lg:p-6">
             <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center lg:gap-6">
               <div className="relative w-full flex-1 group">
@@ -564,47 +564,6 @@ export default function ClassRecordsList() {
         <div className="space-y-10">
           {termFilteredClasses.length > 0 && (
             <>
-            {/* Mobile list rows */}
-            <Card className="overflow-hidden rounded-2xl border border-border bg-card lg:hidden">
-              <div className="divide-y divide-border">
-                {termFilteredClasses.map((assignment) => {
-                  const isListOffTerm = !!assignment.subject.rotationTermRank && `T${assignment.subject.rotationTermRank}` !== currentTerm;
-                  return (
-                    <Link
-                      key={assignment.id}
-                      to={`/teacher/records/${assignment.id}`}
-                      className="flex min-h-16 items-center gap-3 px-4 py-3 transition-colors active:bg-muted"
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                        <BookOpen className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 text-sm font-semibold text-foreground">{assignment.subject.name}</p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          Section {assignment.section.name} · {assignment.schoolYear}
-                        </p>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <Badge className={`${getGradeColors(assignment.section.gradeLevel).badge} border-0 px-2 text-[10px] font-semibold uppercase tracking-wide`}>
-                            {gradeLevelLabels[assignment.section.gradeLevel]}
-                          </Badge>
-                          {(assignment.subject as any).rotationTermRank && (
-                            <Badge className={`${isListOffTerm ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"} px-2 text-[10px] font-semibold uppercase tracking-wide`}>
-                              Rotating · Term {(assignment.subject as any).rotationTermRank}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-base font-bold leading-none text-foreground">{assignment.section.enrollments?.length || 0}</p>
-                        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">learners</p>
-                      </div>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    </Link>
-                  );
-                })}
-              </div>
-            </Card>
-
             {/* Desktop list rows */}
             <Card className="hidden overflow-hidden rounded-2xl border border-border bg-card lg:block">
               <div className="divide-y divide-slate-50">
@@ -728,56 +687,6 @@ export default function ClassRecordsList() {
 
               {isArchivedExpanded && (
                 <>
-                <Card className="overflow-hidden rounded-2xl border border-rose-100 bg-card lg:hidden">
-                  <div className="divide-y divide-border">
-                    {archivedClasses.map((assignment) => {
-                      const isTransferred = assignment.archivedReason === 'ATLAS_REASSIGNED';
-                      return (
-                        <div key={`mobile-arch-${assignment.id}`} className="flex items-center gap-2 px-4 py-3">
-                          <Link
-                            to={`/teacher/records/${assignment.id}`}
-                            className="flex min-w-0 flex-1 items-center gap-3 active:opacity-70"
-                          >
-                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isTransferred ? 'bg-amber-100 text-amber-600' : 'bg-rose-100 text-rose-600'}`}>
-                              <BookOpen className="h-5 w-5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold text-foreground">{assignment.subject.name}</p>
-                              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                                Section {assignment.section.name} · {assignment.schoolYear}
-                              </p>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                <Badge className={`${isTransferred ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-rose-100 text-rose-700 border-rose-200'} px-2 text-[10px] font-semibold uppercase tracking-wide`}>
-                                  {isTransferred ? "Transferred" : "Archived"}
-                                </Badge>
-                                <span className="text-[10px] font-medium text-muted-foreground">
-                                  {assignment.section.enrollments?.length || 0} {(assignment.section.enrollments?.length || 0) === 1 ? "learner" : "learners"}
-                                </span>
-                              </div>
-                            </div>
-                          </Link>
-                          {!isTransferred && (
-                            <Button
-                              variant="destructive"
-                              size="icon"
-                              className="h-12 w-12 shrink-0 rounded-xl bg-rose-600 text-white shadow-sm active:scale-95"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setAssignmentToDelete({ id: assignment.id, name: assignment.subject.name });
-                              }}
-                              aria-label={`Delete ${assignment.subject.name}`}
-                            >
-                              <Trash2 className="h-5 w-5" aria-hidden="true" />
-                            </Button>
-                          )}
-                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-
                 <Card className="hidden overflow-hidden rounded-2xl border border-rose-100 bg-card lg:block">
                   <div className="divide-y divide-rose-50">
                     {archivedClasses.map((assignment) => {
