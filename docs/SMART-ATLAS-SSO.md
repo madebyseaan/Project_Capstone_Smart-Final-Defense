@@ -65,12 +65,14 @@ ATLAS_SSO_CLIENT_SECRET=<random secret, at least 32 characters>
 ```text
 SMART_SSO_AUTHORIZE_URL=https://<smart-host>/auth/atlas/authorize
 SMART_SSO_EXCHANGE_URL=https://<smart-host>/api/auth/atlas/exchange
-SMART_SSO_CALLBACK_URL=https://<atlas-host>/auth/smart/callback
+ATLAS_SMART_SSO_CALLBACK_URL=https://<atlas-host>/auth/smart/callback
 SMART_SSO_CLIENT_ID=smart
 SMART_SSO_CLIENT_SECRET=<same value as ATLAS_SSO_CLIENT_SECRET>
 ```
 
-`SMART_SSO_AUTHORIZE_URL` and `SMART_SSO_EXCHANGE_URL` must share the same origin. `SMART_SSO_CALLBACK_URL` must be byte-for-byte identical to SMART's `ATLAS_SSO_CALLBACK_URL`.
+`SMART_SSO_AUTHORIZE_URL` and `SMART_SSO_EXCHANGE_URL` must share the same origin. `ATLAS_SMART_SSO_CALLBACK_URL` must be byte-for-byte identical to SMART's `ATLAS_SSO_CALLBACK_URL`.
+
+Do not reuse `SMART_SSO_CALLBACK_URL` for this direction. In ATLAS that key already means SMART's receiving callback for the opposite ATLAS-to-SMART direction. Use `ATLAS_SMART_SSO_CALLBACK_URL` for the SMART-to-ATLAS callback.
 
 HTTPS is required outside local development. Local development may use `http://localhost` or `http://127.0.0.1`.
 
@@ -232,7 +234,11 @@ Rules:
 
 - `issuer` must be exactly `SMART`.
 - `identity.subject` is the stable SMART identifier. It is never recycled. ATLAS must bind it once and look up by it on every later login.
-- `identity.employeeId` may be null. SMART admin accounts may not have a teacher profile. ATLAS must not require it and must not fall back to `accountName` or `email` as the account key.
+- `identity.accountName` is always present.
+- `identity.employeeId` is optional. It may be null, or SMART may populate it from the account username. Treat it as informational only. ATLAS must not require it and must not fall back to `accountName` or `email` as the account key.
+- `identity.email` may be null.
+- `identity.firstName` and `identity.lastName` may be empty strings.
+- `identity.middleName` is always null.
 - `identity.roles` must be exactly `["SYSTEM_ADMIN"]`.
 - `activeSchoolYear.id` is EnrollPro's numeric school-year ID as mirrored by SMART. It is not a SMART primary key.
 - `activeSchoolYear.yearLabel` must match ATLAS's active year label.
@@ -257,6 +263,7 @@ Rules:
 - Start, callback, and exchange are all server-side except the two browser redirects.
 - State signature, expiry, and cookie match are checked before exchange.
 - Response schema is checked before any session is created.
+- Only `subject`, `accountName`, and `roles` are mandatory identity fields. `employeeId`, `email`, `firstName`, and `lastName` are optional and may be null or empty.
 - `success === true`, `issuer === "SMART"`, and the only role is `SYSTEM_ADMIN`.
 - Exactly one linked ATLAS admin account. Inactive, duplicate, or conflicting links deny the session.
 - No auto-creation of ATLAS accounts from SSO.

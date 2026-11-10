@@ -24,7 +24,7 @@ function errorBody(error: unknown): { status: number; code: string; message: str
   if (error instanceof CompanionSsoError) {
     return { status: error.statusCode, code: error.code, message: error.message };
   }
-  return { status: 500, code: "COMPANION_SSO_UNREACHABLE", message: "Unexpected SSO failure." };
+  return { status: 503, code: "COMPANION_SSO_UNREACHABLE", message: "Unexpected SSO failure." };
 }
 
 /**
