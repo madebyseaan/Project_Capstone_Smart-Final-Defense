@@ -1,4 +1,5 @@
 import { useState } from "react";
+import api from "@/lib/api";
 import {
   ArrowUpRight,
   CalendarClock,
@@ -8,6 +9,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "@/lib/toast";
 import { useTheme } from "@/contexts/ThemeContext";
 
 const COMPANIONS = [
@@ -28,16 +30,17 @@ interface IntegratedSystemsNavProps {
  * Integrated Systems sidebar group.
  *
  * EnrollPro is the hub for the EnrollPro reverse flow. ATLAS is a direct,
- * admin-only SMART -> ATLAS launch: only the SMART admin portal enables it,
- * and the click starts ATLAS's SSO start endpoint. Direct links to AIMS and
- * MRF stay disabled until federation exists.
+ * admin-only SMART -> ATLAS launch. AIMS is a direct teacher/admin launch when
+ * the server has its reverse SSO callback and secret configured. MRF stays
+ * disabled until federation exists.
  */
 export default function IntegratedSystemsNav({ collapsed, portal }: IntegratedSystemsNavProps) {
-  const { enrollproPublicUrl, atlasSsoStartUrl } = useTheme();
+  const { enrollproPublicUrl, atlasSsoStartUrl, aimsSsoEnabled } = useTheme();
   const [launchingKey, setLaunchingKey] = useState<string | null>(null);
 
   const enrollproStartUrl = `${enrollproPublicUrl.replace(/\/+$/, "")}/api/auth/companion-sso/smart/reverse/start`;
   const atlasEnabled = portal === "admin" && Boolean(atlasSsoStartUrl);
+  const aimsEnabled = aimsSsoEnabled && (portal === "admin" || portal === "teacher");
 
   const handleOpenEnrollPro = () => {
     if (launchingKey) return;
@@ -49,6 +52,26 @@ export default function IntegratedSystemsNav({ collapsed, portal }: IntegratedSy
     if (launchingKey || !atlasSsoStartUrl) return;
     setLaunchingKey("ATLAS");
     window.location.assign(atlasSsoStartUrl);
+  };
+
+  const handleOpenAims = async () => {
+    if (launchingKey || !aimsEnabled) return;
+    setLaunchingKey("AIMS");
+
+    try {
+      const response = await api.post<{ success: boolean; launchUrl?: string; error?: string }>(
+        "/auth/aims/reverse/authorize",
+        {},
+      );
+      const launchUrl = response.data?.launchUrl;
+      if (!launchUrl) {
+        throw new Error("AIMS launch URL was not returned.");
+      }
+      window.location.assign(launchUrl);
+    } catch {
+      setLaunchingKey(null);
+      toast.error("Could not open AIMS. Please try again or contact your administrator.");
+    }
   };
 
   return (
@@ -104,18 +127,25 @@ export default function IntegratedSystemsNav({ collapsed, portal }: IntegratedSy
         {COMPANIONS.map((system) => {
           const isCurrent = system.key === "SMART";
           const isAtlas = system.key === "ATLAS";
+          const isAims = system.key === "AIMS";
           const isLaunching = launchingKey === system.key;
-          const enabled = isAtlas && atlasEnabled;
+          const enabled = (isAtlas && atlasEnabled) || (isAims && aimsEnabled);
 
           const statusText = isCurrent
             ? "Current system"
-            : isAtlas
-              ? portal !== "admin"
-                ? "Admin only"
-                : atlasSsoStartUrl
-                  ? (isLaunching ? "Starting secure sign-in" : "Open ATLAS")
-                  : "ATLAS SSO is not configured"
-              : "Unavailable until federation";
+            : isAims
+              ? portal === "registrar"
+                ? "Teachers and admins only"
+                : aimsSsoEnabled
+                  ? (isLaunching ? "Starting secure sign-in" : "Open AIMS")
+                  : "AIMS SSO is not configured"
+              : isAtlas
+                ? portal !== "admin"
+                  ? "Admin only"
+                  : atlasSsoStartUrl
+                    ? (isLaunching ? "Starting secure sign-in" : "Open ATLAS")
+                    : "ATLAS SSO is not configured"
+                : "Unavailable until federation";
 
           const content = (
             <div className={cn("flex items-center transition-all duration-200", collapsed ? "justify-center" : "w-full")}>
@@ -151,10 +181,10 @@ export default function IntegratedSystemsNav({ collapsed, portal }: IntegratedSy
               <button
                 key={system.key}
                 type="button"
-                onClick={handleOpenAtlas}
+                onClick={isAims ? handleOpenAims : handleOpenAtlas}
                 disabled={launchingKey !== null}
-                aria-label="Open ATLAS"
-                title={collapsed ? "ATLAS" : "Open ATLAS"}
+                aria-label={isAims ? "Open AIMS" : "Open ATLAS"}
+                title={collapsed ? system.label : isAims ? "Open AIMS" : "Open ATLAS"}
                 className={cn(
                   "flex items-center rounded-full text-[14px] font-medium transition-all duration-200 group overflow-hidden py-1.5 text-[#0F1729] hover:bg-white/80",
                   collapsed ? "px-0 justify-center h-9 w-9 mx-auto" : "px-4 w-full",

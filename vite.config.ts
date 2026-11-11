@@ -83,6 +83,13 @@ export default defineConfig({
           proxy.on('error', () => {}); // Suppress startup race condition errors
         },
       },
+      '/sso/aims/exchange': {
+        target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:5003',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', () => {}); // Suppress startup race condition errors
+        },
+      },
     },
   },
 })

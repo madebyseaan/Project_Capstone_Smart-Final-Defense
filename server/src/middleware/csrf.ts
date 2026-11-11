@@ -58,6 +58,13 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return;
   }
 
+  // AIMS reverse SSO exchange alias is server-to-server and authenticated by
+  // the shared AIMS client secret, not a browser cookie.
+  if (path === "/sso/aims/exchange") {
+    next();
+    return;
+  }
+
   // Exempt webhook endpoints — authenticated by API key, not cookies
   if (path.includes("/sync-grades") || path.includes("-webhook")) {
     next();

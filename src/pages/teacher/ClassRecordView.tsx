@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { gradesApi, publicSettingsApi, type ClassRecord, type ScoreItem, type TermLabels } from "@/lib/api";
@@ -44,7 +44,12 @@ export default function ClassRecordView() {
     } catch { return "—"; }
   }, []);
 
-  const [selectedTerm, setSelectedTerm] = useState("T1");
+  const [searchParams] = useSearchParams();
+  const requestedTermParam = searchParams.get("term");
+  const requestedTerm = requestedTermParam === "T1" || requestedTermParam === "T2" || requestedTermParam === "T3"
+    ? requestedTermParam
+    : null;
+  const [selectedTerm, setSelectedTerm] = useState(requestedTerm ?? "T1");
   const [termInitialized, setTermInitialized] = useState(false);
   const [showAssessmentDetails, setShowAssessmentDetails] = useState(false);
   const [termLabels, setTermLabels] = useState<TermLabels>({ T1: "Term 1", T2: "Term 2", T3: "Term 3" });
@@ -132,10 +137,10 @@ export default function ClassRecordView() {
     if (!termInitialized && classRecordQuery.data?.currentTerm) {
       setTermInitialized(true);
       const forcedTerm = classAssignment?.subject?.rotationTermRank ? `T${classAssignment.subject.rotationTermRank}` : null;
-      const termToSet = forcedTerm ?? classRecordQuery.data.currentTerm;
+      const termToSet = forcedTerm ?? requestedTerm ?? classRecordQuery.data.currentTerm;
       if (termToSet !== selectedTerm) setSelectedTerm(termToSet);
     }
-  }, [termInitialized, classRecordQuery.data?.currentTerm, classAssignment?.subject?.rotationTermRank, selectedTerm]);
+  }, [termInitialized, classRecordQuery.data?.currentTerm, classAssignment?.subject?.rotationTermRank, requestedTerm, selectedTerm]);
 
   // Term labels via React Query (shared cache, staleTime prevents refetches)
   const settingsQuery = useQuery({

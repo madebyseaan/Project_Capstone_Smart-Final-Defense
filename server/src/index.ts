@@ -27,6 +27,9 @@ import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth";
 import ssoRoutes from "./routes/sso";
 import atlasSsoRoutes from "./routes/atlasSso";
+import aimsSsoRoutes from "./routes/aimsSso";
+import { aimsReverseAliasRouter, aimsReverseSessionRouter } from "./routes/aimsReverseSso";
+import { atlasReverseSessionRouter, atlasReverseStartRouter } from "./routes/atlasReverseSso";
 import gradesRoutes from "./routes/grades";
 import advisoryRoutes from "./routes/advisory";
 import registrarRoutes from "./routes/registrar";
@@ -80,12 +83,17 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/api/auth", authRoutes);
 app.use("/api/auth", ssoRoutes);
 app.use("/api/auth", atlasSsoRoutes);
+app.use("/api/auth", aimsSsoRoutes);
+app.use("/api/auth", aimsReverseSessionRouter);
+app.use("/api/auth", atlasReverseSessionRouter);
+app.use("/sso", aimsReverseAliasRouter);
 // The EnrollPro SSO handlers are also reachable without the /api prefix and
 // under the AIMS-style /api/v1 prefix so EnrollPro deployments that register
 // alternate callback/exchange URLs keep working. The ATLAS routes are
 // registered only under /api/auth, matching SMART-ATLAS-SSO.md.
 app.use("/auth", ssoRoutes);
 app.use("/api/v1/auth", ssoRoutes);
+app.use("/auth", atlasReverseStartRouter);
 
 app.use("/api/grades", gradesRoutes);
 app.use("/api/advisory", advisoryRoutes);

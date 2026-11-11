@@ -20,6 +20,9 @@ const EnrollProAuthorizePage = lazy(() => import('./pages/auth/EnrollProAuthoriz
 const SsoCallbackForwardPage = lazy(() => import('./pages/auth/SsoCallbackForwardPage'))
 const SsoErrorPage = lazy(() => import('./pages/auth/SsoErrorPage'))
 const AtlasAuthorizePage = lazy(() => import('./pages/auth/AtlasAuthorizePage'))
+const AtlasSessionPage = lazy(() => import('./pages/auth/AtlasSessionPage'))
+const AtlasReverseSsoErrorPage = lazy(() => import('./pages/auth/AtlasReverseSsoErrorPage'))
+const AimsSsoPage = lazy(() => import('./pages/auth/AimsSsoPage'))
 
 // Teacher pages
 const TeacherDashboard = lazy(() => import('./pages/teacher/Dashboard'))
@@ -114,8 +117,14 @@ function App() {
         <Route path="/auth/sso/authorize" element={<EnrollProAuthorizePage />} />
         <Route path="/auth/enrollpro/error" element={<SsoErrorPage />} />
 
+        {/* AIMS -> SMART SSO launch */}
+        <Route path="/sso/aims" element={<AimsSsoPage />} />
+
         {/* SMART -> ATLAS admin-only SSO */}
         <Route path="/auth/atlas/authorize" element={<AtlasAuthorizePage />} />
+        {/* ATLAS -> SMART reverse SSO */}
+        <Route path="/auth/atlas/session" element={<AtlasSessionPage />} />
+        <Route path="/auth/atlas/error" element={<AtlasReverseSsoErrorPage />} />
       
       {/* Teacher routes */}
       <Route path="/teacher" element={<TeacherLayout />}>

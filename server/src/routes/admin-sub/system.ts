@@ -12,6 +12,7 @@ import { syncEnrollProBranding } from "../../lib/enrollproBrandingSync";
 import { invalidateEnrollProCredentials } from "../../lib/enrollproClient";
 import { getEnrollProPublicUrl } from "../../lib/companionSso";
 import { getAtlasSsoConfig } from "../../services/atlasSsoService";
+import { getAimsReverseConfig } from "../../services/aimsReverseSsoService";
 import { getRecentSyncHistory, runUnifiedSync } from "../../lib/syncCoordinator";
 import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
@@ -128,6 +129,7 @@ export default function (router: Router) {
       // configured; otherwise the sidebar item stays disabled.
       const atlasSso = getAtlasSsoConfig();
       const atlasSsoStartUrl = atlasSso.configured ? atlasSso.startUrl : null;
+      const aimsSsoEnabled = getAimsReverseConfig().configured;
 
       res.json({
         settings: settings
@@ -147,8 +149,9 @@ export default function (router: Router) {
               termDatesDerived: settings.termDatesDerived,
               enrollproPublicUrl: getEnrollProPublicUrl(),
               atlasSsoStartUrl,
+              aimsSsoEnabled,
             }
-          : { enrollproPublicUrl: getEnrollProPublicUrl(), atlasSsoStartUrl },
+          : { enrollproPublicUrl: getEnrollProPublicUrl(), atlasSsoStartUrl, aimsSsoEnabled },
         termLabels,
       });
     } catch (error) {

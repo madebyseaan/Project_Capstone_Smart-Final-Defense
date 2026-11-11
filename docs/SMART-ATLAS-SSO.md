@@ -1,12 +1,14 @@
 # SMART ATLAS SSO (Admin Only)
 
-Last reviewed: 2026-11-10
+Last reviewed: 2026-11-11
 
-Status: SMART side implemented on 2026-11-10. ATLAS side pending.
+Status: SMART side implemented for both directions on 2026-11-11. SMART-to-ATLAS is live; ATLAS-to-SMART configuration is pending.
 
 ## Purpose
 
 This contract lets a SMART administrator open the ATLAS admin workspace without a second password. SMART is the identity issuer. ATLAS is the relying party. Only SMART `ADMIN` accounts are eligible, and ATLAS accepts only its own administrative role.
+
+The reverse direction lets an ATLAS administrator open the SMART admin workspace. ATLAS is the identity issuer and SMART is the relying party. Only ATLAS `SYSTEM_ADMIN` accounts are eligible, and SMART accepts only `ADMIN`.
 
 This is a direct SMART-to-ATLAS launch. It follows the same one-time authorization-code pattern as `SMART-ENROLLPRO-SSO.md`, with the issuer and destination reversed. It does not use EnrollPro as an intermediary.
 
@@ -16,22 +18,23 @@ This is not cross-domain cookie sharing. ATLAS must never receive a SMART passwo
 
 In scope:
 
-- SMART admin portal to ATLAS admin workspace, one direction only.
-- SMART `ADMIN` to ATLAS `SYSTEM_ADMIN`.
-- SMART-issued, 60-second, single-use authorization codes.
-- ATLAS-owned account link and ATLAS-owned session.
+- SMART admin portal to ATLAS admin workspace.
+- ATLAS admin workspace to SMART admin portal.
+- SMART `ADMIN` to ATLAS `SYSTEM_ADMIN`, and ATLAS `SYSTEM_ADMIN` to SMART `ADMIN`.
+- 60-second, single-use authorization codes in both directions.
+- ATLAS-owned and SMART-owned account links and sessions.
 
 Out of scope:
 
-- ATLAS to SMART SSO.
 - SMART `REGISTRAR` or `TEACHER` access to ATLAS.
-- EnrollPro involvement in this exchange.
+- Any ATLAS role other than `SYSTEM_ADMIN`.
+- EnrollPro involvement in these exchanges.
 - Learner or student SSO.
 - Shared sessions, shared cookies, coordinated logout.
 - Account auto-creation from SSO.
 - Data transfer beyond the minimized identity assertion.
 
-This contract supersedes the "no direct companion-to-companion SSO" limitation for this single direction only. It does not authorize SMART-to-AIMS, ATLAS-to-SMART, or any other companion pair.
+This contract supersedes the "no direct companion-to-companion SSO" limitation for the SMART-to-ATLAS and ATLAS-to-SMART admin-only directions. It does not authorize SMART-to-AIMS or any other companion pair.
 
 ## Roles
 
@@ -43,6 +46,8 @@ This contract supersedes the "no direct companion-to-companion SSO" limitation f
 | any other | none | No |
 
 ATLAS exposes one staff workspace (admin). The assertion must contain exactly one role, `SYSTEM_ADMIN`. ATLAS must reject any assertion that contains another role or no role.
+
+In the reverse direction, SMART accepts only `SYSTEM_ADMIN` and requires it to resolve to an existing `ADMIN` account. No other ATLAS role is accepted, and no account is auto-created.
 
 `SYSTEM_ADMIN` in this contract means the ATLAS admin workspace only. It does not grant EnrollPro, SMART, or any other system role.
 
@@ -453,6 +458,143 @@ SMART-side behavior:
 - The ATLAS sidebar item is enabled only in the admin portal and only when `ATLAS_SSO_START_URL`, `ATLAS_SSO_CALLBACK_URL`, and `ATLAS_SSO_CLIENT_SECRET` are all set.
 
 ATLAS must still implement `/auth/smart/start`, `/auth/smart/callback`, the admin account link, and its local session before the flow is operational.
+
+## Reverse Direction: ATLAS -> SMART (Admin Only)
+
+Status: SMART side implemented on 2026-11-11. ATLAS must configure its side and enable the SMART sidebar item.
+
+### Scope
+
+- ATLAS `SYSTEM_ADMIN` maps to SMART `ADMIN` only.
+- No other ATLAS role is accepted.
+- No SMART account is auto-created or silently relinked.
+- ATLAS is the issuer; SMART is the relying party.
+
+### SMART configuration
+
+```text
+ATLAS_SSO_REVERSE_AUTHORIZE_URL=https://<atlas-host>/auth/smart/authorize
+ATLAS_SSO_REVERSE_EXCHANGE_URL=https://<atlas-host>/api/auth/smart/exchange
+ATLAS_SSO_REVERSE_CALLBACK_URL=https://<smart-host>/auth/atlas/callback
+ATLAS_SSO_REVERSE_CLIENT_SECRET=<shared secret, at least 32 characters>
+```
+
+`ATLAS_SSO_REVERSE_CLIENT_SECRET` may also be supplied as `ATLAS_SMART_SSO_REVERSE_CLIENT_SECRET` for compatibility with ATLAS naming. It must be distinct from `ATLAS_SSO_CLIENT_SECRET`, `ATLAS_SYSTEM_TOKEN`, `ATLAS_API_KEY`, and every sync credential.
+
+### ATLAS configuration
+
+```text
+ATLAS_SMART_SSO_REVERSE_CLIENT_SECRET=<same value as ATLAS_SSO_REVERSE_CLIENT_SECRET>
+```
+
+ATLAS must also register the exact SMART callback and expose the authorize and exchange endpoints. Confirm the final ATLAS paths before enabling the SMART sidebar item.
+
+### SMART routes
+
+| Route | Purpose |
+| --- | --- |
+| `GET /auth/atlas/start` | ATLAS sidebar entry point; sets signed state and redirects to ATLAS authorize |
+| `GET /auth/atlas/callback` | ATLAS redirect target; validates state, exchanges the code, links the admin, sets the SMART access cookie |
+| `GET /auth/atlas/session` | SPA bootstrap page that populates admin session storage |
+| `POST /api/auth/atlas/session` | Authenticated bootstrap endpoint that issues the SMART access and refresh tokens |
+
+### Flow
+
+```text
+ATLAS admin clicks SMART
+  -> GET <SMART>/auth/atlas/start
+  -> SMART sets a signed state cookie and redirects to
+     GET <ATLAS_SSO_REVERSE_AUTHORIZE_URL>?response_type=code&client_id=smart
+         &redirect_uri=<ATLAS_SSO_REVERSE_CALLBACK_URL>&state=<state>
+  -> ATLAS validates its own admin session and issues a 60-second one-time code
+  -> Browser hits GET <SMART>/auth/atlas/callback?code=<code>&state=<state>
+  -> SMART validates state and cookie, then calls
+     POST <ATLAS_SSO_REVERSE_EXCHANGE_URL>
+       Authorization: Bearer <ATLAS_SSO_REVERSE_CLIENT_SECRET>
+       { "code": "<code>", "clientId": "smart", "redirectUri": "<SMART callback>" }
+  -> SMART validates the assertion, links the admin account, and creates its own session
+  -> Browser lands on the SMART admin dashboard
+```
+
+### Identity assertion
+
+```json
+{
+  "success": true,
+  "issuer": "ATLAS",
+  "identity": {
+    "subject": "ATLAS_USER:<id>",
+    "employeeId": "<optional>",
+    "lrn": null,
+    "accountName": "<optional>",
+    "email": "<optional>",
+    "firstName": "<optional>",
+    "middleName": null,
+    "lastName": "<optional>",
+    "roles": ["SYSTEM_ADMIN"]
+  },
+  "activeSchoolYear": {
+    "id": 3,
+    "yearLabel": "2026-2027"
+  },
+  "authenticatedAt": "<ISO 8601 timestamp>"
+}
+```
+
+SMART requires:
+
+- `issuer === "ATLAS"`.
+- `identity.subject` is stable and non-recycled.
+- `identity.roles` is exactly `["SYSTEM_ADMIN"]`.
+- `activeSchoolYear.id` is the EnrollPro numeric school-year ID and `activeSchoolYear.yearLabel` matches SMART's active year.
+- `identity.subject` resolves to exactly one existing SMART `ADMIN` through `User.atlasSubject`.
+
+### Account linking
+
+`User.atlasSubject` is a unique, nullable external identity link. It is never populated automatically by SSO.
+
+```text
+pnpm --prefix server exec ts-node prisma/link-atlas-admin.ts --list
+pnpm --prefix server exec ts-node prisma/link-atlas-admin.ts --username admin --subject "ATLAS_USER:123"
+pnpm --prefix server exec ts-node prisma/link-atlas-admin.ts --username admin --unlink
+```
+
+Binding rules:
+
+1. The first binding is explicit and performed by an administrator.
+2. After binding, look up the account by `atlasSubject` only.
+3. An unlinked subject is denied with `COMPANION_REVERSE_SSO_LINK_REQUIRED`.
+4. A subject linked to another account is a conflict; never relink silently.
+5. An inactive account, a non-admin account, or a role change denies the session.
+
+### Error contract
+
+| HTTP | Code | Meaning |
+| ---: | --- | --- |
+| 503 | `COMPANION_REVERSE_SSO_NOT_CONFIGURED` | Required reverse settings are missing |
+| 400 | `COMPANION_REVERSE_SSO_STATE_INVALID` | State is expired, altered, or does not match the cookie |
+| 400 | `COMPANION_REVERSE_SSO_CALLBACK_INVALID` | Callback code is malformed |
+| 401 | `COMPANION_REVERSE_SSO_CODE_INVALID` | Code is unknown, expired, replayed, or mismatched |
+| 503 | `COMPANION_REVERSE_SSO_UNAVAILABLE` | ATLAS could not be reached or the exchange failed |
+| 502 | `COMPANION_REVERSE_SSO_RESPONSE_INVALID` | ATLAS returned a malformed or wrong-issuer assertion |
+| 403 | `COMPANION_REVERSE_SSO_LINK_REQUIRED` | No SMART account is linked to the ATLAS subject |
+| 403 | `COMPANION_REVERSE_SSO_IDENTITY_CONFLICT` | The subject is linked to another account |
+| 403 | `COMPANION_REVERSE_SSO_ACCOUNT_UNAVAILABLE` | The linked SMART account is inactive |
+| 403 | `COMPANION_REVERSE_SSO_ROLE_DENIED` | The assertion or linked account is not an administrator |
+| 409 | `ACTIVE_SCHOOL_YEAR_REQUIRED` | SMART has no active school year to compare |
+| 409 | `ACTIVE_SCHOOL_YEAR_CONFLICT` | ATLAS and SMART active school years differ |
+
+### SMART implementation
+
+| Piece | Location |
+| --- | --- |
+| State, exchange, account link, year checks | `server/src/services/atlasReverseSsoService.ts` |
+| Start, callback, and session routes | `server/src/routes/atlasReverseSso.ts` |
+| Admin link field and migration | `server/prisma/schema.prisma`, `server/prisma/migrations/20261111000000_add_atlas_sso_subject/` |
+| Explicit link tool | `server/prisma/link-atlas-admin.ts` |
+| SPA session bootstrap | `src/pages/auth/AtlasSessionPage.tsx` |
+| SPA error page | `src/pages/auth/AtlasReverseSsoErrorPage.tsx` |
+| Tests | `server/src/__tests__/atlas-reverse-sso.test.ts` |
 
 ## Prohibited Implementations
 

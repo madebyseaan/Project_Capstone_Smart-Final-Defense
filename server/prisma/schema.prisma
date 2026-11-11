@@ -13,6 +13,8 @@ model User {
   role               Role
   status             UserStatus      @default(ACTIVE)
   enrollproSubject   String?         @unique // EnrollPro SSO subject "ENROLLPRO_USER:<id>" — stable external identity link
+  atlasSubject       String?         @unique // ATLAS SSO subject "ATLAS_USER:<id>" — stable external identity link
+  aimsUserId         String?         @unique // AIMS user UUID from the AIMS -> SMART SSO assertion
   suspendedAt        DateTime?
   suspendedBy        String?
   suspensionReason   String?
@@ -139,6 +141,7 @@ model Section {
   name             String
   gradeLevel       GradeLevel
   schoolYear       String
+  enrollproSectionId Int?            // EnrollPro section ID (year-scoped) - AIMS SSO class deep-link key
   adviserId        String?
   program          String            @default("REGULAR") // REGULAR, SPA, SPS, STE, ... (free-form upstream code)
   status           String            @default("ACTIVE") // ACTIVE, ARCHIVED, COMPLETED
@@ -153,6 +156,7 @@ model Section {
   adviser          Teacher?          @relation("SectionAdviser", fields: [adviserId], references: [id])
 
   @@unique([name, gradeLevel, schoolYear])
+  @@index([enrollproSectionId, schoolYear])
   @@index([gradeLevel, schoolYear])
 }
 

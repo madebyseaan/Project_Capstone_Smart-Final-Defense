@@ -412,6 +412,7 @@ export async function runEnrollProSync() {
         const teacherId = adviserEmployeeId ? (empIdToSmartTeacherId.get(adviserEmployeeId) ?? null) : null;
         if (teacherId) teachersMatched++;
 
+        const enrollproSectionId = Number(epSection.id);
         const section = await (prisma.section as any).upsert({
           where: {
             name_gradeLevel_schoolYear: {
@@ -420,13 +421,22 @@ export async function runEnrollProSync() {
               schoolYear: schoolYearLabel,
             },
           },
-          update: { adviserId: teacherId, program: normalizeProgramCode(epSection.programType) },
+          update: {
+            adviserId: teacherId,
+            program: normalizeProgramCode(epSection.programType),
+            ...(Number.isInteger(enrollproSectionId) && enrollproSectionId > 0
+              ? { enrollproSectionId }
+              : {}),
+          },
           create: {
             name: epSection.name,
             gradeLevel,
             schoolYear: schoolYearLabel,
             adviserId: teacherId,
             program: normalizeProgramCode(epSection.programType),
+            ...(Number.isInteger(enrollproSectionId) && enrollproSectionId > 0
+              ? { enrollproSectionId }
+              : {}),
           },
         });
 
