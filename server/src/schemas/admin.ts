@@ -111,6 +111,23 @@ export const transitionLockSchema = z.object({
   }),
 });
 
+export const teacherArchiveListSchema = z.object({
+  query: z.object({
+    schoolYearId: z.string().min(1).optional(),
+    status: z.enum(['PENDING', 'COMPLETE', 'FAILED']).optional(),
+    search: z.string().max(100).optional(),
+    page: z.coerce.number().int().min(1).optional(),
+    pageSize: z.coerce.number().int().min(1).max(100).optional(),
+  }),
+});
+
+export const teacherArchiveBackfillSchema = z.object({
+  body: z.object({
+    schoolYearId: z.string().min(1),
+    regenerate: z.boolean().optional(),
+  }),
+});
+
 export const yearLockToggleSchema = z.object({
   params: z.object({
     schoolYearId: z.string().min(1, 'schoolYearId is required'),

@@ -43,6 +43,12 @@ export const eosyFinalizeSchema = z.object({
   }),
 });
 
+export const eosyUnfinalizeAllSchema = z.object({
+  body: z.object({
+    schoolYear: z.string().min(1, 'schoolYear is required'),
+  }),
+});
+
 export const eosyStatusQuerySchema = z.object({
   query: z.object({
     schoolYear: z.string().min(1, 'schoolYear is required'),

@@ -307,3 +307,45 @@ describe("bulk status parity", () => {
     expect(unfinalizedNames).not.toContain("Status Snapshot Gap");
   });
 });
+
+describe("POST /api/registrar/eosy/unfinalize-all", () => {
+  it("rejects non-registrar users", async () => {
+    const res = await request(app)
+      .post("/api/registrar/eosy/unfinalize-all")
+      .send({ schoolYear: YEAR })
+      .set(authHeader(teacherToken));
+
+    expect(res.status).toBe(403);
+  });
+
+  it("unfinalizes every section that has a stored promotion status", async () => {
+    const before = await listSectionEosyStatuses(YEAR);
+    const eligible = before.filter((section) => section.withStoredStatus > 0);
+    expect(eligible).toHaveLength(5);
+
+    const res = await request(app)
+      .post("/api/registrar/eosy/unfinalize-all")
+      .send({ schoolYear: YEAR })
+      .set(authHeader(registrarToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.schoolYear).toBe(YEAR);
+    expect(res.body.targeted).toBe(5);
+    expect(res.body.unfinalized).toBe(5);
+    expect(res.body.blocked).toEqual([]);
+
+    const after = await listSectionEosyStatuses(YEAR);
+    expect(after.every((section) => section.withStoredStatus === 0)).toBe(true);
+  });
+
+  it("is idempotent when nothing is finalized", async () => {
+    const res = await request(app)
+      .post("/api/registrar/eosy/unfinalize-all")
+      .send({ schoolYear: YEAR })
+      .set(authHeader(registrarToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.targeted).toBe(0);
+    expect(res.body.unfinalized).toBe(0);
+  });
+});

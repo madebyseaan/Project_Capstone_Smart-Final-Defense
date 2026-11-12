@@ -32,6 +32,7 @@ import {
 import { SERVER_URL, getPortalToken, getCsrfToken } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import MobileAttendanceView from "./components/MobileAttendanceView";
+import MobileAttendanceTabs from "./components/MobileAttendanceTabs";
 import { cn } from "@/lib/utils";
 import axios from "axios";
 
@@ -421,6 +422,8 @@ export default function Attendance() {
           description="Manage and track student attendance records"
         />
       </div>
+
+      <MobileAttendanceTabs active="daily" />
 
       {/* Messaging */}
       {message && (

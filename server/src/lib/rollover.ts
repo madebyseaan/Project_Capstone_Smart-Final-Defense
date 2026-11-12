@@ -14,8 +14,40 @@ import { listUnfinalizedSections } from "./promotion";
 import { createAuditLog } from "./audit";
 import { broadcastSseEvent } from "./sseManager";
 import { getActiveSchoolYearLabel } from "./schoolYearResolver";
+import {
+  ensureTeacherArchivesQueued,
+  generateTeacherYearArchives,
+  type TeacherArchiveSource,
+} from "./teacherYearArchive";
 
 const ROLLOVER_ADVISORY_KEY = 738291;
+
+/**
+ * Post-archive teacher bundle pipeline. Deliberately called AFTER the archive
+ * transaction commits and wrapped so it can never affect the archive outcome.
+ */
+async function queueAndStartTeacherArchives(opts: {
+  schoolYearId: string;
+  yearLabel: string;
+  source: TeacherArchiveSource;
+  createdBy?: string;
+}): Promise<void> {
+  try {
+    await ensureTeacherArchivesQueued(opts);
+  } catch (error) {
+    logger.error("[TeacherArchive] Failed to queue year archives:", error);
+    return;
+  }
+
+  void generateTeacherYearArchives(opts.schoolYearId, { source: opts.source }).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith("School year not found")) {
+      logger.warn("[TeacherArchive] Generation skipped: school year no longer exists.");
+      return;
+    }
+    logger.error("[TeacherArchive] Generation failed (archive remains complete):", error);
+  });
+}
 
 export interface RolloverResult {
   action: "archived" | "locked_not_archived" | "no_change";
@@ -222,6 +254,15 @@ export async function archiveSchoolYear(opts: {
   // Post-transaction side-effects
   await setYearLock(schoolYearId, true, actor);
 
+  // Teacher bundles are a post-commit side effect. The helper catches its own
+  // errors so this feature can never roll back or unlock the archived year.
+  await queueAndStartTeacherArchives({
+    schoolYearId,
+    yearLabel,
+    source: "MANUAL_ARCHIVE",
+    createdBy: actor.id,
+  });
+
   let activeYearLabel: string;
   try {
     activeYearLabel = await getActiveSchoolYearLabel();
@@ -325,6 +366,14 @@ export async function handleYearChangeRollover(
     });
 
     logger.info(`[Rollover] ${previousYearLabel} fully finalized — archived cleanly. ${newYearLabel} activated.`);
+
+    await queueAndStartTeacherArchives({
+      schoolYearId: previousSchoolYearId,
+      yearLabel: previousYearLabel,
+      source: "ROLLOVER",
+      createdBy: "system",
+    });
+
     return {
       action: "archived",
       previousYearId: previousSchoolYearId,

@@ -33,6 +33,8 @@ const StudentGradeProfile = lazy(() => import('./pages/teacher/StudentGradeProfi
 const Attendance = lazy(() => import('./pages/teacher/Attendance'))
 const AttendanceReports = lazy(() => import('./pages/teacher/AttendanceReports'))
 const TeacherSchedule = lazy(() => import('./pages/teacher/Schedule'))
+const TeacherMyArchives = lazy(() => import('./pages/teacher/TeacherArchives'))
+const TeacherArchiveDetail = lazy(() => import('./pages/teacher/TeacherArchiveDetail'))
 
 // Registrar pages
 const RegistrarDashboard = lazy(() => import('./pages/registrar/Dashboard'))
@@ -55,6 +57,7 @@ const AuditLogs = lazy(() => import('./pages/admin/AuditLogs'))
 const GradingConfig = lazy(() => import('./pages/admin/GradingConfig'))
 const TransmutationTable = lazy(() => import('./pages/admin/TransmutationTable'))
 const SchoolYears = lazy(() => import('./pages/admin/SchoolYears'))
+const TeacherArchives = lazy(() => import('./pages/admin/TeacherArchives'))
 const SystemSettings = lazy(() => import('./pages/admin/SystemSettings'))
 const ClassAssignments = lazy(() => import('./pages/admin/ClassAssignments'))
 const EditRequests = lazy(() => import('./pages/admin/EditRequests'))
@@ -138,6 +141,8 @@ function App() {
         <Route path="attendance" element={<RequireAdvisory><Attendance /></RequireAdvisory>} />
         <Route path="attendance-reports" element={<RequireAdvisory><AttendanceReports /></RequireAdvisory>} />
         <Route path="schedule" element={<TeacherSchedule />} />
+        <Route path="archives" element={<TeacherMyArchives />} />
+        <Route path="archives/:archiveId" element={<TeacherArchiveDetail />} />
       </Route>
 
       {/* Registrar routes */}
@@ -164,6 +169,7 @@ function App() {
         <Route path="grading" element={<GradingConfig />} />
         <Route path="transmutation" element={<TransmutationTable />} />
         <Route path="school-years" element={<SchoolYears />} />
+        <Route path="teacher-archives" element={<TeacherArchives />} />
         <Route path="settings" element={<SystemSettings />} />
         <Route path="health" element={<SystemHealth />} />
         <Route path="assignments" element={<ClassAssignments />} />

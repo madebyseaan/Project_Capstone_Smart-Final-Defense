@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle, RefreshCw, Download } from "lucide-react";
+import { Loader2, AlertTriangle, RefreshCw, Download, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { registrarApi } from "@/lib/api";
 import type { TermFinalizeStatusSubject } from "@/lib/termFinalizationTypes";
@@ -71,6 +71,7 @@ export default function EOSYFinalization() {
   const [smartLoading, setSmartLoading] = useState(false);
   const [eosyFinalizing, setEosyFinalizing] = useState(false);
   const [eosyUnfinalizing, setEosyUnfinalizing] = useState(false);
+  const [eosyUnfinalizingAll, setEosyUnfinalizingAll] = useState(false);
   const [, setEosyMessage] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -281,6 +282,9 @@ export default function EOSYFinalization() {
   const selectedSyLabel =
     schoolYears.find((y: any) => String(y.id) === selectedSchoolYearId)?.yearLabel ?? "";
 
+  const unfinalizableSectionCount =
+    finalizationOverview?.sections.filter((section) => section.withStoredStatus > 0).length ?? 0;
+
   useEffect(() => { void loadSchoolYears(); }, []);
   useEffect(() => {
     if (!selectedSyLabel) return;
@@ -429,6 +433,46 @@ export default function EOSYFinalization() {
         } finally {
           setEosyUnfinalizing(false);
           setTimeout(() => setEosyMessage(null), 8000);
+        }
+      },
+    });
+  };
+
+  const handleUnfinalizeAllEosy = () => {
+    if (!selectedSyLabel || eosyUnfinalizingAll || unfinalizableSectionCount === 0) return;
+    setConfirmDialog({
+      open: true,
+      title: "Unfinalize all EOSY sections?",
+      description: `This deletes EOSY promotion snapshots and clears promotion status for ${unfinalizableSectionCount} section(s) in ${selectedSyLabel}. Grade rows and term finalization are not changed. Sections with completed remedial records will be skipped.`,
+      confirmLabel: "Unfinalize all",
+      variant: "danger",
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, open: false }));
+        setEosyUnfinalizingAll(true);
+        try {
+          const res = await registrarApi.unfinalizeAllEosySections(selectedSyLabel);
+          const blocked = res.data?.blocked ?? [];
+          if (blocked.length > 0) {
+            toast.warning(
+              `${res.data.message}. Skipped: ${blocked
+                .map((section) => section.sectionName)
+                .join(", ")}.`,
+            );
+          } else {
+            toast.success(res.data.message);
+          }
+          await loadFinalizationStatus(selectedSyLabel);
+          void loadLocalSections(selectedSyLabel);
+          if (localSection) {
+            void loadSmartPromotion(localSection.id, selectedSyLabel);
+            void loadAllTermStatus(localSection.id, selectedSyLabel);
+          }
+        } catch (err: any) {
+          toast.error(
+            err?.response?.data?.message ?? "Failed to unfinalize all EOSY sections",
+          );
+        } finally {
+          setEosyUnfinalizingAll(false);
         }
       },
     });
@@ -586,7 +630,7 @@ export default function EOSYFinalization() {
               description="Year-end promotion finalization. Term grade finalization now lives on the Term Finalization page."
               variant="plain"
               actions={
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     onClick={handleRefreshAll}
                     variant="outline"
@@ -614,6 +658,25 @@ export default function EOSYFinalization() {
                       }}
                     >
                       <Download className="w-4 h-4 mr-1.5" /> Backup
+                    </Button>
+                  )}
+                  {selectedSyLabel && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleUnfinalizeAllEosy}
+                      disabled={
+                        finalizationLoading || eosyUnfinalizingAll || unfinalizableSectionCount === 0
+                      }
+                      className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive font-medium text-xs"
+                      data-testid="eosy-unfinalize-all"
+                    >
+                      {eosyUnfinalizingAll ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      ) : (
+                        <Undo2 className="w-3.5 h-3.5 mr-1.5" />
+                      )}
+                      Unfinalize all
                     </Button>
                   )}
                 </div>
@@ -723,7 +786,7 @@ export default function EOSYFinalization() {
         description={confirmDialog.description}
         variant={confirmDialog.variant}
         confirmLabel={confirmDialog.confirmLabel}
-        loading={eosyFinalizing || eosyUnfinalizing}
+        loading={eosyFinalizing || eosyUnfinalizing || eosyUnfinalizingAll}
         onConfirm={confirmDialog.onConfirm}
       />
     </div>

@@ -602,6 +602,9 @@ export const gradesApi = {
   ecrExport: (classAssignmentId: string, term: string) =>
     api.get(`/grades/ecr-export/${classAssignmentId}`, { params: { term }, responseType: "blob" }),
 
+  ecrExportAllTerms: (classAssignmentId: string) =>
+    api.get(`/grades/ecr-export/${classAssignmentId}`, { params: { term: "ALL" }, responseType: "blob" }),
+
   ecrSync: (classAssignmentId: string) =>
     api.get<EcrSyncStatus>(`/grades/ecr-sync/${classAssignmentId}`),
 };
@@ -1820,6 +1823,17 @@ export const registrarApi = {
   unfinalizeEosySection: (sectionId: string, schoolYear: string) =>
     api.post("/registrar/eosy/unfinalize", { sectionId, schoolYear }),
 
+  unfinalizeAllEosySections: (schoolYear: string) =>
+    api.post<{
+      message: string;
+      schoolYear: string;
+      targeted: number;
+      unfinalized: number;
+      blocked: Array<{ sectionId: string; sectionName: string; completedCount: number }>;
+      deletedSnapshots: number;
+      deletedRemedial: number;
+    }>("/registrar/eosy/unfinalize-all", { schoolYear }),
+
   getFinalizeStatusAll: (sectionId: string, schoolYear?: string) =>
     api.get<{ sectionId: string; subjects: TermFinalizeStatusSubject[] }>(
       `/registrar/finalize-status-all/${sectionId}`,
@@ -2345,6 +2359,52 @@ export interface GradingModeRecomputeSummary {
   byMode: Record<GradingMode, number>;
 }
 
+export interface TeacherArchiveRow {
+  id: string;
+  schoolYearId: string;
+  schoolYear: string;
+  teacherId: string;
+  teacherUserId: string | null;
+  employeeId: string | null;
+  teacherName: string;
+  status: "PENDING" | "COMPLETE" | "FAILED";
+  error: string | null;
+  schemaVersion: number;
+  encoding: string;
+  rawBytes: number | null;
+  compressedBytes: number | null;
+  checksum: string | null;
+  stats: Record<string, number> | null;
+  dataQuality: { warnings?: string[]; [key: string]: unknown } | null;
+  source: string;
+  createdBy: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  updatedAt: string;
+}
+
+export interface TeacherArchiveListResponse {
+  schoolYear: {
+    id: string;
+    label: string;
+    status: string;
+    startDate: string | null;
+    endDate: string | null;
+    archivedAt: string | null;
+  } | null;
+  counts: {
+    expectedTeachers: number;
+    complete: number;
+    pending: number;
+    failed: number;
+    total: number;
+    totalRawBytes: number;
+    totalCompressedBytes: number;
+  };
+  pagination: { page: number; pageSize: number; total: number };
+  teachers: TeacherArchiveRow[];
+}
+
 export const adminApi = {
   // Dashboard
   getDashboard: () => api.get<AdminDashboard>("/admin/dashboard"),
@@ -2574,12 +2634,71 @@ export const adminApi = {
   deleteSchoolYear: (id: string) =>
     api.delete<{ message: string }>(`/admin/school-years/${id}`),
 
+  // ─── Teacher Year Archives ────────────────────────────────────────────────
+  getTeacherArchives: (params: {
+    schoolYearId?: string;
+    status?: "PENDING" | "COMPLETE" | "FAILED";
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => api.get<TeacherArchiveListResponse>("/admin/teacher-archives", { params }),
+
+  getTeacherArchive: (id: string) =>
+    api.get<{ teacher: TeacherArchiveRow }>(`/admin/teacher-archives/${id}`),
+
+  downloadTeacherArchive: (id: string, format: "xlsx" | "json" | "json.gz" = "xlsx") =>
+    api.get<Blob>(`/admin/teacher-archives/${id}/download`, {
+      params: { format },
+      responseType: "blob",
+    }),
+
+  backfillTeacherArchives: (data: { schoolYearId: string; regenerate?: boolean }) =>
+    api.post<{
+      queued: number;
+      schoolYear: string;
+      considered: number;
+      completed: number;
+      failed: number;
+      skipped: number;
+      rawBytes: number;
+      compressedBytes: number;
+      durationMs: number;
+    }>("/admin/teacher-archives/backfill", data),
+
   // ─── Term Display Labels ──────────────────────────────────────────────────
   getTermLabels: () =>
     api.get<{ termLabels: TermLabels }>("/admin/term-labels"),
 
   updateTermLabels: (data: { termLabelT1?: string; termLabelT2?: string; termLabelT3?: string }) =>
     api.put<{ message: string; termLabels: TermLabels }>("/admin/term-labels", data),
+};
+
+export const teacherArchivesApi = {
+  list: () =>
+    api.get<{
+      archives: TeacherArchiveRow[];
+      totals: { count: number; rawBytes: number; compressedBytes: number };
+    }>("/teacher-archives"),
+
+  classes: (id: string) =>
+    api.get<{
+      archive: { id: string; schoolYear: string; teacherName: string };
+      classes: Array<{
+        classAssignmentId: string;
+        subjectCode: string;
+        subjectName: string;
+        sectionId: string;
+        sectionName: string;
+        teachingMinutes: number | null;
+        terms: string[];
+      }>;
+    }>(`/teacher-archives/${id}/classes`),
+
+  download: (id: string, format: "xlsx" | "json" | "json.gz" = "xlsx") =>
+    api.get<Blob>(`/teacher-archives/${id}/download`, {
+      params: { format },
+      responseType: "blob",
+    }),
 };
 
 export default api;

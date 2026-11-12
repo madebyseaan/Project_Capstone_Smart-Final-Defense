@@ -3,7 +3,7 @@
 **Date:** 2026-11-11
 **From:** SMART
 **To:** AIMS
-**Status:** SMART code implemented and verified. Awaiting shared secrets and joint live testing.
+**Status:** SMART code implemented and configured. Live joint testing completed; one AIMS-side TTL mismatch remains (see §7.1).
 **Reference contract:** `SMART-SSO-HANDOFF.md` (AIMS, approved; Canto 22 / Canto 23)
 
 ---
@@ -460,6 +460,42 @@ The tool refuses `REGISTRAR` accounts and never creates users.
 
 Playwright also caught and fixed a real issue: the sidebar AIMS call originally used raw
 `axios`, which skipped SMART's JWT interceptor. It now uses SMART's authenticated API client.
+
+### 7.1 Live joint test results (2026-11-11)
+
+The AIMS-provided configuration was applied to SMART. `aimsSsoEnabled` is now `true`.
+
+| Check | Result |
+| --- | --- |
+| AIMS health | `200 OK` |
+| Part A: AIMS-issued code → SMART exchange | **Pass** (temporary SMART fixture; session issued; fixture deleted) |
+| Part A: browser launch URL → SMART SPA | **Pass** (real AIMS code; SMART session stored; landed on `/teacher/records`; code stripped) |
+| Part A: unlinked AIMS teacher | **Pass** (clear `AIMS_ACCOUNT_NOT_PROVISIONED` page data; no account created) |
+| Part A: replay same AIMS code | **Pass** (`409 CODE_ALREADY_USED`) |
+| Part A: wrong SMART client secret | **Pass** (`401 INVALID_CLIENT` on AIMS) |
+| Part A: AIMS code expiry | **Mismatch** — code was still accepted after 62s and expired by 125s; contract says 60s |
+| Part B: SMART browser sidebar → AIMS | **Pass** — SMART teacher landed on AIMS `/home` |
+| Part B: exchange success | **Pass** (`200`, identity + context returned) |
+| Part B: replay same SMART code | **Pass** (`409 CODE_ALREADY_USED`) |
+| Part B: expired SMART code | **Pass** (`410 CODE_EXPIRED` at 62s) |
+| Part B: wrong AIMS client secret | **Pass** (`401 INVALID_CLIENT`) |
+| No codes/secrets in logs | **Pass** (no code or secret material was logged) |
+
+**Action for AIMS:** confirm `SMART_SSO_TTL_SECONDS=60` is actually loaded and restart AIMS.
+If AIMS intentionally uses a longer TTL, the contract and SMART UI copy must be updated;
+SMART currently describes the link as a 60-second code.
+
+**Provisioning note:** the documented AIMS dev teacher `teacher@gmail.com` has no SMART
+account. Positive Part A exchange was therefore verified with a temporary SMART fixture
+that was deleted immediately afterward. A real AIMS teacher must either match an existing
+SMART `Teacher.employeeId` / `User.username` / `User.email`, or be explicitly linked with
+`prisma/link-aims-user.ts`. The SMART teacher used for the live Part B browser test
+(`1000001`) is already linked successfully on the AIMS side and landed on AIMS `/home`.
+
+**Remaining class-launch check:** the documented AIMS test teacher has no AIMS course
+list in this dev tenant, so a real class-specific AIMS → SMART launch is still pending
+a teacher/course pair that maps to a SMART class. SMART's class resolver is covered by
+tests, and the browser `?term=T2` class-record deep link was verified directly.
 
 ---
 

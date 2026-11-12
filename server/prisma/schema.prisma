@@ -533,6 +533,38 @@ model SchoolYear {
   systemSettings SystemSettings[]
   yearGradeLock  YearGradeLock?
   termGradeLocks TermGradeLock[]
+  teacherYearArchives TeacherYearArchive[]
+}
+
+model TeacherYearArchive {
+  id              String    @id @default(cuid())
+  schoolYearId    String
+  schoolYear      String // label, denormalized for filtering/display
+  teacherId       String // no FK: archive must outlive Teacher/User rows
+  teacherUserId   String?
+  employeeId      String?
+  teacherName     String
+  status          String    @default("PENDING") // PENDING | COMPLETE | FAILED
+  error           String?
+  schemaVersion   Int       @default(1)
+  encoding        String    @default("gzip") // gzip | br
+  payload         Bytes? // gzip-compressed JSON (PostgreSQL bytea)
+  rawBytes        Int?
+  compressedBytes Int?
+  checksum        String? // sha256 of uncompressed JSON
+  stats           Json?
+  dataQuality     Json?
+  source          String    @default("ROLLOVER") // ROLLOVER | MANUAL_ARCHIVE | BACKFILL
+  createdBy       String?
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  schoolYearRef SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolYearId, teacherId])
+  @@index([schoolYear, status])
+  @@index([teacherId])
 }
 
 model YearGradeLock {

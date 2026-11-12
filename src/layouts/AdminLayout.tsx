@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Calendar,
   FileText,
+  Archive,
   type LucideIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -78,6 +79,7 @@ const navigationGroups: { title: string; items: NavItem[] }[] = [
       { name: "Grading Config", href: "/admin/grading", icon: Sliders },
       { name: "Transmutation Table", href: "/admin/transmutation", icon: Sliders },
       { name: "School Years", href: "/admin/school-years", icon: Calendar },
+      { name: "Teacher Archives", href: "/admin/teacher-archives", icon: Archive },
       { name: "System Settings", href: "/admin/settings", icon: Settings },
       { name: "System Health", href: "/admin/health", icon: Shield },
       { name: "Audit Logs", href: "/admin/logs", icon: Activity },

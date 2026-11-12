@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
-import { eosyFinalizeSchema, eosyStatusQuerySchema } from "../../schemas/registrar";
+import { eosyFinalizeSchema, eosyStatusQuerySchema, eosyUnfinalizeAllSchema } from "../../schemas/registrar";
 import { createAuditLog } from "../../lib/audit";
 import { AuditAction, AuditSeverity } from "@prisma/client";
 import {
@@ -9,6 +9,7 @@ import {
   finalizeSectionEosy,
   unfinalizeSectionEosy,
   listUnfinalizedSections,
+  listSectionEosyStatuses,
 } from "../../lib/promotion";
 import {
   resolveEnrollProSchoolYear,
@@ -302,6 +303,83 @@ router.post("/eosy/unfinalize", authenticateToken, validate(eosyFinalizeSchema),
   } catch (err: any) {
     logger.error("[registrar/eosy/unfinalize]", err.message);
     res.status(500).json({ message: "Failed to unfinalize EOSY" });
+  }
+});
+
+// POST /registrar/eosy/unfinalize-all — undo EOSY finalization for every
+// section in a school year that has a stored promotion status. Sections with
+// completed remedial records are skipped and reported back to the caller.
+router.post("/eosy/unfinalize-all", authenticateToken, validate(eosyUnfinalizeAllSchema), async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user || user.role !== "REGISTRAR") { res.status(403).json({ message: "Access denied. Registrar only." }); return; }
+  try {
+    const { schoolYear } = req.body;
+
+    const statuses = await listSectionEosyStatuses(schoolYear);
+    const targets = statuses.filter((section) => section.withStoredStatus > 0);
+
+    if (targets.length === 0) {
+      res.json({
+        message: `No finalized sections to unfinalize for ${schoolYear}.`,
+        schoolYear,
+        targeted: 0,
+        unfinalized: 0,
+        blocked: [],
+        deletedSnapshots: 0,
+        deletedRemedial: 0,
+      });
+      return;
+    }
+
+    const blocked: Array<{ sectionId: string; sectionName: string; completedCount: number }> = [];
+    let unfinalized = 0;
+    let deletedSnapshots = 0;
+    let deletedRemedial = 0;
+
+    for (const section of targets) {
+      const result = await withSectionLock(`eosy:${section.sectionId}:${schoolYear}`, () =>
+        unfinalizeSectionEosy({
+          sectionId: section.sectionId,
+          schoolYear,
+          actor: { id: user.id, name: user.username, role: user.role },
+        }),
+      );
+
+      if (result.ok) {
+        unfinalized += 1;
+        deletedSnapshots += result.deletedSnapshots;
+        deletedRemedial += result.deletedRemedial;
+      } else if (result.error === "HAS_COMPLETED_REMEDIAL") {
+        blocked.push({
+          sectionId: section.sectionId,
+          sectionName: section.sectionName,
+          completedCount: result.completedCount ?? 0,
+        });
+      }
+    }
+
+    await createAuditLog(
+      AuditAction.UPDATE,
+      user,
+      `EOSY Unfinalize All: ${schoolYear}`,
+      "EOSY",
+      `EOSY unfinalize all for SY ${schoolYear}: ${unfinalized}/${targets.length} section(s) unfinalized, ${blocked.length} blocked by completed remedial, ${deletedSnapshots} snapshots and ${deletedRemedial} remedial records deleted`,
+      req.ip,
+      AuditSeverity.WARNING
+    );
+
+    res.json({
+      message: `EOSY unfinalize all complete: ${unfinalized} of ${targets.length} section(s) unfinalized`,
+      schoolYear,
+      targeted: targets.length,
+      unfinalized,
+      blocked,
+      deletedSnapshots,
+      deletedRemedial,
+    });
+  } catch (err: any) {
+    logger.error("[registrar/eosy/unfinalize-all]", err.message);
+    res.status(500).json({ message: "Failed to unfinalize all EOSY sections" });
   }
 });
 

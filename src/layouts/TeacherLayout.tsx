@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate, Outlet, Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -11,6 +11,7 @@ import {
   ClipboardCheck,
   FileText,
   CalendarDays,
+  Archive,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ const navigationGroups = [
     title: "MANAGEMENT",
     items: [
       { name: "My Advisory", href: "/teacher/advisory", icon: Users },
+      { name: "My Archives", href: "/teacher/archives", icon: Archive },
     ]
   }
 ];
@@ -371,7 +373,14 @@ export default function TeacherLayout() {
               {/* Page Title */}
               <div className="flex min-w-0 flex-col">
                 <span className="hidden text-[11px] font-medium text-muted-foreground uppercase tracking-wide sm:block">Teacher Portal</span>
-                <span className="truncate text-base font-semibold text-foreground sm:-mt-0.5">
+                <span className="truncate text-base font-semibold text-foreground sm:-mt-0.5 min-[360px]:hidden">
+                  {location.pathname.startsWith("/teacher/attendance-reports")
+                    ? "Reports"
+                    : location.pathname.startsWith("/teacher/classes")
+                      ? "Classes"
+                      : getCurrentPageTitle()}
+                </span>
+                <span className="hidden truncate text-base font-semibold text-foreground sm:-mt-0.5 min-[360px]:inline">
                   {getCurrentPageTitle()}
                 </span>
               </div>
@@ -427,11 +436,8 @@ export default function TeacherLayout() {
         </main>
       </div>
 
-      <TeacherBottomNav
-        userName={userDisplayName}
-        schoolYear={currentSchoolYear}
-        onLogout={handleLogout}
-      />
+      <TeacherBottomNav />
     </div>
   );
 }
+

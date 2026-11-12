@@ -159,7 +159,8 @@ export function buildSf2Workbook({
       for (let d = 0; d < dayCount; d++) {
         const key = schoolDays[d].date;
         const cell = sheet.getCell(row, DAY_START_COL + d);
-        cell.value = student.marks[key] ?? "";
+        const mark = student.marks[key] ?? "";
+        cell.value = mark === "x" ? "A" : mark === "/" ? "L" : mark === "E" ? "E" : "P";
         cell.alignment = { horizontal: "center" };
       }
 

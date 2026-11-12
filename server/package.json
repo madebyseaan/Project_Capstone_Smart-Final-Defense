@@ -26,6 +26,7 @@
     "test:watch": "vitest",
     "profile:sync": "ts-node scripts/trigger-profile-sync.ts",
     "db:backup": "ts-node scripts/backup.ts",
+    "db:backup:plain": "ts-node scripts/backup.ts --plain",
     "db:wipe": "ts-node scripts/wipe.ts"
   },
   "prisma": {

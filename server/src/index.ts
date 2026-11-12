@@ -32,6 +32,7 @@ import { aimsReverseAliasRouter, aimsReverseSessionRouter } from "./routes/aimsR
 import { atlasReverseSessionRouter, atlasReverseStartRouter } from "./routes/atlasReverseSso";
 import gradesRoutes from "./routes/grades";
 import advisoryRoutes from "./routes/advisory";
+import teacherArchivesRoutes from "./routes/teacherArchives";
 import registrarRoutes from "./routes/registrar";
 import adminRoutes from "./routes/admin";
 import attendanceRoutes from "./routes/attendance";
@@ -39,6 +40,7 @@ import templateRoutes from "./routes/templates";
 import syncRoutes from "./routes/sync";
 import integrationRoutes from "./routes/integration";
 import { startUnifiedSyncScheduler, stopUnifiedSyncScheduler } from "./lib/syncCoordinator";
+import { resumePendingTeacherArchives } from "./lib/teacherYearArchive";
 import { prisma } from "./lib/prisma";
 import { globalLimiter } from "./middleware/rateLimiter";
 import { csrfProtection } from "./middleware/csrf";
@@ -97,6 +99,7 @@ app.use("/auth", atlasReverseStartRouter);
 
 app.use("/api/grades", gradesRoutes);
 app.use("/api/advisory", advisoryRoutes);
+app.use("/api/teacher-archives", teacherArchivesRoutes);
 app.use("/api/registrar", registrarRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/attendance", attendanceRoutes);
@@ -246,6 +249,10 @@ const server = app.listen(PORT, async () => {
   startAutoTermScheduler();
   // Start retention cleanup scheduler
   startRetentionCleanupScheduler();
+  // Retry teacher archive bundles that were queued but not completed.
+  void resumePendingTeacherArchives().catch((err) => {
+    console.error("[TeacherArchive] Startup resume failed:", err);
+  });
 });
 
 // ── Graceful Shutdown ───────────────────────────────────────────────────────

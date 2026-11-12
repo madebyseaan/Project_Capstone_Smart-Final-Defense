@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
 import { SURFACE } from "./components/MobileDashboardTokens";
 import { ProgressRing } from "./components/MobileDashboardWidgets";
+import MobileAttendanceTabs from "./components/MobileAttendanceTabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -36,15 +37,15 @@ interface AdvisorySection {
 
 function MarkContent({ mark }: { mark: string }) {
   if (mark === "x") {
-    return <span className="flex h-full w-full items-center justify-center bg-rose-50 py-2 text-rose-600">x</span>;
+    return <span className="flex h-full w-full items-center justify-center bg-rose-50 py-2 text-rose-600">A</span>;
   }
   if (mark === "/") {
-    return <span className="flex h-full w-full items-center justify-center bg-amber-50 py-2 text-amber-600">/</span>;
+    return <span className="flex h-full w-full items-center justify-center bg-amber-50 py-2 text-amber-600">L</span>;
   }
   if (mark === "E") {
     return <span className="flex h-full w-full items-center justify-center bg-indigo-50 py-2 text-indigo-600">E</span>;
   }
-  return <span className="text-emerald-500 font-normal opacity-30">•</span>;
+  return <span className="flex h-full w-full items-center justify-center py-2 font-normal text-emerald-500">P</span>;
 }
 
 export default function AttendanceReports() {
@@ -156,6 +157,8 @@ export default function AttendanceReports() {
           }
         />
       </div>
+
+      <MobileAttendanceTabs active="reports" />
 
       <div className={cn("flex items-center gap-3 p-4 lg:hidden", SURFACE)}>
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_12px_24px_-14px_rgba(0,0,0,0.55)]">
@@ -563,9 +566,9 @@ export default function AttendanceReports() {
               </div>
 
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-6 py-3 border-t border-border/60 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                <span className="text-emerald-500 opacity-60">• Present</span>
-                <span className="text-rose-600">x Absent</span>
-                <span className="text-amber-600">/ Tardy</span>
+                <span className="text-emerald-500">P Present</span>
+                <span className="text-rose-600">A Absent</span>
+                <span className="text-amber-600">L Late</span>
                 <span className="text-indigo-600">E Excused</span>
               </div>
             </>

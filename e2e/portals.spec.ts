@@ -10,6 +10,7 @@ const PAGES = {
     "/admin/grading",
     "/admin/transmutation",
     "/admin/school-years",
+    "/admin/teacher-archives",
     "/admin/settings",
     "/admin/health",
     "/admin/logs",
@@ -23,6 +24,7 @@ const PAGES = {
     "/teacher/advisory",
     "/teacher/advisory?view=printables",
     "/teacher/advisory?view=observed-values",
+    "/teacher/archives",
   ],
   registrar: [
     "/registrar",

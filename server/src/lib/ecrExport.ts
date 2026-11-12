@@ -245,9 +245,15 @@ function descriptorForGrade(grade: number): string | undefined {
 
 export async function exportEcrWorkbook(input: {
   classAssignmentId: string;
-  term: Term;
+  term?: Term;
+  terms?: Term[];
 }): Promise<{ buffer: Buffer; fileName: string }> {
-  const { classAssignmentId, term } = input;
+  const { classAssignmentId } = input;
+  const requestedTerms: Term[] =
+    input.terms && input.terms.length > 0
+      ? [...new Set(input.terms)]
+      : [input.term ?? "T1"];
+  const termLabel = requestedTerms.length === 1 ? requestedTerms[0] : "AllTerms";
 
   const ca = await prisma.classAssignment.findUnique({
     where: { id: classAssignmentId },
@@ -271,10 +277,7 @@ export async function exportEcrWorkbook(input: {
   const males = active.filter((e) => (e.student.gender ?? "").toLowerCase() === "male").sort(byName);
   const females = active.filter((e) => (e.student.gender ?? "").toLowerCase() === "female").sort(byName);
 
-  const grades = await prisma.grade.findMany({ where: { classAssignmentId, term } });
-  const gradeByStudent = new Map(grades.map((g) => [g.studentId, g]));
-
-  // All terms — used for FINAL GRADES cached term grades + average
+  // All terms — used for per-term sheets and FINAL GRADES cached grades.
   const allTermGrades = await prisma.grade.findMany({ where: { classAssignmentId } });
   const gradeByKey = new Map(allTermGrades.map((g) => [`${g.studentId}:${g.term}`, g]));
 
@@ -318,7 +321,10 @@ export async function exportEcrWorkbook(input: {
   zip.file(INPUT_SHEET, injectCells(inputXml, inputCells));
 
   // ── TERM sheet ──────────────────────────────────────────────────────────────
-  const termCells: Record<string, string | number> = {};
+  const buildTermCells = (term: Term): Record<string, string | number> => {
+    const termCells: Record<string, string | number> = {};
+    const grades = allTermGrades.filter((grade) => grade.term === term);
+    const gradeByStudent = new Map(grades.map((grade) => [grade.studentId, grade]));
 
   // Class-wide HPS per WW/PT slot
   const slotMax = (key: "writtenWorkScores" | "perfTaskScores", limit: number): number[] => {
@@ -391,6 +397,9 @@ export async function exportEcrWorkbook(input: {
   males.slice(0, MAX_PER_GENDER).forEach((e, i) => writeRow(e.student.id, MALE_START_ROW + i));
   females.slice(0, MAX_PER_GENDER).forEach((e, i) => writeRow(e.student.id, FEMALE_START_ROW + i));
 
+  return termCells;
+  };
+
   // ── All TERM sheets: cached header + names (so non-recalculating previews
   //    show them; Excel recalcs on open regardless) ─────────────────────────────
   const headerValues: Record<string, string> = {
@@ -420,9 +429,16 @@ export async function exportEcrWorkbook(input: {
   }
 
   // ── Selected TERM sheet: scores ──────────────────────────────────────────────
-  const termXml = await zip.file(TERM_SHEET[term])?.async("string");
-  if (!termXml) throw new Error(`ECR export: sheet ${TERM_SHEET[term]} missing from template.`);
-  zip.file(TERM_SHEET[term], injectCells(termXml, termCells));
+  for (const sheetKey of requestedTerms) {
+    const termXml = await zip.file(TERM_SHEET[sheetKey])?.async("string");
+    if (!termXml) {
+      if (requestedTerms.length === 1) {
+        throw new Error(`ECR export: sheet ${TERM_SHEET[sheetKey]} missing from template.`);
+      }
+      continue;
+    }
+    zip.file(TERM_SHEET[sheetKey], injectCells(termXml, buildTermCells(sheetKey)));
+  }
 
   // ── FINAL GRADES: cached header + names + term grades + average + descriptor ─
   const fgXml = await zip.file(FINAL_GRADES_SHEET)?.async("string");
@@ -469,7 +485,7 @@ export async function exportEcrWorkbook(input: {
   await removeCalcChain(zip);
 
   const buffer = Buffer.from(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-  const fileName = `E-Class-Record-${ca.subject.code}-${prettifyGradeLevel(String(ca.section.gradeLevel))}-${ca.section.name}-${term}.xlsx`;
+  const fileName = `E-Class-Record-${ca.subject.code}-${prettifyGradeLevel(String(ca.section.gradeLevel))}-${ca.section.name}-${termLabel}.xlsx`;
 
   // Audit (read-only action; no grade locks apply)
   const user = teacher ? await prisma.user.findUnique({ where: { id: teacher.userId }, select: { id: true, firstName: true, lastName: true, role: true } }) : null;
@@ -477,7 +493,7 @@ export async function exportEcrWorkbook(input: {
     await createAuditLog(
       AuditAction.CREATE,
       user,
-      `E-Class-Record Export — ${ca.subject.name} (${term})`,
+      `E-Class-Record Export — ${ca.subject.name} (${termLabel})`,
       "Grades",
       `Downloaded ${fileName}`,
       undefined,

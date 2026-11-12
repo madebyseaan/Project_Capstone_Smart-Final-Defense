@@ -6,6 +6,7 @@ import users from "./admin-sub/users";
 import audit from "./admin-sub/audit";
 import grading from "./admin-sub/grading";
 import classAssignments from "./admin-sub/classAssignments";
+import teacherArchives from "./admin-sub/teacherArchives";
 
 const router = Router();
 
@@ -15,5 +16,6 @@ users(router);
 audit(router);
 grading(router);
 classAssignments(router);
+teacherArchives(router);
 
 export default router;

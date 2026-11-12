@@ -33,6 +33,7 @@ import {
 } from "./promotion";
 import { getGradeLockState } from "./gradeLocks";
 import { OBSERVED_VALUE_GROUPS } from "./observedValues";
+import { computeDisplayName } from "./subjectDisplay";
 import {
   isHomeroomGuidanceSubjectCode,
   isSubjectAlignedWithGrade,
@@ -354,7 +355,30 @@ function buildSubjectRows(
     }
   }
 
-  return { rows: [...standaloneRows, ...mergedRotationRows], includedAssignmentIds };
+  const combinedRows = [...standaloneRows, ...mergedRotationRows];
+  const rowsByArea = new Map<string, SubjectRow>();
+  for (const row of combinedRows) {
+    const areaKey = computeDisplayName(row.subjectCode, row.subjectName).toUpperCase();
+    const existing = rowsByArea.get(areaKey);
+    if (!existing) {
+      rowsByArea.set(areaKey, { ...row });
+      continue;
+    }
+    for (const term of TERM_KEYS) {
+      if (existing[term] === null && row[term] !== null) existing[term] = row[term];
+    }
+    if (row.teacher && !existing.teacher.split(" / ").includes(row.teacher)) {
+      existing.teacher = existing.teacher ? `${existing.teacher} / ${row.teacher}` : row.teacher;
+    }
+    const availableTerms = TERM_KEYS
+      .map((term) => existing[term])
+      .filter((value): value is number => value !== null);
+    if (availableTerms.length > 0) {
+      existing.finalGrade = roundAverage(availableTerms);
+    }
+  }
+
+  return { rows: Array.from(rowsByArea.values()), includedAssignmentIds };
 }
 
 function toSubjectFinalRows(rows: SubjectRow[]): SubjectFinalRow[] {

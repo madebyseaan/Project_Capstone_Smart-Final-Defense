@@ -140,11 +140,11 @@ export default function registerEcr(router: Router): void {
       try {
         const classAssignmentId = String(req.params.classAssignmentId);
         const termRaw = String(req.query.term ?? "T1");
-        if (!VALID_TERMS.includes(termRaw as (typeof VALID_TERMS)[number])) {
-          res.status(400).json({ message: "Invalid term. Must be T1, T2, or T3." });
+        const allTerms = termRaw.toUpperCase() === "ALL";
+        if (!allTerms && !VALID_TERMS.includes(termRaw as (typeof VALID_TERMS)[number])) {
+          res.status(400).json({ message: "Invalid term. Must be T1, T2, T3, or ALL." });
           return;
         }
-        const term = termRaw as Term;
 
         const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
         if (!teacher) { res.status(404).json({ message: "Teacher profile not found" }); return; }
@@ -154,7 +154,11 @@ export default function registerEcr(router: Router): void {
         });
         if (!classAssignment) { res.status(403).json({ message: "Not authorized for this class" }); return; }
 
-        const { buffer, fileName } = await exportEcrWorkbook({ classAssignmentId, term });
+        const { buffer, fileName } = await exportEcrWorkbook(
+          allTerms
+            ? { classAssignmentId, terms: ["T1", "T2", "T3"] }
+            : { classAssignmentId, term: termRaw as Term },
+        );
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
         res.send(buffer);

@@ -12,7 +12,8 @@
  *     under C:\Program Files\PostgreSQL\<version>\bin
  *
  * Output:
- *   server/backups/smart_db_<timestamp>.sql   (gitignored)
+ *   server/backups/smart_db_<timestamp>.dump  (custom format, default)
+ *   server/backups/smart_db_<timestamp>.sql   (with --plain)
  */
 
 import dotenv from "dotenv";
@@ -66,17 +67,32 @@ function findPgDump(): string {
 const backupDir = process.env.BACKUP_DIR ?? path.resolve(__dirname, "../backups");
 fs.mkdirSync(backupDir, { recursive: true });
 
+// Default to PostgreSQL's compressed custom format. `--plain` keeps the legacy
+// .sql output for tools/scripts that expect psql-restorable text.
+const usePlain = process.argv.includes("--plain");
+const format = usePlain ? "plain" : "custom";
+const extension = usePlain ? "sql" : "dump";
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-const outFile = path.join(backupDir, `smart_db_${stamp}.sql`);
+const outFile = path.join(backupDir, `smart_db_${stamp}.${extension}`);
 
 const pgDump = findPgDump();
 console.log(`[backup] Using ${pgDump}`);
+console.log(`[backup] Format: ${format}`);
 console.log(`[backup] Dumping database to ${outFile} ...`);
 
 try {
   execFileSync(
     pgDump,
-    ["--no-owner", "--no-privileges", "--file", outFile, "--dbname", process.env.DATABASE_URL],
+    [
+      "--no-owner",
+      "--no-privileges",
+      "--format",
+      format,
+      "--file",
+      outFile,
+      "--dbname",
+      process.env.DATABASE_URL,
+    ],
     { stdio: ["ignore", "inherit", "inherit"] },
   );
 } catch (err) {
@@ -87,4 +103,8 @@ try {
 const sizeMb = fs.statSync(outFile).size / (1024 * 1024);
 console.log(`[backup] Done. ${sizeMb.toFixed(2)} MB -> ${outFile}`);
 console.log("[backup] Keep this file until after the presentation. Restore with:");
-console.log(`[backup]   psql "<database-url>" < "${outFile}"`);
+if (usePlain) {
+  console.log(`[backup]   psql "<database-url>" < "${outFile}"`);
+} else {
+  console.log(`[backup]   pg_restore --no-owner --no-privileges --dbname "<database-url>" "${outFile}"`);
+}

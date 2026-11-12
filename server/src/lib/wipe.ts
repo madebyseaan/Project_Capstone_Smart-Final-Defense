@@ -37,6 +37,7 @@ export const WIPE_ORDER: readonly string[] = [
   "Student",
   "YearGradeLock",
   "TermGradeLock",
+  "TeacherYearArchive",
   "SchoolYear",
   "SyncHistory",
   "AuditLog",

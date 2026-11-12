@@ -376,7 +376,9 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
         writtenWorkScores: mergedWW,
         perfTaskScores: mergedPT,
         // An imported AIMS QA is a composite — it supersedes any ST1/ST2/TE breakdown.
-        examScores: qaApplied ? Prisma.DbNull : undefined,
+        // On update, leave a teacher's existing exam breakdown untouched; on create,
+        // inherit the predecessor's exam breakdown (seedGrade) so it is not lost.
+        examScores: qaApplied ? Prisma.DbNull : (existingGrade ? undefined : (seedGrade?.examScores ?? undefined)),
         quarterlyAssessScore: finalQAScore,
         quarterlyAssessMax: finalQAMax,
         qaDescription: finalQADesc,
