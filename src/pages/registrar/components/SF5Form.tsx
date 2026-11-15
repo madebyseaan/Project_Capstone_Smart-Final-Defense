@@ -14,6 +14,7 @@ import { forwardRef } from "react";
 import { Download, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SF5Data, SF5Student } from "@/lib/api";
+import { formatDivisionLabel, formatRegionLabel } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,9 +66,12 @@ function Header({ data }: { data: SF5Data }) {
         <p className="font-bold text-gray-900 text-sm">Republic of the Philippines</p>
         <p className="font-bold text-gray-900 text-sm">Department of Education</p>
         <p className="text-gray-900 text-xs">
-          {schoolSettings.region && `Region ${schoolSettings.region}`}
-          {schoolSettings.region && schoolSettings.division && " • "}
-          {schoolSettings.division && `Division ${schoolSettings.division}`}
+          {[
+            formatRegionLabel(schoolSettings.region, ""),
+            formatDivisionLabel(schoolSettings.division, ""),
+          ]
+            .filter(Boolean)
+            .join(" • ")}
         </p>
       </div>
 

@@ -1,5 +1,5 @@
 import type { TermCardPayload } from "@/lib/api";
-import { formatGradeLevel } from "@/lib/utils";
+import { formatDivisionLabel, formatGradeLevel, formatRegionLabel } from "@/lib/utils";
 
 interface TermCardFormProps {
   data: TermCardPayload;
@@ -36,9 +36,9 @@ export default function TermCardForm({ data, fullLogoUrl }: TermCardFormProps) {
             <p className="mb-1 text-xs text-gray-700">SF 9 — TEMPORARY TERM CARD</p>
             <h2 className="text-base font-bold text-gray-900">Republic of the Philippines</h2>
             <h3 className="text-sm font-bold text-gray-900">Department of Education</h3>
-            <p className="mt-1 text-sm text-gray-800">{data.schoolSettings?.region || "Region _____________"}</p>
+            <p className="mt-1 text-sm text-gray-800">{formatRegionLabel(data.schoolSettings?.region)}</p>
             <p className="text-sm text-gray-800">
-              {data.schoolSettings?.division ? `Division of ${data.schoolSettings.division}` : "Division of _____________"}
+              {formatDivisionLabel(data.schoolSettings?.division)}
             </p>
             <p className="text-sm text-gray-800">
               {data.schoolSettings?.schoolName ? `School: ${data.schoolSettings.schoolName}` : "School: _____________"}

@@ -36,6 +36,18 @@ export function formatGradeLevel(gradeLevel: string): string {
   return gradeLevel;
 }
 
+export function formatRegionLabel(region?: string | null, fallback = "Region _____________"): string {
+  const value = region?.trim();
+  if (!value) return fallback;
+  return /^region\b/i.test(value) ? value : `Region ${value}`;
+}
+
+export function formatDivisionLabel(division?: string | null, fallback = "Division of _____________"): string {
+  const value = division?.trim();
+  if (!value) return fallback;
+  return /^division\s+of\b/i.test(value) ? value : `Division of ${value}`;
+}
+
 /**
  * P1-13: allow only well-formed CSS color values (from settings/branding)
  * before interpolating them into style blocks. Anything else falls back to a

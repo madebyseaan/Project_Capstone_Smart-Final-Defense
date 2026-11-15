@@ -78,6 +78,50 @@ function isAllEmpty(snapshot: SchoolSettingsSnapshot): boolean {
   );
 }
 
+// Schema defaults that were never real school identity values. Snapshots
+// captured before EnrollPro identity sync still contain these placeholders.
+const LEGACY_IDENTITY_PLACEHOLDERS: Partial<Record<keyof SchoolSettingsSnapshot, string[]>> = {
+  schoolName: ["Sample High School"],
+  schoolId: ["123456"],
+  division: ["Division of Sample City"],
+  region: ["Region IV-A CALABARZON"],
+};
+
+function normalizeIdentityValue(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function isMissingOrPlaceholder(key: keyof SchoolSettingsSnapshot, value: string): boolean {
+  if (!value.trim()) return true;
+  const placeholders = LEGACY_IDENTITY_PLACEHOLDERS[key];
+  if (!placeholders) return false;
+  const normalized = normalizeIdentityValue(value);
+  return placeholders.some((placeholder) => normalizeIdentityValue(placeholder) === normalized);
+}
+
+/**
+ * Replace legacy placeholder school identity fields with live values while
+ * preserving historical school head / address data in the snapshot.
+ */
+export function repairLegacyIdentity(
+  snapshot: SchoolSettingsSnapshot,
+  live: SchoolSettingsSnapshot
+): SchoolSettingsSnapshot {
+  const repaired = { ...snapshot };
+  for (const key of ["schoolName", "schoolId", "division", "region"] as const) {
+    if (isMissingOrPlaceholder(key, snapshot[key]) && live[key].trim()) {
+      repaired[key] = live[key];
+    }
+  }
+  return repaired;
+}
+
+function needsLegacyIdentityRepair(snapshot: SchoolSettingsSnapshot): boolean {
+  return (["schoolName", "schoolId", "division", "region"] as const).some((key) =>
+    isMissingOrPlaceholder(key, snapshot[key])
+  );
+}
+
 /**
  * Synchronously parse a raw JSON value into SchoolSettingsSnapshot.
  * Returns null on invalid shape (W6).
@@ -162,7 +206,11 @@ export async function getSchoolIdentityForYear(
 
   if (year?.schoolSettingsSnapshot) {
     const parsed = parseSnapshot(year.schoolSettingsSnapshot);
-    if (parsed) return { ...parsed, district: "" };
+    if (parsed) {
+      if (!needsLegacyIdentityRepair(parsed)) return { ...parsed, district: "" };
+      const live = await readLiveSnapshot();
+      return { ...repairLegacyIdentity(parsed, live), district: "" };
+    }
   }
 
   // Fallback to live settings
@@ -195,7 +243,7 @@ export async function getSchoolIdentityByYears(
     if (year?.schoolSettingsSnapshot) {
       const parsed = parseSnapshot(year.schoolSettingsSnapshot);
       if (parsed) {
-        result.set(label, { ...parsed, district: "" });
+        result.set(label, { ...repairLegacyIdentity(parsed, liveFallback), district: "" });
         continue;
       }
     }

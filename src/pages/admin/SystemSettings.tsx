@@ -27,6 +27,20 @@ const TAB_ITEMS: FilterTabItem[] = [
   { value: "advanced", label: "Advanced", icon: Wrench },
 ];
 
+const ENROLLPRO_OWNED_FIELDS = new Set<keyof SystemSettingsType>([
+  "schoolName",
+  "schoolId",
+  "division",
+  "region",
+  "schoolHeadName",
+  "email",
+  "logoUrl",
+  "primaryColor",
+  "secondaryColor",
+  "accentColor",
+  "lastEnrollProSync",
+]);
+
 export default function SystemSettings() {
   const [settings, setSettings] = useState<SystemSettingsType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -169,7 +183,12 @@ export default function SystemSettings() {
     if (!settings) return;
     try {
       setSaving(true);
-      const response = await adminApi.updateSettings(settings);
+      const payload = Object.fromEntries(
+        Object.entries(settings).filter(
+          ([key]) => !ENROLLPRO_OWNED_FIELDS.has(key as keyof SystemSettingsType)
+        )
+      ) as Partial<SystemSettingsType>;
+      const response = await adminApi.updateSettings(payload);
       if (response.data?.settings) setSettings(response.data.settings);
       setHasChanges(false);
       await refreshTheme();

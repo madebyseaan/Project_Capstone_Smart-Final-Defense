@@ -82,6 +82,18 @@ export function SchoolInformationSection({
               <Input id="schoolName" value={settings.schoolName} disabled className={readOnlyInput} />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="schoolId" className="text-sm font-semibold text-foreground">School ID</Label>
+              <Input id="schoolId" value={settings.schoolId || ""} disabled className={readOnlyInput} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="region" className="text-sm font-semibold text-foreground">Region</Label>
+              <Input id="region" value={settings.region || ""} disabled className={readOnlyInput} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="division" className="text-sm font-semibold text-foreground">Division</Label>
+              <Input id="division" value={settings.division || ""} disabled className={readOnlyInput} />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="schoolHeadName" className="text-sm font-semibold text-foreground">School Head / Principal</Label>
               <Input id="schoolHeadName" value={settings.schoolHeadName || ""} disabled className={readOnlyInput} />
             </div>
@@ -144,9 +156,9 @@ export function SchoolInformationSection({
               <School className="w-6 h-6" />
             </div>
             <div>
-              <CardTitle className="text-lg text-foreground">Local School Information</CardTitle>
+              <CardTitle className="text-lg text-foreground">Local Contact Information</CardTitle>
               <CardDescription className="normal-case">
-                DepEd identifiers stored in SMART only
+                Additional contact details stored in SMART only
               </CardDescription>
             </div>
           </div>
@@ -154,40 +166,10 @@ export function SchoolInformationSection({
         <CardContent className="p-6">
           <div className="mb-4 p-3 bg-muted border-2 border-border rounded-xl flex items-center gap-2 text-sm text-foreground">
             <MapPin className="w-4 h-4 flex-shrink-0 text-secondary" />
-            These fields are not provided by EnrollPro, so they are saved in SMART and are never
-            overwritten by a sync.
+            These contact details are not provided by EnrollPro, so they are saved in SMART and are
+            never overwritten by a sync.
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="schoolId" className="text-sm font-semibold text-foreground">School ID</Label>
-              <Input
-                id="schoolId"
-                value={settings.schoolId || ""}
-                onChange={(e) => onChange("schoolId", e.target.value)}
-                placeholder="e.g. 123456"
-                className={editableInput}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="division" className="text-sm font-semibold text-foreground">Division</Label>
-              <Input
-                id="division"
-                value={settings.division || ""}
-                onChange={(e) => onChange("division", e.target.value)}
-                placeholder="e.g. Division of Sample City"
-                className={editableInput}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="region" className="text-sm font-semibold text-foreground">Region</Label>
-              <Input
-                id="region"
-                value={settings.region || ""}
-                onChange={(e) => onChange("region", e.target.value)}
-                placeholder="e.g. Region IV-A CALABARZON"
-                className={editableInput}
-              />
-            </div>
             <div className="space-y-2">
               <Label htmlFor="contactNumber" className="text-sm font-semibold text-foreground">Contact Number</Label>
               <Input

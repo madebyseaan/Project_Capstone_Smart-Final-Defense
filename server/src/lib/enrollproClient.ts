@@ -1126,7 +1126,11 @@ export interface EnrollProPaletteColor {
 
 export interface EnrollProPublicSettings {
   schoolName: string;
+  depedSchoolId?: string | null;
   schoolHeadName?: string;
+  schoolHeadTitle?: string | null;
+  region?: string | null;
+  division?: string | null;
   logoUrl: string | null;
   colorScheme: {
     palette: EnrollProPaletteColor[];

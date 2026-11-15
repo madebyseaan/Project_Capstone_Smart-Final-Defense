@@ -48,6 +48,26 @@ export function pickColorsFromPalette(
   };
 }
 
+/**
+ * Map EnrollPro's public identity fields (DepEd school ID, region, division)
+ * into a SystemSettings update. Missing/blank fields are skipped so an older
+ * EnrollPro payload can never wipe locally stored identity values.
+ */
+export function buildSchoolIdentityUpdate(epSettings: {
+  depedSchoolId?: string | null;
+  region?: string | null;
+  division?: string | null;
+}): { schoolId?: string; region?: string; division?: string } {
+  const update: { schoolId?: string; region?: string; division?: string } = {};
+  const schoolId = epSettings.depedSchoolId?.trim();
+  const region = epSettings.region?.trim();
+  const division = epSettings.division?.trim();
+  if (schoolId) update.schoolId = schoolId;
+  if (region) update.region = region;
+  if (division) update.division = division;
+  return update;
+}
+
 /** Remove previously synced EnrollPro logo files, optionally keeping one. */
 export function cleanupSyncedLogoFiles(uploadDir: string, keepFilename?: string): void {
   try {
@@ -158,6 +178,7 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
     lastEnrollProSync: new Date(),
     // School identity mirrors EnrollPro exactly — including clearing fields
     // that were emptied there (previously stale values survived forever).
+    ...buildSchoolIdentityUpdate(epSettings),
     schoolHeadName: epSettings.schoolHeadName?.trim() || null,
     email: epSettings.depedEmail?.trim() || null,
   };

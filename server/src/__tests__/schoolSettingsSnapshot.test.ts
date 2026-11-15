@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import {
   captureSchoolSettingsSnapshot,
+  repairLegacyIdentity,
   syncActiveYearSnapshot,
   getSchoolIdentityForYear,
   getSchoolIdentityByYears,
@@ -132,6 +133,88 @@ describe("getSchoolIdentityForYear", () => {
     expect(identity.schoolId).toBe("111111");
 
     await prisma.schoolYear.delete({ where: { label } });
+  });
+
+  it("repairs legacy placeholder identity fields from live settings", async () => {
+    const label = "2104-2105";
+    await prisma.schoolYear.create({
+      data: {
+        label,
+        status: "ARCHIVED",
+        externalId: 980107,
+        schoolSettingsSnapshot: {
+          schoolName: "Test School Snap",
+          schoolId: "123456",
+          division: "Division of Sample City",
+          region: "Region IV-A CALABARZON",
+          schoolHeadName: "Historical Head",
+          address: "Historical Address",
+        } as any,
+      },
+    });
+
+    const identity = await getSchoolIdentityForYear(label);
+    expect(identity.schoolName).toBe("Test School Snap");
+    expect(identity.schoolId).toBe("111111");
+    expect(identity.division).toBe("Live Division");
+    expect(identity.region).toBe("Live Region");
+    expect(identity.schoolHeadName).toBe("Historical Head");
+    expect(identity.address).toBe("Historical Address");
+
+    await prisma.schoolYear.delete({ where: { label } });
+  });
+});
+
+describe("repairLegacyIdentity", () => {
+  const live = {
+    schoolName: "Live School",
+    schoolId: "111111",
+    division: "Live Division",
+    region: "Live Region",
+    schoolHeadName: "Live Head",
+    address: "Live Address",
+  };
+
+  it("replaces only placeholder or empty identity fields", () => {
+    const repaired = repairLegacyIdentity(
+      {
+        schoolName: "Historical School",
+        schoolId: "123456",
+        division: "Division of Sample City",
+        region: "Region IV-A CALABARZON",
+        schoolHeadName: "Historical Head",
+        address: "Historical Address",
+      },
+      live
+    );
+
+    expect(repaired).toEqual({
+      schoolName: "Historical School",
+      schoolId: "111111",
+      division: "Live Division",
+      region: "Live Region",
+      schoolHeadName: "Historical Head",
+      address: "Historical Address",
+    });
+  });
+
+  it("never blanks a snapshot when the live value is empty", () => {
+    const repaired = repairLegacyIdentity(
+      {
+        schoolName: "",
+        schoolId: "123456",
+        division: "Division of Sample City",
+        region: "Region IV-A CALABARZON",
+        schoolHeadName: "Historical Head",
+        address: "Historical Address",
+      },
+      { ...live, schoolName: "", schoolId: "", division: "", region: "" }
+    );
+
+    expect(repaired.schoolName).toBe("");
+    expect(repaired.schoolId).toBe("123456");
+    expect(repaired.division).toBe("Division of Sample City");
+    expect(repaired.region).toBe("Region IV-A CALABARZON");
   });
 });
 

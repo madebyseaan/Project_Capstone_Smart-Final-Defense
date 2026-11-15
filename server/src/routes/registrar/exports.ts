@@ -3,6 +3,7 @@ import { authenticateToken, AuthRequest } from "../../middleware/auth";
 import { prisma } from "../../lib/prisma";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { getSchoolIdentityForYear } from "../../lib/schoolSettingsSnapshot";
+import { formatDivisionLabel, formatRegionLabel } from "../../lib/schoolIdentityText";
 import { logger } from "../../lib/logger";
 import { createAuditLog } from "../../lib/audit";
 import { AuditAction, AuditSeverity } from "@prisma/client";
@@ -74,7 +75,9 @@ router.get("/export/sf5/:sectionId", authenticateToken, async (req: AuthRequest,
     sheet.mergeCells(row, 1, row, 6);
     row++;
 
-    sheet.getRow(row).getCell(1).value = `Region ${school.region} • Division ${school.division}`;
+    sheet.getRow(row).getCell(1).value = [formatRegionLabel(school.region), formatDivisionLabel(school.division)]
+      .filter(Boolean)
+      .join(" • ");
     sheet.getRow(row).getCell(1).alignment = { horizontal: "center" };
     sheet.mergeCells(row, 1, row, 6);
     row++;
