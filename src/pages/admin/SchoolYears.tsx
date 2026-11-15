@@ -205,62 +205,71 @@ export default function SchoolYears() {
 
   return (
     <div className="space-y-6 animate-fade-in w-full">
-      {message && (
-        <div
-          className={`p-4 rounded-xl flex items-center gap-2 border-2 ${
-            message.type === "success"
-              ? "bg-primary/5 border-primary/20 text-primary"
-              : "bg-destructive/5 border-destructive/20 text-destructive"
-          }`}
-        >
-          {message.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-          )}
-          <span className="text-sm font-medium">{message.text}</span>
-          <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs" onClick={() => setMessage(null)}>
-            Dismiss
-          </Button>
+      <div className="overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-6">
+          <PageHeader
+            title="School Years"
+            description="Manage school year lifecycle and archival"
+            variant="plain"
+            actions={
+              <Button
+                onClick={() => setShowCreate(true)}
+                variant="default"
+                size="sm"
+                className="font-semibold text-xs shadow-sm shadow-primary/20"
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> Add Year
+              </Button>
+            }
+          />
         </div>
-      )}
 
-      <PageHeader
-        title="School Years"
-        description="Manage school year lifecycle and archival"
-        actions={
-          <Button
-            onClick={() => setShowCreate(true)}
-            variant="default"
-            size="sm"
-            className="font-semibold text-xs shadow-sm shadow-primary/20"
-          >
-            <Plus className="w-4 h-4 mr-1.5" /> Add Year
-          </Button>
-        }
-      />
-
-      <DataTable
-        columns={columns}
-        rows={filtered}
-        loading={loading}
-        title="School Years"
-        description={`${filtered.length} record${filtered.length !== 1 ? "s" : ""} found`}
-        emptyTitle="No school years yet"
-        emptyHint='Click "Add Year" to create one.'
-        emptySearchTerm={search}
-        rowKey={(year) => year.id}
-        pagination={pagination}
-        toolbar={
-          <div className="flex items-center gap-3">
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder="Search school years..."
-            />
+        {message && (
+          <div className="border-t border-border p-4 lg:p-6">
+            <div
+              className={`p-4 rounded-xl flex items-center gap-2 border-2 ${
+                message.type === "success"
+                  ? "bg-primary/5 border-primary/20 text-primary"
+                  : "bg-destructive/5 border-destructive/20 text-destructive"
+              }`}
+            >
+              {message.type === "success" ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              )}
+              <span className="text-sm font-medium">{message.text}</span>
+              <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs" onClick={() => setMessage(null)}>
+                Dismiss
+              </Button>
+            </div>
           </div>
-        }
-      />
+        )}
+
+        <div className="border-t border-border">
+          <DataTable
+            columns={columns}
+            rows={filtered}
+            loading={loading}
+            description={`${filtered.length} record${filtered.length !== 1 ? "s" : ""} found`}
+            emptyTitle="No school years yet"
+            emptyHint='Click "Add Year" to create one.'
+            emptySearchTerm={search}
+            rowKey={(year) => year.id}
+            pagination={pagination}
+            embedded
+            toolbar={
+              <div className="flex items-center gap-3">
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search school years..."
+                />
+              </div>
+            }
+          />
+        </div>
+      </div>
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>

@@ -133,20 +133,22 @@ export default function TeacherArchiveDetail() {
       align: "right",
       className: "text-right",
       cell: (row) => (
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 text-xs"
-          disabled={row.terms.length === 0 || downloading === row.classAssignmentId}
-          onClick={() => void handleClassDownload(row)}
-        >
-          {downloading === row.classAssignmentId ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
-          ) : (
-            <FileSpreadsheet className="w-4 h-4 mr-1.5" />
-          )}
-          Download Excel
-        </Button>
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="default"
+            className="h-8 text-xs"
+            disabled={row.terms.length === 0 || downloading === row.classAssignmentId}
+            onClick={() => void handleClassDownload(row)}
+          >
+            {downloading === row.classAssignmentId ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+            ) : (
+              <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+            )}
+            Download Excel
+          </Button>
+        </div>
       ),
     },
   ];

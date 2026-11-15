@@ -59,7 +59,7 @@ export function TableToolbar({
             value={filter.value}
             onValueChange={(val) => val && filter.onChange(val)}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-36" aria-label={filter.label}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

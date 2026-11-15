@@ -10,7 +10,6 @@ import {
   ArrowRight,
   Inbox,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/layout/StatCard";
 import { SearchInput } from "@/components/layout/SearchInput";
@@ -350,90 +348,100 @@ export default function ClassAssignments() {
 
   return (
     <div className="space-y-6 animate-fade-in w-full">
-      <PageHeader
-        title="Teaching Load"
-        description="Read-only mirror of teaching assignments synchronized from ATLAS"
-        actions={
-          <>
-            <Select value={schoolYear} onValueChange={(v) => setSchoolYear(v ?? "")}>
-              <SelectTrigger className="w-36 h-9 rounded-lg text-xs font-medium">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {schoolYears.map((sy) => (
-                  <SelectItem key={sy.id} value={sy.label}>{sy.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void loadData()}
-              disabled={loading}
-              className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loading && "animate-spin")} />
-              Refresh
-            </Button>
-          </>
-        }
-      />
+      <div className="overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-6">
+          <PageHeader
+            title="Teaching Load"
+            description="Read-only mirror of teaching assignments synchronized from ATLAS"
+            variant="plain"
+            actions={
+              <>
+                <Select value={schoolYear} onValueChange={(v) => setSchoolYear(v ?? "")}>
+                  <SelectTrigger className="w-36 h-9 rounded-lg text-xs font-medium">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schoolYears.map((sy) => (
+                      <SelectItem key={sy.id} value={sy.label}>{sy.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadData()}
+                  disabled={loading}
+                  className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loading && "animate-spin")} />
+                  Refresh
+                </Button>
+              </>
+            }
+          />
+        </div>
 
-      {/* Trust strip */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary-subtle px-4 py-3 text-sm">
-        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-        <span className="text-foreground">
-          <strong>Synced from ATLAS</strong> · last sync {relativeTime(lastSyncAt)}
-        </span>
-        <span className="text-muted-foreground">Assignments are managed in ATLAS — this page is read-only.</span>
-      </div>
+        {/* Trust strip */}
+        <div className="border-t border-border p-4 lg:p-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary-subtle px-4 py-3 text-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="text-foreground">
+              <strong>Synced from ATLAS</strong> · last sync {relativeTime(lastSyncAt)}
+            </span>
+            <span className="text-muted-foreground">Assignments are managed in ATLAS — this page is read-only.</span>
+          </div>
+        </div>
 
-      {/* Load health */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Teachers with Load" value={teacherLoads.length} numericValue={teacherLoads.length} icon={<Users className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
-        <StatCard label="Active Assignments" value={activeAssignments.length} numericValue={activeAssignments.length} icon={<ClipboardList className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
-        <StatCard
-          label="Sections Without Teacher"
-          value={gapCount}
-          numericValue={gapCount}
-          icon={<AlertTriangle className={cn("w-5 h-5", gapCount > 0 ? "text-amber-500" : "text-muted-foreground")} />}
-          iconClassName={gapCount > 0 ? "bg-amber-50" : "bg-muted"}
-        />
-        <StatCard label="Recent Transfers" value={transferCount} numericValue={transferCount} icon={<ArrowRight className="w-5 h-5" style={{ color: colors.accent }} />} iconClassName="bg-accent/10" />
-      </div>
+        {/* Load health */}
+        <div className="border-t border-border p-4 lg:p-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Teachers with Load" value={teacherLoads.length} numericValue={teacherLoads.length} icon={<Users className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" className="border border-border bg-muted/30 shadow-none" />
+            <StatCard label="Active Assignments" value={activeAssignments.length} numericValue={activeAssignments.length} icon={<ClipboardList className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" className="border border-border bg-muted/30 shadow-none" />
+            <StatCard
+              label="Sections Without Teacher"
+              value={gapCount}
+              numericValue={gapCount}
+              icon={<AlertTriangle className={cn("w-5 h-5", gapCount > 0 ? "text-amber-500" : "text-muted-foreground")} />}
+              iconClassName={gapCount > 0 ? "bg-amber-50" : "bg-muted"}
+              className="border border-border bg-muted/30 shadow-none"
+            />
+            <StatCard label="Recent Transfers" value={transferCount} numericValue={transferCount} icon={<ArrowRight className="w-5 h-5" style={{ color: colors.accent }} />} iconClassName="bg-accent/10" className="border border-border bg-muted/30 shadow-none" />
+          </div>
+        </div>
 
       {/* Empty state */}
       {hasNoSchedule ? (
-        <Card className="border border-border shadow-sm rounded-xl bg-card p-0">
-          <CardContent className="py-14 text-center">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
-              <Inbox className="h-5 w-5 text-muted-foreground/60" />
-            </div>
-            <p className="text-sm font-semibold text-foreground">No ATLAS schedule configured for {schoolYear} yet</p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-              Teaching load fills in automatically when teachers log in and their ATLAS schedule is available.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="border-t border-border px-4 py-14 text-center">
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+            <Inbox className="h-5 w-5 text-muted-foreground/60" />
+          </div>
+          <p className="text-sm font-semibold text-foreground">No ATLAS schedule configured for {schoolYear} yet</p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+            Teaching load fills in automatically when teachers log in and their ATLAS schedule is available.
+          </p>
+        </div>
       ) : (
         <>
           {/* Tabs + search */}
-          <FilterTabs
-            value={tab}
-            onValueChange={setTab}
-            items={CLASS_TAB_ITEMS}
-            listClassName="w-full sm:w-fit"
-            header={
-              <SearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder={tab === "load" ? "Search teacher, subject, section..." : "Search workload..."}
-              />
-            }
-          >
+          <div className="border-t border-border p-4 lg:p-6">
+            <FilterTabs
+              value={tab}
+              onValueChange={setTab}
+              items={CLASS_TAB_ITEMS}
+              listClassName="w-full sm:w-fit"
+              header={
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder={tab === "load" ? "Search teacher, subject, section..." : "Search workload..."}
+                />
+              }
+            />
+          </div>
 
-            <TabsContent value="load">
-              <Card className="border border-border shadow-sm rounded-xl bg-card p-0 overflow-hidden">
+          <div className="border-t border-border">
+            {tab === "load" ? (
+              <div className="overflow-hidden">
                 <div className="divide-y divide-border/40">
                   {paginatedTeacherLoads.length === 0 ? (
                     <div className="py-12 text-center text-sm text-muted-foreground">No teachers match your search</div>
@@ -520,10 +528,8 @@ export default function ClassAssignments() {
                     onRowsPerPageChange={teacherPagination.setRowsPerPage}
                   />
                 )}
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="workload">
+              </div>
+            ) : (
               <DataTable
                 columns={workloadColumns}
                 rows={filteredWorkload}
@@ -534,50 +540,55 @@ export default function ClassAssignments() {
                 emptySearchTerm={search}
                 rowKey={(row) => `${row.teacherId}-${row.sectionId}`}
                 pagination={workloadPagination}
+                embedded
               />
-            </TabsContent>
-          </FilterTabs>
+            )}
+          </div>
 
           {/* Transfers / Archived */}
           {archivedAssignments.length > 0 && (
-            <Card className="border border-border shadow-sm rounded-xl bg-card p-0 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowArchived((v) => !v)}
-                className="w-full flex items-center gap-3 px-6 py-4 hover:bg-muted/50 transition-colors text-left"
-              >
-                <ShieldCheck className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-semibold text-foreground">
-                  Transferred / Archived ({archivedAssignments.length})
-                </span>
-                <span className="text-xs text-muted-foreground hidden sm:inline">
-                  Assignments removed or reassigned in ATLAS
-                </span>
-                <span className="ml-auto">
-                  {showArchived ? (
-                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  )}
-                </span>
-              </button>
-              {showArchived && (
-                <div className="border-t border-border/40">
-                  <DataTable
-                    columns={archivedColumns}
-                    rows={filteredArchived}
-                    loading={loading}
-                    emptyTitle="No transferred or archived assignments"
-                    emptySearchTerm={search}
-                    rowKey={(a) => a.id}
-                    pagination={archivedPagination}
-                  />
-                </div>
-              )}
-            </Card>
+            <div className="border-t border-border">
+              <div className="overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowArchived((v) => !v)}
+                  className="w-full flex items-center gap-3 px-6 py-4 hover:bg-muted/50 transition-colors text-left"
+                >
+                  <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-foreground">
+                    Transferred / Archived ({archivedAssignments.length})
+                  </span>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    Assignments removed or reassigned in ATLAS
+                  </span>
+                  <span className="ml-auto">
+                    {showArchived ? (
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    )}
+                  </span>
+                </button>
+                {showArchived && (
+                  <div className="border-t border-border/40">
+                    <DataTable
+                      columns={archivedColumns}
+                      rows={filteredArchived}
+                      loading={loading}
+                      emptyTitle="No transferred or archived assignments"
+                      emptySearchTerm={search}
+                      rowKey={(a) => a.id}
+                      pagination={archivedPagination}
+                      embedded
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

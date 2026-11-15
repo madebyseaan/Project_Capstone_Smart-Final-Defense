@@ -106,15 +106,17 @@ export default function TeacherArchives() {
       align: "right",
       className: "text-right",
       cell: (row) => (
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 text-xs"
-          onClick={() => navigate(`/teacher/archives/${row.id}`)}
-        >
-          Open
-          <ChevronRight className="w-4 h-4 ml-1" />
-        </Button>
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 border-primary/30 bg-primary/5 text-xs font-medium text-primary hover:bg-primary/10"
+            onClick={() => navigate(`/teacher/archives/${row.id}`)}
+          >
+            Open
+            <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
+        </div>
       ),
     },
   ];

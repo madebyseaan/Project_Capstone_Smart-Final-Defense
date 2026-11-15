@@ -231,30 +231,40 @@ export default function EditRequests() {
 
   return (
     <div className="space-y-6 animate-fade-in w-full">
-      <PageHeader
-        title="Grade Edit Requests"
-        description="Review and manage teacher requests to edit past-term grades"
-      />
+      <div className="overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-6">
+          <PageHeader
+            title="Grade Edit Requests"
+            description="Review and manage teacher requests to edit past-term grades"
+            variant="plain"
+          />
+        </div>
 
-      <FilterTabs
-        value={filter}
-        onValueChange={(v) => setFilter(v as Filter)}
-        items={FILTER_TABS}
-      />
+        <div className="border-t border-border p-4 lg:p-6">
+          <FilterTabs
+            value={filter}
+            onValueChange={(v) => setFilter(v as Filter)}
+            items={FILTER_TABS}
+          />
+        </div>
 
-      <DataTable
-        columns={columns}
-        rows={filtered}
-        loading={loading}
-        title="Edit Requests"
-        description={`${filtered.length} request${filtered.length !== 1 ? "s" : ""} found`}
-        emptyTitle={`No ${filter.toLowerCase()} requests`}
-        emptySearchTerm={search}
-        rowKey={(req) => req.id}
-        onRowClick={openDetail}
-        pagination={pagination}
-        toolbar={<SearchInput value={search} onChange={setSearch} placeholder="Search requests..." />}
-      />
+        <div className="border-t border-border">
+          <DataTable
+            columns={columns}
+            rows={filtered}
+            loading={loading}
+            title="Edit Requests"
+            description={`${filtered.length} request${filtered.length !== 1 ? "s" : ""} found`}
+            emptyTitle={`No ${filter.toLowerCase()} requests`}
+            emptySearchTerm={search}
+            rowKey={(req) => req.id}
+            onRowClick={openDetail}
+            pagination={pagination}
+            toolbar={<SearchInput value={search} onChange={setSearch} placeholder="Search requests..." />}
+            embedded
+          />
+        </div>
+      </div>
 
       {/* Detail Modal */}
       <AppModal

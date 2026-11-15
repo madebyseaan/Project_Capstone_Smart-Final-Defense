@@ -30,6 +30,8 @@ interface DataTableProps<T> {
   toolbar?: ReactNode;
   pagination: ReturnType<typeof usePagination>;
   onRetry?: () => void;
+  /** Render without the outer Card chrome (for tables nested in a page card). */
+  embedded?: boolean;
 }
 
 const HEAD_CLASS =
@@ -53,6 +55,7 @@ export function DataTable<T>({
   toolbar,
   pagination,
   onRetry,
+  embedded = false,
 }: DataTableProps<T>) {
   const { page, totalPages, rowsPerPage, totalRows, setPage, setRowsPerPage, slice } =
     pagination;
@@ -61,7 +64,12 @@ export function DataTable<T>({
   const hasHeader = Boolean(title || description || toolbar);
 
   return (
-    <Card className="border border-border shadow-sm bg-card overflow-hidden rounded-xl p-0">
+    <Card
+      className={cn(
+        "border border-border shadow-sm bg-card overflow-hidden rounded-xl p-0",
+        embedded && "rounded-none border-0 shadow-none bg-transparent",
+      )}
+    >
       {hasHeader && (
         <div className="px-6 py-4 border-b border-border flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           {(title || description) && (

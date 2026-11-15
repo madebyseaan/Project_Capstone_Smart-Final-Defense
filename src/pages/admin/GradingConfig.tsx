@@ -27,6 +27,8 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "@/lib/toast";
 import { SubjectWeightsPanel } from "./components/SubjectWeightsPanel";
 
+const SHOW_TERM_LABELS = false;
+
 const subjectTypeInfo: Record<string, { label: string; subjects: string[]; icon: React.ElementType; defaultWeights: string; groupWith?: string; followsNote?: string }> = {
   CORE: {
     label: "Core Academic Subjects",
@@ -328,6 +330,7 @@ export default function GradingConfig() {
       </Card>
 
       {/* Term Display Labels */}
+      {SHOW_TERM_LABELS && (
       <Card className="p-0 gap-0 border border-border shadow-sm overflow-hidden bg-primary-subtle rounded-xl">
         <CardContent className="p-5">
           <div className="flex items-start gap-4">
@@ -384,6 +387,7 @@ export default function GradingConfig() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Grading Weight Cards */}
       <div className="grid grid-cols-1 gap-6">

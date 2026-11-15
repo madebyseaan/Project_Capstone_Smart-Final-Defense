@@ -7,10 +7,11 @@ import {
   Printer,
   Search,
   Square,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -38,7 +39,10 @@ export default function AdvisoryPrintablesPanel() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewId, setPreviewId] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
+  const previewViewportRef = useRef<HTMLDivElement>(null);
   const termInitializedRef = useRef(false);
+  const [fitScale, setFitScale] = useState(100);
+  const [zoomMode, setZoomMode] = useState<"fit" | number>("fit");
 
   const fullLogoUrl = logoUrl
     ? logoUrl.startsWith("http")
@@ -80,6 +84,23 @@ export default function AdvisoryPrintablesPanel() {
 
   const termLabels = settingsQuery.data?.termLabels;
 
+  useEffect(() => {
+    const el = previewViewportRef.current;
+    if (!el) return;
+    const update = () => {
+      const available = Math.max(0, el.clientWidth - 16);
+      setFitScale(Math.max(30, Math.min(100, (available / 820) * 100)));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [data]);
+
+  const displayZoom = Math.round(zoomMode === "fit" ? fitScale : zoomMode);
+  const zoomOut = () => setZoomMode(Math.max(30, displayZoom - 10));
+  const zoomIn = () => setZoomMode(Math.min(150, displayZoom + 10));
+
   const filteredStudents = useMemo(() => {
     const students = data?.students ?? [];
     const query = search.trim().toLowerCase();
@@ -104,7 +125,7 @@ export default function AdvisoryPrintablesPanel() {
     (data?.students ?? []).find((student) => student.student.id === previewId) ??
     selectedStudents[0] ??
     filteredStudents[0] ??
-    data?.students[0];
+    (data?.students ?? [])[0];
 
   const toggleStudent = (studentId: string) => {
     setSelectedIds((prev) => {
@@ -142,7 +163,7 @@ export default function AdvisoryPrintablesPanel() {
     termLabels?.[value] ?? `Term ${value.slice(1)}`;
 
   return (
-    <div className="space-y-4" data-testid="print-center">
+    <div className="space-y-4 p-4 lg:p-6" data-testid="print-center">
       <div>
         <h2 className="text-base font-semibold text-foreground">Printables</h2>
         <p className="text-sm text-muted-foreground">
@@ -150,8 +171,8 @@ export default function AdvisoryPrintablesPanel() {
         </p>
       </div>
 
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b border-border p-4 lg:p-6">
+      <div className="overflow-hidden">
+        <div className="border-b border-border p-4 lg:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -194,9 +215,9 @@ export default function AdvisoryPrintablesPanel() {
               </div>
             )}
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="p-0">
+        <div className="p-0">
           {printablesQuery.isLoading ? (
             <div className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -209,7 +230,7 @@ export default function AdvisoryPrintablesPanel() {
                 Please refresh the page or contact the system administrator.
               </p>
             </div>
-          ) : !data || data.students.length === 0 ? (
+          ) : !data || (data.students ?? []).length === 0 ? (
             <div className="px-4 py-20 text-center">
               <p className="text-sm font-semibold text-foreground">No advisory learners found</p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -329,16 +350,56 @@ export default function AdvisoryPrintablesPanel() {
                         : "Select a learner to preview"}
                     </p>
                   </div>
-                  {previewStudent?.meta.mode === "TERM_CARD" && (
-                    <Badge variant="outline" className="text-[10px] font-semibold uppercase">
-                      {previewStudent.meta.termStatus}
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {previewStudent?.meta.mode === "TERM_CARD" && (
+                      <Badge variant="outline" className="text-[10px] font-semibold uppercase">
+                        {previewStudent.meta.termStatus}
+                      </Badge>
+                    )}
+                    <div className="flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label="Zoom out"
+                        data-testid="preview-zoom-out"
+                        disabled={displayZoom <= 30}
+                        onClick={zoomOut}
+                      >
+                        <ZoomOut className="h-3.5 w-3.5" />
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => setZoomMode("fit")}
+                        title="Fit to width"
+                        data-testid="preview-zoom-fit"
+                        className="min-w-[40px] rounded px-1 text-[11px] font-semibold tabular-nums text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        {zoomMode === "fit" ? "Fit" : `${displayZoom}%`}
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label="Zoom in"
+                        data-testid="preview-zoom-in"
+                        disabled={displayZoom >= 150}
+                        onClick={zoomIn}
+                      >
+                        <ZoomIn className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="max-h-[70vh] overflow-auto rounded-xl border border-border bg-white p-2">
+                <div
+                  ref={previewViewportRef}
+                  className="max-h-[70vh] overflow-auto rounded-xl border border-border bg-white p-2"
+                >
                   {previewStudent ? (
-                    <div className="min-w-[820px]">
+                    <div className="w-[820px] origin-top-left" style={{ zoom: displayZoom / 100 }}>
                       {"subjectGrades" in previewStudent ? (
                         <SF9Form data={previewStudent} fullLogoUrl={fullLogoUrl} />
                       ) : (
@@ -354,8 +415,8 @@ export default function AdvisoryPrintablesPanel() {
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <div className="pointer-events-none fixed left-[-10000px] top-0 w-[210mm]" aria-hidden="true">
         <div ref={printRef}>

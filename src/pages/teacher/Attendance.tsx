@@ -416,11 +416,34 @@ export default function Attendance() {
 
   return (
     <div className="space-y-5 animate-fade-in pb-4 lg:space-y-6 lg:pb-12">
-      <div className="hidden lg:block">
-        <PageHeader
-          title="Daily Attendance"
-          description="Manage and track student attendance records"
-        />
+      <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:block">
+        <div className="p-4 lg:p-6">
+          <PageHeader
+            title="Daily Attendance"
+            description="Manage and track student attendance records"
+            variant="plain"
+          />
+        </div>
+
+        {/* Quick Stats */}
+        {attendanceData && (
+          <div className="border-t border-border p-4 lg:p-6">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+              {attendanceStatItems.map((stat) => (
+                <div key={stat.label} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 p-3 lg:p-4">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
+                    <p className="mt-0.5 text-lg font-bold leading-tight text-foreground lg:text-xl">{stat.value}</p>
+                    <p className="mt-0.5 hidden truncate text-[11px] text-muted-foreground sm:block">{stat.desc}</p>
+                  </div>
+                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", stat.iconClass)}>
+                    <stat.icon className={cn("h-4 w-4", loadingMonthly && stat.icon === RefreshCw && "animate-spin")} aria-hidden="true" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <MobileAttendanceTabs active="daily" />
@@ -474,26 +497,6 @@ export default function Attendance() {
         saving={saving}
         onSaveAndNext={saveAndNextDay}
       />
-
-      {/* Quick Stats — compact strip on phones, cards on desktop */}
-      {attendanceData && (
-        <div className="hidden grid-cols-2 gap-3 lg:grid lg:grid-cols-4 lg:gap-4">
-          {attendanceStatItems.map((stat) => (
-            <Card key={stat.label} className="rounded-2xl border border-border bg-card shadow-sm">
-              <CardContent className="flex items-center justify-between gap-2 p-3 lg:p-4">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
-                  <p className="mt-0.5 text-lg font-bold leading-tight text-foreground lg:text-xl">{stat.value}</p>
-                  <p className="mt-0.5 hidden truncate text-[11px] text-muted-foreground sm:block">{stat.desc}</p>
-                </div>
-                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", stat.iconClass)}>
-                  <stat.icon className={cn("h-4 w-4", loadingMonthly && stat.icon === RefreshCw && "animate-spin")} aria-hidden="true" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
 
       {/* Main roster */}
       <Card className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:block">

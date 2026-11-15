@@ -41,6 +41,10 @@ export default function IntegratedSystemsNav({ collapsed, portal }: IntegratedSy
   const enrollproStartUrl = `${enrollproPublicUrl.replace(/\/+$/, "")}/api/auth/companion-sso/smart/reverse/start`;
   const atlasEnabled = portal === "admin" && Boolean(atlasSsoStartUrl);
   const aimsEnabled = aimsSsoEnabled && (portal === "admin" || portal === "teacher");
+  const companions =
+    portal === "teacher"
+      ? COMPANIONS.filter((system) => system.key !== "ATLAS" && system.key !== "MRF")
+      : COMPANIONS;
 
   const handleOpenEnrollPro = () => {
     if (launchingKey) return;
@@ -124,7 +128,7 @@ export default function IntegratedSystemsNav({ collapsed, portal }: IntegratedSy
           </div>
         </button>
 
-        {COMPANIONS.map((system) => {
+        {companions.map((system) => {
           const isCurrent = system.key === "SMART";
           const isAtlas = system.key === "ATLAS";
           const isAims = system.key === "AIMS";

@@ -401,31 +401,29 @@ export default function ClassRecordsList() {
             onTermFilterChange={setTermFilter}
             onRequestDelete={(id, name) => setAssignmentToDelete({ id, name })}
           />
-          <div className="hidden lg:block">
-            <PageHeader
-              title="Class Records"
-              description="Open a class to manage grades"
-              badge={
-                <div className="flex items-center gap-3 flex-wrap">
-                  <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[10px] font-bold uppercase tracking-widest px-3">
-                    {termFilteredClasses.length} {termFilter === "current" ? "THIS TERM" : "ACTIVE CLASSES"}
-                  </Badge>
-                  {hasArchived && (
-                    <Badge className="bg-rose-600 text-white border-rose-200 text-[10px] font-bold uppercase tracking-widest px-3 shadow-lg shadow-rose-100">
-                      {archivedClasses.length} BACKUP ARCHIVED
+          <Card className="hidden overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-sm lg:block">
+            <div className="p-4 lg:p-6">
+              <PageHeader
+                title="Class Records"
+                description="Open a class to manage grades"
+                variant="plain"
+                badge={
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[10px] font-bold uppercase tracking-widest px-3">
+                      {termFilteredClasses.length} {termFilter === "current" ? "THIS TERM" : "ACTIVE CLASSES"}
                     </Badge>
-                  )}
-                </div>
-              }
-            />
-          </div>
-        </>
-      )}
+                    {hasArchived && (
+                      <Badge className="bg-rose-600 text-white border-rose-200 text-[10px] font-bold uppercase tracking-widest px-3 shadow-lg shadow-rose-100">
+                        {archivedClasses.length} BACKUP ARCHIVED
+                      </Badge>
+                    )}
+                  </div>
+                }
+              />
+            </div>
 
-      {(activeClasses.length > 0 || hasArchived) && (
-        <Card className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:block">
-          <CardContent className="p-4 lg:p-6">
-            <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center lg:gap-6">
+            <div className="border-t border-border p-4 lg:p-6">
+              <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center lg:gap-6">
               <div className="relative w-full flex-1 group">
                 <div className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-focus-within:bg-primary group-focus-within:text-primary-foreground">
                   <Search className="w-4 h-4" />
@@ -485,8 +483,9 @@ export default function ClassRecordsList() {
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            </div>
+          </Card>
+        </>
       )}
 
       {viewMode === "grid" && (

@@ -39,6 +39,23 @@ const PAGES = {
   ],
 } as const;
 
+/**
+ * Upstream systems (EnrollPro/ATLAS/AIMS) can be down independently of SMART.
+ * Their integration endpoints legitimately return 5xx and render an offline
+ * state; that must not fail the SMART portal smoke.
+ */
+const EXTERNAL_INTEGRATION_5XX = /^api 5\d\d: \/api\/(?:integration\/|admin\/settings\/sync-enrollpro)/;
+const CONSOLE_RESOURCE_5XX = /^console: Failed to load resource: the server responded with a status of 5\d\d/;
+
+function blockingProblems(problems: string[]): string[] {
+  const hasExternalOutage = problems.some((problem) => EXTERNAL_INTEGRATION_5XX.test(problem));
+  return problems.filter((problem) => {
+    if (EXTERNAL_INTEGRATION_5XX.test(problem)) return false;
+    if (hasExternalOutage && CONSOLE_RESOURCE_5XX.test(problem)) return false;
+    return true;
+  });
+}
+
 for (const role of ["admin", "teacher", "registrar"] as const) {
   test.describe(`${role} portal (read-only smoke)`, () => {
     test(`${role} login + all pages load with no console/API errors`, async ({ page }) => {
@@ -53,7 +70,8 @@ for (const role of ["admin", "teacher", "registrar"] as const) {
         expect(page.url(), `${path} should not bounce to login`).not.toContain("/login");
       }
 
-      expect(problems, problems.join("\n")).toEqual([]);
+      const blocking = blockingProblems(problems);
+      expect(blocking, blocking.join("\n")).toEqual([]);
     });
   });
 }

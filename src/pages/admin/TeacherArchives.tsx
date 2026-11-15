@@ -1,27 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi, type TeacherArchiveRow } from "@/lib/api";
+import { downloadBlobResponse } from "@/lib/download";
+import { toast } from "@/lib/toast";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { SearchInput } from "@/components/layout/SearchInput";
 import { StatCard } from "@/components/layout/StatCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { AppModal } from "@/components/app-modal";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { DataTable, usePagination } from "@/components/data-table";
+import { DataTable, Dash, TableToolbar, usePagination } from "@/components/data-table";
 import type { TableColumn } from "@/components/data-table";
 import {
   AlertTriangle,
   Archive,
-  CheckCircle2,
   Database,
-  Download,
   Eye,
   FileSpreadsheet,
   Loader2,
@@ -39,6 +31,20 @@ const STATUS_CLASS: Record<string, string> = {
   COMPLETE: "bg-primary/10 text-primary border-primary/20",
   PENDING: "bg-muted text-muted-foreground border-border",
   FAILED: "bg-destructive/10 text-destructive border-destructive/20",
+};
+
+const STAT_LABELS: Record<string, string> = {
+  sections: "Sections",
+  subjects: "Subjects",
+  students: "Students",
+  assignments: "Class assignments",
+  grades: "Grades",
+  attendanceRows: "Attendance rows",
+  schedules: "Schedules",
+  workloadEntries: "Workload entries",
+  observedValues: "Observed values",
+  editRequests: "Edit requests",
+  eosySnapshots: "EOSY snapshots",
 };
 
 function formatBytes(bytes: number | null | undefined): string {
@@ -75,7 +81,6 @@ export default function TeacherArchives() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [showBackfill, setShowBackfill] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const loadYears = useCallback(async () => {
     setLoadingYears(true);
@@ -134,22 +139,16 @@ export default function TeacherArchives() {
 
   const pagination = usePagination({ totalRows: filtered.length });
   const missing = Math.max(0, counts.expectedTeachers - counts.complete);
+  const selectedYear = years.find((year) => year.id === selectedYearId);
 
   const handleDownload = async (row: TeacherArchiveRow, format: "xlsx" | "json" | "json.gz") => {
     setDownloadingId(row.id);
     try {
       const res = await adminApi.downloadTeacherArchive(row.id, format);
-      const url = URL.createObjectURL(res.data);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      const safeName = (row.employeeId || row.teacherName).replace(/[^A-Za-z0-9._-]+/g, "_");
-      anchor.download = `TeacherArchive_${row.schoolYear}_${safeName}.${format === "json.gz" ? "json.gz" : format}`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      downloadBlobResponse(res, `TeacherArchive_${row.schoolYear}.${format}`);
+      toast.success("Teacher archive downloaded.");
     } catch (err) {
-      setMessage({ type: "error", text: errorText(err, "Download failed") });
+      toast.error(errorText(err, "Download failed"));
     } finally {
       setDownloadingId(null);
     }
@@ -160,14 +159,13 @@ export default function TeacherArchives() {
     setBackfilling(true);
     try {
       const res = await adminApi.backfillTeacherArchives({ schoolYearId: selectedYearId });
-      setMessage({
-        type: "success",
-        text: `Generated ${res.data.completed} archive(s) for ${res.data.schoolYear} (${formatBytes(res.data.compressedBytes)}).`,
-      });
+      toast.success(
+        `Generated ${res.data.completed} archive(s) for ${res.data.schoolYear} (${formatBytes(res.data.compressedBytes)}).`,
+      );
       setShowBackfill(false);
       await fetchArchives(selectedYearId);
     } catch (err) {
-      setMessage({ type: "error", text: errorText(err, "Backfill failed") });
+      toast.error(errorText(err, "Backfill failed"));
     } finally {
       setBackfilling(false);
     }
@@ -186,32 +184,19 @@ export default function TeacherArchives() {
       ),
     },
     {
-      key: "sections",
-      header: "Sections",
+      key: "contents",
+      header: "Contents",
       skeleton: "number",
-      align: "center",
-      cell: (row) => row.stats?.sections ?? "—",
-    },
-    {
-      key: "students",
-      header: "Students",
-      skeleton: "number",
-      align: "center",
-      cell: (row) => row.stats?.students ?? "—",
-    },
-    {
-      key: "grades",
-      header: "Grades",
-      skeleton: "number",
-      align: "center",
-      cell: (row) => row.stats?.grades ?? "—",
-    },
-    {
-      key: "attendance",
-      header: "Attendance",
-      skeleton: "number",
-      align: "center",
-      cell: (row) => row.stats?.attendanceRows ?? "—",
+      cell: (row) => (
+        <div>
+          <div className="text-sm text-foreground">
+            {row.stats?.sections ?? 0} class{(row.stats?.sections ?? 0) === 1 ? "" : "es"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {row.stats?.students ?? 0} students · {row.stats?.grades ?? 0} grades
+          </div>
+        </div>
+      ),
     },
     {
       key: "size",
@@ -221,9 +206,7 @@ export default function TeacherArchives() {
       cell: (row) => (
         <div className="text-right">
           <div className="font-medium">{formatBytes(row.compressedBytes)}</div>
-          {row.rawBytes ? (
-            <div className="text-xs text-muted-foreground">from {formatBytes(row.rawBytes)}</div>
-          ) : null}
+          <div className="text-xs text-muted-foreground">from {formatBytes(row.rawBytes)}</div>
         </div>
       ),
     },
@@ -242,7 +225,7 @@ export default function TeacherArchives() {
       header: "Generated",
       skeleton: "date",
       cell: (row) =>
-        row.completedAt ? new Date(row.completedAt).toLocaleDateString() : "—",
+        row.completedAt ? new Date(row.completedAt).toLocaleDateString() : <Dash />,
     },
     {
       key: "actions",
@@ -263,7 +246,7 @@ export default function TeacherArchives() {
           <Button
             size="sm"
             variant="outline"
-            className="h-8 px-2 text-xs"
+            className="h-8 border-primary/30 bg-primary/5 text-xs font-medium text-primary hover:bg-primary/10"
             disabled={row.status !== "COMPLETE" || downloadingId === row.id}
             onClick={() => void handleDownload(row, "xlsx")}
             aria-label={`Download ${row.teacherName} Excel`}
@@ -271,64 +254,26 @@ export default function TeacherArchives() {
             {downloadingId === row.id ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <FileSpreadsheet className="w-4 h-4" />
+              <FileSpreadsheet className="w-4 h-4 mr-1.5" />
             )}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 px-2 text-xs"
-            disabled={row.status !== "COMPLETE" || downloadingId === row.id}
-            onClick={() => void handleDownload(row, "json")}
-            aria-label={`Download ${row.teacherName} JSON`}
-          >
-            JSON
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 px-2 text-xs"
-            disabled={row.status !== "COMPLETE" || downloadingId === row.id}
-            onClick={() => void handleDownload(row, "json.gz")}
-            aria-label={`Download ${row.teacherName} gzip`}
-          >
-            .gz
+            Excel
           </Button>
         </div>
       ),
     },
   ];
 
+  const detailStats = detail?.stats
+    ? Object.entries(detail.stats)
+        .filter(([key, value]) => STAT_LABELS[key] && Number(value) > 0)
+        .sort(([a], [b]) => (STAT_LABELS[a] ?? a).localeCompare(STAT_LABELS[b] ?? b))
+    : [];
+
   return (
     <div className="space-y-6 animate-fade-in w-full">
-      {message && (
-        <div
-          className={`p-4 rounded-xl flex items-center gap-2 border-2 ${
-            message.type === "success"
-              ? "bg-primary/5 border-primary/20 text-primary"
-              : "bg-destructive/5 border-destructive/20 text-destructive"
-          }`}
-        >
-          {message.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-          )}
-          <span className="text-sm font-medium">{message.text}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto h-7 text-xs"
-            onClick={() => setMessage(null)}
-          >
-            Dismiss
-          </Button>
-        </div>
-      )}
-
       <PageHeader
         title="Teacher Archives"
-        description="Compressed per-teacher records for each archived school year"
+        description="Per-teacher records for each archived school year"
         actions={
           <Button
             variant="outline"
@@ -346,26 +291,26 @@ export default function TeacherArchives() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Teachers archived"
-          value={`${counts.complete}/${counts.expectedTeachers}`}
-          icon={<Archive className="w-4 h-4" />}
+          value={`${counts.complete} / ${counts.expectedTeachers}`}
+          icon={<Archive className="w-5 h-5" />}
           iconClassName="bg-primary/10 text-primary"
         />
         <StatCard
           label="Missing / failed"
           value={`${missing} / ${counts.failed}`}
-          icon={<AlertTriangle className="w-4 h-4" />}
+          icon={<AlertTriangle className="w-5 h-5" />}
           iconClassName="bg-destructive/10 text-destructive"
         />
         <StatCard
           label="Compressed size"
           value={formatBytes(counts.totalCompressedBytes)}
-          icon={<Database className="w-4 h-4" />}
+          icon={<Database className="w-5 h-5" />}
           iconClassName="bg-primary/10 text-primary"
         />
         <StatCard
           label="Raw size"
           value={formatBytes(counts.totalRawBytes)}
-          icon={<Database className="w-4 h-4" />}
+          icon={<Database className="w-5 h-5" />}
           iconClassName="bg-muted text-muted-foreground"
         />
       </div>
@@ -375,141 +320,158 @@ export default function TeacherArchives() {
         rows={filtered}
         loading={loading || loadingYears}
         error={error}
-        title={years.find((year) => year.id === selectedYearId)?.label || "Teacher Archives"}
+        title={selectedYear?.label || "Teacher Archives"}
         description={`${filtered.length} record${filtered.length === 1 ? "" : "s"} found`}
         emptyTitle={years.length === 0 ? "No archived school years" : "No teacher archives yet"}
         emptyHint={
           years.length === 0
             ? "Archives are available after a school year is archived."
-            : "Use \"Generate missing\" to create archives from the live year data."
+            : 'Use "Generate missing" to create archives from the live year data.'
         }
         emptySearchTerm={search}
         rowKey={(row) => row.id}
         pagination={pagination}
         onRetry={() => void fetchArchives(selectedYearId)}
         toolbar={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <select
-              value={selectedYearId}
-              onChange={(event) => setSelectedYearId(event.target.value)}
-              className="h-9 rounded-md border border-border bg-background px-3 text-xs text-foreground"
-              aria-label="School year"
-            >
-              {years.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="h-9 rounded-md border border-border bg-background px-3 text-xs text-foreground"
-              aria-label="Status"
-            >
-              <option value="ALL">All statuses</option>
-              <option value="COMPLETE">Complete</option>
-              <option value="PENDING">Pending</option>
-              <option value="FAILED">Failed</option>
-            </select>
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder="Search teachers..."
-            />
-          </div>
+          <TableToolbar
+            searchPlaceholder="Search teachers..."
+            searchValue={search}
+            onSearchChange={setSearch}
+            filters={[
+              {
+                label: "School Year",
+                value: selectedYearId,
+                onChange: setSelectedYearId,
+                options: years.map((year) => ({ label: year.label, value: year.id })),
+              },
+              {
+                label: "Status",
+                value: statusFilter,
+                onChange: setStatusFilter,
+                options: [
+                  { label: "All Statuses", value: "ALL" },
+                  { label: "Complete", value: "COMPLETE" },
+                  { label: "Pending", value: "PENDING" },
+                  { label: "Failed", value: "FAILED" },
+                ],
+              },
+            ]}
+          />
         }
       />
 
-      <Dialog open={detail !== null} onOpenChange={(open) => !open && setDetail(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{detail?.teacherName}</DialogTitle>
-            <DialogDescription>
-              {detail?.schoolYear} · {detail?.employeeId || detail?.teacherId}
-            </DialogDescription>
-          </DialogHeader>
-          {detail && (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-xs text-muted-foreground">Status</div>
-                  <div className="font-medium">{detail.status}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Compressed</div>
-                  <div className="font-medium">{formatBytes(detail.compressedBytes)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Raw</div>
-                  <div className="font-medium">{formatBytes(detail.rawBytes)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Source</div>
-                  <div className="font-medium">{detail.source}</div>
-                </div>
-              </div>
-
-              {detail.stats && (
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">Contents</div>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(detail.stats).map(([key, value]) => (
-                      <Badge key={key} variant="outline" className="text-[11px]">
-                        {key}: {String(value)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {detail.dataQuality?.warnings && detail.dataQuality.warnings.length > 0 && (
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">Data quality</div>
-                  <div className="flex flex-wrap gap-2">
-                    {detail.dataQuality.warnings.map((warning) => (
-                      <Badge
-                        key={warning}
-                        variant="outline"
-                        className="text-[11px] bg-muted text-muted-foreground"
-                      >
-                        {warning}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {detail.checksum && (
-                <div>
-                  <div className="text-xs text-muted-foreground">Checksum</div>
-                  <div className="font-mono text-[11px] break-all text-muted-foreground">
-                    {detail.checksum}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
+      <AppModal
+        open={detail !== null}
+        onOpenChange={(open) => !open && setDetail(null)}
+        size="lg"
+        icon={<Archive className="w-6 h-6" />}
+        title={detail?.teacherName ?? "Teacher Archive"}
+        description={
+          detail
+            ? `${detail.schoolYear} · ${detail.employeeId || detail.teacherId}`
+            : undefined
+        }
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => setDetail(null)}>
               Close
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!detail || detail.status !== "COMPLETE" || downloadingId === detail.id}
+              onClick={() => detail && void handleDownload(detail, "json.gz")}
+            >
+              .json.gz
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!detail || detail.status !== "COMPLETE" || downloadingId === detail.id}
+              onClick={() => detail && void handleDownload(detail, "json")}
+            >
+              JSON
             </Button>
             <Button
               disabled={!detail || detail.status !== "COMPLETE" || downloadingId === detail.id}
               onClick={() => detail && void handleDownload(detail, "xlsx")}
             >
-              <Download className="w-4 h-4 mr-1.5" />
-              Download
+              <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+              Excel
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        }
+      >
+        {detail && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs text-muted-foreground">Status</div>
+                <div className="mt-1 text-sm font-medium text-foreground">{detail.status}</div>
+              </div>
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs text-muted-foreground">Compressed</div>
+                <div className="mt-1 text-sm font-medium text-foreground">
+                  {formatBytes(detail.compressedBytes)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs text-muted-foreground">Raw</div>
+                <div className="mt-1 text-sm font-medium text-foreground">
+                  {formatBytes(detail.rawBytes)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs text-muted-foreground">Generated</div>
+                <div className="mt-1 text-sm font-medium text-foreground">
+                  {detail.completedAt ? new Date(detail.completedAt).toLocaleDateString() : "—"}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Contents</h3>
+              {detailStats.length > 0 ? (
+                <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+                  {detailStats.map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-muted-foreground">{STAT_LABELS[key]}</span>
+                      <span className="font-medium text-foreground">{String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">No content counts available.</p>
+              )}
+            </div>
+
+            {detail.dataQuality?.warnings && detail.dataQuality.warnings.length > 0 && (
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                  Data quality
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {detail.dataQuality.warnings.join(", ")}
+                </p>
+              </div>
+            )}
+
+            {detail.checksum && (
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Checksum</h3>
+                <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+                  {detail.checksum}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </AppModal>
 
       <ConfirmDialog
         open={showBackfill}
         onOpenChange={setShowBackfill}
         title="Generate missing teacher archives"
-        description={`Create archives for ${missing} missing teacher(s) in the selected school year? This reads live data and writes only to the archive table.`}
+        description={`Create archives for ${missing} missing teacher(s) in ${selectedYear?.label ?? "the selected school year"}? This reads live data and writes only to the archive table.`}
         confirmLabel="Generate"
         loading={backfilling}
         onConfirm={() => void handleBackfill()}

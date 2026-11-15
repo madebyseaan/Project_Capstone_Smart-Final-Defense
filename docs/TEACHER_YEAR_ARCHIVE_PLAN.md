@@ -460,12 +460,16 @@ New page `src/pages/admin/TeacherArchives.tsx`:
 
 - Route `/admin/teacher-archives` (lazy in `src/App.tsx`) and nav item in
   `src/layouts/AdminLayout.tsx` next to School Years.
-- `PageHeader`, `StatCard`s: Teachers archived, Missing/Failed, Total compressed size.
-- Archived-year selector from `adminApi.getSchoolYears()`, default latest archived year.
-- `DataTable` columns: Teacher, Employee ID, Advisory, Classes, Students, Grades,
-  Attendance, Size, Status, Generated, Actions (View / Download).
-- Detail dialog: counts by section/term, data-quality warnings, size, checksum,
-  download buttons (JSON / JSON.GZ).
+- `PageHeader` + four `StatCard`s: Teachers archived, Missing/Failed, Compressed size,
+  Raw size.
+- `DataTable` + `TableToolbar`: School Year and Status filters plus text search.
+  Filter triggers expose accessible labels.
+- Columns: Teacher, Contents (classes/students/grades), Size, Status, Generated, and
+  Actions (View / Download Excel). JSON and gzip live in the detail modal to reduce row
+  clutter.
+- `AppModal` detail: summary tiles, a labelled contents grid, data-quality warnings,
+  checksum, and a footer with Excel, JSON, and `.json.gz` downloads.
+- Downloads and backfill use `toast` feedback instead of a page-level message banner.
 - If missing or failed > 0: "Generate missing backups" button with confirmation and
   progress feedback (poll or refetch).
 - Empty state explains that old years must be backfilled.
@@ -848,7 +852,7 @@ Deferred intentionally:
 | **G3** | Dry run on a restored live-DB copy: 2022-2023 = 20, 2023-2024 = 20, 2024-2025 = 39, 2025-2026 = 39 archives. 0 failed. Compressed total 782 KB. Rerun queued 0; `--force` regenerated successfully. |
 | **G4** | Rollover success creates PENDING?COMPLETE; blocked rollover creates zero rows; `TEACHER_ARCHIVE_ENABLED=false` creates zero rows and preserves archive behavior; mocked generation rejection leaves the year archived and locked. |
 | **G5** | Admin API tests passed: 401 unauthenticated, 403 non-admin, list has no `payload`, detail has no `payload`, JSON/gzip/Excel downloads, idempotent backfill, active-year backfill refused. Teacher self-service tests passed: 401 unauthenticated, 403 non-teacher, own list only, own class-record list, own download works, all-terms ECR workbook contains T1/T2/T3 scores, another teacher's download returns 404. |
-| **G6** | New Playwright spec passed for admin (2/2) and teacher self-service (1/1); both pages added to portal smoke. Full suite: 35 passed, 2 skipped, only pre-existing `E-16` failed � no new failures. |
+| **G6** | New Playwright spec passed for admin (2/2) and teacher self-service (1/1); both pages added to portal smoke. Full suite: 36 passed, 2 skipped, 0 failures. `E-16` passed on the final run; upstream integration 5xx during an external outage is allowlisted in portal smoke � no new failures. |
 | **G7** | `db:backup` now defaults to `pg_dump -Fc`; `db:backup:plain` keeps the legacy `.sql`. Custom dump 2.79 MB vs 39.49 MB plain. Restore into `smart_restore_test` succeeded; key table counts matched live exactly. |
 | **G8** | Live backfill: 118 archives across 4 archived years, 118 unique `(schoolYearId, teacherId)` pairs, 782 KB compressed, 0 failed. Server restarted once; no `[TeacherArchive]` errors after migration. Pre-existing ATLAS/EnrollPro/AIMS warnings only. |
 

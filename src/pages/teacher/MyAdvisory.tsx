@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Printer,
 } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,10 +29,17 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { sanitizeCssColor } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { FilterTabs } from "@/components/layout/FilterTabs";
 import AdvisoryPrintablesPanel from "./components/AdvisoryPrintablesPanel";
 import AdvisoryObservedValuesPanel from "./components/AdvisoryObservedValuesPanel";
 
 type AdvisoryView = "directory" | "printables" | "observed-values";
+
+const ADVISORY_VIEW_ITEMS = [
+  { value: "directory", label: "Student Directory", icon: Users },
+  { value: "printables", label: "Printables", icon: Printer },
+  { value: "observed-values", label: "Observed Values", icon: ClipboardList },
+];
 
 const gradeLevelLabels: Record<string, string> = {
   GRADE_7: "Grade 7",
@@ -324,9 +330,9 @@ export default function MyAdvisory() {
         )}
       </section>
 
-      {/* Header Section - Refined Glass Style */}
-      <div className="relative hidden overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm lg:block lg:p-6">
-        
+      {/* Main card */}
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-sm">
+        <div className="hidden p-4 lg:block lg:p-6">
         <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between md:gap-6">
           <div className="flex items-center gap-3 lg:gap-5">
             <div 
@@ -411,89 +417,57 @@ export default function MyAdvisory() {
             )}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Quick Insights Grid */}
-      <div className="hidden grid-cols-3 gap-2 lg:grid lg:gap-6">
-        {[
-          { label: "TOTAL CLASS", value: data.stats?.totalStudents || 0, icon: Users, color: "theme" },
-          { label: "MALE LEARNERS", value: data.stats?.maleCount || 0, icon: UserCircle, color: "blue" },
-          { label: "FEMALE LEARNERS", value: data.stats?.femaleCount || 0, icon: UserCircle, color: "pink" },
-        ].map((stat) => (
-          <Card key={stat.label} className="group overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1">
-            <CardContent className="flex flex-col items-start gap-2 p-3 sm:flex-row sm:items-center sm:gap-4 lg:p-6">
-              <div 
-                className={cn(
-                  "rounded-xl p-2 transition-transform group-hover:scale-110 lg:p-3.5 lg:rounded-2xl",
-                  stat.color === "blue" ? "bg-blue-50 text-blue-600" : 
-                  stat.color === "pink" ? "bg-pink-50 text-pink-600" : ""
-                )}
-                style={stat.color === "theme" ? { 
-                  backgroundColor: `${colors.primary}15`, 
-                  color: colors.primary 
-                } : {}}
-              >
-                <stat.icon className="h-5 w-5 lg:h-6 lg:w-6" />
+        {/* Quick Insights */}
+        <div className="hidden border-t border-border p-4 lg:block lg:p-6">
+          <div className="grid grid-cols-3 gap-2 lg:gap-6">
+            {[
+              { label: "TOTAL CLASS", value: data.stats?.totalStudents || 0, icon: Users, color: "theme" },
+              { label: "MALE LEARNERS", value: data.stats?.maleCount || 0, icon: UserCircle, color: "blue" },
+              { label: "FEMALE LEARNERS", value: data.stats?.femaleCount || 0, icon: UserCircle, color: "pink" },
+            ].map((stat) => (
+              <div key={stat.label} className="flex flex-col items-start gap-2 rounded-xl border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:gap-4 lg:p-4">
+                <div 
+                  className={cn(
+                    "rounded-xl p-2 lg:p-3 lg:rounded-2xl",
+                    stat.color === "blue" ? "bg-blue-50 text-blue-600" : 
+                    stat.color === "pink" ? "bg-pink-50 text-pink-600" : ""
+                  )}
+                  style={stat.color === "theme" ? { 
+                    backgroundColor: `${colors.primary}15`, 
+                    color: colors.primary 
+                  } : {}}
+                >
+                  <stat.icon className="h-5 w-5 lg:h-6 lg:w-6" />
+                </div>
+                <div className="min-w-0">
+                  <p className="mb-1 text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
+                  <p className="text-xl font-bold leading-none text-foreground lg:text-2xl">{stat.value}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="mb-1 text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{stat.label}</p>
-                <p className="text-xl font-bold leading-none text-foreground lg:text-2xl">{stat.value}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            ))}
+          </div>
+        </div>
 
-      {/* View tabs */}
-      <div
-        id="advisory-view-tabs"
-        className="flex flex-wrap items-center gap-2"
-        role="group"
-        aria-label="Advisory views"
-      >
-        <Button
-          type="button"
-          aria-pressed={activeView === "directory"}
-          data-testid="advisory-view-directory"
-          variant={activeView === "directory" ? "default" : "outline"}
-          onClick={() => setActiveView("directory")}
-          className="h-11 gap-2 text-xs font-semibold"
-        >
-          <Users className="h-4 w-4" />
-          Student Directory
-        </Button>
-        <Button
-          type="button"
-          aria-pressed={activeView === "printables"}
-          data-testid="advisory-view-printables"
-          variant={activeView === "printables" ? "default" : "outline"}
-          onClick={() => setActiveView("printables")}
-          className="h-11 gap-2 text-xs font-semibold"
-        >
-          <Printer className="h-4 w-4" />
-          Printables
-        </Button>
-        <Button
-          type="button"
-          aria-pressed={activeView === "observed-values"}
-          data-testid="advisory-view-observed-values"
-          variant={activeView === "observed-values" ? "default" : "outline"}
-          onClick={() => setActiveView("observed-values")}
-          className="h-11 gap-2 text-xs font-semibold"
-        >
-          <ClipboardList className="h-4 w-4" />
-          Observed Values
-        </Button>
-      </div>
+        {/* View tabs */}
+        <div id="advisory-view-tabs" className="border-t border-border p-4 lg:p-6">
+          <FilterTabs
+            value={activeView}
+            onValueChange={(value) => setActiveView(value as AdvisoryView)}
+            items={ADVISORY_VIEW_ITEMS}
+          />
+        </div>
 
-      {activeView === "observed-values" ? (
-        <AdvisoryObservedValuesPanel />
-      ) : activeView === "printables" ? (
-        <AdvisoryPrintablesPanel />
-      ) : (
-      /* Main Directory Table */
-      <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <CardHeader className="flex flex-col justify-between gap-4 border-b border-border p-4 pb-4 sm:flex-row sm:items-center lg:p-8 lg:pb-6">
+        <div className="border-t border-border">
+        {activeView === "observed-values" ? (
+          <AdvisoryObservedValuesPanel />
+        ) : activeView === "printables" ? (
+          <AdvisoryPrintablesPanel />
+        ) : (
+        /* Main Directory Table */
+        <div>
+          <div className="flex flex-col justify-between gap-4 border-b border-border p-4 pb-4 sm:flex-row sm:items-center lg:p-8 lg:pb-6">
           <div className="flex flex-wrap items-center gap-3 lg:gap-5">
             <h2 className="text-lg font-semibold tracking-tight text-foreground lg:text-xl">Student directory</h2>
             <div className="hidden h-6 w-px bg-border sm:block" />
@@ -526,8 +500,8 @@ export default function MyAdvisory() {
               className="h-12 rounded-xl border-border bg-background pl-12 text-base font-medium lg:h-11 lg:text-sm"
             />
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
+        </div>
+        <div className="p-0">
           {/* Mobile card directory */}
           <div className="divide-y divide-border lg:hidden">
             {separateByGender ? (
@@ -695,9 +669,11 @@ export default function MyAdvisory() {
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
-      )}
+            </div>
+          </div>
+        )}
+        </div>
+      </div>
     </div>
   );
 }

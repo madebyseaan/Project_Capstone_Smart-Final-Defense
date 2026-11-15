@@ -12,7 +12,7 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -185,9 +185,9 @@ export default function AdvisoryObservedValuesPanel() {
   }
 
   return (
-    <div className="space-y-4" data-testid="observed-values-panel">
-      <Card className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <CardHeader className="border-b border-border p-4 lg:p-6">
+    <div className="space-y-4 p-4 lg:p-6" data-testid="observed-values-panel">
+      <div className="overflow-hidden">
+        <div className="border-b border-border p-4 lg:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-foreground">Observed Values</h2>
@@ -210,9 +210,9 @@ export default function AdvisoryObservedValuesPanel() {
               )}
             </div>
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="p-0">
+        <div className="p-0">
           <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative w-full sm:max-w-sm">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -307,8 +307,8 @@ export default function AdvisoryObservedValuesPanel() {
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Dialog open={editorOpen} onOpenChange={handleEditorOpenChange}>
         <DialogContent

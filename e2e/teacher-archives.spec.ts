@@ -23,10 +23,13 @@ test.describe("admin teacher archives (read-only)", () => {
     const bodyText = await response.text();
     expect(bodyText).not.toContain('"payload"');
 
-    const yearSelect = page.getByLabel("School year");
+    const yearSelect = page.getByRole("combobox", { name: "School Year" });
     await expect(yearSelect).toBeVisible();
-    const optionCount = await yearSelect.locator("option").count();
+    await yearSelect.click();
+    await expect(page.getByRole("option").first()).toBeVisible();
+    const optionCount = await page.getByRole("option").count();
     expect(optionCount).toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
 
     const hasRows = (await page.locator("tbody tr").count()) > 0;
     if (!hasRows) {
@@ -57,21 +60,23 @@ test.describe("admin teacher archives (read-only)", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Teacher Archives" })).toBeVisible();
     await initialList;
 
-    const yearSelect = page.getByLabel("School year");
-    await expect(yearSelect.locator("option").first()).toBeAttached();
-    const optionCount = await yearSelect.locator("option").count();
+    const yearSelect = page.getByRole("combobox", { name: "School Year" });
+    await expect(yearSelect).toBeVisible();
+    await yearSelect.click();
+    await expect(page.getByRole("option").first()).toBeVisible();
+    const options = page.getByRole("option");
+    const optionCount = await options.count();
     if (optionCount < 2) test.skip(true, "Only one archived school year is available");
 
-    const secondValue = await yearSelect.locator("option").nth(1).getAttribute("value");
     const refetched = page.waitForResponse(
       (response) =>
         response.url().includes("/api/admin/teacher-archives?") &&
-        response.url().includes(`schoolYearId=${secondValue}`) &&
+        response.url().includes("schoolYearId=") &&
         response.request().method() === "GET",
       { timeout: 30_000 },
     );
 
-    await yearSelect.selectOption(secondValue!);
+    await options.nth(1).click();
     const response = await refetched;
     expect(response.status()).toBe(200);
 

@@ -241,81 +241,93 @@ export default function UserManagement() {
 
   return (
     <div className="space-y-6 animate-fade-in w-full">
-      <PageHeader
-        title="Users"
-        description="View system users and their EnrollPro personnel profiles"
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchUsers}
-            disabled={loading}
-            className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-        }
-      />
-
-      {/* Trust strip */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary-subtle px-4 py-3 text-sm">
-        <Link2 className="w-4 h-4 text-primary" />
-        <span className="text-foreground">
-          <strong>Accounts are provisioned in EnrollPro</strong> — this page is read-only.
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <StatCard label="Total Users" value={userCounts.total} numericValue={userCounts.total} icon={<Users className="w-5 h-5 text-muted-foreground" />} />
-        <StatCard label="Admins" value={userCounts.admin} numericValue={userCounts.admin} icon={<Shield className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" />
-        <StatCard label="Teachers" value={userCounts.teacher} numericValue={userCounts.teacher} icon={<UserCheck className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
-        <StatCard label="Registrars" value={userCounts.registrar} numericValue={userCounts.registrar} icon={<ClipboardList className="w-5 h-5" style={{ color: colors.accent }} />} iconClassName="bg-accent/10" />
-        <StatCard label="Active" value={userCounts.active} numericValue={userCounts.active} icon={<CheckCircle2 className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" />
-      </div>
-
-      <DataTable
-        columns={columns}
-        rows={filteredUsers}
-        loading={loading}
-        title="All Users"
-        description={`${filteredUsers.length} user${filteredUsers.length !== 1 ? "s" : ""} found`}
-        emptyTitle="No users found"
-        emptyHint="Try adjusting your search or filters"
-        emptySearchTerm={searchQuery}
-        rowKey={(user) => user.id}
-        pagination={pagination}
-        toolbar={
-          <TableToolbar
-            searchPlaceholder="Search users..."
-            searchValue={searchQuery}
-            onSearchChange={setSearchQuery}
-            filters={[
-              {
-                label: "Role",
-                value: selectedRole,
-                onChange: setSelectedRole,
-                options: [
-                  { label: "All Roles", value: "all" },
-                  { label: "Administrator", value: "ADMIN" },
-                  { label: "Teacher", value: "TEACHER" },
-                  { label: "Registrar", value: "REGISTRAR" },
-                ],
-              },
-              {
-                label: "Status",
-                value: selectedStatus,
-                onChange: setSelectedStatus,
-                options: [
-                  { label: "All Status", value: "all" },
-                  { label: "Active", value: "Active" },
-                  { label: "Inactive", value: "Inactive" },
-                ],
-              },
-            ]}
+      <div className="overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-sm">
+        <div className="p-4 lg:p-6">
+          <PageHeader
+            title="Users"
+            description="View system users and their EnrollPro personnel profiles"
+            variant="plain"
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchUsers}
+                disabled={loading}
+                className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            }
           />
-        }
-      />
+        </div>
+
+        {/* Trust strip */}
+        <div className="border-t border-border p-4 lg:p-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-primary/20 bg-primary-subtle px-4 py-3 text-sm">
+            <Link2 className="w-4 h-4 text-primary" />
+            <span className="text-foreground">
+              <strong>Accounts are provisioned in EnrollPro</strong> — this page is read-only.
+            </span>
+          </div>
+        </div>
+
+        <div className="border-t border-border p-4 lg:p-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <StatCard label="Total Users" value={userCounts.total} numericValue={userCounts.total} icon={<Users className="w-5 h-5 text-muted-foreground" />} className="border border-border bg-muted/30 shadow-none" />
+            <StatCard label="Admins" value={userCounts.admin} numericValue={userCounts.admin} icon={<Shield className="w-5 h-5" style={{ color: colors.primary }} />} iconClassName="bg-primary/10" className="border border-border bg-muted/30 shadow-none" />
+            <StatCard label="Teachers" value={userCounts.teacher} numericValue={userCounts.teacher} icon={<UserCheck className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" className="border border-border bg-muted/30 shadow-none" />
+            <StatCard label="Registrars" value={userCounts.registrar} numericValue={userCounts.registrar} icon={<ClipboardList className="w-5 h-5" style={{ color: colors.accent }} />} iconClassName="bg-accent/10" className="border border-border bg-muted/30 shadow-none" />
+            <StatCard label="Active" value={userCounts.active} numericValue={userCounts.active} icon={<CheckCircle2 className="w-5 h-5" style={{ color: colors.secondary }} />} iconClassName="bg-secondary/10" className="border border-border bg-muted/30 shadow-none" />
+          </div>
+        </div>
+
+        <div className="border-t border-border">
+          <DataTable
+            columns={columns}
+            rows={filteredUsers}
+            loading={loading}
+            title="All Users"
+            description={`${filteredUsers.length} user${filteredUsers.length !== 1 ? "s" : ""} found`}
+            emptyTitle="No users found"
+            emptyHint="Try adjusting your search or filters"
+            emptySearchTerm={searchQuery}
+            rowKey={(user) => user.id}
+            pagination={pagination}
+            embedded
+            toolbar={
+              <TableToolbar
+                searchPlaceholder="Search users..."
+                searchValue={searchQuery}
+                onSearchChange={setSearchQuery}
+                filters={[
+                  {
+                    label: "Role",
+                    value: selectedRole,
+                    onChange: setSelectedRole,
+                    options: [
+                      { label: "All Roles", value: "all" },
+                      { label: "Administrator", value: "ADMIN" },
+                      { label: "Teacher", value: "TEACHER" },
+                      { label: "Registrar", value: "REGISTRAR" },
+                    ],
+                  },
+                  {
+                    label: "Status",
+                    value: selectedStatus,
+                    onChange: setSelectedStatus,
+                    options: [
+                      { label: "All Status", value: "all" },
+                      { label: "Active", value: "Active" },
+                      { label: "Inactive", value: "Inactive" },
+                    ],
+                  },
+                ]}
+              />
+            }
+          />
+        </div>
+      </div>
 
       {/* View User Dialog */}
       <AppModal
