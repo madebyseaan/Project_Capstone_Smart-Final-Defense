@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link, useParams, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
@@ -225,7 +225,7 @@ export default function StudentGradeProfilePage() {
         <div className="shrink-0 text-right">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Average</p>
           <p className="text-lg font-bold text-foreground">
-            {summary.generalAverage !== null ? summary.generalAverage.toFixed(2) : "â€”"}
+            {summary.generalAverage !== null ? summary.generalAverage.toFixed(2) : "—"}
           </p>
         </div>
       </div>
@@ -320,7 +320,7 @@ export default function StudentGradeProfilePage() {
                 <GraduationCap className="w-4 h-4" style={{ color: `${colors.primary}99` }} />
                 <div>
                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Grade & Section</span>
-                  <p className="text-sm font-semibold text-foreground leading-tight">{gradeLevelLabels[enrollment.gradeLevel] || enrollment.gradeLevel} â€” {enrollment.sectionName}</p>
+                  <p className="text-sm font-semibold text-foreground leading-tight">{gradeLevelLabels[enrollment.gradeLevel] || enrollment.gradeLevel} — {enrollment.sectionName}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -346,7 +346,7 @@ export default function StudentGradeProfilePage() {
                   <span className="text-muted-foreground">
                     <span className="text-muted-foreground text-xs">Guardian:</span>{" "}
                     <span className="font-medium text-foreground">{student.guardianName}</span>
-                    {student.guardianContact && <span className="text-muted-foreground ml-1.5">â€¢ {student.guardianContact}</span>}
+                    {student.guardianContact && <span className="text-muted-foreground ml-1.5">• {student.guardianContact}</span>}
                   </span>
                 )}
               </div>
@@ -386,7 +386,7 @@ export default function StudentGradeProfilePage() {
                   </div>
                 )}
 
-                {/* Status Flags â€” only show "Yes" values */}
+                {/* Status Flags — only show "Yes" values */}
                 {(student.ipCommunity || student.is4PsBeneficiary || student.isBalikAral || student.disability) && (
                   <div>
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-0.5">Status</p>
@@ -524,7 +524,7 @@ export default function StudentGradeProfilePage() {
                         {subject.finalGrade}
                       </p>
                     ) : (
-                      <p className="text-sm text-muted-foreground">â€”</p>
+                      <p className="text-sm text-muted-foreground">—</p>
                     )}
                   </div>
                 </div>
@@ -535,7 +535,7 @@ export default function StudentGradeProfilePage() {
                       <div key={term} className="rounded-xl border border-border bg-background px-3 py-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{term}</p>
                         <p className={cn("mt-0.5 text-base font-bold", grade != null && grade < 75 ? "text-rose-600" : "text-foreground")}>
-                          {grade != null ? grade : "â€”"}
+                          {grade != null ? grade : "—"}
                         </p>
                       </div>
                     );

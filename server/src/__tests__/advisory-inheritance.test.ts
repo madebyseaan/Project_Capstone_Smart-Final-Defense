@@ -1,5 +1,5 @@
-﻿/**
- * advisory-inheritance.test.ts â€” predecessor (archived assignment) grade
+/**
+ * advisory-inheritance.test.ts — predecessor (archived assignment) grade
  * inheritance for the advisory student profile.
  *
  * Locks the behavior fixed after ATLAS reassignments:
@@ -186,7 +186,7 @@ afterAll(async () => {
   await cleanup();
 });
 
-describe("advisory student grades â€” predecessor inheritance", () => {
+describe("advisory student grades — predecessor inheritance", () => {
   it("prefers active grades and inherits missing terms from archived predecessors", async () => {
     const result = await buildAdvisoryStudentGrades({ teacherId, studentId, schoolYear: YEAR });
     expect(result.ok).toBe(true);

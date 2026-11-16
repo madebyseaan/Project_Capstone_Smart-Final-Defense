@@ -1,5 +1,5 @@
-﻿/**
- * dataIntegrity.ts â€” Deployment/data-integrity checks for grade placement.
+/**
+ * dataIntegrity.ts — Deployment/data-integrity checks for grade placement.
  *
  * Read-only. Detects the "ATLAS changed the subject, old grades are stranded on
  * archived assignments, new active assignment is empty" class of bug.

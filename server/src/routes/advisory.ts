@@ -1,4 +1,4 @@
-﻿import { Router, Response } from "express";
+import { Router, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../middleware/auth";
 import { syncTeacherOnLogin } from "../lib/teacherSync";

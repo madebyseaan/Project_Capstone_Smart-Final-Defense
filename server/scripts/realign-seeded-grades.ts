@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import { GradingMode, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { resolveCanonicalWeights } from "../prisma/canonicalGrade";
@@ -23,7 +23,7 @@ function toObjectScores(scores: unknown, prefix: string): Array<{ name: string; 
 
 async function main() {
   const table = await prisma.transmutationEntry.findMany({ orderBy: { minGrade: "asc" } });
-  if (table.length === 0) throw new Error("TransmutationEntry table is empty â€” aborting");
+  if (table.length === 0) throw new Error("TransmutationEntry table is empty — aborting");
   const gradingConfigs = await prisma.gradingConfig.findMany();
   const schoolYears = await prisma.schoolYear.findMany({ select: { label: true, gradingMode: true } });
   const modeByYear = new Map(schoolYears.map((year) => [year.label, year.gradingMode]));

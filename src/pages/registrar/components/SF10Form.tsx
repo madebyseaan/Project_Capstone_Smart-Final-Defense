@@ -36,7 +36,7 @@ export default function SF10Form({ data, schoolName, highlightArea, highlightSec
         <span className="font-bold text-gray-900 text-xs">SF10-JHS</span>
       </div>
 
-      {/* Header â€” Republic / DepEd centered */}
+      {/* Header — Republic / DepEd centered */}
       <div className="text-center mb-3">
         <p className="font-bold text-gray-900">Republic of the Philippines</p>
         <p className="font-bold text-gray-900">Department of Education</p>
@@ -166,7 +166,7 @@ export default function SF10Form({ data, schoolName, highlightArea, highlightSec
         </div>
       )}
 
-      {/* SCHOLASTIC RECORD â€” one per grade level */}
+      {/* SCHOLASTIC RECORD — one per grade level */}
       {data.schoolRecords.map((record: any, recordIndex: number) => (
         <div key={recordIndex} className="mb-3 border border-black page-break-inside-avoid">
           {/* School / Grade / Section / SY Header */}
@@ -244,7 +244,7 @@ export default function SF10Form({ data, schoolName, highlightArea, highlightSec
                 const cellClass = (val: number | null) =>
                   `border-r border-black p-0.5 text-center ${(val ?? 0) < 75 && val != null ? 'text-red-600 font-bold' : 'text-gray-900'}`;
 
-                // Backend quarterlyGrade values are already transmuted â€” display as-is
+                // Backend quarterlyGrade values are already transmuted — display as-is
                 const t1 = vals.t1;
                 const t2 = vals.t2;
                 const t3 = vals.t3;

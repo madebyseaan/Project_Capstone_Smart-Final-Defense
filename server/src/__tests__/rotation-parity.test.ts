@@ -1,5 +1,5 @@
-﻿/**
- * rotation-parity.test.ts â€” one rotation rule across Advisory, SF9 and SF10.
+/**
+ * rotation-parity.test.ts — one rotation rule across Advisory, SF9 and SF10.
  *
  * Every sub-subject occupies its own rotation term (rank). Grades recorded in
  * other terms are not used. This is the rule SF10 and promotion already use.
@@ -188,7 +188,7 @@ afterAll(async () => {
   await cleanup();
 });
 
-describe("rotation parity â€” Advisory, SF9, SF10", () => {
+describe("rotation parity — Advisory, SF9, SF10", () => {
   it("uses each sub-subject's own rotation term in every surface", async () => {
     const advisory = await buildAdvisoryStudentGrades({ teacherId, studentId, schoolYear: YEAR });
     expect(advisory.ok).toBe(true);

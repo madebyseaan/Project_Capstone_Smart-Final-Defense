@@ -1,8 +1,8 @@
-﻿# Grade Pipeline Alignment â€” Comprehensive Fix Plan
+# Grade Pipeline Alignment — Comprehensive Fix Plan
 
-> **Status:** PLANNING ONLY â€” do not execute steps marked DATA without an explicit go-ahead.
+> **Status:** PLANNING ONLY — do not execute steps marked DATA without an explicit go-ahead.
 > **Date:** 2026-11-16
-> **Supersedes:** `docs/GRADE_ALIGNMENT_FIX_PLAN.md` (2026-08-29; references pre-refactor `SchoolForms.tsx` â€” do not reuse its line numbers).
+> **Supersedes:** `docs/GRADE_ALIGNMENT_FIX_PLAN.md` (2026-08-29; references pre-refactor `SchoolForms.tsx` — do not reuse its line numbers).
 > **Scope owner:** whoever owns grades/forms (teacher + registrar surfaces).
 > **Hard rule:** Highest priority is **NO REGRESSION**. One step at a time, gates between every step, rollback ready at all times.
 
@@ -17,13 +17,13 @@ Read-only audit of the live 2026-2027 data (20 sections / 83 enrolled learners /
 | B1 | **SF9 rotation merge uses the wrong term.** `sf9Composer.ts` uses `sub.T1 ?? sub.T2 ?? sub.T3` per rotation slot instead of the sub-subject's own rotation rank term. | **HIGH** (official report card) | G8 Science: advisory/SF10 = 92/90/89 (final 90), SF9 = 92/92/93 (final 92). 26 wrong cells in a 4-section sample; all rotation rows. |
 | B2 | **G10 Mathematics is mis-tagged as a Science rotation subject.** `Subject MATH10` has `rotationTermGroupId=SCIENCE`, `rotationTermRank=1` in all 5 G10 sections. Legacy `Subject AP` has the same bad tag (0 assignments). | **HIGH** (missing learning area on forms; wrong Science value in SF10) | Math is swallowed into the "Science" row in advisory/SF9/SF10 (no Math row). SF10 Science T1 = Math's 92 instead of Science-Biology's 93. |
 | B3 | **Class Record display â‰  stored grade used by Advisory/SF9/SF10.** Ledger recomputes QA PS from the ST1/ST2/TE breakdown (`LedgerRow.tsx:101-119`, `getDisplayFinalGrade`), preferring it over stored `quarterlyAssessPS`; the other surfaces read persisted `Grade.quarterlyGrade`. | **MEDIUM-HIGH** (data-driven; 38.6% of cells in current data) | 992 / 2,570 term cells differ. Example: ST1/ST2/TE â†’ QA PS 98.67 vs stored 95 â†’ ledger 95, stored/other views 94. |
-| B4 | **SF9 payload teacher labels come from the wrong assignment and are not deduped.** | **LOW** (SF9 print does not render subject teachers today; advisory profile + API do) | Advisory "CLARISSE JOY BAUTISTA" (active, 12 grades) vs SF9 "Maria Angela Aquino" (archived, 0 grades); rotation joins "Lourdes Reyes / Lourdes Reyes / â€¦". |
+| B4 | **SF9 payload teacher labels come from the wrong assignment and are not deduped.** | **LOW** (SF9 print does not render subject teachers today; advisory profile + API do) | Advisory "CLARISSE JOY BAUTISTA" (active, 12 grades) vs SF9 "Maria Angela Aquino" (archived, 0 grades); rotation joins "Lourdes Reyes / Lourdes Reyes / ”¦". |
 
 Already landed in the working tree (prerequisite): advisory student profile now inherits grades from predecessor/archived assignments (fixes empty Advisory rows when a teacher was reassigned). It must ship with tests in Step 0.
 
 **What is already correct (do not "fix"):**
 - Advisory vs Class Record row selection/inheritance: 0 mismatches / 2,151 term cells.
-- `mergeRotationSubjects()` in `promotion.ts` (rank-term rule) â€” used by SF10 and promotion/EOSY. **Do not change it.**
+- `mergeRotationSubjects()` in `promotion.ts` (rank-term rule) — used by SF10 and promotion/EOSY. **Do not change it.**
 - SF10 rotation logic (apart from bad `MATH10` metadata).
 - Subject completeness: no graded subject lacks an active assignment; no duplicate name variants per code.
 
@@ -77,7 +77,7 @@ Every difference must be listed and justified in the PR ("expected diff list").
 # 1. Capture current logs for evidence
 npx pm2 logs server --lines 100 --nostream > artifacts/grade-alignment/<step>/pm2-before.log
 
-# 2. Restart ONLY the server (never "pm2 restart all" â€” it restarts opencode-web too)
+# 2. Restart ONLY the server (never "pm2 restart all" — it restarts opencode-web too)
 npx pm2 restart server --update-env
 
 # 3. Health check (expect HTTP 200)
@@ -97,13 +97,13 @@ Then verify `http://localhost:5173` loads.
 
 ### G-E: Playwright gate
 ```powershell
-# Targeted (new spec) â€” always
+# Targeted (new spec) — always
 npx playwright test e2e/grades-alignment.spec.ts --trace=retain-on-failure
 
-# Existing regression specs most related to the step â€” always
+# Existing regression specs most related to the step — always
 npx playwright test e2e/advisory-printables.spec.ts e2e/grading-mode-forms.spec.ts e2e/term-finalization.spec.ts
 
-# Full suite â€” at Gate G1, G3 and FINAL
+# Full suite — at Gate G1, G3 and FINAL
 npm run test:e2e
 ```
 **Every spec must assert `collectProblems(page)` is empty** (no console errors, no API â‰¥ 400) on every touched page. Any console/network error is a gate failure, not a warning.
@@ -126,7 +126,7 @@ pnpm --prefix server exec ts-node --transpile-only scripts/check-data-integrity.
 
 ---
 
-## 3. Step 0 â€” Baseline, safety net, and prerequisite tests
+## 3. Step 0 — Baseline, safety net, and prerequisite tests
 
 **Goal:** freeze a trustworthy baseline before any behavior change.
 
@@ -157,7 +157,7 @@ npx pm2 logs server --lines 200 --nostream > artifacts/grade-alignment/pre/pm2-b
    - This script is the gate oracle for all steps. Unit-test its pure helpers.
 6. Add regression tests for the already-landed advisory inheritance fix:
    - `server/src/__tests__/advisory-inheritance.test.ts` (DB-backed fixtures; archived predecessor grades appear; active grade wins; finalized rows untouched).
-7. **Decision Gate D1 â€” rotation rule.** Confirm with the registrar/owner that the canonical rule is **rank term only** (matches SF10/promotion). Default = strict rank term. If they choose "fallback to any term", the change must also touch `mergeRotationSubjects()` and triggers a separate, higher-risk plan (promotion/EOSY re-review). Do not start Step 1 until D1 is recorded here:
+7. **Decision Gate D1 — rotation rule.** Confirm with the registrar/owner that the canonical rule is **rank term only** (matches SF10/promotion). Default = strict rank term. If they choose "fallback to any term", the change must also touch `mergeRotationSubjects()` and triggers a separate, higher-risk plan (promotion/EOSY re-review). Do not start Step 1 until D1 is recorded here:
    - Decision: **STRICT RANK TERM** (approved 2026-11-16; owner authorised execution via "start doing all of this"). Verified: 0 rotation students missing their rank-term grade before the change.
 
 ### Gate G0
@@ -167,7 +167,7 @@ npx pm2 logs server --lines 200 --nostream > artifacts/grade-alignment/pre/pm2-b
 
 ---
 
-## 4. Step 1 â€” Canonical rotation rule for Advisory + SF9 (code only)
+## 4. Step 1 — Canonical rotation rule for Advisory + SF9 (code only)
 
 **Fixes:** B1 (SF9 wrong rotation values). **Risk:** medium (touches SF9/term cards + advisory merge).
 **Files:** `server/src/lib/sf9Composer.ts`, `server/src/routes/advisory.ts`, new `server/src/__tests__/rotation-parity.test.ts`.
@@ -207,7 +207,7 @@ npx pm2 logs server --lines 200 --nostream > artifacts/grade-alignment/pre/pm2-b
 
 ---
 
-## 5. Step 2 â€” SF9 teacher labels (code only; low priority)
+## 5. Step 2 — SF9 teacher labels (code only; low priority)
 
 **Fixes:** B4. **Risk:** low. **Files:** `server/src/lib/sf9Composer.ts`, `server/src/routes/advisory.ts` (only if needed for parity), tests.
 
@@ -236,11 +236,11 @@ npx pm2 logs server --lines 200 --nostream > artifacts/grade-alignment/pre/pm2-b
 
 ---
 
-## 6. Step 3 â€” Rotation metadata guard + data repair (code + DATA)
+## 6. Step 3 — Rotation metadata guard + data repair (code + DATA)
 
 **Fixes:** B2. **Risk:** HIGH for the data change (affects G10 forms and promotion inputs). Requires Decision Gate D2.
 
-### 6.1 Code â€” validation helper (no behavior change yet)
+### 6.1 Code — validation helper (no behavior change yet)
 New `server/src/lib/rotationMetadata.ts`:
 ```ts
 ROTATION_GROUP_RULES = {
@@ -262,7 +262,7 @@ Wire into **writers only**:
 
 **Do NOT add runtime filtering to `mergeRotationSubjects()` / promotion.** Once data is repaired, the readers are correct; adding filters there increases regression risk.
 
-### 6.2 Data â€” dry-run repair script
+### 6.2 Data — dry-run repair script
 New `server/scripts/repair-rotation-metadata.ts`:
 - Default = dry-run; `--apply` required to write; `--json <path>` for reports.
 - Select all subjects with any rotation field set; validate; classify:
@@ -302,12 +302,12 @@ New `server/scripts/repair-rotation-metadata.ts`:
 
 ---
 
-## 7. Step 4 â€” One source of truth for grade derivation + QA repair (code + DATA)
+## 7. Step 4 — One source of truth for grade derivation + QA repair (code + DATA)
 
 **Fixes:** B3. **Risk:** HIGH for the data change (changes stored official grades). Requires Decision Gate D3 and registrar sign-off.
 **Authority:** the ST1/ST2/TE breakdown (30/30/40, `examMath.ts`) is authoritative when present; legacy composite QA is only a fallback. This matches the ledger and the ECR import.
 
-### 7.1 Code â€” shared derivation
+### 7.1 Code — shared derivation
 New `server/src/lib/gradeDerivation.ts` (pure, no Prisma):
 ```ts
 deriveGradeValues({
@@ -333,11 +333,11 @@ Wire into:
    - update `writtenWorkPS`, `perfTaskPS`, `quarterlyAssessPS`, `quarterlyAssessScore`, `quarterlyAssessMax`, `initialGrade`, `quarterlyGrade`.
    - Preserve current behavior for rows without exam breakdown.
    - This makes every admin config/weights/table change also normalize QA drift.
-2. `server/scripts/realign-seeded-grades.ts` â€” use the same helper.
-3. **Seed scripts** (dev/test only): `server/prisma/seed-teacher-scores.ts`, `seed-grades.ts`, `seed-grades-term.ts` â€” derive `quarterlyAssessScore` from the generated `examScores` (or after seeding call the repair in-memory). Fresh seeded DB must have 0 drift.
+2. `server/scripts/realign-seeded-grades.ts` — use the same helper.
+3. **Seed scripts** (dev/test only): `server/prisma/seed-teacher-scores.ts`, `seed-grades.ts`, `seed-grades-term.ts` — derive `quarterlyAssessScore` from the generated `examScores` (or after seeding call the repair in-memory). Fresh seeded DB must have 0 drift.
 4. Optional (only if D3 approves the refactor): teacher save route `grades-sub/classes.ts` calls the helper for consistency. If not, document that save remains correct today and is covered by tests.
 
-### 7.2 Data â€” dry-run repair
+### 7.2 Data — dry-run repair
 New `server/scripts/repair-grade-derivations.ts`:
 - Default dry-run; `--apply`; `--school-year`; `--include-archived`; `--include-finalized` (default **false**).
 - Select grades with non-empty `examScores`; compute canonical values; if any of QAPS/initial/quarterly differ beyond `1e-6`, record.
@@ -379,12 +379,12 @@ New `server/scripts/repair-grade-derivations.ts`:
 
 ---
 
-## 8. Step 5 â€” Parity monitoring & docs (code only)
+## 8. Step 5 — Parity monitoring & docs (code only)
 
 **Fixes:** recurrence prevention. **Risk:** low.
 1. Extend `server/src/lib/dataIntegrity.ts`:
-   - Anomaly `QA_PS_DRIFT_EXAM_BREAKDOWN` â€” grade rows where exam breakdown exists but stored QA PS differs > 0.01 from `computeExamPS`. Group by section; severity WARNING (CRITICAL if drift ratio > 5% in a section).
-   - Anomaly `INVALID_ROTATION_METADATA` â€” subjects failing `validateRotationMetadata`. Severity WARNING (CRITICAL if the subject has active assignments with grades).
+   - Anomaly `QA_PS_DRIFT_EXAM_BREAKDOWN` — grade rows where exam breakdown exists but stored QA PS differs > 0.01 from `computeExamPS`. Group by section; severity WARNING (CRITICAL if drift ratio > 5% in a section).
+   - Anomaly `INVALID_ROTATION_METADATA` — subjects failing `validateRotationMetadata`. Severity WARNING (CRITICAL if the subject has active assignments with grades).
 2. `server/scripts/check-data-integrity.ts`: include both; `--strict` fails on any; default fails on CRITICAL.
 3. Add a short `docs/GRADE_PIPELINE_RULES.md`:
    - rotation rule (rank term), grade derived-field precedence (exam breakdown > stored QA), who writes stored grades, how to run repair/audit scripts.
@@ -411,7 +411,7 @@ All must be true:
    - Teacher labels: 0 diffs.
    - Invalid rotation metadata: 0.
    - G10 Math rows present in all forms.
-4. PM2 soak: 30â€“60 minutes of normal usage with zero error-level log lines; `pm2 status` shows no crash restarts.
+4. PM2 soak: 30–60 minutes of normal usage with zero error-level log lines; `pm2 status` shows no crash restarts.
 5. Data repair reports archived in `artifacts/grade-alignment/`; DB backup exists; undo tested in staging.
 6. Registrar sign-off on impacted-finalized decisions (if any).
 7. No external writes performed.
@@ -423,7 +423,7 @@ All must be true:
 
 **Rules:** read-only; no grade edits/locks/sync; every test collects `collectProblems(page)` and asserts empty.
 
-### Test A â€” API parity (primary oracle)
+### Test A — API parity (primary oracle)
 1. Login teacher â†’ `GET /api/advisory/my-advisory` â†’ section + learners.
 2. Login registrar â†’ get tokens for SF9/SF10 endpoints.
 3. For every learner in the advisory section:
@@ -437,19 +437,19 @@ All must be true:
 7. G10 case (skip if no G10 access): `MATH10` row exists in all three surfaces and equals the class record; Science row does not contain Math's T1.
 8. Assert teacher name matches the active grade-bearing assignment (advisory vs SF9 payload).
 
-### Test B â€” Teacher UI parity
+### Test B — Teacher UI parity
 1. Advisory â†’ select first learner â†’ student profile.
 2. Read displayed T1..T3/final for each subject (**add `data-testid` attributes**: `subject-grade-row-<code>`, `subject-grade-t1/t2/t3/final-<code>`).
 3. Assert values equal the API response and equal the SF9 preview values.
 4. Open Printables â†’ SF9 preview (`[data-testid="sf9-form"]`) â†’ parse the learning-areas table â†’ assert same values.
 5. Assert no console/API errors.
 
-### Test C â€” Registrar UI parity
+### Test C — Registrar UI parity
 1. Registrar â†’ student records / forms â†’ open SF9 for the same learner (`[data-testid="sf9-form"]`) â†’ assert same values.
 2. Open SF10 â†’ assert per-term + final values for current SY match the API; assert Math and Science rows are separate for G10.
 3. Assert no console/API errors.
 
-### Test D â€” Ledger vs forms (drift guard)
+### Test D — Ledger vs forms (drift guard)
 1. Teacher â†’ Class Records â†’ open a class record with grades.
 2. Read the displayed quarterly grade per term per learner (**add `data-testid` if needed**: `ledger-grade-<studentId>-<term>`).
 3. Assert it equals the stored/API value used by advisory/SF9/SF10 for the same learner/subject/term.
@@ -502,20 +502,20 @@ Artifacts: save the `playwright-report/` and any traces to `artifacts/grade-alig
 - [ ] Step 5 monitoring/docs: integrity anomalies 0; docs updated
 - [ ] Full `pnpm run verify` green
 - [ ] Full `npm run test:e2e` green
-- [ ] PM2 soak 30â€“60 min clean
+- [ ] PM2 soak 30–60 min clean
 - [ ] No external system writes
 - [ ] Registrar sign-off (if finalized/EOSY data was involved)
 - [ ] Rollback rehearsed
 
 ---
 
-## 14. Appendix â€” Environment quick reference
+## 14. Appendix — Environment quick reference
 
 | Item | Value |
 |---|---|
-| Backend (PM2 `server`) | `http://localhost:5003/api` â€” health `/api/health` |
+| Backend (PM2 `server`) | `http://localhost:5003/api` — health `/api/health` |
 | Frontend (PM2 `client`, Vite) | `http://localhost:5173` |
-| PM2 apps | `server`, `client`, `opencode-web` â€” **always restart `server`/`client` individually** |
+| PM2 apps | `server`, `client`, `opencode-web` — **always restart `server`/`client` individually** |
 | Playwright config | `playwright.config.ts`, `testDir: ./e2e`, baseURL `:5173` |
 | Server tests | `pnpm --prefix server test` (requires `DATABASE_URL_TEST`, seeds test base) |
 | Full verify | `pnpm run verify` |
@@ -526,18 +526,18 @@ Artifacts: save the `playwright-report/` and any traces to `artifacts/grade-alig
 | Evidence dir | `artifacts/grade-alignment/<step>/` |
 
 ### Key source references (verified before planning)
-- `server/src/lib/sf9Composer.ts:226-382` â€” row building + rotation merge + teacher assignment.
-- `server/src/routes/advisory.ts:350-540` â€” advisory row selection, inheritance, rotation merge, final/average.
-- `server/src/lib/promotion.ts:72-116` â€” canonical `mergeRotationSubjects()` (rank term; used by SF10/promotion). **Do not change.**
-- `server/src/lib/sf10.ts:240-348` â€” SF10 slots + rotation merge + final group average.
-- `server/src/lib/gradeRecalc.ts:55-137` â€” recompute from stored PS only (the gap).
-- `server/src/routes/grades-sub/classes.ts:407-557` â€” teacher save path (already derives QA from exam breakdown).
-- `server/src/lib/aimsImport.ts:330-410` â€” intentionally drops exam breakdown when importing a composite QA.
-- `server/src/lib/ecrImport.ts:129-330` â€” ECR derives QA from the same ST1/ST2/TE breakdown (consistent).
-- `src/pages/teacher/components/ledger/LedgerRow.tsx:83-119` â€” ledger live display/derivation (exam breakdown precedence).
-- `src/lib/gradeMath.ts:137-164` â€” `getDisplayFinalGrade` (same precedence).
-- `server/src/lib/atlasSync.ts:300-360` â€” rotation metadata propagated from Atlas by code (ingestion point for B2).
-- `server/prisma/schema.prisma` â€” `Subject.rotationTermGroupId/Rank/OutputLabel`, `Grade.quarterlyAssessScore/Max/PS`, `initialGrade`, `quarterlyGrade`.
+- `server/src/lib/sf9Composer.ts:226-382` — row building + rotation merge + teacher assignment.
+- `server/src/routes/advisory.ts:350-540` — advisory row selection, inheritance, rotation merge, final/average.
+- `server/src/lib/promotion.ts:72-116` — canonical `mergeRotationSubjects()` (rank term; used by SF10/promotion). **Do not change.**
+- `server/src/lib/sf10.ts:240-348` — SF10 slots + rotation merge + final group average.
+- `server/src/lib/gradeRecalc.ts:55-137` — recompute from stored PS only (the gap).
+- `server/src/routes/grades-sub/classes.ts:407-557` — teacher save path (already derives QA from exam breakdown).
+- `server/src/lib/aimsImport.ts:330-410` — intentionally drops exam breakdown when importing a composite QA.
+- `server/src/lib/ecrImport.ts:129-330` — ECR derives QA from the same ST1/ST2/TE breakdown (consistent).
+- `src/pages/teacher/components/ledger/LedgerRow.tsx:83-119` — ledger live display/derivation (exam breakdown precedence).
+- `src/lib/gradeMath.ts:137-164` — `getDisplayFinalGrade` (same precedence).
+- `server/src/lib/atlasSync.ts:300-360` — rotation metadata propagated from Atlas by code (ingestion point for B2).
+- `server/prisma/schema.prisma` — `Subject.rotationTermGroupId/Rank/OutputLabel`, `Grade.quarterlyAssessScore/Max/PS`, `initialGrade`, `quarterlyGrade`.
 
 
 ---

@@ -539,14 +539,14 @@ export default function SchoolForms() {
         <div className="mt-2 border border-black p-1.5 text-[7px]">
           <p className="font-bold mb-0.5">List and Code of Indicators under REMARK column:</p>
           <div className="grid grid-cols-4 gap-x-4 gap-y-0.5">
-            <div>T/O â€” Transferred Out</div>
-            <div>T/I â€” Transferred In</div>
-            <div>DRP â€” Dropped Out</div>
-            <div>B/A â€” Balik-Aral</div>
-            <div>CCT â€” 4Ps Recipient</div>
-            <div>LWD â€” Learner with Disability</div>
-            <div>ACL â€” Accelerated</div>
-            <div>LE â€” Late Enrollment</div>
+            <div>T/O — Transferred Out</div>
+            <div>T/I — Transferred In</div>
+            <div>DRP — Dropped Out</div>
+            <div>B/A — Balik-Aral</div>
+            <div>CCT — 4Ps Recipient</div>
+            <div>LWD — Learner with Disability</div>
+            <div>ACL — Accelerated</div>
+            <div>LE — Late Enrollment</div>
           </div>
         </div>
 
