@@ -40,6 +40,7 @@ import {
   inferSubjectTypeFromCode,
 } from './atlasUtils';
 import { computeDisplayName } from './subjectDisplay';
+import { validateRotationMetadata } from './rotationMetadata';
 
 import { getActiveSchoolYearLabel } from './schoolYearResolver';
 import { computeResolutionConfidence, exceedsRatio, MAX_ARCHIVE_RATIO } from './syncGuard';
@@ -312,6 +313,23 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       const existingCodes = new Set(existingSubjects.map(s => s.code));
       let subjectsCreated = 0;
       let rotationUpdated = 0;
+      const rotationRejected: string[] = [];
+      const acceptedRotationData = (
+        targetCode: string,
+        data: { rotationTermGroupId: string | null; rotationTermRank: number | null; rotationOutputLabel: string | null },
+      ): { rotationTermGroupId: string; rotationTermRank: number | null; rotationOutputLabel: string | null } | null => {
+        if (!data.rotationTermGroupId) return null;
+        const validation = validateRotationMetadata({ code: targetCode, ...data });
+        if (!validation.valid) {
+          rotationRejected.push(`${targetCode}:${validation.reason}`);
+          return null;
+        }
+        return {
+          rotationTermGroupId: data.rotationTermGroupId,
+          rotationTermRank: data.rotationTermRank,
+          rotationOutputLabel: data.rotationOutputLabel,
+        };
+      };
       for (const atlasSubj of atlasSubjects) {
         if (!atlasSubj.code || !atlasSubj.name) continue;
         const code = normalizeAtlasSubjectCode(atlasSubj.code);
@@ -327,16 +345,20 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         if (hasGradeSuffixed) {
           // Propagate rotation fields to all grade-suffixed variants that exist in SMART
           if (rotationTermGroupId) {
+            let propagated = false;
             for (const g of ['7', '8', '9', '10']) {
               const suffixedCode = code + g;
               if (existingCodes.has(suffixedCode)) {
+                const data = acceptedRotationData(suffixedCode, rotationData);
+                if (!data) continue;
                 await prisma.subject.update({
                   where: { code: suffixedCode },
-                  data: rotationData,
+                  data,
                 }).catch(() => { /* subject may not exist */ });
+                propagated = true;
               }
             }
-            rotationUpdated++;
+            if (propagated) rotationUpdated++;
           }
           continue;
         }
@@ -345,11 +367,14 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
           // Subject already exists — do NOT overwrite its name (SMART names are authoritative)
           // But DO update rotation fields from Atlas (these are Atlas-authoritative)
           if (rotationTermGroupId) {
-            await prisma.subject.update({
-              where: { code },
-              data: rotationData,
-            }).catch(() => { /* ignore if missing */ });
-            rotationUpdated++;
+            const data = acceptedRotationData(code, rotationData);
+            if (data) {
+              await prisma.subject.update({
+                where: { code },
+                data,
+              }).catch(() => { /* ignore if missing */ });
+              rotationUpdated++;
+            }
           }
           continue;
         }
@@ -357,11 +382,24 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         // Brand new subject — create it with proper display name (not ATLAS abbreviation)
         const properName = resolveSubjectName(code);
         const inferredType = inferSubjectTypeFromCode(code);
+        const createRotationData = acceptedRotationData(code, rotationData);
         await prisma.subject.create({
-          data: { code, name: properName, displayName: computeDisplayName(code, properName), type: inferredType, ...rotationData },
+          data: { code, name: properName, displayName: computeDisplayName(code, properName), type: inferredType, ...(createRotationData ?? {}) },
         }).catch(() => { /* already exists via race condition */ });
         existingCodes.add(code);
         subjectsCreated++;
+      }
+      if (rotationRejected.length > 0) {
+        logger.warn(`[AtlasSync] Rejected ${rotationRejected.length} invalid rotation metadata entr${rotationRejected.length === 1 ? "y" : "ies"}: ${rotationRejected.join("; ")}`);
+        await createAuditLog(
+          AuditAction.UPDATE,
+          { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+          'Subject',
+          'SYNC',
+          `Atlas rotation metadata rejected (inconsistent subject family): ${rotationRejected.join("; ")}`,
+          undefined,
+          AuditSeverity.WARNING,
+        ).catch(() => {});
       }
       logger.debug(`[AtlasSync] Processed ${atlasSubjects.length} Atlas subjects, created ${subjectsCreated} new, rotation-updated ${rotationUpdated}`);
     } catch (err: any) {

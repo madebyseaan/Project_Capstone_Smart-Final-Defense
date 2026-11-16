@@ -1,8 +1,8 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import { GradingMode, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { resolveCanonicalWeights } from "../prisma/canonicalGrade";
-import { computeTermGrade } from "../src/lib/gradingMode";
+import { deriveGradeValues } from "../src/lib/gradeDerivation";
 
 const connectionString = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({
@@ -23,7 +23,7 @@ function toObjectScores(scores: unknown, prefix: string): Array<{ name: string; 
 
 async function main() {
   const table = await prisma.transmutationEntry.findMany({ orderBy: { minGrade: "asc" } });
-  if (table.length === 0) throw new Error("TransmutationEntry table is empty — aborting");
+  if (table.length === 0) throw new Error("TransmutationEntry table is empty â€” aborting");
   const gradingConfigs = await prisma.gradingConfig.findMany();
   const schoolYears = await prisma.schoolYear.findMany({ select: { label: true, gradingMode: true } });
   const modeByYear = new Map(schoolYears.map((year) => [year.label, year.gradingMode]));
@@ -46,17 +46,34 @@ async function main() {
     if (ptObj) { data.perfTaskScores = ptObj; shapesFixed++; }
 
     // 2. Recompute initialGrade + quarterlyGrade from stored PS with canonical weights + table
-    if (g.writtenWorkPS !== null && g.perfTaskPS !== null && g.quarterlyAssessPS !== null) {
-      const w = resolveCanonicalWeights(g.classAssignment.subject, gradingConfigs);
-      const initial =
-        (g.writtenWorkPS * w.ww) / 100 +
-        (g.perfTaskPS * w.pt) / 100 +
-        (g.quarterlyAssessPS * w.qa) / 100;
-      const mode = modeByYear.get(g.classAssignment.schoolYear) ?? GradingMode.TRANSMUTED;
-      const qg = computeTermGrade(initial, mode, table);
-      if (Math.abs((g.initialGrade ?? -1) - initial) > 1e-9 || g.quarterlyGrade !== qg) {
-        data.initialGrade = initial;
-        data.quarterlyGrade = qg;
+    const w = resolveCanonicalWeights(g.classAssignment.subject, gradingConfigs);
+    const mode = modeByYear.get(g.classAssignment.schoolYear) ?? GradingMode.TRANSMUTED;
+    const derived = deriveGradeValues(
+      {
+        writtenWorkScores: g.writtenWorkScores,
+        perfTaskScores: g.perfTaskScores,
+        examScores: g.examScores,
+        quarterlyAssessScore: g.quarterlyAssessScore,
+        quarterlyAssessMax: g.quarterlyAssessMax,
+        storedWrittenWorkPS: g.writtenWorkPS,
+        storedPerfTaskPS: g.perfTaskPS,
+        storedQuarterlyAssessPS: g.quarterlyAssessPS,
+      },
+      w,
+      mode,
+      table,
+    );
+    if (derived.writtenWorkPS !== null && derived.perfTaskPS !== null && derived.quarterlyAssessPS !== null && derived.initialGrade !== null && derived.quarterlyGrade !== null) {
+      if (Math.abs((g.initialGrade ?? -1) - derived.initialGrade) > 1e-9 || g.quarterlyGrade !== derived.quarterlyGrade || derived.hasExamBreakdown) {
+        data.initialGrade = derived.initialGrade;
+        data.quarterlyGrade = derived.quarterlyGrade;
+        data.writtenWorkPS = derived.writtenWorkPS;
+        data.perfTaskPS = derived.perfTaskPS;
+        data.quarterlyAssessPS = derived.quarterlyAssessPS;
+        if (derived.hasExamBreakdown) {
+          data.quarterlyAssessScore = derived.nextQuarterlyAssessScore;
+          data.quarterlyAssessMax = derived.nextQuarterlyAssessMax;
+        }
       }
     }
 
@@ -90,3 +107,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+

@@ -1,11 +1,16 @@
-/**
- * dataIntegrity.ts — Deployment/data-integrity checks for grade placement.
+﻿/**
+ * dataIntegrity.ts â€” Deployment/data-integrity checks for grade placement.
  *
  * Read-only. Detects the "ATLAS changed the subject, old grades are stranded on
  * archived assignments, new active assignment is empty" class of bug.
  */
 
 import { prisma } from "./prisma";
+import { deriveGradeValues } from "./gradeDerivation";
+import { getGradingModeForSchoolYear } from "./gradingMode";
+import { getTransmutationTable } from "./transmutationCache";
+import { resolveEffectiveWeightsForClassAssignment } from "../routes/grades-sub/helpers";
+import { hasAnyRotationField, validateRotationMetadata } from "./rotationMetadata";
 
 export interface DataIntegrityAssignmentRef {
   id: string;
@@ -18,7 +23,9 @@ export interface DataIntegrityAssignmentRef {
 export interface DataIntegrityAnomaly {
   code:
     | "ACTIVE_ASSIGNMENT_MISSING_GRADES"
-    | "GRADES_ONLY_ON_ARCHIVED_ASSIGNMENTS";
+    | "GRADES_ONLY_ON_ARCHIVED_ASSIGNMENTS"
+    | "GRADE_DERIVATION_DRIFT"
+    | "INVALID_ROTATION_METADATA";
   severity: "WARNING" | "CRITICAL";
   message: string;
   sectionId: string;
@@ -42,6 +49,9 @@ export interface DataIntegrityReport {
     archivedAssignmentsWithGrades: number;
     affectedSections: number;
     affectedSubjectFamilies: number;
+    gradeRowsChecked: number;
+    gradeRowsDrifted: number;
+    invalidRotationSubjects: number;
   };
 }
 
@@ -73,8 +83,9 @@ export async function buildDataIntegrityReport(
         isActive: true,
         archivedReason: true,
         section: { select: { id: true, name: true, gradeLevel: true } },
+        subjectId: true,
         subject: {
-          select: { code: true, name: true, rotationOutputLabel: true },
+          select: { id: true, code: true, name: true, rotationOutputLabel: true },
         },
       },
     }),
@@ -189,6 +200,165 @@ export async function buildDataIntegrityReport(
     }
   }
 
+  // ── Grade derivation drift (Class Record live recompute vs stored fields) ──
+  const gradingMode = await getGradingModeForSchoolYear(schoolYear);
+  const transmutationTable = await getTransmutationTable();
+  const weightsCache = new Map<string, { ww: number; pt: number; qa: number }>();
+  const gradeRows = await prisma.grade.findMany({
+    where: { classAssignment: { is: { schoolYear, isActive: true } } },
+    select: {
+      id: true,
+      classAssignmentId: true,
+      writtenWorkScores: true,
+      perfTaskScores: true,
+      examScores: true,
+      quarterlyAssessScore: true,
+      quarterlyAssessMax: true,
+      writtenWorkPS: true,
+      perfTaskPS: true,
+      quarterlyAssessPS: true,
+      initialGrade: true,
+      quarterlyGrade: true,
+      classAssignment: {
+        select: {
+          id: true,
+          sectionId: true,
+          subject: { select: { code: true, name: true } },
+          section: { select: { name: true, gradeLevel: true } },
+        },
+      },
+    },
+  });
+
+  const driftBySection = new Map<string, {
+    sectionName: string;
+    gradeLevel: string;
+    checked: number;
+    drifted: number;
+    byAssignment: Map<string, DataIntegrityAssignmentRef>;
+  }>();
+  let gradeRowsChecked = 0;
+  let gradeRowsDrifted = 0;
+
+  for (const grade of gradeRows) {
+    let weights = weightsCache.get(grade.classAssignmentId);
+    if (!weights) {
+      const resolved = await resolveEffectiveWeightsForClassAssignment(grade.classAssignmentId);
+      weights = { ww: resolved.ww, pt: resolved.pt, qa: resolved.qa };
+      weightsCache.set(grade.classAssignmentId, weights);
+    }
+    const derived = deriveGradeValues(
+      {
+        writtenWorkScores: grade.writtenWorkScores,
+        perfTaskScores: grade.perfTaskScores,
+        examScores: grade.examScores,
+        quarterlyAssessScore: grade.quarterlyAssessScore,
+        quarterlyAssessMax: grade.quarterlyAssessMax,
+        storedWrittenWorkPS: grade.writtenWorkPS,
+        storedPerfTaskPS: grade.perfTaskPS,
+        storedQuarterlyAssessPS: grade.quarterlyAssessPS,
+      },
+      weights,
+      gradingMode,
+      transmutationTable,
+    );
+    if (derived.quarterlyGrade === null) continue;
+    gradeRowsChecked += 1;
+
+    const drifted =
+      derived.quarterlyGrade !== grade.quarterlyGrade ||
+      (derived.quarterlyAssessPS !== null && grade.quarterlyAssessPS !== null && Math.abs(derived.quarterlyAssessPS - grade.quarterlyAssessPS) > 1e-6);
+    if (!drifted) continue;
+    gradeRowsDrifted += 1;
+
+    const sectionId = grade.classAssignment.sectionId;
+    if (!driftBySection.has(sectionId)) {
+      driftBySection.set(sectionId, {
+        sectionName: grade.classAssignment.section.name,
+        gradeLevel: grade.classAssignment.section.gradeLevel,
+        checked: 0,
+        drifted: 0,
+        byAssignment: new Map(),
+      });
+    }
+    const bucket = driftBySection.get(sectionId)!;
+    bucket.drifted += 1;
+    const assignmentKey = grade.classAssignment.id;
+    const ref = bucket.byAssignment.get(assignmentKey) ?? {
+      id: assignmentKey,
+      subjectCode: grade.classAssignment.subject.code,
+      subjectName: grade.classAssignment.subject.name,
+      gradeCount: 0,
+      archivedReason: null,
+    };
+    ref.gradeCount += 1;
+    bucket.byAssignment.set(assignmentKey, ref);
+  }
+
+  for (const [sectionId, bucket] of driftBySection) {
+    const checkedInSection = gradeRows.filter((row) => row.classAssignment.sectionId === sectionId).length || bucket.drifted;
+    bucket.checked = checkedInSection;
+    const ratio = bucket.drifted / Math.max(checkedInSection, 1);
+    anomalies.push({
+      code: "GRADE_DERIVATION_DRIFT",
+      severity: ratio > 0.05 ? "CRITICAL" : "WARNING",
+      message:
+        `${bucket.sectionName} has ${bucket.drifted} stored grade row(s) that disagree with the Class Record recompute ` +
+        `(${Math.round(ratio * 100)}% of ${checkedInSection}). Run scripts/repair-grade-derivations.ts.`,
+      sectionId,
+      sectionName: bucket.sectionName,
+      gradeLevel: bucket.gradeLevel,
+      subjectFamily: "All subjects",
+      activeAssignments: [...bucket.byAssignment.values()],
+      archivedAssignmentsWithGrades: [],
+    });
+    affectedSections.add(sectionId);
+  }
+
+  // ── Invalid subject rotation metadata ──
+  const rotationSubjects = await prisma.subject.findMany({
+    where: {
+      OR: [
+        { rotationTermGroupId: { not: null } },
+        { rotationTermRank: { not: null } },
+        { rotationOutputLabel: { not: null } },
+      ],
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      rotationTermGroupId: true,
+      rotationTermRank: true,
+      rotationOutputLabel: true,
+    },
+  });
+  let invalidRotationSubjects = 0;
+  for (const subject of rotationSubjects) {
+    const fields = {
+      code: subject.code,
+      rotationTermGroupId: subject.rotationTermGroupId,
+      rotationTermRank: subject.rotationTermRank,
+      rotationOutputLabel: subject.rotationOutputLabel,
+    };
+    if (!hasAnyRotationField(fields)) continue;
+    const validation = validateRotationMetadata(fields);
+    if (validation.valid) continue;
+    invalidRotationSubjects += 1;
+    const hasActiveAssignment = assignments.some((assignment) => assignment.subjectId === subject.id && assignment.isActive);
+    anomalies.push({
+      code: "INVALID_ROTATION_METADATA",
+      severity: hasActiveAssignment ? "CRITICAL" : "WARNING",
+      message: `Subject ${subject.code} has inconsistent rotation metadata (${validation.reason}). Run scripts/repair-rotation-metadata.ts.`,
+      sectionId: "",
+      sectionName: subject.code,
+      gradeLevel: "",
+      subjectFamily: subject.name,
+      activeAssignments: [],
+      archivedAssignmentsWithGrades: [],
+    });
+  }
+
   anomalies.sort((a, b) =>
     a.sectionName.localeCompare(b.sectionName) ||
     a.subjectFamily.localeCompare(b.subjectFamily),
@@ -214,6 +384,11 @@ export async function buildDataIntegrityReport(
       affectedSubjectFamilies: new Set(
         anomalies.map((anomaly) => `${anomaly.sectionId}::${anomaly.subjectFamily}`),
       ).size,
+      gradeRowsChecked,
+      gradeRowsDrifted,
+      invalidRotationSubjects,
     },
   };
 }
+
+

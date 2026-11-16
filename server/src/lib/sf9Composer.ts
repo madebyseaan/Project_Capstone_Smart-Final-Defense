@@ -34,6 +34,7 @@ import {
 import { getGradeLockState } from "./gradeLocks";
 import { OBSERVED_VALUE_GROUPS } from "./observedValues";
 import { computeDisplayName } from "./subjectDisplay";
+import { gradeSignalScore } from "./advisoryStudentGrades";
 import {
   isHomeroomGuidanceSubjectCode,
   isSubjectAlignedWithGrade,
@@ -258,13 +259,38 @@ function buildSubjectRows(
 
   const subjectGrades: Record<string, SubjectRow> = {};
 
+  // Deterministic teacher selection that matches the advisory profile:
+  // active assignment first, then the one holding the most graded quarters.
+  const teacherByKey = new Map<string, { teacher: string; score: number }>();
+  const gradesByAssignment = new Map<string, Grade[]>();
+  for (const grade of studentGrades) {
+    const list = gradesByAssignment.get(grade.classAssignmentId) ?? [];
+    list.push(grade);
+    gradesByAssignment.set(grade.classAssignmentId, list);
+  }
+  for (const assignment of assignments) {
+    if (isHomeroomGuidanceSubjectCode(assignment.subject.code)) continue;
+    if (!isSubjectAlignedWithGrade(assignment.subject.code, gradeLevel)) continue;
+    const key = subjectCanonicalKey(assignment.subject.code, assignment.subject.name);
+    const score =
+      (assignment.isActive ? 1_000_000 : 0) +
+      gradeSignalScore({
+        grades: gradesByAssignment.get(assignment.id) ?? [],
+        updatedAt: assignment.updatedAt,
+      });
+    const current = teacherByKey.get(key);
+    if (!current || score > current.score) {
+      teacherByKey.set(key, { teacher: teacherName(assignment), score });
+    }
+  }
+
   const ensureRow = (assignment: AssignmentWithSubjectTeacher): SubjectRow => {
     const key = subjectCanonicalKey(assignment.subject.code, assignment.subject.name);
     if (!subjectGrades[key]) {
       subjectGrades[key] = {
         subjectCode: assignment.subject.code,
         subjectName: assignment.subject.displayName ?? assignment.subject.name,
-        teacher: teacherName(assignment),
+        teacher: teacherByKey.get(key)?.teacher ?? teacherName(assignment),
         T1: null,
         T2: null,
         T3: null,
@@ -277,9 +303,14 @@ function buildSubjectRows(
     return subjectGrades[key];
   };
 
+  const gradedAssignmentIds = new Set(studentGrades.map((grade) => grade.classAssignmentId));
+
   for (const assignment of assignments) {
     if (isHomeroomGuidanceSubjectCode(assignment.subject.code)) continue;
     if (!isSubjectAlignedWithGrade(assignment.subject.code, gradeLevel)) continue;
+    // Archived assignments only belong on the form when they still carry
+    // grades for this learner; otherwise they render as blank stale rows.
+    if (!assignment.isActive && !gradedAssignmentIds.has(assignment.id)) continue;
     ensureRow(assignment);
   }
 
@@ -317,7 +348,7 @@ function buildSubjectRows(
     const merged: SubjectRow = {
       subjectCode: representative.rotationOutputLabel ?? representative.subjectCode,
       subjectName: toTitleCase(representative.rotationOutputLabel ?? representative.subjectName),
-      teacher: sorted.map((row) => row.teacher).filter(Boolean).join(" / "),
+      teacher: [...new Set(sorted.map((row) => row.teacher).filter(Boolean))].join(" / "),
       T1: null,
       T2: null,
       T3: null,
@@ -330,9 +361,10 @@ function buildSubjectRows(
     for (const sub of sorted) {
       if (!sub.rotationTermRank) continue;
       const termKey = `T${sub.rotationTermRank}` as Sf9Term;
-      const bestGrade = sub.T1 ?? sub.T2 ?? sub.T3 ?? null;
-      if (bestGrade !== null) {
-        merged[termKey] = bestGrade;
+      // Rotation grades belong to the sub-subject's rotation term.
+      // SF10 and promotion (`mergeRotationSubjects`) already use this rule.
+      if (sub[termKey] !== null) {
+        merged[termKey] = sub[termKey];
       }
     }
 

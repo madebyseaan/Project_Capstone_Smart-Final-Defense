@@ -5,6 +5,7 @@
  */
 
 import { makeTransmuter } from "./canonicalGrade";
+import { computeExamPS } from "../src/lib/examMath";
 
 // ─── Tier Definitions ────────────────────────────────────────────────────────
 
@@ -185,8 +186,11 @@ export function buildGradeForTarget(
     { name: "TE", score: Math.round((qaScore / 100) * 30), maxScore: 30 },
   ];
 
-  const computed = calculateGrades(wwScores, ptScores, qaScore, 100, weights.ww, weights.pt, weights.qa);
-  return { writtenWorkScores: wwScores, perfTaskScores: ptScores, examScores, quarterlyAssessScore: qaScore, quarterlyAssessMax: 100, computed };
+  // The ledger treats the ST1/ST2/TE breakdown as authoritative. Derive the
+  // composite QA from the same breakdown so seeded rows can never drift.
+  const effectiveQaScore = computeExamPS(examScores) ?? qaScore;
+  const computed = calculateGrades(wwScores, ptScores, effectiveQaScore, 100, weights.ww, weights.pt, weights.qa);
+  return { writtenWorkScores: wwScores, perfTaskScores: ptScores, examScores, quarterlyAssessScore: effectiveQaScore, quarterlyAssessMax: 100, computed };
 }
 
 // ─── Shared Types ────────────────────────────────────────────────────────────

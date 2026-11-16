@@ -22,7 +22,8 @@ import { GradingMode } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { getTransmutationTable } from "./transmutationCache";
-import { computeTermGrade, getGradingModeForSchoolYear } from "./gradingMode";
+import { getGradingModeForSchoolYear } from "./gradingMode";
+import { deriveGradeValues } from "./gradeDerivation";
 import { resolveEffectiveWeightsForClassAssignment } from "../routes/grades-sub/helpers";
 
 export interface RecomputeOptions {
@@ -62,6 +63,11 @@ async function run(options: RecomputeOptions): Promise<RecomputeSummary> {
     select: {
       id: true,
       classAssignmentId: true,
+      writtenWorkScores: true,
+      perfTaskScores: true,
+      examScores: true,
+      quarterlyAssessScore: true,
+      quarterlyAssessMax: true,
       writtenWorkPS: true,
       perfTaskPS: true,
       quarterlyAssessPS: true,
@@ -73,7 +79,16 @@ async function run(options: RecomputeOptions): Promise<RecomputeSummary> {
 
   const weightsCache = new Map<string, { ww: number; pt: number; qa: number }>();
   const modeCache = new Map<string, GradingMode>();
-  const updates: Array<{ id: string; initialGrade: number; quarterlyGrade: number }> = [];
+  const updates: Array<{
+    id: string;
+    writtenWorkPS: number;
+    perfTaskPS: number;
+    quarterlyAssessPS: number;
+    quarterlyAssessScore: number | null;
+    quarterlyAssessMax: number | null;
+    initialGrade: number;
+    quarterlyGrade: number;
+  }> = [];
   const byMode: Record<GradingMode, number> = {
     [GradingMode.TRANSMUTED]: 0,
     [GradingMode.ZERO_BASED]: 0,
@@ -90,15 +105,6 @@ async function run(options: RecomputeOptions): Promise<RecomputeSummary> {
     }
     byMode[mode] += 1;
 
-    if (
-      g.writtenWorkPS === null ||
-      g.perfTaskPS === null ||
-      g.quarterlyAssessPS === null
-    ) {
-      if (g.initialGrade !== null || g.quarterlyGrade !== null) unrecomputable++;
-      continue;
-    }
-
     let weights = weightsCache.get(g.classAssignmentId);
     if (!weights) {
       const resolved = await resolveEffectiveWeightsForClassAssignment(g.classAssignmentId);
@@ -106,20 +112,62 @@ async function run(options: RecomputeOptions): Promise<RecomputeSummary> {
       weightsCache.set(g.classAssignmentId, weights);
     }
 
-    const initial =
-      (g.writtenWorkPS * weights.ww) / 100 +
-      (g.perfTaskPS * weights.pt) / 100 +
-      (g.quarterlyAssessPS * weights.qa) / 100;
-
     if (!table) {
       table = await getTransmutationTable();
     }
-    const quarterly = computeTermGrade(initial, mode, table);
 
-    const initialUpToDate =
-      g.initialGrade !== null && Math.abs(g.initialGrade - initial) <= 1e-9;
-    if (!initialUpToDate || g.quarterlyGrade !== quarterly) {
-      updates.push({ id: g.id, initialGrade: initial, quarterlyGrade: quarterly });
+    const derived = deriveGradeValues(
+      {
+        writtenWorkScores: g.writtenWorkScores,
+        perfTaskScores: g.perfTaskScores,
+        examScores: g.examScores,
+        quarterlyAssessScore: g.quarterlyAssessScore,
+        quarterlyAssessMax: g.quarterlyAssessMax,
+        storedWrittenWorkPS: g.writtenWorkPS,
+        storedPerfTaskPS: g.perfTaskPS,
+        storedQuarterlyAssessPS: g.quarterlyAssessPS,
+      },
+      weights,
+      mode,
+      table,
+    );
+
+    if (
+      derived.writtenWorkPS === null ||
+      derived.perfTaskPS === null ||
+      derived.quarterlyAssessPS === null ||
+      derived.initialGrade === null ||
+      derived.quarterlyGrade === null
+    ) {
+      if (g.initialGrade !== null || g.quarterlyGrade !== null) unrecomputable++;
+      continue;
+    }
+
+    const approx = (a: number | null, b: number | null) =>
+      a !== null && b !== null && Math.abs(a - b) <= 1e-9;
+    const nextQAScore = derived.hasExamBreakdown ? derived.nextQuarterlyAssessScore : g.quarterlyAssessScore;
+    const nextQAMax = derived.hasExamBreakdown ? derived.nextQuarterlyAssessMax : g.quarterlyAssessMax;
+    const changed =
+      !approx(g.writtenWorkPS, derived.writtenWorkPS) ||
+      !approx(g.perfTaskPS, derived.perfTaskPS) ||
+      !approx(g.quarterlyAssessPS, derived.quarterlyAssessPS) ||
+      !approx(g.initialGrade, derived.initialGrade) ||
+      g.quarterlyGrade !== derived.quarterlyGrade ||
+      (derived.hasExamBreakdown &&
+        (!approx(g.quarterlyAssessScore ?? null, nextQAScore ?? null) ||
+          !approx(g.quarterlyAssessMax ?? null, nextQAMax ?? null)));
+
+    if (changed) {
+      updates.push({
+        id: g.id,
+        writtenWorkPS: derived.writtenWorkPS,
+        perfTaskPS: derived.perfTaskPS,
+        quarterlyAssessPS: derived.quarterlyAssessPS,
+        quarterlyAssessScore: nextQAScore,
+        quarterlyAssessMax: nextQAMax,
+        initialGrade: derived.initialGrade,
+        quarterlyGrade: derived.quarterlyGrade,
+      });
     }
   }
 
@@ -130,7 +178,15 @@ async function run(options: RecomputeOptions): Promise<RecomputeSummary> {
       batch.map((u) =>
         prisma.grade.update({
           where: { id: u.id },
-          data: { initialGrade: u.initialGrade, quarterlyGrade: u.quarterlyGrade },
+          data: {
+            writtenWorkPS: u.writtenWorkPS,
+            perfTaskPS: u.perfTaskPS,
+            quarterlyAssessPS: u.quarterlyAssessPS,
+            quarterlyAssessScore: u.quarterlyAssessScore,
+            quarterlyAssessMax: u.quarterlyAssessMax,
+            initialGrade: u.initialGrade,
+            quarterlyGrade: u.quarterlyGrade,
+          },
         }),
       ),
     );
