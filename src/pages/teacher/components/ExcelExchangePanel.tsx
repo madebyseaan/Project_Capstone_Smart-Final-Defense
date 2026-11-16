@@ -42,6 +42,7 @@ function errorMessage(err: unknown): string {
 
 export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly, autoStartImport = false, onImported, beforeImport }: ExcelExchangePanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const autoImportStartedRef = useRef(false);
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<EcrImportReport | null>(null);
   const [busy, setBusy] = useState<"downloading" | "previewing" | "importing" | null>(null);
@@ -70,9 +71,17 @@ export function ExcelExchangePanel({ classAssignmentId, selectedTerm, isViewOnly
     };
   }, [classAssignmentId, selectedTerm]);
 
-  // Open the OS file picker immediately when requested by the hero action
+  // Open the OS file picker immediately when requested by the hero action.
+  // Guard against React StrictMode double-invoking effects in development,
+  // which would otherwise open two file choosers for one click.
   useEffect(() => {
-    if (autoStartImport) fileInputRef.current?.click();
+    if (!autoStartImport) {
+      autoImportStartedRef.current = false;
+      return;
+    }
+    if (autoImportStartedRef.current) return;
+    autoImportStartedRef.current = true;
+    fileInputRef.current?.click();
   }, [autoStartImport]);
 
   const handleDownload = async () => {

@@ -113,9 +113,11 @@ export default function SystemHealth() {
     const tl = health?.sync.atlasTeachingLoad;
     if (!tl || tl.lastCheckedAt == null) return null;
     if (tl.state === "POPULATED" || tl.state === "EMPTY") return null;
-    const year = tl.atlasSchoolYearId
-      ? `year ${tl.atlasSchoolYearId} (${tl.atlasYearSource ?? "unknown source"})`
-      : "unknown year";
+    const year = tl.atlasSchoolYearLabel
+      ? `year ${tl.atlasSchoolYearLabel}${tl.atlasSchoolYearId != null ? ` (id ${tl.atlasSchoolYearId})` : ""} (${tl.atlasYearSource ?? "unknown source"})`
+      : tl.atlasSchoolYearId
+        ? `year ${tl.atlasSchoolYearId} (${tl.atlasYearSource ?? "unknown source"})`
+        : "unknown year";
     return `State: ${tl.state} for ${year}. Teacher class lists will stay empty until this recovers.${
       tl.lastError ? ` Last error: ${tl.lastError}` : ""
     }`;
@@ -308,8 +310,13 @@ export default function SystemHealth() {
                   <div className="rounded-lg border border-border p-3">
                     <p className="text-xs text-muted-foreground uppercase">Resolved ATLAS Year</p>
                     <p className="mt-1 font-bold text-foreground">
-                      {teachingLoad.atlasSchoolYearId ?? <Dash />}
+                      {teachingLoad.atlasSchoolYearLabel ?? teachingLoad.atlasSchoolYearId ?? <Dash />}
                     </p>
+                    {teachingLoad.atlasSchoolYearLabel != null && teachingLoad.atlasSchoolYearId != null && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ATLAS id: {teachingLoad.atlasSchoolYearId}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground mt-1">
                       Source: {teachingLoad.atlasYearSource ?? "—"}
                     </p>

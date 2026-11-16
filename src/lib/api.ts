@@ -381,6 +381,7 @@ export const gradesApi = {
       teacher: Teacher & { name: string };
       stats: {
         totalClasses: number;
+        totalSections?: number;
         totalStudents: number;
         subjects: string[];
         archivedClassesCount?: number;
@@ -2316,6 +2317,7 @@ export interface AdminSystemHealth {
     atlasTeachingLoad?: {
       state: "POPULATED" | "EMPTY" | "UNAVAILABLE" | "MISSING" | "INACTIVE" | "REJECTED" | "AUTH" | "MISMATCH" | "UNKNOWN";
       atlasSchoolYearId: number | null;
+      atlasSchoolYearLabel: string | null;
       atlasYearSource: string | null;
       assignmentsInPayload: number;
       assignmentsApplied: number;

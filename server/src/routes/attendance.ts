@@ -30,6 +30,24 @@ export async function assertSectionAttendanceWritable(sectionId: string): Promis
   return null;
 }
 
+/**
+ * The JWT carries id/username/role but not names. Audit logs read
+ * firstName/lastName, so look them up for accurate actor attribution.
+ */
+async function resolveAuditActor(req: AuthRequest) {
+  const fallback = req.user!;
+  if (!fallback?.id) return fallback;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: fallback.id },
+      select: { id: true, firstName: true, lastName: true, role: true },
+    });
+    return user ? { ...fallback, ...user } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function resolveMonthYear(query: Record<string, unknown>): { month: number; year: number } | null {
   const month = query.month ? parseInt(String(query.month)) : new Date().getMonth() + 1;
   const year = query.year ? parseInt(String(query.year)) : new Date().getFullYear();
@@ -167,7 +185,7 @@ router.post(
 
       await createAuditLog(
         AuditAction.DELETE,
-        req.user!,
+        await resolveAuditActor(req),
         `Attendance cleared: section ${sectionId} on ${date}`,
         "Attendance",
         `Deleted ${result.count} attendance record(s) for section ${sectionId} on ${date}.`,
@@ -245,7 +263,7 @@ router.post(
 
       await createAuditLog(
         AuditAction.UPDATE,
-        req.user!,
+        await resolveAuditActor(req),
         `Attendance saved: section ${sectionId} on ${date}`,
         "Attendance",
         `Saved ${attendance.length} attendance record(s) for section ${sectionId} on ${date}.`,

@@ -154,7 +154,7 @@ export function ClassRecordHeroTools({
             classAssignmentId={classAssignmentId}
             selectedTerm={selectedTerm}
             isViewOnly={isViewOnly}
-            autoStartImport
+            autoStartImport={excelOpen}
             beforeImport={beforeImport}
             onImported={() => {
               onChanged();

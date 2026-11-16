@@ -49,6 +49,7 @@ export default function EOSYOverviewTab({
     if (s) return s === "RETAINED" || s === "CONDITIONALLY_PROMOTED";
     return !r.promoted && r.finalStatus !== "PROMOTED" && r.finalStatus;
   }).length;
+  const subjectsWithGrades = allTermStatus.filter((s) => s.totalGrades > 0).length;
   const totalDraftSubjects = allTermStatus.filter((s) => s.totalDraft > 0).length;
   const totalFinalizedSubjects = allTermStatus.filter(
     (s) => s.totalDraft === 0 && s.totalGrades > 0
@@ -56,8 +57,9 @@ export default function EOSYOverviewTab({
   const draftBlockers = smartPromotion?.draftBlockers ?? [];
   const hasBlockers = draftBlockers.length > 0;
 
-  // Readiness checklist state
-  const gradesLocked = allTermStatus.length > 0 && allTermStatus.every((s: any) => s.totalDraft === 0);
+  // Readiness checklist state — only graded subjects count toward completion.
+  const gradesLocked =
+    subjectsWithGrades > 0 && allTermStatus.every((s: any) => s.totalDraft === 0);
   const eosyDone = !!eosyFinalized;
   const readyForRollover = gradesLocked && eosyDone;
 
@@ -103,7 +105,7 @@ export default function EOSYOverviewTab({
                     {allTermStatus.length === 0
                       ? "No subjects loaded yet."
                       : gradesLocked
-                        ? `${totalFinalizedSubjects}/${allTermStatus.length} subjects finalized across T1–T3.`
+                        ? `${totalFinalizedSubjects}/${subjectsWithGrades} subjects finalized across T1–T3.`
                         : `${totalDraftSubjects} subject(s) still have draft grades. Finalize them term-by-term on the Term Finalization page.`}
                   </p>
                   {allTermStatus.length > 0 && (
@@ -262,14 +264,14 @@ export default function EOSYOverviewTab({
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-foreground">Grade Locking Progress</span>
               <span className="text-sm text-muted-foreground">
-                {totalFinalizedSubjects}/{allTermStatus.length} subjects finalized
+                {totalFinalizedSubjects}/{subjectsWithGrades} subjects finalized
               </span>
             </div>
             <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
-                  width: `${allTermStatus.length > 0 ? (totalFinalizedSubjects / allTermStatus.length) * 100 : 0}%`,
+                  width: `${subjectsWithGrades > 0 ? (totalFinalizedSubjects / subjectsWithGrades) * 100 : 0}%`,
                   backgroundColor: totalDraftSubjects === 0 ? "#10b981" : colors.primary,
                 }}
               />

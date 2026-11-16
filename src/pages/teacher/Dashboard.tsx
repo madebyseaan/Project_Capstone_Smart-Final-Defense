@@ -58,6 +58,7 @@ interface DashboardData {
   };
   stats: {
     totalClasses: number;
+    totalSections?: number;
     totalStudents: number;
     subjects: string[];
     archivedClassesCount?: number;
@@ -428,7 +429,7 @@ export default function TeacherDashboard() {
               </div>
 
               <span className="text-xs text-white/70 font-medium hidden sm:inline">
-                {data.stats.totalStudents} Enrolled Learners across {data.stats.totalClasses} Sections
+                {data.stats.totalStudents} Enrolled Learners across {data.stats.totalSections ?? data.stats.totalClasses} Sections
               </span>
             </div>
 

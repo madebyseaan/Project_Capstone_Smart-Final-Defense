@@ -151,6 +151,7 @@ export default function registerDashboard(router: Router): void {
 
           const totalStudents = [...uniqueSectionEnrollments.values()].reduce((sum, n) => sum + n, 0);
           const totalTeachingClasses = activeTeachingAssignments.length;
+          const totalSections = uniqueSectionEnrollments.size;
 
         const gradeDeadline = await resolveTermDeadline(teacher.id, currentSchoolYear);
 
@@ -161,6 +162,7 @@ export default function registerDashboard(router: Router): void {
           },
           stats: {
             totalClasses: totalTeachingClasses,
+            totalSections,
             totalStudents,
             subjects: [...new Set(classAssignments.map((ca: ClassAssignmentWithRelations) => ca.subject.name))],
             archivedClassesCount: archivedAssignments.length,

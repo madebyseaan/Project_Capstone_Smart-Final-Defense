@@ -63,6 +63,7 @@ export type AtlasTeachingLoadState =
 let teachingLoadHealth: {
   state: AtlasTeachingLoadState;
   atlasSchoolYearId: number | null;
+  atlasSchoolYearLabel: string | null;
   atlasYearSource: string | null;
   assignmentsInPayload: number;
   assignmentsApplied: number;
@@ -73,6 +74,7 @@ let teachingLoadHealth: {
 } = {
   state: 'UNKNOWN',
   atlasSchoolYearId: null,
+  atlasSchoolYearLabel: null,
   atlasYearSource: null,
   assignmentsInPayload: 0,
   assignmentsApplied: 0,
@@ -200,6 +202,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
     const resolvedAtlasSY = await resolveAtlasSchoolYear(atlasSeedYearId);
     let atlasSchoolYearId = resolvedAtlasSY.id;
     let atlasYearSource: string = resolvedAtlasSY.source;
+    teachingLoadHealth.atlasSchoolYearLabel = schoolYearLabel;
     logger.debug(
       `[AtlasSync] Using EnrollPro SY ${schoolYearLabel} (id=${enrollProSchoolYearId}, source=${resolvedSY.source}) and Atlas SY id=${atlasSchoolYearId} (source=${atlasYearSource})`,
     );

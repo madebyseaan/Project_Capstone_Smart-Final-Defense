@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 
 import { registrarApi, type Section } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 import { Tooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -208,6 +209,47 @@ export default function StudentRecords() {
     return matchesSearch && matchesGrade && matchesSection;
   });
 
+  const handleExport = () => {
+    if (filteredStudents.length === 0) {
+      toast.error("No student records to export");
+      return;
+    }
+    try {
+      const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+      const headers = ["LRN", "Student Name", "Gender", "Grade Level", "Section", "Status"];
+      const rows = filteredStudents.map((student) => {
+        const fullName = [student.lastName, student.firstName, student.middleName, student.suffix]
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+        return [
+          student.lrn,
+          fullName,
+          student.gender ?? "",
+          gradeLevelLabels[student.gradeLevel ?? ""] ?? student.gradeLevel ?? "",
+          student.sectionName ?? "",
+          student.status ?? "",
+        ]
+          .map(escape)
+          .join(",");
+      });
+      const csv = [headers.map(escape).join(","), ...rows].join("\r\n");
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `student-records-${selectedSchoolYear || "all"}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success(`Exported ${filteredStudents.length} student record(s)`);
+    } catch {
+      toast.error("Failed to export student records");
+    }
+  };
+
   // Open the records vault drawer (SF10 or all documents)
   const openVault = (student: StudentWithEnrollment, tab: VaultTab) => {
     setVaultTab(tab);
@@ -311,8 +353,14 @@ export default function StudentRecords() {
                 >
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
                 </Button>
-                <Tooltip content="Export student records to CSV or Excel format">
-                  <Button variant="outline" size="sm" className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs">
+                <Tooltip content="Export the filtered student records to CSV">
+                  <Button
+                    onClick={handleExport}
+                    disabled={loading}
+                    variant="outline"
+                    size="sm"
+                    className="border-border/70 bg-background hover:bg-muted/70 text-foreground font-medium text-xs"
+                  >
                     <Download className="w-4 h-4 mr-1.5" />
                     Export
                   </Button>
