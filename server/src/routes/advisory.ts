@@ -408,6 +408,56 @@ router.get(
         }, new Map<string, (ClassAssignment & { subject: Subject; teacher: TeacherWithUser; grades: Grade[] })>()).values()
       );
 
+      // Grades can live on predecessor (archived) class assignments after a
+      // teacher reassignment. The class record and SF9/SF10 composers already
+      // inherit those grades; the profile must do the same or it shows Pending
+      // for subjects whose grades were entered before the reassignment.
+      const allAssignmentsForGrades = await prisma.classAssignment.findMany({
+        where: {
+          sectionId: currentEnrollment.sectionId,
+          schoolYear: currentEnrollment.schoolYear,
+          subject: {
+            NOT: {
+              code: {
+                startsWith: 'HG',
+                mode: 'insensitive'
+              }
+            }
+          }
+        },
+        include: {
+          subject: true,
+          grades: {
+            where: { studentId },
+          },
+        },
+      }) as (ClassAssignment & { subject: Subject; grades: Grade[] })[];
+
+      const nonNullQuarterCountByAssignment = new Map<string, number>();
+      for (const assignment of allAssignmentsForGrades) {
+        nonNullQuarterCountByAssignment.set(
+          assignment.id,
+          assignment.grades.filter((g) => g.quarterlyGrade !== null).length,
+        );
+      }
+
+      // Per subject key, list grades by priority: active assignment first,
+      // then the assignment with the most completed quarters, then freshest.
+      const gradeCandidatesBySubject = new Map<string, Array<{ grade: Grade; priority: number }>>();
+      for (const assignment of allAssignmentsForGrades) {
+        if (!isSubjectAlignedWithGrade(assignment.subject.code, currentEnrollment.section.gradeLevel)) continue;
+        if (isHomeroomGuidanceCode(assignment.subject.code)) continue;
+        const key = subjectDedupKey(assignment.subject.code, assignment.subject.name);
+        const list = gradeCandidatesBySubject.get(key) ?? [];
+        const priorityBase =
+          (assignment.isActive ? 10_000 : 0) +
+          (nonNullQuarterCountByAssignment.get(assignment.id) ?? 0) * 100;
+        for (const grade of assignment.grades) {
+          list.push({ grade, priority: priorityBase + grade.updatedAt.getTime() / 1e12 });
+        }
+        gradeCandidatesBySubject.set(key, list);
+      }
+
       // Format grades by subject
       const subjectGrades = dedupedAssignments.map((ca) => {
         const terms = ["T1", "T2", "T3"] as const;
@@ -419,9 +469,15 @@ router.get(
           quarterlyGrade: number | null;
           qualitativeDescriptor: string | null;
         } | null> = {};
-        
+
+        const candidates = [
+          ...(gradeCandidatesBySubject.get(subjectDedupKey(ca.subject.code, ca.subject.name)) ?? []),
+        ].sort((a, b) => b.priority - a.priority);
+
         terms.forEach((q) => {
-          const grade = ca.grades.find((g: Grade) => g.term === q);
+          // Prefer a completed quarter; fall back to any row for partial scores.
+          const grade = candidates.find((c) => c.grade.term === q && c.grade.quarterlyGrade !== null)?.grade
+            ?? candidates.find((c) => c.grade.term === q)?.grade;
           gradesByTerm[q] = grade ? {
             writtenWorkPS: grade.writtenWorkPS,
             perfTaskPS: grade.perfTaskPS,
