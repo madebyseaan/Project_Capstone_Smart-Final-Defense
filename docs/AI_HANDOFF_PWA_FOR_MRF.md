@@ -4,6 +4,7 @@
 **Source commit:** `3fb01a8 feat(teacher): add installable PWA and mobile UI polish`
 **Audience:** MRF engineering team and/or MRF's AI coding agent.
 **Purpose:** Reproduce SMART's installable, online-first PWA on the MRF codebase without re-discovering the pitfalls.
+**Rollout plan:** `docs/PLAN_MRF_PWA_ROLLOUT.md` (phases, inputs worksheet, gates, reporting format).
 
 This document is self-contained. Every code block below is the actual code shipped in SMART, not a sketch. Adapt only the parts marked **ADAPT** (branding, routes, portal names, icons, health endpoint). Keep the behavior and the guardrails identical.
 

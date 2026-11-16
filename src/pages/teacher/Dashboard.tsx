@@ -14,8 +14,7 @@ import {
   Medal,
   Sparkles,
   Clock,
-  ChevronDown,
-  ChevronUp,
+  Printer,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +24,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { gradesApi, scheduleApi, type ClassAssignment, type GradeDeadlineInfo, type ArchivedClassInfo } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { MobileDashboard } from "./components/MobileDashboard";
+import { AdministrativeUpdates } from "./components/AdministrativeUpdates";
+import CertificatePrintDialog from "./components/CertificatePrintDialog";
 
 import {
   Select,
@@ -151,12 +152,9 @@ export default function TeacherDashboard() {
   const [attentionSectionFilter, setAttentionSectionFilter] = useState<string>("all");
   const [attentionSubjectFilter, setAttentionSubjectFilter] = useState<string>("all");
   const [showAllGrading, setShowAllGrading] = useState(false);
+  const [certOpen, setCertOpen] = useState(false);
   const [todayClasses, setTodayClasses] = useState<{ subject: { code: string; name: string }; section: { name: string; gradeLevel: string }; startTime: string; endTime: string; roomId: number | null }[]>([]);
   const [now, setNow] = useState(new Date());
-  const [removalExpanded, setRemovalExpanded] = useState(false);
-  const [transferExpanded, setTransferExpanded] = useState(() => {
-    return sessionStorage.getItem('teacher_transfer_notice_ack') !== 'true';
-  });
 
   // Get current day key (MONDAY, TUESDAY, etc.)
   const getDayKey = (): string => {
@@ -573,128 +571,12 @@ export default function TeacherDashboard() {
         ))}
       </div>
 
-      {/* Removal Banner (rose — action needed) */}
-      {(() => {
-        const removedCount = data.removedCount ?? 0;
-        const transferredCount = data.transferredCount ?? 0;
-        const archivedClasses = data.archivedClasses ?? stats?.archivedClasses ?? [];
-
-        if (removedCount === 0 && transferredCount === 0) return null;
-
-        const humanReason = (kind: string) => {
-          switch (kind) {
-            case 'REMOVED': return 'Removed from the Atlas teaching load';
-            case 'ENROLLPRO_REMOVED': return 'Removed in EnrollPro (teacher unassigned)';
-            case 'SUSPENDED': return 'Teacher account suspended';
-            case 'ADMIN_REMOVED': return 'Removed by a SMART administrator';
-            case 'YEAR_ARCHIVE': return 'School year archived';
-            default: return 'Removed';
-          }
-        };
-
-        const removedClasses = archivedClasses.filter(a => a.kind !== 'TRANSFERRED' && a.kind !== 'YEAR_ARCHIVE');
-        const transferredClasses = archivedClasses.filter(a => a.kind === 'TRANSFERRED');
-
-        return (
-          <>
-            {removedCount > 0 && (
-              <Card className="border border-destructive/20 rounded-2xl overflow-hidden bg-destructive/5">
-                <CardContent className="p-6 md:p-8">
-                  <div
-                    className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 cursor-pointer"
-                    onClick={() => setRemovalExpanded(!removalExpanded)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRemovalExpanded(!removalExpanded); } }}
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={removalExpanded}
-                  >
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-destructive">Atlas removal detected</p>
-                      <h3 className="text-lg font-bold text-foreground mt-1">{removedCount} subject assignment{removedCount !== 1 ? 's were' : ' was'} removed from the current Atlas load</h3>
-                      <p className="text-sm text-muted-foreground font-medium mt-1">Grade history is preserved. Contact the admin if this was not intended.</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Link to="/teacher/classes">
-                        <Badge className="bg-destructive text-destructive-foreground font-bold px-4 py-2 rounded-xl border-0 shadow-lg text-sm cursor-pointer hover:opacity-90 transition-opacity">
-                          VIEW ARCHIVED RECORDS
-                        </Badge>
-                      </Link>
-                      <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center">
-                        {removalExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                      </div>
-                    </div>
-                  </div>
-                  {removalExpanded && (
-                    <div className="mt-6 space-y-3">
-                      {removedClasses.map((ac) => (
-                        <div key={ac.id} className="flex items-center justify-between p-4 rounded-xl bg-background border border-destructive/10">
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">{ac.subjectName} — {ac.sectionName} ({gradeLevelLabels[ac.gradeLevel] || ac.gradeLevel})</p>
-                            <p className="text-xs text-muted-foreground mt-1">{humanReason(ac.kind)}{ac.archivedAt ? ` • ${new Date(ac.archivedAt).toLocaleDateString()}` : ''}</p>
-                          </div>
-                          {ac.hasGrades && (
-                            <Badge variant="secondary" className="text-[10px] font-bold">Grades preserved</Badge>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Transfer Notice (amber — informational) */}
-            {transferredCount > 0 && (
-              <Card className="border border-amber-200 rounded-2xl overflow-hidden bg-amber-50/50">
-                <CardContent className="p-6 md:p-8">
-                  <div
-                    className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 cursor-pointer"
-                    onClick={() => {
-                      const next = !transferExpanded;
-                      setTransferExpanded(next);
-                      if (!next) sessionStorage.setItem('teacher_transfer_notice_ack', 'true');
-                      else sessionStorage.removeItem('teacher_transfer_notice_ack');
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        const next = !transferExpanded;
-                        setTransferExpanded(next);
-                        if (!next) sessionStorage.setItem('teacher_transfer_notice_ack', 'true');
-                        else sessionStorage.removeItem('teacher_transfer_notice_ack');
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={transferExpanded}
-                  >
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-amber-700">Transfer notice</p>
-                      <h3 className="text-lg font-bold text-foreground mt-1">{transferredCount} class{transferredCount !== 1 ? 'es were' : ' was'} transferred to another teacher</h3>
-                      <p className="text-sm text-muted-foreground font-medium mt-1">This is normal administrative action. Your grades for earlier terms are preserved.</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-                      {transferExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                    </div>
-                  </div>
-                  {transferExpanded && (
-                    <div className="mt-6 space-y-3">
-                      {transferredClasses.map((ac) => (
-                        <div key={ac.id} className="flex items-center justify-between p-4 rounded-xl bg-background border border-amber-100">
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">{ac.subjectName} — {ac.sectionName} was transferred to {ac.successorTeacherName ?? 'another teacher'}{ac.archivedAt ? ` on ${new Date(ac.archivedAt).toLocaleDateString()}` : ''}</p>
-                            <p className="text-xs text-muted-foreground mt-1">Your grades for earlier terms are preserved and already included in the student's permanent record (SF10). The new teacher continues from the current term.</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </>
-        );
-      })()}
+      {/* Administrative updates — compact, expandable, dismissible */}
+      <AdministrativeUpdates
+        removedCount={data.removedCount ?? 0}
+        transferredCount={data.transferredCount ?? 0}
+        archivedClasses={data.archivedClasses ?? stats?.archivedClasses ?? []}
+      />
 
       {/* ── Performance Mastery ── Full Width */}
       <Card className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
@@ -915,7 +797,13 @@ export default function TeacherDashboard() {
 
         if (!isGradingComplete) return null;
 
+        const allHonors = [
+          ...(advisoryHonors?.advisoryHonors || []),
+          ...(advisoryHonors?.withHonors || []),
+        ].sort((a, b) => b.grade - a.grade);
+
         return (
+          <>
           <Card className="overflow-hidden rounded-2xl border border-border bg-card">
             <CardHeader className="p-6 pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div className="flex items-center gap-3">
@@ -928,13 +816,25 @@ export default function TeacherDashboard() {
                 </div>
               </div>
               
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {advisoryHonors?.hasAdvisory && (
                   <Badge variant="secondary" className="bg-muted text-muted-foreground border-border font-bold px-4 py-2 rounded-xl text-[10px] tracking-widest uppercase">
                     ADVISORY CLASS
                   </Badge>
                 )}
-                
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-semibold"
+                  onClick={() => setCertOpen(true)}
+                  disabled={allHonors.length === 0}
+                >
+                  <Printer className="mr-1.5 h-3.5 w-3.5" />
+                  Print certificates
+                </Button>
+
                 <Select value={selectedHonorsTerm} onValueChange={(val) => val && setSelectedHonorsTerm(val)}>
                   <SelectTrigger className="h-12! w-full sm:h-8! sm:w-[150px]">
                     <SelectValue placeholder="Select Term" />
@@ -1034,6 +934,14 @@ export default function TeacherDashboard() {
               </div>
             </CardContent>
           </Card>
+          <CertificatePrintDialog
+            open={certOpen}
+            onClose={() => setCertOpen(false)}
+            students={allHonors}
+            term={selectedHonorsTerm}
+            schoolYear={data.currentSchoolYear || data.classAssignments[0]?.schoolYear}
+          />
+          </>
         );
       })()}
 

@@ -2334,7 +2334,18 @@ export interface AdminSystemHealth {
 // Used by teacher/registrar pages; the admin-only /admin/settings endpoint is
 // reserved for admins.
 export interface PublicSettingsData {
-  settings: { currentSchoolYear?: string; currentTerm?: string; termDatesDerived?: boolean };
+  settings: {
+    currentSchoolYear?: string;
+    currentTerm?: string;
+    termDatesDerived?: boolean;
+    schoolName?: string;
+    schoolId?: string;
+    division?: string;
+    region?: string;
+    schoolHeadName?: string | null;
+    address?: string;
+    logoUrl?: string;
+  };
   termLabels: TermLabels;
 }
 
