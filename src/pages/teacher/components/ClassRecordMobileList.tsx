@@ -6,6 +6,7 @@ import { SURFACE } from "./MobileDashboardTokens";
 import { SectionHeading } from "./MobileDashboardWidgets";
 import type { ClassRecord, AimsAssessmentInfo, ScoreItem } from "@/lib/api";
 import { computeExamPS } from "@/lib/gradeMath";
+import { MAX_PT_TASKS, MAX_WW_TASKS } from "./classRecordLimits";
 
 interface ClassRecordMobileListProps {
   records: ClassRecord[];
@@ -92,14 +93,14 @@ export function ClassRecordMobileList({
               const grade = record.grades.find((entry) => entry.term === selectedTerm);
               const finalGrade = getDisplayFinalGrade(record);
 
-              const wwScores = (grade?.writtenWorkScores ?? []) as {
+              const wwScores = ((grade?.writtenWorkScores ?? []) as {
                 score: number | null;
                 maxScore: number | null;
-              }[];
-              const ptScores = (grade?.perfTaskScores ?? []) as {
+              }[]).slice(0, MAX_WW_TASKS);
+              const ptScores = ((grade?.perfTaskScores ?? []) as {
                 score: number | null;
                 maxScore: number | null;
-              }[];
+              }[]).slice(0, MAX_PT_TASKS);
               const wwTotal = wwScores.reduce((sum, score) => sum + (Number(score.score) || 0), 0);
               const wwMax = wwScores.reduce((sum, score) => sum + (Number(score.maxScore) || 0), 0);
               const ptTotal = ptScores.reduce((sum, score) => sum + (Number(score.score) || 0), 0);

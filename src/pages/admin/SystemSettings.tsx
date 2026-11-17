@@ -16,8 +16,7 @@ import { SchoolInformationSection } from "./components/SchoolInformationSection"
 import { GradeLockSection } from "./components/GradeLockSection";
 import { AcademicSection } from "./components/AcademicSection";
 import { SecuritySection } from "./components/SecuritySection";
-import DeveloperToolsCard from "./components/DeveloperToolsCard";
-import AttendanceToolsCard from "./components/AttendanceToolsCard";
+import DemoDataToolsCard from "./components/DemoDataToolsCard";
 
 const TAB_ITEMS: FilterTabItem[] = [
   { value: "school", label: "School", icon: School },
@@ -329,8 +328,7 @@ export default function SystemSettings() {
             <Route className="w-4 h-4 mt-0.5 shrink-0" />
             <span>Server health, sync history, and diagnostics live on the <Link to="/admin/health" className="font-medium text-primary underline-offset-2 hover:underline">System Health</Link> page.</span>
           </div>
-          <DeveloperToolsCard />
-          <AttendanceToolsCard />
+          <DemoDataToolsCard />
         </TabsContent>
       </FilterTabs>
     </div>

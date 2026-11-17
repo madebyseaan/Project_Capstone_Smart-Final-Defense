@@ -114,8 +114,8 @@ function buildGradeForTarget(targetQG: number, weights: { ww: number; pt: number
   const wwPS = Math.min(100, Math.max(0, targetInitial + 1.5));
   const ptPS = Math.min(100, Math.max(0, targetInitial - 0.5));
   const qaPS = Math.min(100, Math.max(0, targetInitial + 0.3));
-  const wwScores = genWW(4, 10, wwPS);
-  const ptScores = genPT(4, 20, ptPS);
+  const wwScores = genWW(3, 10, wwPS);
+  const ptScores = genPT(2, 20, ptPS);
   const qaScore = Math.round(100 * (qaPS / 100));
   const computed = calculateGrades(wwScores, ptScores, qaScore, 100, weights.ww, weights.pt, weights.qa);
   return { writtenWorkScores: wwScores, perfTaskScores: ptScores, quarterlyAssessScore: qaScore, quarterlyAssessMax: 100, computed };

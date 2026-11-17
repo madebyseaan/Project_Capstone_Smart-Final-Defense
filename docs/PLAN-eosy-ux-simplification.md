@@ -93,7 +93,13 @@ EnrollPro        new year already active → enrollments flow in
 
 ---
 
-## Appendix — Developer Tools (Demo Seeding)
+## Appendix — Demo Data Tools (Demo Seeding)
+
+> Updated 2026-11-17: the two demo cards were consolidated into
+> `DemoDataToolsCard.tsx` (Seed Demo Data / Clear Demo Data, Finalize toggle).
+> See `docs/PLAN-demo-seed-consolidation.md` for the current profile
+> (3 WW / 2 PT / ST1-ST2-TE, 1 retained G9, 1 remedial G8, 1 program failure G7-G9,
+> SPA/SPS/STE pinned at 85+).
 
 ### Goal
 One-click simulated grades for every teacher in the active school year, for

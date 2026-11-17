@@ -604,7 +604,15 @@ export default function (router: Router) {
 
         const serverRoot = path.resolve(__dirname, "..", "..", "..");
         const bin = path.join(serverRoot, "node_modules", "ts-node", "dist", "bin.js");
-        const scriptArgs = ["--transpile-only", "prisma/seed-teacher-scores.ts", "--all", "--complete-transferees"];
+        // Demo profile: 1 retained (G9), 1 remedial (G8), 1 special-program
+        // failure (G7-G9, exactly 1 subject). Script defaults stay 2/2/0 for
+        // manual runs; only this dev tool pins the controlled profile.
+        const scriptArgs = [
+          "--transpile-only", "prisma/seed-teacher-scores.ts", "--all", "--complete-transferees",
+          "--retained", "1", "--remedial", "1",
+          "--retained-grade", "9", "--remedial-grade", "8",
+          "--program-fail", "1",
+        ];
         if (finalized) scriptArgs.push("--finalized");
         if (clearFirst) scriptArgs.push("--clear");
 
@@ -649,7 +657,7 @@ export default function (router: Router) {
           AuditSeverity.WARNING
         );
 
-        const summaryLine = output.split("\n").filter((l) => l.includes("GRAND SUMMARY") || l.includes("Total grades") || l.includes("EOSY finalize") || l.includes("sections OK")).join("\n").trim();
+        const summaryLine = output.split("\n").filter((l) => l.includes("GRAND SUMMARY") || l.includes("Total grades") || l.includes("EOSY finalize") || l.includes("sections OK") || l.includes("PROGRAM FAIL") || l.includes("RETAINED") || l.includes("REMEDIAL")).join("\n").trim();
         res.json({
           message: `Seeding complete for ${schoolYearLabel}${finalized ? " — grades finalized and EOSY-ready (rollover safe)" : " — draft grades (finalize via EOSY page)"}`,
           output: output.slice(-4000),

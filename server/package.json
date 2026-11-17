@@ -20,6 +20,7 @@
     "data:check": "ts-node --transpile-only scripts/check-data-integrity.ts",
     "grades:realign": "ts-node scripts/realign-seeded-grades.ts",
     "grades:recompute": "ts-node prisma/recompute-stale-grades.ts",
+    "grades:trim-columns": "ts-node prisma/trim-assessment-columns.ts",
     "grades:check-alignment": "ts-node prisma/check-grade-alignment.ts",
     "prisma:studio": "prisma studio",
     "test": "node scripts/require-test-db.js && ts-node --transpile-only scripts/seed-test-base.ts && vitest run",

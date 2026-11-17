@@ -63,8 +63,8 @@ export const LedgerRow = React.memo(
     const grade = record?.grades?.find((g) => g.term === selectedTerm);
     const isInherited = !!(grade as any)?.inheritedFrom;
 
-    const wwScores = isHps ? hpsData?.wwScores || [] : ((grade?.writtenWorkScores || []) as ScoreItem[]);
-    const ptScores = isHps ? hpsData?.ptScores || [] : ((grade?.perfTaskScores || []) as ScoreItem[]);
+    const wwScores = (isHps ? hpsData?.wwScores || [] : ((grade?.writtenWorkScores || []) as ScoreItem[])).slice(0, wwCount);
+    const ptScores = (isHps ? hpsData?.ptScores || [] : ((grade?.perfTaskScores || []) as ScoreItem[])).slice(0, ptCount);
 
     const rowStyle = isHps && hpsStickyTop !== undefined
       ? { top: typeof hpsStickyTop === "number" ? `${hpsStickyTop}px` : hpsStickyTop }

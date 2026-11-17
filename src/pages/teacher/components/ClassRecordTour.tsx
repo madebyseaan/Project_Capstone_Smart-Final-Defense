@@ -189,9 +189,9 @@ const TOUR_STEPS: TourStep[] = [
     icon: Zap,
     badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
     content:
-      "Have 5 quizzes or 4 performance tasks this quarter? Click the (+) button inside Written Work or Performance Tasks to dynamically add columns, or (-) to remove extra ones. The Total, PS, and Weighted Score automatically adjust.",
+      "Need more activities this quarter? Click the (+) button inside Written Work or Performance Tasks to add columns, or (-) to remove extra ones. The Total, PS, and Weighted Score automatically adjust.",
     devTip:
-      "You can add up to 10 activities per category. Column removal warns you first if scores are currently recorded.",
+      "You can add up to 5 Written Works and 3 Performance Tasks per term. Column removal warns you first if scores are currently recorded.",
     action: ({ setShowAssessmentDetails, setSelectedColumn }) => {
       setShowAssessmentDetails(false);
       setSelectedColumn(null);

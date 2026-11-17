@@ -1,6 +1,7 @@
 import { gradesApi, type ClassRecord, type ScoreItem } from "@/lib/api";
 import type React from "react";
 import { EXAM_SUB_TESTS, computeExamPS, defaultExamScores } from "@/lib/gradeMath";
+import { MAX_PT_TASKS, MAX_WW_TASKS } from "./classRecordLimits";
 
 export type ScoreCategory = "WW" | "PT" | "QA" | "EX";
 
@@ -444,6 +445,8 @@ export async function executeHpsUpdate({
 }: HpsUpdateArgs) {
   if (isViewOnly) return false;
   if (!classAssignmentId || classRecord.length === 0) return;
+  if (category === "WW" && index >= MAX_WW_TASKS) return false;
+  if (category === "PT" && index >= MAX_PT_TASKS) return false;
 
   setClassRecord((prev) =>
     prev.map((record) => {

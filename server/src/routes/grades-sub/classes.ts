@@ -26,6 +26,7 @@ import {
 import { checkGradeEditLocks, getGradeLockState } from "../../lib/gradeLocks";
 import { computeExamPS } from "../../lib/examMath";
 import { getGradingModeForSchoolYear } from "../../lib/gradingMode";
+import { MAX_PT_COLUMNS, MAX_WW_COLUMNS } from "../../lib/assessmentColumns";
 
 export default function registerClasses(router: Router): void {
   // Get all class assignments for the logged-in teacher
@@ -463,12 +464,12 @@ export default function registerClasses(router: Router): void {
         const seedGrade = existingGrade ?? await getPredecessorGradeBase(classAssignment, studentId, term);
 
         const mergedWrittenWorkScores = (writtenWorkScores !== undefined
-              ? writtenWorkScores
-              : (seedGrade?.writtenWorkScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
+              ? writtenWorkScores.slice(0, MAX_WW_COLUMNS)
+              : ((seedGrade?.writtenWorkScores as Array<{ name: string; score: number; maxScore: number }> | null)?.slice(0, MAX_WW_COLUMNS) ?? null)) ?? null;
 
         const mergedPerfTaskScores = (perfTaskScores !== undefined
-              ? perfTaskScores
-              : (seedGrade?.perfTaskScores as Array<{ name: string; score: number; maxScore: number }> | null)) ?? null;
+              ? perfTaskScores.slice(0, MAX_PT_COLUMNS)
+              : ((seedGrade?.perfTaskScores as Array<{ name: string; score: number; maxScore: number }> | null)?.slice(0, MAX_PT_COLUMNS) ?? null)) ?? null;
 
         let mergedExamScores = (examScores !== undefined
               ? examScores
@@ -762,11 +763,11 @@ export default function registerClasses(router: Router): void {
             const existing = gradeMap.get(update.studentId) ?? seedMap.get(update.studentId);
 
             const mergedWrittenWorkScores = update.writtenWorkScores !== undefined
-              ? update.writtenWorkScores
-              : (existing?.writtenWorkScores as any[] ?? null);
+              ? update.writtenWorkScores.slice(0, MAX_WW_COLUMNS)
+              : ((existing?.writtenWorkScores as any[] ?? null)?.slice(0, MAX_WW_COLUMNS) ?? null);
             const mergedPerfTaskScores = update.perfTaskScores !== undefined
-              ? update.perfTaskScores
-              : (existing?.perfTaskScores as any[] ?? null);
+              ? update.perfTaskScores.slice(0, MAX_PT_COLUMNS)
+              : ((existing?.perfTaskScores as any[] ?? null)?.slice(0, MAX_PT_COLUMNS) ?? null);
             let mergedExamScores = update.examScores !== undefined
               ? update.examScores
               : (existing?.examScores as any[] ?? null);

@@ -3,12 +3,15 @@ import { PrismaClient, Term, GradeStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { resolveCanonicalWeights } from "./canonicalGrade";
 import { finalizeSectionEosy } from "../src/lib/promotion";
+import { normalizeProgramCode } from "../src/lib/programCode";
+import { pickProgramFailureStudents } from "./seedProgramFailure";
 import {
   STE_ELIGIBLE_TIERS,
   TIER_LABELS,
   TIER_QG,
   buildGradeForTarget,
   hashStr,
+  initGradingMode,
   initTransmutation,
   seededRandom,
   type SpecialStudent,
@@ -22,6 +25,14 @@ const prisma = new PrismaClient({
 });
 
 const VALID_TERMS: Term[] = ["T1", "T2", "T3"];
+
+// Programs with DepEd minimum-grade retention rules:
+//   SPA - 85% in specialization, no failing grade, >=80% in other subjects
+//   SPS - 85% in specialization, >=80% in other subjects, no failing grade
+//   STE - 85% average in Science/Math/English, 83% in the rest, no grade <80%
+// Seeding these learners at 85+ everywhere keeps demo cohorts program-eligible;
+// only the intentional program-failure learner drops below.
+const HIGH_RETENTION_PROGRAMS = new Set(["STE", "SPA", "SPS"]);
 
 // School names an older seed run fabricated for transferee `previousSchool`.
 // Kept only so --clear-transferee-details can remove those fabricated values;
@@ -143,6 +154,7 @@ function getTierForStudentSubject(
   term: Term,
   specialStudents: SpecialStudent[],
   normalTiers: Map<string, Tier>,
+  studentPrograms: Map<string, string>,
 ): { tier: Tier; isFailedSubject: boolean } {
   const special = specialStudents.find(s => s.studentId === studentId);
   if (!special) {
@@ -151,7 +163,13 @@ function getTierForStudentSubject(
 
   const isFailed = special.failedSubjects.includes(subjectCode);
   if (!isFailed) {
-    // Passing subjects for special students use AVERAGE tier
+    // Program learners keep their 85+ tiers in non-failed subjects so only the
+    // intentional failure can affect program eligibility. REGULAR special picks
+    // (retained/remedial) use AVERAGE for their passing subjects.
+    const program = normalizeProgramCode(studentPrograms.get(studentId));
+    if (HIGH_RETENTION_PROGRAMS.has(program)) {
+      return { tier: normalTiers.get(studentId) ?? "STE_ELIGIBLE", isFailedSubject: false };
+    }
     return { tier: "AVERAGE", isFailedSubject: false };
   }
 
@@ -187,10 +205,10 @@ function assignNormalTiers(students: StudentInfo[], studentPrograms: Map<string,
 
   for (let i = 0; i < sorted.length; i++) {
     const student = sorted[i];
-    const program = (studentPrograms.get(student.id) ?? "REGULAR").toUpperCase();
-    // STE learners must stay at 85+ in every subject to remain eligible for the
-    // program — never give them a mixed pattern tier.
-    if (program === "STE") {
+    const program = normalizeProgramCode(studentPrograms.get(student.id));
+    // SPA/SPS/STE learners must stay at 85+ in every subject to remain eligible
+    // for their programs — never give them a mixed pattern tier.
+    if (HIGH_RETENTION_PROGRAMS.has(program)) {
       tiers.set(student.id, STE_ELIGIBLE_TIERS[i % STE_ELIGIBLE_TIERS.length]);
       continue;
     }
@@ -230,6 +248,8 @@ interface ParsedArgs {
   remedialCount: number;
   retainedGrade: string | null;
   remedialGrade: string | null;
+  programFailCount: number;
+  programFailGrade: string | null;
   completeTransferees: boolean;
   clearTransfereeDetails: boolean;
 }
@@ -249,6 +269,8 @@ function parseArgs(): ParsedArgs {
     console.error("  --retained-grade G     Restrict retained picks to this grade (e.g. 9)");
     console.error("  --remedial N           Number of remedial students (default: 2)");
     console.error("  --remedial-grade G     Restrict remedial picks to this grade (e.g. 8)");
+    console.error("  --program-fail N       Special-program learners failing exactly 1 subject (default: 0, G7-G9 only)");
+    console.error("  --program-fail-grade G Restrict program-failure picks to this grade (e.g. 7)");
     console.error("  --complete-transferees Fill in missing birth date/sex for existing transferees");
     console.error("  --clear-transferee-details  Standalone mode: remove seed-fabricated previous-school");
     console.error("                              details so the EnrollPro sync can fill the real values");
@@ -274,6 +296,8 @@ function parseArgs(): ParsedArgs {
   const remedialIdx = remaining.indexOf("--remedial");
   const retainedGradeIdx = remaining.indexOf("--retained-grade");
   const remedialGradeIdx = remaining.indexOf("--remedial-grade");
+  const programFailIdx = remaining.indexOf("--program-fail");
+  const programFailGradeIdx = remaining.indexOf("--program-fail-grade");
 
   return {
     terms,
@@ -284,6 +308,8 @@ function parseArgs(): ParsedArgs {
     remedialCount: remedialIdx >= 0 ? parseInt(remaining[remedialIdx + 1] ?? "2", 10) : 2,
     retainedGrade: retainedGradeIdx >= 0 ? (remaining[retainedGradeIdx + 1] ?? null) : null,
     remedialGrade: remedialGradeIdx >= 0 ? (remaining[remedialGradeIdx + 1] ?? null) : null,
+    programFailCount: programFailIdx >= 0 ? parseInt(remaining[programFailIdx + 1] ?? "0", 10) : 0,
+    programFailGrade: programFailGradeIdx >= 0 ? (remaining[programFailGradeIdx + 1] ?? null) : null,
     completeTransferees: remaining.includes("--complete-transferees"),
     clearTransfereeDetails,
   };
@@ -291,7 +317,7 @@ function parseArgs(): ParsedArgs {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
-async function resolveSchoolYear(): Promise<{ label: string; id: string }> {
+async function resolveSchoolYear(): Promise<{ label: string; id: string; gradingMode: "TRANSMUTED" | "ZERO_BASED" }> {
   const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
   if (!settings?.schoolYearId) {
     console.error("No active school year. Run EnrollPro sync first.");
@@ -302,7 +328,7 @@ async function resolveSchoolYear(): Promise<{ label: string; id: string }> {
     console.error("Active school year not found in DB.");
     process.exit(1);
   }
-  return { label: sy.label, id: sy.id };
+  return { label: sy.label, id: sy.id, gradingMode: sy.gradingMode };
 }
 
 // Remove previous-school details fabricated by older seed runs so the EnrollPro
@@ -349,11 +375,12 @@ async function main() {
   } else {
     console.log(`Terms: ${args.terms.join(", ")} | Finalized: ${args.finalized} | Clear: ${args.clear} | Dry-run: ${args.dryRun}`);
     console.log(`Retained: ${args.retainedCount}${args.retainedGrade ? ` (Grade ${args.retainedGrade})` : ""} (REGULAR only, fails 4 subjects) | Remedial: ${args.remedialCount}${args.remedialGrade ? ` (Grade ${args.remedialGrade})` : ""} (REGULAR only, fails 1-2 subjects, final 70-71)`);
+    console.log(`Program failures: ${args.programFailCount}${args.programFailGrade ? ` (Grade ${args.programFailGrade})` : ""} (special programs only, G7-G9, fails exactly 1 subject)`);
     if (args.completeTransferees) console.log(`Transferee completion: ENABLED`);
   }
 
-  const { label: schoolYearLabel, id: schoolYearId } = await resolveSchoolYear();
-  console.log(`Active school year: ${schoolYearLabel}\n`);
+  const { label: schoolYearLabel, gradingMode } = await resolveSchoolYear();
+  console.log(`Active school year: ${schoolYearLabel} | Grading mode: ${gradingMode}\n`);
 
   if (args.clearTransfereeDetails) {
     await clearSeededTransfereeDetails(schoolYearLabel);
@@ -369,6 +396,7 @@ async function main() {
     process.exit(1);
   }
   initTransmutation(transmutationTable);
+  initGradingMode(gradingMode);
   const gradingConfigs = await prisma.gradingConfig.findMany();
 
   let adminUserId: string | null = null;
@@ -387,14 +415,27 @@ async function main() {
   });
   console.log(`Found ${allSections.length} sections for SY ${schoolYearLabel}`);
 
-  // Collect all unique students across all sections
+  // Sections that actually have active teaching loads — grades are only seeded
+  // for these, so the program-failure picker must not choose anywhere else.
+  const activeCaRows = await prisma.classAssignment.findMany({
+    where: { schoolYear: schoolYearLabel, isActive: true },
+    select: { sectionId: true },
+    distinct: ["sectionId"],
+  });
+  const sectionsWithActiveCa = new Set(activeCaRows.map((row) => row.sectionId));
+
+  // Collect all unique students across all sections (and per-section student ids
+  // for the program-failure picker).
   const studentMap = new Map<string, StudentInfo>();
+  const sectionStudentIds = new Map<string, string[]>();
   for (const sec of allSections) {
     const enrollments = await prisma.enrollment.findMany({
       where: { sectionId: sec.id, status: "ENROLLED", isArchived: false },
       include: { student: true },
     });
+    const ids: string[] = [];
     for (const e of enrollments) {
+      ids.push(e.studentId);
       if (!studentMap.has(e.studentId)) {
         studentMap.set(e.studentId, {
           id: e.studentId,
@@ -403,6 +444,7 @@ async function main() {
         });
       }
     }
+    sectionStudentIds.set(sec.id, ids);
   }
 
   const allStudents = [...studentMap.values()];
@@ -456,17 +498,12 @@ async function main() {
     }
   }
 
-  // Pick special students (retained & remedial) — REGULAR sections only
-  const specialStudents = pickSpecialStudents(
-    allStudents, studentSubjects, args.retainedCount, args.remedialCount,
-    studentGradeLevels, studentPrograms, args.retainedGrade, args.remedialGrade, transfereeIds,
-  );
-
   // Rotation groups count as ONE learning area (e.g. TLE exploratory: ICT/AFA/FCS
   // are term strands, merged before promotion). Failing a single strand does not
   // fail the merged subject while the other strands pass — expand each picked
   // failed subject to its whole rotation group so EOSY finalize sees a real
   // failure and produces a single canonical remedial row (e.g. "TLE").
+  // Loaded before picking so the program-failure picker can avoid rotation strands.
   const rotationSubjects = await prisma.subject.findMany({
     where: { rotationTermGroupId: { not: null } },
     select: { code: true, rotationTermGroupId: true },
@@ -474,6 +511,28 @@ async function main() {
   const rotationGroupByCode = new Map(
     rotationSubjects.map((s) => [s.code, s.rotationTermGroupId as string]),
   );
+
+  // Pick special students (retained & remedial) — REGULAR sections only
+  const specialStudents = pickSpecialStudents(
+    allStudents, studentSubjects, args.retainedCount, args.remedialCount,
+    studentGradeLevels, studentPrograms, args.retainedGrade, args.remedialGrade, transfereeIds,
+  );
+
+  // Controlled special-program failure (1 overall by default, G7-G9, exactly 1 subject)
+  specialStudents.push(
+    ...pickProgramFailureStudents(
+      allSections,
+      sectionStudentIds,
+      studentMap,
+      studentSubjects,
+      sectionsWithActiveCa,
+      args.programFailCount,
+      args.programFailGrade,
+      transfereeIds,
+      rotationGroupByCode,
+    ),
+  );
+
   for (const sp of specialStudents) {
     const groups = new Set(
       sp.failedSubjects
@@ -488,14 +547,20 @@ async function main() {
     sp.failedSubjects = [...expanded];
   }
 
-  // Assign normal tiers for non-special students (STE learners get 85+ tiers only)
+  // Assign normal tiers for non-special students (SPA/SPS/STE get 85+ tiers only)
   const normalTiers = assignNormalTiers(allStudents, studentPrograms);
 
   // Log special students
   console.log(`\n--- Special Students ---`);
   for (const sp of specialStudents) {
     const student = allStudents.find(s => s.id === sp.studentId);
-    const label = sp.type === "RETAINED" ? "RETAINED (fails 4 subjects, 3+ rule)" : "REMEDIAL (fails 1-2 subjects, final 70-71)";
+    const program = normalizeProgramCode(studentPrograms.get(sp.studentId));
+    const isProgramFailure = sp.type === "REMEDIAL" && program !== "REGULAR";
+    const label = isProgramFailure
+      ? "PROGRAM FAIL (special program, fails 1 subject, exits to BEC/Regular on rollover)"
+      : sp.type === "RETAINED"
+        ? "RETAINED (fails 4 subjects, 3+ rule)"
+        : "REMEDIAL (fails 1-2 subjects, final 70-71)";
     console.log(`  ${label}: ${student?.lastName}, ${student?.firstName}`);
     console.log(`    Failed subjects: ${sp.failedSubjects.join(", ")}`);
   }
@@ -594,6 +659,7 @@ async function main() {
             term,
             specialStudents,
             normalTiers,
+            studentPrograms,
           );
 
           const special = specialStudents.find(sp => sp.studentId === enrollment.studentId);
@@ -624,7 +690,14 @@ async function main() {
             // Remedial failed subjects build exact (no jitter) so QG lands at 70/71.
             // STE_ELIGIBLE also builds exact so the 85 threshold is never undershot.
             const exact = tier === "REMEDIAL_FAIL_70" || tier === "REMEDIAL_FAIL_71" || tier === "STE_ELIGIBLE";
-            gradeData = buildGradeForTarget(qgTarget, weights, rand, exact);
+            // SPA/SPS/STE retention rules need >=85 in every non-failed subject.
+            // Every other non-designated subject must at least pass (>=75) so
+            // item-score rounding can never create accidental failures.
+            const isProgramLearner = HIGH_RETENTION_PROGRAMS.has(
+              normalizeProgramCode(studentPrograms.get(enrollment.studentId)),
+            );
+            const minQuarterlyGrade = isFailedSubject ? undefined : isProgramLearner ? 85 : 75;
+            gradeData = buildGradeForTarget(qgTarget, weights, rand, exact, minQuarterlyGrade);
           }
 
           const qg = gradeData.computed.quarterlyGrade;

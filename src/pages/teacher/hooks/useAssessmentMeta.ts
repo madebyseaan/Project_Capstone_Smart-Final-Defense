@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import type { ClassRecord, ScoreItem } from "@/lib/api";
 import { saveMetaToAllStudents } from "../components/classRecordActions";
+import { MAX_PT_TASKS, MAX_WW_TASKS, taskLimitFor } from "../components/classRecordLimits";
 
 interface AssessmentTaskMeta {
   description: string;
@@ -28,7 +29,7 @@ export function useAssessmentMeta(opts: {
 
   const applyMetaToScores = useCallback((scores: ScoreItem[], category: "WW" | "PT", minLength = 0, metaOverride?: AssessmentTaskMeta[]): ScoreItem[] => {
     const meta = metaOverride || (category === "WW" ? wwMeta : ptMeta);
-    const targetLength = Math.max(scores.length, minLength);
+    const targetLength = Math.min(taskLimitFor(category), Math.max(scores.length, minLength));
     return Array.from({ length: targetLength }, (_, i) => {
       const existing = scores[i] || ({ score: 0, maxScore: 10 } as ScoreItem);
       return { ...existing, name: meta[i]?.description?.trim() || `${category} ${i + 1}`, description: meta[i]?.description?.trim() || `${category} ${i + 1}`, date: meta[i]?.date || undefined, maxScore: Number(existing.maxScore ?? 10), score: Number(existing.score ?? 0) };
@@ -41,7 +42,7 @@ export function useAssessmentMeta(opts: {
       const grade = r.grades.find((g) => g.term === selectedTerm);
       if (grade?.writtenWorkScores) max = Math.max(max, (grade.writtenWorkScores as any[]).length);
     });
-    return max;
+    return Math.min(MAX_WW_TASKS, max);
   }, [classRecord, selectedTerm]);
 
   const ptCount = useMemo(() => {
@@ -50,7 +51,7 @@ export function useAssessmentMeta(opts: {
       const grade = r.grades.find((g) => g.term === selectedTerm);
       if (grade?.perfTaskScores) max = Math.max(max, (grade.perfTaskScores as any[]).length);
     });
-    return max;
+    return Math.min(MAX_PT_TASKS, max);
   }, [classRecord, selectedTerm]);
 
   // Derive meta from query data — skip when only scores change (structure unchanged)
@@ -200,6 +201,7 @@ export function useAssessmentMeta(opts: {
   const addTask = useCallback((category: "WW" | "PT") => {
     if (isViewOnly) return;
     const targetIdx = category === "WW" ? wwCount : ptCount;
+    if (targetIdx >= taskLimitFor(category)) return;
     if (category === "WW") setWwMeta((prev) => [...prev, { description: `WW ${targetIdx + 1}`, date: "" }]);
     else setPtMeta((prev) => [...prev, { description: `PT ${targetIdx + 1}`, date: "" }]);
   }, [isViewOnly, wwCount, ptCount]);

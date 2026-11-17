@@ -51,6 +51,13 @@ export const LedgerScoreCell = React.memo(function LedgerScoreCell({
     onCommit(el);
   };
 
+  const parseHps = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (trimmed === "") return 0;
+    const num = Number(trimmed);
+    return Number.isFinite(num) && num >= 0 ? num : null;
+  };
+
   const moveFocusDown = () => {
     requestAnimationFrame(() => {
       const nextInput = document.querySelector<HTMLInputElement>(
@@ -63,7 +70,7 @@ export const LedgerScoreCell = React.memo(function LedgerScoreCell({
   return (
     <input
       ref={inputRef}
-      type={isHps ? "number" : "text"}
+      type="text"
       inputMode="decimal"
       defaultValue={value}
       disabled={disabled}
@@ -87,7 +94,11 @@ export const LedgerScoreCell = React.memo(function LedgerScoreCell({
       onBlur={(e) => {
         if (isHps) {
           if (e.currentTarget.value === (e.currentTarget.dataset.prev ?? "")) return;
-          const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
+          const val = parseHps(e.currentTarget.value);
+          if (val === null) {
+            e.currentTarget.value = e.currentTarget.dataset.prev ?? "";
+            return;
+          }
           onHps(val);
         } else {
           commitIfChanged(e.currentTarget);
@@ -98,9 +109,13 @@ export const LedgerScoreCell = React.memo(function LedgerScoreCell({
         e.preventDefault();
         if (isHps) {
           if (e.currentTarget.value !== (e.currentTarget.dataset.prev ?? "")) {
-            const val = e.currentTarget.value === "" ? 0 : Number(e.currentTarget.value);
-            onHps(val);
-            e.currentTarget.dataset.prev = e.currentTarget.value;
+            const val = parseHps(e.currentTarget.value);
+            if (val !== null) {
+              onHps(val);
+              e.currentTarget.dataset.prev = e.currentTarget.value;
+            } else {
+              e.currentTarget.value = e.currentTarget.dataset.prev ?? "";
+            }
           }
         } else {
           commitIfChanged(e.currentTarget);

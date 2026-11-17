@@ -4,8 +4,11 @@
  * under the repo's 1000-line file cap.
  */
 
+import { GradingMode } from "@prisma/client";
 import { makeTransmuter } from "./canonicalGrade";
 import { computeExamPS } from "../src/lib/examMath";
+import { computeTermGrade } from "../src/lib/gradingMode";
+import { MAX_PT_COLUMNS, MAX_WW_COLUMNS } from "../src/lib/assessmentColumns";
 
 // ─── Tier Definitions ────────────────────────────────────────────────────────
 
@@ -67,6 +70,7 @@ export const STE_ELIGIBLE_TIERS: Tier[] = [
 
 let transmute: (initialGrade: number) => number = () => 0;
 let transmutationRanges: Array<{ minGrade: number; maxGrade: number; transmutedGrade: number }> = [];
+let gradingMode: GradingMode = GradingMode.TRANSMUTED;
 
 // Must be called once in main() with the DB table so seeded grades always
 // match the admin-configured transmutation table.
@@ -77,9 +81,25 @@ export function initTransmutation(
   transmutationRanges = table;
 }
 
+// Must be called once in main() with the active SchoolYear.gradingMode so
+// ZERO_BASED years are not accidentally seeded with transmuted grades.
+export function initGradingMode(mode: GradingMode): void {
+  gradingMode = mode;
+}
+
+export function getSeedGradingMode(): GradingMode {
+  return gradingMode;
+}
+
 // Deterministic: returns the MIDPOINT of the first table range mapping to targetQG
 // (midpoint keeps integer-score rounding noise safely inside the range).
 function findInitialGradeForTarget(targetQG: number): number {
+  if (gradingMode === GradingMode.ZERO_BASED) {
+    // Zero-based reports the initial grade directly (rounded), so the target
+    // itself is the correct starting point.
+    return targetQG;
+  }
+
   const range = transmutationRanges.find((r) => r.transmutedGrade === targetQG);
   if (range) return (range.minGrade + range.maxGrade) / 2;
   // Fallback: binary search
@@ -123,13 +143,14 @@ function genScores(
   targetPS: number,
   rand: () => number,
   exact = false,
+  namePrefix = "Item",
 ): Array<{ name: string; score: number; maxScore: number }> {
   return Array.from({ length: count }, (_, i) => {
     // exact = no per-item jitter so the computed PS (and thus QG) lands exactly on target
     const jitter = exact ? 1 : 1 + (rand() - 0.5) * 0.08;
     const raw = max * (targetPS / 100) * jitter;
     const score = Math.round(Math.max(1, Math.min(max, raw)));
-    return { name: `Item ${i + 1}`, score, maxScore: max };
+    return { name: `${namePrefix} ${i + 1}`, score, maxScore: max };
   });
 }
 
@@ -153,9 +174,19 @@ function calculateGrades(
   const qaPS = qaMax > 0 ? (qaScore / qaMax) * 100 : 0;
 
   const ig = (wwPS * wwWeight) / 100 + (ptPS * ptWeight) / 100 + (qaPS * qaWeight) / 100;
-  const qg = transmute(ig);
+  const qg = computeTermGrade(ig, gradingMode, transmutationRanges);
 
   return { writtenWorkPS: wwPS, perfTaskPS: ptPS, quarterlyAssessPS: qaPS, initialGrade: ig, quarterlyGrade: qg };
+}
+
+// Official ECR caps: 5 WW columns and 3 PT columns. Demo seeds intentionally
+// leave columns blank (3 WW / 2 PT) so the ledger shows real unused slots.
+const DEMO_WW_ITEMS = 3;
+const DEMO_PT_ITEMS = 2;
+if (DEMO_WW_ITEMS > MAX_WW_COLUMNS || DEMO_PT_ITEMS > MAX_PT_COLUMNS) {
+  throw new Error(
+    `Seed item counts exceed ECR caps (WW ${DEMO_WW_ITEMS}/${MAX_WW_COLUMNS}, PT ${DEMO_PT_ITEMS}/${MAX_PT_COLUMNS})`,
+  );
 }
 
 export function buildGradeForTarget(
@@ -163,34 +194,51 @@ export function buildGradeForTarget(
   weights: { ww: number; pt: number; qa: number },
   rand: () => number,
   exact = false,
+  minQuarterlyGrade?: number,
 ) {
-  const targetInitial = findInitialGradeForTarget(targetQG);
-  // exact = no jitter: PS values sit at the range midpoint so integer-score
-  // rounding can never push the quarterly grade off target (used for remedial
-  // failed subjects that must land at exactly 70/71, and STE subjects that
-  // must never fall below 85).
-  const jitterOf = (r: number) => (exact ? 0 : (r - 0.5) * 3);
-  const wwPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
-  const ptPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
-  const qaPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
+  const build = (target: number) => {
+    const targetInitial = findInitialGradeForTarget(target);
+    // exact = no jitter: PS values sit at the range midpoint so integer-score
+    // rounding can never push the quarterly grade off target (used for remedial
+    // failed subjects that must land at exactly 70/71).
+    const jitterOf = (r: number) => (exact ? 0 : (r - 0.5) * 3);
+    const wwPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
+    const ptPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
+    const qaPS = Math.min(100, Math.max(0, targetInitial + jitterOf(rand())));
 
-  const wwScores = genScores(4, 10, wwPS, rand, exact);
-  const ptScores = genScores(4, 20, ptPS, rand, exact);
-  const qaScore = Math.round(Math.max(0, Math.min(100, 100 * (qaPS / 100))));
+    const wwScores = genScores(DEMO_WW_ITEMS, 10, wwPS, rand, exact, "WW");
+    const ptScores = genScores(DEMO_PT_ITEMS, 20, ptPS, rand, exact, "PT");
+    const qaScore = Math.round(Math.max(0, Math.min(100, 100 * (qaPS / 100))));
 
-  // Exam breakdown (ST1/ST2 max 10, TE max 30) scaled from the assessment score,
-  // so the ledger's EXS columns are populated (they read Grade.examScores).
-  const examScores = [
-    { name: "ST1", score: Math.round((qaScore / 100) * 10), maxScore: 10 },
-    { name: "ST2", score: Math.round((qaScore / 100) * 10), maxScore: 10 },
-    { name: "TE", score: Math.round((qaScore / 100) * 30), maxScore: 30 },
-  ];
+    // Exam breakdown (ST1/ST2 max 10, TE max 30) scaled from the assessment score,
+    // so the ledger's EXS columns are populated (they read Grade.examScores).
+    const examScores = [
+      { name: "ST1", score: Math.round((qaScore / 100) * 10), maxScore: 10 },
+      { name: "ST2", score: Math.round((qaScore / 100) * 10), maxScore: 10 },
+      { name: "TE", score: Math.round((qaScore / 100) * 30), maxScore: 30 },
+    ];
 
-  // The ledger treats the ST1/ST2/TE breakdown as authoritative. Derive the
-  // composite QA from the same breakdown so seeded rows can never drift.
-  const effectiveQaScore = computeExamPS(examScores) ?? qaScore;
-  const computed = calculateGrades(wwScores, ptScores, effectiveQaScore, 100, weights.ww, weights.pt, weights.qa);
-  return { writtenWorkScores: wwScores, perfTaskScores: ptScores, examScores, quarterlyAssessScore: effectiveQaScore, quarterlyAssessMax: 100, computed };
+    // The ledger treats the ST1/ST2/TE breakdown as authoritative. Derive the
+    // composite QA from the same breakdown so seeded rows can never drift.
+    const effectiveQaScore = computeExamPS(examScores) ?? qaScore;
+    const computed = calculateGrades(wwScores, ptScores, effectiveQaScore, 100, weights.ww, weights.pt, weights.qa);
+    return { writtenWorkScores: wwScores, perfTaskScores: ptScores, examScores, quarterlyAssessScore: effectiveQaScore, quarterlyAssessMax: 100, computed };
+  };
+
+  let result = build(targetQG);
+  if (minQuarterlyGrade === undefined) return result;
+
+  // Item-score rounding (e.g. 8.2 → 8) can pull the computed QG below the
+  // intended tier. Walk the target upward until the stored QG meets the
+  // program's minimum (SPA/SPS/STE retention rules).
+  let target = Math.max(targetQG, minQuarterlyGrade);
+  let guard = 0;
+  while ((result.computed.quarterlyGrade ?? 0) < minQuarterlyGrade && target < 100 && guard < 25) {
+    target += 1;
+    guard += 1;
+    result = build(target);
+  }
+  return result;
 }
 
 // ─── Shared Types ────────────────────────────────────────────────────────────

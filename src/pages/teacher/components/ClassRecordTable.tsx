@@ -13,6 +13,7 @@ import type { ClassAssignment, ClassRecord, ScoreItem, AimsAssessmentInfo, AimsR
 import type { TransmutationRow } from "@/lib/gradeMath";
 
 import { LedgerRow } from "./ledger/LedgerRow";
+import { MAX_PT_TASKS, MAX_WW_TASKS } from "./classRecordLimits";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -293,6 +294,12 @@ export function ClassRecordTable({
   );
 
   const thBase = "border-b border-slate-200 text-[11px] font-bold uppercase tracking-widest text-center px-0 bg-clip-padding";
+  const taskBtn = "w-5 h-5 rounded-full shadow-sm border transition-all flex items-center justify-center disabled:cursor-not-allowed";
+  const taskBtnOff = "bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed";
+  const wwTaskBtnOn = "bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-600 hover:text-white";
+  const ptTaskBtnOn = "bg-white text-purple-600 border-purple-200 hover:bg-purple-600 hover:text-white";
+  const wwAtMax = wwCount >= MAX_WW_TASKS;
+  const ptAtMax = ptCount >= MAX_PT_TASKS;
 
   return (
     <div className="hidden lg:block w-full relative z-[15]">
@@ -396,14 +403,15 @@ export function ClassRecordTable({
                       <div className="flex items-center gap-1">
                         <button
                           disabled={isViewOnly || wwCount <= 1}
-                          className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                          className={`${taskBtn} ${isViewOnly || wwCount <= 1 ? taskBtnOff : wwTaskBtnOn}`}
                           onClick={() => onRemoveTask("WW")}
                         >
                           <Minus className="w-2.5 h-2.5" />
                         </button>
                         <button
-                          disabled={isViewOnly}
-                          className="w-5 h-5 rounded-full bg-white text-indigo-600 shadow-sm border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                          disabled={isViewOnly || wwAtMax}
+                          title={wwAtMax ? `Maximum of ${MAX_WW_TASKS} Written Works` : "Add Written Work"}
+                          className={`${taskBtn} ${isViewOnly || wwAtMax ? taskBtnOff : wwTaskBtnOn}`}
                           onClick={() => onAddTask("WW")}
                         >
                           <Plus className="w-2.5 h-2.5" />
@@ -421,14 +429,15 @@ export function ClassRecordTable({
                       <div className="flex items-center gap-1">
                         <button
                           disabled={isViewOnly || ptCount <= 1}
-                          className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                          className={`${taskBtn} ${isViewOnly || ptCount <= 1 ? taskBtnOff : ptTaskBtnOn}`}
                           onClick={() => onRemoveTask("PT")}
                         >
                           <Minus className="w-2.5 h-2.5" />
                         </button>
                         <button
-                          disabled={isViewOnly}
-                          className="w-5 h-5 rounded-full bg-white text-purple-600 shadow-sm border border-purple-200 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                          disabled={isViewOnly || ptAtMax}
+                          title={ptAtMax ? `Maximum of ${MAX_PT_TASKS} Performance Tasks` : "Add Performance Task"}
+                          className={`${taskBtn} ${isViewOnly || ptAtMax ? taskBtnOff : ptTaskBtnOn}`}
                           onClick={() => onAddTask("PT")}
                         >
                           <Plus className="w-2.5 h-2.5" />

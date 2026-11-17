@@ -434,7 +434,7 @@ async function main() {
           baseAbility,
           isFailed ? 15 : 10,
           subjectGroup === "MAPEH" || subjectGroup === "TLE" ? 5 : 4,
-          subjectGroup === "MAPEH" || subjectGroup === "TLE" ? 4 : 3,
+          3,
           isFailed,
           terms.indexOf(term),
         );

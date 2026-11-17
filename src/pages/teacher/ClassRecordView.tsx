@@ -17,6 +17,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "@/lib/toast";
 import { executeHpsUpdate, executeRemoveTask, executeScoreUpdate, prepareScoreEdit, applyScoreEditToRecord, type ScoreEdit, type ScoreEditContext } from "./components/classRecordActions";
 import { getDisplayFinalGrade as computeDisplayFinalGrade, getMobileDraftKey, getScoreFromGrade as computeScoreFromGrade } from "./components/classRecordMobileUtils";
+import { taskLimitFor } from "./components/classRecordLimits";
 import { getGradeColor, EXAM_SUB_TESTS } from "@/lib/gradeMath";
 import { useClassRecordQuery, useTransmutationTable } from "./hooks/useClassRecord";
 import { useEditAccess } from "./hooks/useEditAccess";
@@ -254,8 +255,10 @@ export default function ClassRecordView() {
 
   const addTask = useCallback((category: "WW" | "PT") => {
     if (editAccess.isViewOnly) return;
+    const count = category === "WW" ? metaHook.wwCount : metaHook.ptCount;
+    if (count >= taskLimitFor(category)) return;
     metaHook.addTask(category);
-    handleHpsUpdate(category, category === "WW" ? metaHook.wwCount : metaHook.ptCount, 10);
+    handleHpsUpdate(category, count, 10);
   }, [editAccess.isViewOnly, metaHook, handleHpsUpdate]);
 
   const removeTask = useCallback(async (category: "WW" | "PT") => {
