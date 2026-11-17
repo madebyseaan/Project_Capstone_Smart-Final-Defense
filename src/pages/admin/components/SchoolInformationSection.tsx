@@ -94,6 +94,10 @@ export function SchoolInformationSection({
               <Input id="division" value={settings.division || ""} disabled className={readOnlyInput} />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="district" className="text-sm font-semibold text-foreground">District</Label>
+              <Input id="district" value={settings.district || ""} disabled className={readOnlyInput} />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="schoolHeadName" className="text-sm font-semibold text-foreground">School Head / Principal</Label>
               <Input id="schoolHeadName" value={settings.schoolHeadName || ""} disabled className={readOnlyInput} />
             </div>

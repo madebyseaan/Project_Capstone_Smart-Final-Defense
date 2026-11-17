@@ -26,6 +26,7 @@ const SNAPSHOT_FIXTURE = {
   schoolId: "999999",
   division: "Test Division",
   region: "Test Region",
+  district: "Test District",
   schoolHeadName: "Test Head",
   address: "123 Test St",
 };
@@ -45,6 +46,7 @@ beforeAll(async () => {
       schoolId: "111111",
       division: "Live Division",
       region: "Live Region",
+      district: "Live District",
       schoolHeadName: "Live Head",
       address: "Live Address",
     },
@@ -54,6 +56,7 @@ beforeAll(async () => {
       schoolId: "111111",
       division: "Live Division",
       region: "Live Region",
+      district: "Live District",
       schoolHeadName: "Live Head",
       address: "Live Address",
     },
@@ -93,12 +96,14 @@ describe("captureSchoolSettingsSnapshot", () => {
     expect(result.schoolName).toBe("X");
     expect(result.schoolId).toBe("");
     expect(result.division).toBe("");
+    expect(result.district).toBe("");
   });
 
   it("handles null/undefined input", () => {
     const result = captureSchoolSettingsSnapshot(null);
     expect(result.schoolName).toBe("");
     expect(result.schoolHeadName).toBe("");
+    expect(result.district).toBe("");
   });
 });
 
@@ -110,7 +115,7 @@ describe("getSchoolIdentityForYear", () => {
     expect(identity.division).toBe("Test Division");
     expect(identity.region).toBe("Test Region");
     expect(identity.schoolHeadName).toBe("Test Head");
-    expect(identity.district).toBe("");
+    expect(identity.district).toBe("Test District");
   });
 
   it("falls back to live settings when snapshot is null (W6)", async () => {
@@ -118,6 +123,7 @@ describe("getSchoolIdentityForYear", () => {
     expect(identity.schoolName).toBe("Live School");
     expect(identity.schoolId).toBe("111111");
     expect(identity.division).toBe("Live Division");
+    expect(identity.district).toBe("Live District");
   });
 
   it("falls back to live settings when snapshot is malformed JSON (W6)", async () => {
@@ -158,6 +164,7 @@ describe("getSchoolIdentityForYear", () => {
     expect(identity.schoolId).toBe("111111");
     expect(identity.division).toBe("Live Division");
     expect(identity.region).toBe("Live Region");
+    expect(identity.district).toBe("Live District");
     expect(identity.schoolHeadName).toBe("Historical Head");
     expect(identity.address).toBe("Historical Address");
 
@@ -171,6 +178,7 @@ describe("repairLegacyIdentity", () => {
     schoolId: "111111",
     division: "Live Division",
     region: "Live Region",
+    district: "Live District",
     schoolHeadName: "Live Head",
     address: "Live Address",
   };
@@ -182,6 +190,7 @@ describe("repairLegacyIdentity", () => {
         schoolId: "123456",
         division: "Division of Sample City",
         region: "Region IV-A CALABARZON",
+        district: "Historical District",
         schoolHeadName: "Historical Head",
         address: "Historical Address",
       },
@@ -193,9 +202,27 @@ describe("repairLegacyIdentity", () => {
       schoolId: "111111",
       division: "Live Division",
       region: "Live Region",
+      district: "Historical District",
       schoolHeadName: "Historical Head",
       address: "Historical Address",
     });
+  });
+
+  it("fills a missing district from live settings", () => {
+    const repaired = repairLegacyIdentity(
+      {
+        schoolName: "Historical School",
+        schoolId: "111111",
+        division: "Live Division",
+        region: "Live Region",
+        district: "",
+        schoolHeadName: "Historical Head",
+        address: "Historical Address",
+      },
+      live
+    );
+
+    expect(repaired.district).toBe("Live District");
   });
 
   it("never blanks a snapshot when the live value is empty", () => {
@@ -205,16 +232,18 @@ describe("repairLegacyIdentity", () => {
         schoolId: "123456",
         division: "Division of Sample City",
         region: "Region IV-A CALABARZON",
+        district: "",
         schoolHeadName: "Historical Head",
         address: "Historical Address",
       },
-      { ...live, schoolName: "", schoolId: "", division: "", region: "" }
+      { ...live, schoolName: "", schoolId: "", division: "", region: "", district: "" }
     );
 
     expect(repaired.schoolName).toBe("");
     expect(repaired.schoolId).toBe("123456");
     expect(repaired.division).toBe("Division of Sample City");
     expect(repaired.region).toBe("Region IV-A CALABARZON");
+    expect(repaired.district).toBe("");
   });
 });
 
@@ -249,7 +278,7 @@ describe("syncActiveYearSnapshot", () => {
     // Set live settings to all empty
     await prisma.systemSettings.update({
       where: { id: mainSettingsId },
-      data: { schoolName: "", schoolId: "", division: "", region: "", schoolHeadName: "", address: "" },
+      data: { schoolName: "", schoolId: "", division: "", region: "", district: "", schoolHeadName: "", address: "" },
     });
 
     // Point to YEAR_SNAP which has a non-null snapshot
@@ -265,7 +294,7 @@ describe("syncActiveYearSnapshot", () => {
     // Restore live settings
     await prisma.systemSettings.update({
       where: { id: mainSettingsId },
-      data: { schoolName: "Live School", schoolId: "111111", division: "Live Division", region: "Live Region", schoolHeadName: "Live Head", address: "Live Address" },
+      data: { schoolName: "Live School", schoolId: "111111", division: "Live Division", region: "Live Region", district: "Live District", schoolHeadName: "Live Head", address: "Live Address" },
     });
   });
 });

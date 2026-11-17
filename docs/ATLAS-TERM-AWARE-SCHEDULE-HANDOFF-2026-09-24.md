@@ -157,34 +157,49 @@ upstream id):
   system holds a different room identifier, maintain your own room crosswalk — ATLAS cannot resolve
   it for you.
 
-### 4.4 `specialEvents[]`, breaks, and the break-scope ambiguity
+### 4.4 `specialEvents[]`, breaks, type and scope (BREAKS-2, 2026-11-16)
 
-Each `specialEvents[]` element has exactly this shape — **there is no `eventType` field**:
+Each `specialEvents[]` element carries the original window fields plus the BREAKS-2 additions:
 
 ```json
 { "eventName": "Lunch Break", "startTime": "11:30", "endTime": "12:15",
-  "dayOfWeek": null, "days": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] }
+  "dayOfWeek": null, "days": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+  "scope": {
+    "appliesToAll": false,
+    "gradeLevels": [9, 10],
+    "programTypes": ["REGULAR", "SPA", "SPS", "STE"],
+    "shift": { "label": null, "startTime": "09:45", "endTime": "18:30" }
+  },
+  "termIndex": 1, "eventType": "LUNCH_BREAK", "eventId": "se_2f1c9a7d4b6e8c01" }
 ```
 
 - **Breaks are never in `entries[]`.** If you render only `entries`, break bands disappear.
 - `dayOfWeek: null` (with `days` = the five weekdays) is the normal school-wide case. A day-scoped
   event (e.g. a Monday-only flag ceremony) carries a concrete `dayOfWeek` and a single-entry `days`.
-- **Duplicate windows are real and are NOT duplicates to be de-duplicated away.** At the pinned live
-  release, term 1 carries **two `"Lunch Break"` windows** (`11:30–12:15`, `12:15–13:00`) and **two
-  `"Health Break"` windows** (`09:00–09:15`, `15:15–15:30`); the whole payload has 5 special events
-  (the four break windows plus the flag ceremony). Different grade/shift groups legitimately have
-  different break boundaries, and the published union keeps each distinct window.
-- **Break scope is genuinely ambiguous in this projection — do not assume it.** ATLAS's canonical
-  class-program rows do carry `(gradeLevel, programType)`, but the display grid unions every scope's
-  break rows and de-duplicates them by `startTime–endTime` alone, so the grade/shift scope is lost
-  before the payload is built. A single emitted window may belong to one grade group, several, or
-  **none** (a policy flag overlay or the legacy policy fallback). ATLAS therefore does **not** emit a
-  `scope`/`gradeGroup` field on `specialEvents[]` (adding one would either change the event count or
-  assert a scope the union cannot prove). **Consumers that need a grade/shift-attributed break band
-  must derive it from the owning class-program rows**, not from `specialEvents[]`; treat this array
-  as the school-wide union of non-teaching windows. (This is the resolved outcome of the
-  SMART-DRAFT-READ-S3 Deliverable-2 investigation; the in-source note is at
-  `atlas-server/src/services/published-schedule.service.ts` `buildSpecialEventsPayload`.)
+- **`termIndex`** is the term the response was read for (or `null` on a whole-year read). Breaks are
+  per school year, so each term read returns the same windows stamped with that term.
+- **`eventType`** is the stored type, never guessed from the name: `FLAG_CEREMONY` (stored
+  `FLAG_OR_HGP`), `HEALTH_BREAK`, `LUNCH_BREAK`, `RECESS` (legacy stored value) and `OTHER`
+  (stored `CUSTOM` or an unknown legacy value).
+- **`eventId`** is deterministic from school, type, scope, start time and weekday (`se_` + 16 hex).
+  The same window keeps the same id on every run and every term; it is a stable key for polling and
+  for joining break rows across terms — not a database id.
+- **Duplicate windows are real and are NOT duplicates to be de-duplicated away.** The published
+  contract emits one event per distinct window, and a second event only when the stored rows on that
+  window disagree on type. The real case is a Grades 9-10 BEC Flag/HGP row and a Grade 9 STE Lunch
+  row both at `12:15–13:00`: AIMS receives a `FLAG_CEREMONY` scoped to BEC and a `LUNCH_BREAK`
+  scoped to STE, instead of one row typed by whichever stored row happened to come first.
+- **Match a viewer on `eventType` + `scope` (+ `dayOfWeek`), never on the window time alone.** When
+  `scope.appliesToAll` is false, render only when the viewer's numeric grade is in
+  `scope.gradeLevels` and the section's program is in `scope.programTypes` (unless either list is
+  empty). Use `scope.shift` when non-null; `scope.shift: null` means “do not assume”. If
+  `scope.note === "SCOPE_NOT_DERIVABLE"`, treat the window as the school-wide union and derive
+  attribution from the owning class-program rows. `source.shiftWindows[]` maps a grade (prefer the
+  matching `programType` row, else `programType: null`) to its shift window.
+- **Legacy fields are unchanged.** A client that ignores `termIndex`, `eventType`, `eventId` and
+  `scope` reads the same `eventName`, times, days and (on agreeing windows) row count as before. The
+  only row-count change is a window whose stored rows disagree on type, which now appears as one
+  event per stored type — that is the fix.
 
 ### 4.5 Verified counts at the 2026-09-24 pin
 
@@ -378,17 +393,12 @@ SMART-facing summary: `docs/handoffs/smart-draft-read-s3-2026-09-24.md`.
   to schedule separately (`TEACHER-PROGRAM-LUNCH-BREAK-C01`); it does not change this read contract and
   must not be "fixed" from a companion lane. Until it is fixed, do not treat the Teacher Program DOCX
   break labels as authoritative.
-- **Break-window scope is deliberately not exposed** (§4.4). The precise successor, if a
-  grade/shift-attributed break band is ever required, is **`SPECIAL-EVENT-SCOPE-C01`**: the canonical
-  BREAK rows (`classProgramSlot`) DO carry `(gradeLevel, programType)`, but
-  `buildCanonicalDisplayGrid` unions every scope's BREAK rows and `dedupeIntervalSlots` (in
-  `schedule-constructor.ts`) keys them by `startTime-endTime` alone, discarding the scope before the
-  payload. Attributing each duplicate `Lunch Break` / `Health Break` window to its grade/shift group
-  therefore requires **emitting per-scope events** rather than one unioned window — a
-  **cardinality-changing, additive** contract change (`specialEvents[]` would grow, even though every
-  existing field value is preserved). That trade-off was judged out of scope for
-  SMART-DRAFT-READ-S3. Until it lands, keep the §4.4 ambiguity warning: treat `specialEvents[]` as the
-  school-wide union and derive any grade/shift attribution from the owning class-program rows.
+- **Break-window scope and type are exposed** (§4.4). The former
+  `SPECIAL-EVENT-SCOPE-C01` / BREAKS-2 successor has landed (2026-11-16): `specialEvents[]` now
+  carries `scope` (grade levels, program types, shift), `eventType`, `eventId` and `termIndex`, and
+  `source.shiftWindows[]` is available for viewer/shift matching. Match a viewer on
+  `eventType` + `scope` (+ `dayOfWeek`), never on the window time alone; a window whose stored rows
+  disagree on type is served as one event per stored type.
 - **Not covered here:** writing schedules back to ATLAS, Teaching Load, enrolment, and the SSO
   federation handshakes (those are separate handoffs:
   `docs/handoffs/aims-direct-federation-c04.md`, `docs/handoffs/smart-direct-federation-c04.md`).

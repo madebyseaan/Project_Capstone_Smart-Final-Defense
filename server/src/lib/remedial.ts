@@ -14,7 +14,8 @@ import { createAuditLog } from "./audit";
 import { AuditAction, AuditSeverity } from "@prisma/client";
 import { getEnrollProRemedialPending } from "./enrollproClient";
 import { logger } from "./logger";
-import { computeDisplayName } from "./subjectDisplay";
+import { computeDisplayName, computeRemedialSubjectName, isDepedAreaCode } from "./subjectDisplay";
+import { resolveSubjectName } from "./atlasUtils";
 
 export const REMEDIAL_PASSING_GRADE = 75;
 
@@ -436,7 +437,7 @@ export async function syncBackSubjectsFromEnrollPro(
           await prisma.remedialClass.update({
             where: { id: existingRow.id },
             data: {
-              subjectName: computeDisplayName(subj.subjectCode, subj.subjectName),
+              subjectName: computeRemedialSubjectName(subj.subjectCode, subj.subjectName, remedialGradeLevel),
               originalGrade: subj.finalRating!,
             },
           });
@@ -447,7 +448,7 @@ export async function syncBackSubjectsFromEnrollPro(
               schoolYear,
               gradeLevel: remedialGradeLevel,
               subjectCode: subj.subjectCode,
-              subjectName: computeDisplayName(subj.subjectCode, subj.subjectName),
+              subjectName: computeRemedialSubjectName(subj.subjectCode, subj.subjectName, remedialGradeLevel),
               originalGrade: subj.finalRating!,
               status: "PENDING",
             },
@@ -517,14 +518,35 @@ export async function backfillMissingRemedialRows(): Promise<BackfillResult> {
       include: { classAssignment: { include: { subject: true } } },
     });
 
-    const subjectMap = new Map<string, { subjectCode: string; subjectName: string; T1: number | null; T2: number | null; T3: number | null }>();
+    // Rotation metadata MUST be carried here so finalizeSubjectRows() merges
+    // Science/TLE branches into one learning-area row. Without it, a failing
+    // branch could create a remedial row even when the merged subject passed.
+    const subjectMap = new Map<string, {
+      subjectCode: string;
+      subjectName: string;
+      T1: number | null;
+      T2: number | null;
+      T3: number | null;
+      rotationTermGroupId?: string | null;
+      rotationTermRank?: number | null;
+      rotationOutputLabel?: string | null;
+    }>();
     for (const g of grades) {
       const ca = g.classAssignment;
       if (ca.subject.isNonPromotional) continue;
       if ((ca.subject.code ?? '').toUpperCase().startsWith('HG')) continue;
       const key = canonicalSubjectKey(ca.subject.code, ca.subject.name);
       if (!subjectMap.has(key)) {
-        subjectMap.set(key, { subjectCode: ca.subject.code, subjectName: ca.subject.name, T1: null, T2: null, T3: null });
+        subjectMap.set(key, {
+          subjectCode: ca.subject.code,
+          subjectName: ca.subject.name,
+          T1: null,
+          T2: null,
+          T3: null,
+          rotationTermGroupId: ca.subject.rotationTermGroupId,
+          rotationTermRank: ca.subject.rotationTermRank,
+          rotationOutputLabel: ca.subject.rotationOutputLabel,
+        });
       }
       const row = subjectMap.get(key)!;
       const termKey = g.term as "T1" | "T2" | "T3";
@@ -555,7 +577,7 @@ export async function backfillMissingRemedialRows(): Promise<BackfillResult> {
         schoolYear: enrollment.schoolYear,
         gradeLevel,
         subjectCode: s.subjectCode,
-        subjectName: s.subjectName,
+        subjectName: computeRemedialSubjectName(s.subjectCode, s.subjectName, gradeLevel),
         originalGrade: s.finalRating!,
         status: "PENDING" as const,
       })),
@@ -567,6 +589,63 @@ export async function backfillMissingRemedialRows(): Promise<BackfillResult> {
 
   logger.info(`[BackfillRemedial] Scanned ${result.enrollmentsScanned} orphans, fixed ${result.enrollmentsFixed}, created ${result.rowsCreated} rows`);
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Normalize: rewrite legacy remedial subject names to the canonical
+// grade-qualified convention ("Science 7", "TLE 8", "Mathematics 7").
+//
+// Only untouched default names are rewritten (bare DepEd area name from the
+// old computeDisplayName path, or the raw internal subject name from the old
+// backfill path). Manually entered names are preserved.
+// ---------------------------------------------------------------------------
+
+export interface RemedialNameNormalizationResult {
+  scanned: number;
+  updated: number;
+  dryRun: boolean;
+  changes: Array<{ id: string; subjectCode: string; from: string; to: string }>;
+}
+
+export async function normalizeRemedialSubjectNames(opts?: {
+  schoolYear?: string;
+  dryRun?: boolean;
+}): Promise<RemedialNameNormalizationResult> {
+  const rows = await prisma.remedialClass.findMany({
+    where: opts?.schoolYear ? { schoolYear: opts.schoolYear } : {},
+    select: { id: true, subjectCode: true, subjectName: true, gradeLevel: true },
+    orderBy: [{ schoolYear: "asc" }, { subjectName: "asc" }],
+  });
+
+  const changes: RemedialNameNormalizationResult["changes"] = [];
+  for (const rc of rows) {
+    const next = computeRemedialSubjectName(rc.subjectCode, rc.subjectName, rc.gradeLevel);
+    if (next === rc.subjectName) continue;
+
+    const isDefaultName =
+      (isDepedAreaCode(rc.subjectCode) &&
+        rc.subjectName === computeDisplayName(rc.subjectCode, rc.subjectName)) ||
+      rc.subjectName === resolveSubjectName(rc.subjectCode, rc.gradeLevel);
+    if (!isDefaultName) continue;
+
+    changes.push({ id: rc.id, subjectCode: rc.subjectCode, from: rc.subjectName, to: next });
+  }
+
+  const dryRun = opts?.dryRun ?? false;
+  if (!dryRun && changes.length > 0) {
+    await prisma.$transaction(
+      changes.map((c) =>
+        prisma.remedialClass.update({ where: { id: c.id }, data: { subjectName: c.to } }),
+      ),
+    );
+  }
+
+  logger.info(
+    `[RemedialNormalize] ${opts?.schoolYear ? `SY ${opts.schoolYear}` : "all years"}: ` +
+    `scanned=${rows.length}, updated=${changes.length}${dryRun ? " (dry run)" : ""}`,
+  );
+
+  return { scanned: rows.length, updated: changes.length, dryRun, changes };
 }
 
 // ---------------------------------------------------------------------------

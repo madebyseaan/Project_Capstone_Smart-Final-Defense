@@ -53,6 +53,7 @@ export interface Sf10Response {
     schoolId: string;
     division: string;
     region: string;
+    district: string;
     schoolHeadName: string;
   };
 }
@@ -504,6 +505,7 @@ export async function buildSf10Records(studentId: string): Promise<Sf10Response 
       schoolId: certIdentity?.schoolId || '',
       division: certIdentity?.division || '',
       region: certIdentity?.region || '',
+      district: certIdentity?.district || '',
       schoolHeadName: certIdentity?.schoolHeadName || ''
     }
   };

@@ -17,7 +17,7 @@
 import { GradeLevel, PromotionStatus, Term, AuditAction, AuditSeverity } from "@prisma/client";
 import { prisma } from "./prisma";
 import { createAuditLog } from "./audit";
-import { DEPED_AREA_NAMES } from "./subjectDisplay";
+import { DEPED_AREA_NAMES, computeRemedialSubjectName } from "./subjectDisplay";
 
 export const PASSING_GRADE = 75;
 
@@ -619,7 +619,7 @@ export async function finalizeSectionEosy(opts: {
               schoolYear: opts.schoolYear,
               gradeLevel: promotions.section.gradeLevel,
               subjectCode: row.subjectCode,
-              subjectName: row.displayName ?? row.subjectName,
+              subjectName: computeRemedialSubjectName(row.subjectCode, row.subjectName, promotions.section.gradeLevel),
               originalGrade: row.finalRating!,
               status: "PENDING",
             })),

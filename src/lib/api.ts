@@ -1301,8 +1301,8 @@ export interface Sf9SchoolSettings {
   schoolName: string;
   division: string;
   region: string;
+  district: string;
   schoolHeadName: string;
-  district?: string;
 }
 
 export interface Sf9ValueRow {
@@ -1475,6 +1475,7 @@ export interface SF10Data {
     schoolId?: string;
     division?: string;
     region?: string;
+    district?: string;
     schoolHeadName?: string;
   };
 }
@@ -1950,12 +1951,36 @@ export interface ScheduleTermInfo {
   displayLabel: string;
 }
 
+export interface ScheduleEventShift {
+  label: string | null;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+export interface ScheduleSpecialEventScope {
+  appliesToAll: boolean;
+  gradeLevels: number[];
+  programTypes: string[];
+  shift: ScheduleEventShift | null;
+  note: string | null;
+}
+
+export interface ScheduleShiftWindow {
+  gradeLevel: number | null;
+  programType: string | null;
+  startTime: string;
+  endTime: string;
+}
+
 export interface ScheduleSpecialEvent {
   eventName: string;
   startTime: string;
   endTime: string;
   dayOfWeek: string | null;
   days: string[];
+  eventType: string | null;
+  eventId: string | null;
+  scope: ScheduleSpecialEventScope | null;
   termIndex: number | null;
 }
 
@@ -1976,6 +2001,7 @@ export interface ScheduleMeta {
   isActiveSchoolYear: boolean | null;
   conflict: string | null;
   syncedAt: string | null;
+  shiftWindows: ScheduleShiftWindow[];
 }
 
 export interface ScheduleEntryDto {
@@ -1988,7 +2014,7 @@ export interface ScheduleEntryDto {
   roomLabel: string | null;
   roomBuilding: string | null;
   subject: { code: string; name: string };
-  section: { name: string; gradeLevel: string };
+  section: { name: string; gradeLevel: string; program: string };
 }
 
 export interface ScheduleDataDto {
@@ -2199,6 +2225,7 @@ export interface SystemSettings {
   schoolId: string;
   division: string;
   region: string;
+  district: string;
   schoolHeadName?: string | null;
   address?: string | null;
   contactNumber?: string | null;

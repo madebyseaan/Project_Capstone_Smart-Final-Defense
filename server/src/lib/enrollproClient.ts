@@ -1131,6 +1131,7 @@ export interface EnrollProPublicSettings {
   schoolHeadTitle?: string | null;
   region?: string | null;
   division?: string | null;
+  district?: string | null;
   logoUrl: string | null;
   colorScheme: {
     palette: EnrollProPaletteColor[];
@@ -1162,6 +1163,24 @@ export interface EnrollProPublicSettings {
  */
 export async function getEnrollProPublicSettings(): Promise<EnrollProPublicSettings> {
   return fetchJSON(`${await getEnrollProBase()}/settings/public`) as Promise<EnrollProPublicSettings>;
+}
+
+export interface EnrollProPublicConfig {
+  schoolName?: string | null;
+  depedSchoolId?: string | null;
+  region?: string | null;
+  division?: string | null;
+  district?: string | null;
+}
+
+/**
+ * Lightweight institutional identity endpoint.
+ * GET /api/system/public-config
+ * Used as a district fallback for EnrollPro deployments whose
+ * /settings/public payload does not include the district yet.
+ */
+export async function getEnrollProPublicConfig(): Promise<EnrollProPublicConfig> {
+  return fetchJSON(`${await getEnrollProBase()}/system/public-config`) as Promise<EnrollProPublicConfig>;
 }
 
 // ---------------------------------------------------------------------------

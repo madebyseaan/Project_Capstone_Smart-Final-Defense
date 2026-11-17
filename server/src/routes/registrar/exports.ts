@@ -477,7 +477,7 @@ router.get("/export/sf1/:sectionId", authenticateToken, async (req: AuthRequest,
     sheet.getCell("F4").value = schoolSettings?.schoolId || "";
     sheet.getCell("J4").value = schoolSettings?.region || "";
     sheet.getCell("M4").value = schoolSettings?.division || "";
-    sheet.getCell("S4").value = "";
+    sheet.getCell("S4").value = schoolSettings?.district || "";
     // Row 6: School Name (F6:K6 merged), School Year (O6:P6 merged), Grade Level (S6:T6 merged), Section (V6:X6 merged)
     sheet.getCell("F6").value = schoolSettings?.schoolName || "";
     sheet.getCell("O6").value = schoolYear;

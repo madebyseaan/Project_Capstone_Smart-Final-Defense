@@ -70,6 +70,14 @@ server/check-*.js
 # Local verification artifacts (PM2/log evidence)
 artifacts/
 
+# Local verification screenshots / network dumps (may contain PII or tokens)
+/all-network.txt
+/regression-network.txt
+/advisory-printables.png
+/registrar-sf10.png
+/teacher-dashboard.png
+/teacher-schedule.png
+
 # Python bytecode caches
 __pycache__/
 *.py[cod]

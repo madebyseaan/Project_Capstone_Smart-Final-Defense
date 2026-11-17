@@ -154,7 +154,7 @@ router.get("/forms/sf1/:sectionId", authenticateToken, async (req: AuthRequest, 
           ? `${section.adviser.user.firstName} ${section.adviser.user.lastName}`
           : "Not Assigned",
       },
-      schoolSettings: { ...settings, district: "" },
+      schoolSettings: settings,
       students: formattedStudents,
       summary: {
         maleCount: males.length,

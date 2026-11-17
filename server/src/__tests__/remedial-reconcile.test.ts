@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "../lib/prisma";
 import { finalizeSectionEosy } from "../lib/promotion";
-import { reconcileRemedialRows, getRemedialRolloverBlock } from "../lib/remedial";
+import { reconcileRemedialRows, getRemedialRolloverBlock, normalizeRemedialSubjectNames, backfillMissingRemedialRows } from "../lib/remedial";
 
 const YEAR = "2099-2100";
 const GROUP = "TEST_RECON_TLE";
@@ -168,6 +168,7 @@ describe("finalizeSectionEosy — remedial row cleanup", () => {
     const rows = await prisma.remedialClass.findMany({ where: { enrollmentId: enrollment.id } });
     expect(rows).toHaveLength(1);
     expect(rows[0].subjectCode).toBe("TLE");
+    expect(rows[0].subjectName).toBe("Technology and Livelihood Education (TLE) 8");
     expect(rows[0].status).toBe("PENDING");
     expect(rows[0].originalGrade).toBe(71);
   });
@@ -205,6 +206,61 @@ describe("finalizeSectionEosy — remedial row cleanup", () => {
     const updated = await prisma.enrollment.findUnique({ where: { id: enrollment.id } });
     expect(updated?.promotionStatus).toBe("PROMOTED");
     expect(await prisma.remedialClass.count({ where: { enrollmentId: enrollment.id } })).toBe(0);
+  });
+});
+
+describe("normalizeRemedialSubjectNames — legacy name cleanup", () => {
+  it("rewrites default names to grade-qualified canonical names and preserves custom names", async () => {
+    const { enrollment } = await createEnrollmentWithGrades({ t1: 85, t2: 85, t3: 85, promotionStatus: "CONDITIONALLY_PROMOTED" });
+
+    const canonicalLegacy = await prisma.remedialClass.create({
+      data: { enrollmentId: enrollment.id, schoolYear: YEAR, gradeLevel: "GRADE_8", subjectCode: "SCIENCE", subjectName: "Science", originalGrade: 71, status: "PENDING" },
+    });
+    const internalLegacy = await prisma.remedialClass.create({
+      data: { enrollmentId: enrollment.id, schoolYear: YEAR, gradeLevel: "GRADE_8", subjectCode: "FIL7", subjectName: "Filipino 7", originalGrade: 71, status: "PENDING" },
+    });
+    const custom = await prisma.remedialClass.create({
+      data: { enrollmentId: enrollment.id, schoolYear: YEAR, gradeLevel: "GRADE_8", subjectCode: "CUSTOM_ROW", subjectName: "Special Remedial Session", originalGrade: 71, status: "PENDING" },
+    });
+    const alreadyNormalized = await prisma.remedialClass.create({
+      data: { enrollmentId: enrollment.id, schoolYear: YEAR, gradeLevel: "GRADE_8", subjectCode: "ENG8", subjectName: "English 8", originalGrade: 71, status: "PENDING" },
+    });
+
+    const dryRun = await normalizeRemedialSubjectNames({ schoolYear: YEAR, dryRun: true });
+    expect(dryRun.changes.map((c) => c.id)).toEqual(expect.arrayContaining([canonicalLegacy.id, internalLegacy.id]));
+    expect(dryRun.changes.map((c) => c.id)).not.toContain(custom.id);
+    expect(dryRun.changes.map((c) => c.id)).not.toContain(alreadyNormalized.id);
+
+    const applied = await normalizeRemedialSubjectNames({ schoolYear: YEAR });
+    expect(applied.updated).toBeGreaterThanOrEqual(2);
+
+    const updatedCanonical = await prisma.remedialClass.findUnique({ where: { id: canonicalLegacy.id } });
+    const updatedInternal = await prisma.remedialClass.findUnique({ where: { id: internalLegacy.id } });
+    const untouchedCustom = await prisma.remedialClass.findUnique({ where: { id: custom.id } });
+    expect(updatedCanonical?.subjectName).toBe("Science 8");
+    expect(updatedInternal?.subjectName).toBe("Filipino 8");
+    expect(untouchedCustom?.subjectName).toBe("Special Remedial Session");
+  });
+});
+
+describe("backfillMissingRemedialRows — rotation merge", () => {
+  it("does not create branch-level rows when the merged rotation subject passed", async () => {
+    // Biology 70 (failed branch), Chemistry 85, Earth Science 88 → merged TLE/Science 81 = passed.
+    const passedRotation = await createEnrollmentWithGrades({ t1: 70, t2: 85, t3: 88, promotionStatus: "CONDITIONALLY_PROMOTED" });
+    // All three branches fail → merged 70 = failed → exactly one learning-area row.
+    const failedRotation = await createEnrollmentWithGrades({ t1: 70, t2: 70, t3: 70, promotionStatus: "CONDITIONALLY_PROMOTED" });
+
+    const result = await backfillMissingRemedialRows();
+    expect(result.rowsCreated).toBeGreaterThanOrEqual(1);
+
+    const passedRows = await prisma.remedialClass.findMany({ where: { enrollmentId: passedRotation.enrollment.id } });
+    expect(passedRows).toHaveLength(0);
+
+    const failedRows = await prisma.remedialClass.findMany({ where: { enrollmentId: failedRotation.enrollment.id } });
+    expect(failedRows).toHaveLength(1);
+    expect(failedRows[0].subjectCode).toBe("TLE");
+    expect(failedRows[0].subjectName).toBe("Technology and Livelihood Education (TLE) 8");
+    expect(failedRows[0].originalGrade).toBe(70);
   });
 });
 

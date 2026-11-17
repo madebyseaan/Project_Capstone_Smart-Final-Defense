@@ -13,6 +13,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { invalidateSchoolYearCache } from "./schoolYearResolver";
+import { resolveDistrictFallback } from "./schoolIdentityText";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -23,15 +24,23 @@ export const SchoolSettingsSnapshotSchema = z.object({
   schoolId: z.string().default(""),
   division: z.string().default(""),
   region: z.string().default(""),
+  district: z.string().default(""),
   schoolHeadName: z.string().default(""),
   address: z.string().default(""),
 });
 
 export type SchoolSettingsSnapshot = z.infer<typeof SchoolSettingsSnapshotSchema>;
 
-/** Response shape consumed by SF forms (district is NOT in SystemSettings). */
-export interface SchoolIdentity extends SchoolSettingsSnapshot {
-  district: string;
+/** Response shape consumed by SF forms. */
+export type SchoolIdentity = SchoolSettingsSnapshot;
+
+/** Fill a missing district from the documented per-school mapping. */
+export function applyDistrictFallback<T extends Pick<SchoolSettingsSnapshot, "schoolId" | "schoolName" | "district">>(
+  identity: T
+): T {
+  if (identity.district.trim()) return identity;
+  const district = resolveDistrictFallback(identity.schoolId, identity.schoolName);
+  return district ? { ...identity, district } : identity;
 }
 
 // Select clause for live fallback queries
@@ -40,6 +49,7 @@ const LIVE_SELECT = {
   schoolId: true,
   division: true,
   region: true,
+  district: true,
   schoolHeadName: true,
   address: true,
 } as const;
@@ -61,6 +71,7 @@ export function captureSchoolSettingsSnapshot(
     schoolId: typeof s.schoolId === "string" ? s.schoolId : "",
     division: typeof s.division === "string" ? s.division : "",
     region: typeof s.region === "string" ? s.region : "",
+    district: typeof s.district === "string" ? s.district : "",
     schoolHeadName: typeof s.schoolHeadName === "string" ? s.schoolHeadName : "",
     address: typeof s.address === "string" ? s.address : "",
   };
@@ -73,6 +84,7 @@ function isAllEmpty(snapshot: SchoolSettingsSnapshot): boolean {
     snapshot.schoolId === "" &&
     snapshot.division === "" &&
     snapshot.region === "" &&
+    snapshot.district === "" &&
     snapshot.schoolHeadName === "" &&
     snapshot.address === ""
   );
@@ -108,7 +120,7 @@ export function repairLegacyIdentity(
   live: SchoolSettingsSnapshot
 ): SchoolSettingsSnapshot {
   const repaired = { ...snapshot };
-  for (const key of ["schoolName", "schoolId", "division", "region"] as const) {
+  for (const key of ["schoolName", "schoolId", "division", "region", "district"] as const) {
     if (isMissingOrPlaceholder(key, snapshot[key]) && live[key].trim()) {
       repaired[key] = live[key];
     }
@@ -117,7 +129,7 @@ export function repairLegacyIdentity(
 }
 
 function needsLegacyIdentityRepair(snapshot: SchoolSettingsSnapshot): boolean {
-  return (["schoolName", "schoolId", "division", "region"] as const).some((key) =>
+  return (["schoolName", "schoolId", "division", "region", "district"] as const).some((key) =>
     isMissingOrPlaceholder(key, snapshot[key])
   );
 }
@@ -141,7 +153,7 @@ export async function readLiveSnapshot(): Promise<SchoolSettingsSnapshot> {
     where: { id: "main" },
     select: LIVE_SELECT,
   });
-  return captureSchoolSettingsSnapshot(settings);
+  return applyDistrictFallback(captureSchoolSettingsSnapshot(settings));
 }
 
 // ---------------------------------------------------------------------------
@@ -207,15 +219,14 @@ export async function getSchoolIdentityForYear(
   if (year?.schoolSettingsSnapshot) {
     const parsed = parseSnapshot(year.schoolSettingsSnapshot);
     if (parsed) {
-      if (!needsLegacyIdentityRepair(parsed)) return { ...parsed, district: "" };
+      if (!needsLegacyIdentityRepair(parsed)) return parsed;
       const live = await readLiveSnapshot();
-      return { ...repairLegacyIdentity(parsed, live), district: "" };
+      return repairLegacyIdentity(parsed, live);
     }
   }
 
   // Fallback to live settings
-  const live = await readLiveSnapshot();
-  return { ...live, district: "" };
+  return readLiveSnapshot();
 }
 
 /**
@@ -243,11 +254,11 @@ export async function getSchoolIdentityByYears(
     if (year?.schoolSettingsSnapshot) {
       const parsed = parseSnapshot(year.schoolSettingsSnapshot);
       if (parsed) {
-        result.set(label, { ...repairLegacyIdentity(parsed, liveFallback), district: "" });
+        result.set(label, repairLegacyIdentity(parsed, liveFallback));
         continue;
       }
     }
-    result.set(label, { ...liveFallback, district: "" });
+    result.set(label, liveFallback);
   }
 
   return result;

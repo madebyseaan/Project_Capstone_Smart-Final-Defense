@@ -11,8 +11,8 @@
  *  - §4.2 entries[].termIndex + faculty externalId/employeeId join keys;
  *        isPlaceholder flagged
  *  - §4.3 room.id is an ATLAS surrogate (kept as atlasId, never an upstream id)
- *  - §4.4 specialEvents have NO eventType field; duplicate windows survive
- *        normalization (two "Lunch Break" rows are NOT merged)
+ *  - §4.4/BREAKS-2 specialEvents carry eventType/eventId/scope; duplicate
+ *        windows survive normalization and same-window split events are kept
  *  - §7.2 revisionMarker / activeRevisionId reach the caller verbatim
  *  - §8A draft rows are raw surrogate ids; unassignedItems always []
  */
@@ -107,8 +107,7 @@ function liveEntry(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// §4.4 live special events: two Lunch Break windows, two Health Break windows,
-// one flag ceremony — 5 rows total, NO `eventType` field.
+// §4.4 legacy special events (pre-BREAKS-2 shape): no eventType/eventId/scope.
 function liveSpecialEvents() {
   return [
     {
@@ -132,6 +131,26 @@ function liveSpecialEvents() {
       days: ['MONDAY'],
     },
   ];
+}
+
+function scopedBreak(overrides: Record<string, unknown> = {}) {
+  return {
+    eventName: 'Lunch Break',
+    startTime: '12:15',
+    endTime: '13:00',
+    dayOfWeek: null,
+    days: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'],
+    eventType: 'LUNCH_BREAK',
+    eventId: 'se_2f1c9a7d4b6e8c01',
+    scope: {
+      appliesToAll: false,
+      gradeLevels: [9],
+      programTypes: ['STE'],
+      shift: { label: null, startTime: '09:45', endTime: '18:30' },
+      note: null,
+    },
+    ...overrides,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -211,16 +230,80 @@ describe('normalizeAtlasPublishedPayload', () => {
     expect(health).toHaveLength(2);
   });
 
-  it('does not require an eventType field on specialEvents (§4.4)', () => {
-    const withoutType = normalizeAtlasPublishedPayload({
+  it('normalizes legacy rows with null BREAKS-2 fields and a stamped termIndex (§4.4)', () => {
+    const legacy = normalizeAtlasPublishedPayload({
       source: liveSource({ termIndex: 1 }),
       specialEvents: liveSpecialEvents(),
       entries: [],
     });
-    expect(withoutType.specialEvents).toHaveLength(5);
-    expect(withoutType.specialEvents[0]).not.toHaveProperty('eventType');
-    // termIndex is stamped from the source block for per-term rendering
-    expect(withoutType.specialEvents.every(e => e.termIndex === 1)).toBe(true);
+    expect(legacy.specialEvents).toHaveLength(5);
+    expect(legacy.specialEvents[0]).toMatchObject({
+      eventType: null,
+      eventId: null,
+      scope: null,
+      termIndex: 1,
+    });
+  });
+
+  it('preserves BREAKS-2 eventType, eventId and scope verbatim', () => {
+    const payloadWithScope = normalizeAtlasPublishedPayload({
+      source: liveSource({ termIndex: 1 }),
+      specialEvents: [scopedBreak()],
+      entries: [],
+    });
+    const event = payloadWithScope.specialEvents[0];
+    expect(event.eventType).toBe('LUNCH_BREAK');
+    expect(event.eventId).toBe('se_2f1c9a7d4b6e8c01');
+    expect(event.scope).toEqual({
+      appliesToAll: false,
+      gradeLevels: [9],
+      programTypes: ['STE'],
+      shift: { label: null, startTime: '09:45', endTime: '18:30' },
+      note: null,
+    });
+  });
+
+  it('keeps same-window events of different types as separate rows (§4.4 BREAKS-2)', () => {
+    const split = normalizeAtlasPublishedPayload({
+      source: liveSource({ termIndex: 1 }),
+      specialEvents: [
+        scopedBreak({
+          eventName: 'Flag Ceremony',
+          eventType: 'FLAG_CEREMONY',
+          eventId: 'se_aaaaaaaabbbbbbbb',
+          scope: {
+            appliesToAll: false,
+            gradeLevels: [9, 10],
+            programTypes: ['BEC'],
+            shift: { label: null, startTime: '09:45', endTime: '18:30' },
+            note: null,
+          },
+        }),
+        scopedBreak(),
+      ],
+      entries: [],
+    });
+    expect(split.specialEvents).toHaveLength(2);
+    expect(split.specialEvents.map(e => e.eventType)).toEqual(['FLAG_CEREMONY', 'LUNCH_BREAK']);
+    expect(split.specialEvents[0].scope?.programTypes).toEqual(['BEC']);
+    expect(split.specialEvents[1].scope?.programTypes).toEqual(['STE']);
+  });
+
+  it('keeps source.shiftWindows for viewer/shift matching', () => {
+    const withShifts = normalizeAtlasPublishedPayload({
+      source: liveSource({
+        shiftWindows: [
+          { gradeLevel: 9, programType: 'STE', startTime: '09:45', endTime: '18:30' },
+          { gradeLevel: 7, programType: null, startTime: '06:00', endTime: '12:00' },
+        ],
+      }),
+      specialEvents: [],
+      entries: [],
+    });
+    expect(withShifts.source.shiftWindows).toEqual([
+      { gradeLevel: 9, programType: 'STE', startTime: '09:45', endTime: '18:30' },
+      { gradeLevel: 7, programType: null, startTime: '06:00', endTime: '12:00' },
+    ]);
   });
 
   it('flags placeholder faculty (§4.2) and skips malformed entries', () => {

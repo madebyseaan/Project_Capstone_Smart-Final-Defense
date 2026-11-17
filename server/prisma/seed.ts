@@ -70,6 +70,7 @@ async function main() {
       schoolId: "300847",
       division: "Division of Negros Occidental",
       region: "Region VI - Western Visayas",
+      district: "Hinigaran I",
       currentSchoolYear: "",
       currentTerm: Term.T1,
     },

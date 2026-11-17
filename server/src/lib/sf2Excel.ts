@@ -22,6 +22,7 @@ export interface Sf2WorkbookOptions {
     schoolName?: string;
     division?: string;
     region?: string;
+    district?: string;
     schoolHeadName?: string;
   } | null;
   year: number;
@@ -91,7 +92,7 @@ export function buildSf2Workbook({
   sheet.getCell("A1").alignment = { horizontal: "center" };
 
   sheet.getCell("A2").value = `School ID: ${schoolSettings?.schoolId || ""}`;
-  sheet.getCell("A3").value = `Name of School: ${schoolSettings?.schoolName || ""}`;
+  sheet.getCell("A3").value = `Name of School: ${schoolSettings?.schoolName || ""}    District: ${schoolSettings?.district || ""}`;
   sheet.getCell("A4").value =
     `School Year: ${section.schoolYear}    Grade Level: ${(section.gradeLevel || "").replace("GRADE_", "")}    Section: ${section.name}`;
   sheet.getCell("A5").value = `Report for the Month of: ${monthLabel} ${year}`;

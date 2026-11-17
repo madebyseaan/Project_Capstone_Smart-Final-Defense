@@ -23,6 +23,7 @@ import {
   roomDisplay,
   stripGradeSuffix,
   timeToMinutes,
+  type BreakType,
   type ScheduleEntry,
   type TimeSlot,
 } from "./ScheduleShared";
@@ -39,7 +40,7 @@ interface DayBreakItem {
   start: string;
   end: string;
   eventName: string;
-  breakType: "recess" | "lunch" | "other";
+  breakType: BreakType;
   durationMin: number;
 }
 
@@ -131,17 +132,22 @@ export default function MobileSchedule({
       }
 
       if (
-        slot.event &&
-        (slot.event.days.length === 0 || slot.event.days.includes(selectedDay))
+        slot.events &&
+        slot.events.length > 0
       ) {
-        items.push({
-          type: "break",
-          start: slot.start,
-          end: slot.end,
-          eventName: slot.event.eventName,
-          breakType: classifyBreak(slot.event.eventName),
-          durationMin: timeToMinutes(slot.end) - timeToMinutes(slot.start),
-        });
+        const applicable = slot.events.filter(
+          (event) => event.days.length === 0 || event.days.includes(selectedDay),
+        );
+        for (const event of applicable) {
+          items.push({
+            type: "break",
+            start: slot.start,
+            end: slot.end,
+            eventName: event.eventName,
+            breakType: classifyBreak(event.eventType, event.eventName),
+            durationMin: timeToMinutes(slot.end) - timeToMinutes(slot.start),
+          });
+        }
       }
     }
     return items;

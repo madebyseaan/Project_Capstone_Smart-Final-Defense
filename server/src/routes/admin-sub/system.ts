@@ -17,7 +17,7 @@ import { getRecentSyncHistory, runUnifiedSync } from "../../lib/syncCoordinator"
 import { runPruneFromLiveSources } from "../../lib/prune";
 import { getSystemHealthSnapshot } from "../../lib/systemHealth";
 import { getActiveTermLabels, invalidateSchoolYearCache, getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
-import { syncActiveYearSnapshot } from "../../lib/schoolSettingsSnapshot";
+import { applyDistrictFallback, syncActiveYearSnapshot } from "../../lib/schoolSettingsSnapshot";
 import { setSecurityPolicy } from "../../lib/securityPolicy";
 import { isDemoTermMode } from "../../lib/demoTermMode";
 import { logger } from "../../lib/logger";
@@ -138,6 +138,7 @@ export default function (router: Router) {
               schoolId: settings.schoolId,
               division: settings.division,
               region: settings.region,
+              district: applyDistrictFallback(settings).district,
               schoolHeadName: settings.schoolHeadName,
               address: settings.address,
               primaryColor: settings.primaryColor,
@@ -179,7 +180,7 @@ export default function (router: Router) {
         // Non-fatal: use defaults if school year not linked yet
       }
 
-      res.json({ settings: sanitizeSettings(settings), termLabels });
+      res.json({ settings: sanitizeSettings(applyDistrictFallback(settings)), termLabels });
     } catch (error) {
       logger.error("Error fetching settings:", error);
       res.status(500).json({ message: "Failed to fetch settings" });

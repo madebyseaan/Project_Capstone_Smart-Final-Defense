@@ -491,6 +491,28 @@ interface ScheduleMetaView {
   isActiveSchoolYear: boolean | null;
   conflict: string | null;
   syncedAt: string | null;
+  shiftWindows: ScheduleShiftWindowView[];
+}
+
+interface ScheduleEventShiftView {
+  label: string | null;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+interface ScheduleSpecialEventScopeView {
+  appliesToAll: boolean;
+  gradeLevels: number[];
+  programTypes: string[];
+  shift: ScheduleEventShiftView | null;
+  note: string | null;
+}
+
+interface ScheduleShiftWindowView {
+  gradeLevel: number | null;
+  programType: string | null;
+  startTime: string;
+  endTime: string;
 }
 
 interface ScheduleSpecialEventView {
@@ -499,7 +521,42 @@ interface ScheduleSpecialEventView {
   endTime: string;
   dayOfWeek: string | null;
   days: string[];
+  eventType: string | null;
+  eventId: string | null;
+  scope: ScheduleSpecialEventScopeView | null;
   termIndex: number | null;
+}
+
+function mapSpecialEventScope(raw: any): ScheduleSpecialEventScopeView | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const shift = raw.shift && typeof raw.shift === 'object'
+    ? {
+        label: raw.shift.label != null ? String(raw.shift.label) : null,
+        startTime: raw.shift.startTime != null ? String(raw.shift.startTime) : null,
+        endTime: raw.shift.endTime != null ? String(raw.shift.endTime) : null,
+      }
+    : null;
+  return {
+    appliesToAll: raw.appliesToAll === true,
+    gradeLevels: Array.isArray(raw.gradeLevels)
+      ? raw.gradeLevels.map(Number).filter((n: number) => Number.isFinite(n))
+      : [],
+    programTypes: Array.isArray(raw.programTypes) ? raw.programTypes.map(String) : [],
+    shift,
+    note: raw.note != null ? String(raw.note) : null,
+  };
+}
+
+function mapShiftWindows(raw: unknown): ScheduleShiftWindowView[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((w: any) => ({
+      gradeLevel: w?.gradeLevel != null && Number.isFinite(Number(w.gradeLevel)) ? Number(w.gradeLevel) : null,
+      programType: w?.programType != null ? String(w.programType) : null,
+      startTime: String(w?.startTime ?? ''),
+      endTime: String(w?.endTime ?? ''),
+    }))
+    .filter(w => w.startTime && w.endTime);
 }
 
 async function findTeacherScheduleEntries(teacherId: string, schoolYear: string, termIndex: number | null) {
@@ -511,7 +568,7 @@ async function findTeacherScheduleEntries(teacherId: string, schoolYear: string,
     },
     include: {
       subject: { select: { code: true, name: true } },
-      section: { select: { name: true, gradeLevel: true } },
+      section: { select: { name: true, gradeLevel: true, program: true } },
     },
     orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
   });
@@ -568,8 +625,9 @@ async function buildScheduleResponse(teacherId: string, requestedTermIndex: numb
     }))
     .sort((a, b) => a.order - b.order);
 
-  // §4.4: specialEvents[] is the school-wide union of non-teaching windows.
-  // Duplicate windows are real (two "Lunch Break" rows) and are never merged.
+  // §4.4 / BREAKS-2: specialEvents[] is the school-wide break union typed and
+  // scoped by the producer. Duplicate windows are real; a window whose stored
+  // rows disagree on type is served as one event per stored type.
   const specialEvents: ScheduleSpecialEventView[] = ((meta?.specialEvents ?? []) as any[])
     .map(e => ({
       eventName: String(e.eventName ?? ''),
@@ -577,6 +635,9 @@ async function buildScheduleResponse(teacherId: string, requestedTermIndex: numb
       endTime: String(e.endTime ?? ''),
       dayOfWeek: e.dayOfWeek != null ? String(e.dayOfWeek) : null,
       days: Array.isArray(e.days) ? e.days.map(String) : [],
+      eventType: e.eventType != null ? String(e.eventType) : null,
+      eventId: e.eventId != null ? String(e.eventId) : null,
+      scope: mapSpecialEventScope(e.scope),
       termIndex: e.termIndex != null ? Number(e.termIndex) : null,
     }))
     .filter(e => e.eventName && e.startTime && e.endTime)
@@ -599,6 +660,7 @@ async function buildScheduleResponse(teacherId: string, requestedTermIndex: numb
     isActiveSchoolYear: source.isActiveSchoolYear ?? null,
     conflict: meta?.conflict ?? null,
     syncedAt: meta?.syncedAt ? new Date(meta.syncedAt).toISOString() : null,
+    shiftWindows: mapShiftWindows(source.shiftWindows),
   };
 
   return {

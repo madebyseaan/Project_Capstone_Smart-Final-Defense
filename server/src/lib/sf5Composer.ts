@@ -319,7 +319,7 @@ export async function composeSF5(
       schoolId: schoolIdentity.schoolId,
       division: schoolIdentity.division,
       region: schoolIdentity.region,
-      district: "", // No district field in SystemSettings
+      district: schoolIdentity.district,
       schoolHeadName: schoolIdentity.schoolHeadName,
     },
   };

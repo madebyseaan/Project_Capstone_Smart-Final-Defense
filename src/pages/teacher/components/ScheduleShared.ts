@@ -1,4 +1,4 @@
-﻿import type { ScheduleEntryDto, ScheduleSpecialEvent } from "@/lib/api";
+﻿import type { ScheduleEntryDto, ScheduleShiftWindow, ScheduleSpecialEvent } from "@/lib/api";
 
 export type ScheduleEntry = ScheduleEntryDto;
 
@@ -7,17 +7,21 @@ export interface ClassSlot {
   start: string;
   end: string;
   entries: Record<string, ScheduleEntry>;
-  event?: ScheduleSpecialEvent | undefined;
+  events?: ScheduleSpecialEvent[];
 }
+
+export type BreakType = "recess" | "lunch" | "other";
 
 export interface BreakSlot {
   type: "break";
   start: string;
   end: string;
   eventName: string;
-  breakType: "recess" | "lunch" | "other";
+  breakType: BreakType;
   durationMin: number;
   days: string[];
+  eventType: string | null;
+  eventId: string | null;
 }
 
 export type TimeSlot = ClassSlot | BreakSlot;
@@ -179,17 +183,118 @@ export function timeToMinutes(time: string): number {
 
 const BREAK_THRESHOLD_MIN = 15;
 
-export function classifyBreak(eventName: string): BreakSlot["breakType"] {
-  const n = eventName.toLowerCase();
-  if (n.includes("lunch")) return "lunch";
-  if (n.includes("health") || n.includes("recess")) return "recess";
+export function classifyBreak(
+  eventType: string | null | undefined,
+  eventName = "",
+): BreakType {
+  switch ((eventType ?? "").toUpperCase()) {
+    case "LUNCH_BREAK":
+      return "lunch";
+    case "HEALTH_BREAK":
+    case "RECESS":
+      return "recess";
+    case "FLAG_CEREMONY":
+      return "other";
+    default:
+      break;
+  }
+  const name = eventName.toLowerCase();
+  if (name.includes("lunch")) return "lunch";
+  if (name.includes("health") || name.includes("recess")) return "recess";
   return "other";
+}
+
+export function eventIdentity(event: ScheduleSpecialEvent): string {
+  if (event.eventId) return event.eventId;
+  return [
+    event.eventType ?? "OTHER",
+    event.startTime,
+    event.endTime,
+    event.dayOfWeek ?? "ALL",
+    event.eventName,
+  ].join("|");
+}
+
+export function numericGrade(gradeLevel: string | null | undefined): number | null {
+  if (!gradeLevel) return null;
+  const match = String(gradeLevel).match(/(\d{1,2})/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+export interface ViewerScope {
+  grades: Set<number>;
+  programs: Set<string>;
+  shifts: { startTime: string; endTime: string }[];
+}
+
+export function buildViewerScope(
+  entries: ScheduleEntry[],
+  shiftWindows: ScheduleShiftWindow[],
+): ViewerScope | null {
+  const grades = new Set<number>();
+  const programs = new Set<string>();
+
+  for (const entry of entries) {
+    const grade = numericGrade(entry.section.gradeLevel);
+    if (grade != null) grades.add(grade);
+    const program = (entry.section.program ?? "").trim().toUpperCase();
+    if (program) programs.add(program);
+  }
+
+  if (grades.size === 0) return null;
+
+  const shifts: { startTime: string; endTime: string }[] = [];
+  for (const window of shiftWindows) {
+    if (!window.startTime || !window.endTime) continue;
+    if (window.gradeLevel == null || !grades.has(window.gradeLevel)) continue;
+    const program = window.programType?.trim().toUpperCase() ?? null;
+    if (program != null && programs.size > 0 && !programs.has(program)) continue;
+    shifts.push({ startTime: window.startTime, endTime: window.endTime });
+  }
+
+  return { grades, programs, shifts };
+}
+
+export function eventAppliesToViewer(
+  event: ScheduleSpecialEvent,
+  viewer: ViewerScope | null,
+): boolean {
+  if (!viewer) return true;
+  const scope = event.scope;
+  if (!scope) return true;
+  if (scope.note === "SCOPE_NOT_DERIVABLE") return true;
+
+  const gradeMatch =
+    scope.appliesToAll ||
+    scope.gradeLevels.length === 0 ||
+    scope.gradeLevels.some((grade) => viewer.grades.has(grade));
+  if (!gradeMatch) return false;
+
+  const programMatch =
+    scope.programTypes.length === 0 ||
+    viewer.programs.size === 0 ||
+    scope.programTypes.some((program) => viewer.programs.has(program.toUpperCase()));
+  if (!programMatch) return false;
+
+  const shift = scope.shift;
+  if (shift?.startTime && shift.endTime && viewer.shifts.length > 0) {
+    const overlaps = viewer.shifts.some(
+      (window) =>
+        shift.startTime! < window.endTime && window.startTime < shift.endTime!,
+    );
+    if (!overlaps) return false;
+  }
+
+  return true;
 }
 
 export function getTimeSlots(
   entries: ScheduleEntry[],
   specialEvents: ScheduleSpecialEvent[],
   contractSlots: { startTime: string; endTime: string }[],
+  shiftWindows: ScheduleShiftWindow[] = [],
 ): TimeSlot[] {
   const slotMap = new Map<string, ClassSlot>();
   for (const entry of entries) {
@@ -203,44 +308,54 @@ export function getTimeSlots(
   const result: TimeSlot[] = [];
 
   if (specialEvents.length > 0) {
-    const breakRows = new Map<string, BreakSlot>();
-    for (const evt of specialEvents) {
-      const key = `${evt.startTime}-${evt.endTime}`;
-      const existing = breakRows.get(key);
-      if (existing) {
-        existing.days = [...new Set([...existing.days, ...evt.days])];
-        continue;
-      }
-      breakRows.set(key, {
+    const viewer = buildViewerScope(entries, shiftWindows);
+    const visibleEvents = specialEvents.filter((event) => eventAppliesToViewer(event, viewer));
+    const eventsByWindow = new Map<string, ScheduleSpecialEvent[]>();
+    const breaksByWindow = new Map<string, BreakSlot[]>();
+    const seen = new Set<string>();
+
+    for (const event of visibleEvents) {
+      const windowKey = `${event.startTime}-${event.endTime}`;
+      const identity = `${windowKey}|${eventIdentity(event)}`;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+
+      const windowEvents = eventsByWindow.get(windowKey) ?? [];
+      windowEvents.push(event);
+      eventsByWindow.set(windowKey, windowEvents);
+
+      const windowBreaks = breaksByWindow.get(windowKey) ?? [];
+      windowBreaks.push({
         type: "break",
-        start: evt.startTime,
-        end: evt.endTime,
-        eventName: evt.eventName,
-        breakType: classifyBreak(evt.eventName),
-        durationMin: timeToMinutes(evt.endTime) - timeToMinutes(evt.startTime),
-        days: [...evt.days],
+        start: event.startTime,
+        end: event.endTime,
+        eventName: event.eventName,
+        breakType: classifyBreak(event.eventType, event.eventName),
+        durationMin: timeToMinutes(event.endTime) - timeToMinutes(event.startTime),
+        days: [...event.days],
+        eventType: event.eventType,
+        eventId: event.eventId,
       });
+      breaksByWindow.set(windowKey, windowBreaks);
     }
 
     const windowKeys = new Set<string>([
       ...slotMap.keys(),
-      ...breakRows.keys(),
-      ...contractSlots.map((s) => `${s.startTime}-${s.endTime}`),
+      ...breaksByWindow.keys(),
+      ...contractSlots.map((slot) => `${slot.startTime}-${slot.endTime}`),
     ]);
+
     for (const key of windowKeys) {
       const classSlot = slotMap.get(key);
-      const breakSlot = breakRows.get(key);
       if (classSlot) {
-        if (breakSlot) {
-          classSlot.event = specialEvents.find(
-            (e) => e.startTime === breakSlot.start && e.endTime === breakSlot.end,
-          );
-        }
+        const windowEvents = eventsByWindow.get(key) ?? [];
+        if (windowEvents.length > 0) classSlot.events = windowEvents;
         result.push(classSlot);
-      } else if (breakSlot) {
-        result.push(breakSlot);
+      } else {
+        result.push(...(breaksByWindow.get(key) ?? []));
       }
     }
+
     return result.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
   }
 
@@ -263,6 +378,8 @@ export function getTimeSlots(
         breakType,
         durationMin: gap,
         days: [...DAYS],
+        eventType: null,
+        eventId: null,
       });
     }
     result.push(classSlots[i]);

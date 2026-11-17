@@ -2,16 +2,19 @@
  * atlasSchedule.ts — Zod schemas and normalizers for the ATLAS term-aware
  * published-schedule read contract and the §8A draft-schedule read family.
  *
- * Contract pin: ATLAS release 70a51608 (2026-09-24).
+ * Contract pin: ATLAS release 70a51608 (2026-09-24); `specialEvents[]` extended
+ * by BREAKS-2 (2026-11-16).
  *
  * Key contract points enforced here:
  *  - `termIndex` is mandatory on every read (1..4 or 'active'); omitting it
  *    resolves to the ACTIVE term, never "all terms" (§3).
  *  - `source.orderedTerms` is the term-label authority (§4.1) — never a
  *    hardcoded "Term 1/2/3" list.
- *  - `specialEvents[]` rows have exactly {eventName, startTime, endTime,
- *    dayOfWeek, days} — there is NO `eventType` field (§4.4). Duplicate windows
- *    (two "Lunch Break" rows) are real data and must never be de-duplicated.
+ *  - `specialEvents[]` rows carry the legacy window fields plus the BREAKS-2
+ *    additions `eventType`, `eventId` and `scope` (2026-11-16). Match on
+ *    type + scope, never on the window time alone. Duplicate windows are real
+ *    data and must never be de-duplicated; a window whose stored rows disagree
+ *    on type is served as one event per stored type.
  *  - `entries[].room.id` is an ATLAS surrogate, not an upstream room id (§4.3).
  *  - `faculty.externalId` / `faculty.employeeId` are the join keys; `isPlaceholder`
  *    marks a non-real assignment (§4.2).
@@ -54,6 +57,13 @@ const atlasOrderedTermSchema = z.object({
   displayLabel: z.string().catch(''),
 });
 
+export interface AtlasShiftWindow {
+  gradeLevel: number | null;
+  programType: string | null;
+  startTime: string;
+  endTime: string;
+}
+
 export interface AtlasPublishedSource {
   runId: number | null;
   schoolId: number | null;
@@ -75,11 +85,19 @@ export interface AtlasPublishedSource {
   termIndex: number | null;
   activeTermVerified: boolean | null;
   orderedTerms: AtlasOrderedTerm[];
+  shiftWindows: AtlasShiftWindow[];
 }
 
 const nullableString = z.string().nullable().catch(null);
 const nullableInt = z.number().int().nullable().catch(null);
 const nullableBool = z.boolean().nullable().catch(null);
+
+const atlasShiftWindowSchema = z.object({
+  gradeLevel: z.number().int().nullable().catch(null),
+  programType: z.string().nullable().catch(null),
+  startTime: z.string().catch(''),
+  endTime: z.string().catch(''),
+});
 
 const atlasPublishedSourceSchema = z.object({
   runId: nullableInt,
@@ -102,6 +120,7 @@ const atlasPublishedSourceSchema = z.object({
   termIndex: nullableInt,
   activeTermVerified: nullableBool,
   orderedTerms: z.array(atlasOrderedTermSchema).catch([]),
+  shiftWindows: z.array(atlasShiftWindowSchema).catch([]),
 });
 
 // ---------------------------------------------------------------------------
@@ -205,10 +224,26 @@ export interface AtlasTimeSlot {
   endTime: string;
 }
 
+export interface AtlasEventShift {
+  label: string | null;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+export interface AtlasSpecialEventScope {
+  appliesToAll: boolean;
+  gradeLevels: number[];
+  programTypes: string[];
+  shift: AtlasEventShift | null;
+  note: string | null;
+}
+
 /**
- * §4.4: exactly these fields — there is NO `eventType`. `dayOfWeek: null` with a
- * five-day `days` list is the school-wide case; a day-scoped event carries a
- * concrete `dayOfWeek` and a single-entry `days`.
+ * BREAKS-2 (2026-11-16): the legacy window fields plus `eventType`, `eventId`
+ * and `scope`. `eventType` is the stored type (FLAG_CEREMONY, HEALTH_BREAK,
+ * LUNCH_BREAK, RECESS, OTHER) — never guessed from `eventName`. `dayOfWeek: null`
+ * with a five-day `days` list is the school-wide case; a day-scoped event carries
+ * a concrete `dayOfWeek` and a single-entry `days`.
  */
 export interface AtlasSpecialEvent {
   eventName: string;
@@ -216,9 +251,26 @@ export interface AtlasSpecialEvent {
   endTime: string;
   dayOfWeek: string | null;
   days: string[];
+  eventType: string | null;
+  eventId: string | null;
+  scope: AtlasSpecialEventScope | null;
   /** Term the window was read under (SMART-added; not an ATLAS field). */
   termIndex: number | null;
 }
+
+const atlasEventShiftSchema = z.object({
+  label: nullableString,
+  startTime: nullableString,
+  endTime: nullableString,
+});
+
+const atlasSpecialEventScopeSchema = z.object({
+  appliesToAll: z.boolean().catch(false),
+  gradeLevels: z.array(z.number().int()).catch([]),
+  programTypes: z.array(z.string()).catch([]),
+  shift: atlasEventShiftSchema.nullable().catch(null),
+  note: nullableString,
+});
 
 const atlasSpecialEventSchema = z.object({
   eventName: z.string().catch(''),
@@ -226,6 +278,9 @@ const atlasSpecialEventSchema = z.object({
   endTime: z.string().catch(''),
   dayOfWeek: z.string().nullable().catch(null),
   days: z.array(z.string()).catch([]),
+  eventType: z.string().nullable().catch(null),
+  eventId: z.string().nullable().catch(null),
+  scope: atlasSpecialEventScopeSchema.nullable().catch(null),
 });
 
 // ---------------------------------------------------------------------------
@@ -253,7 +308,7 @@ export function normalizeAtlasPublishedPayload(raw: unknown): AtlasPublishedPayl
         requestedDate: null, resolvedForDate: null, activeRevisionId: null,
         activeRevisionEffectiveDate: null, appliedRevisionIds: [], revisionMarker: null,
         snapshotState: null, snapshotGaps: [], termScope: null, termIndex: null,
-        activeTermVerified: null, orderedTerms: [],
+        activeTermVerified: null, orderedTerms: [], shiftWindows: [],
       };
 
   const timeSlots: AtlasTimeSlot[] = [];
@@ -269,7 +324,13 @@ export function normalizeAtlasPublishedPayload(raw: unknown): AtlasPublishedPayl
     if (!parsed.success) continue;
     const e = parsed.data;
     if (!e.eventName || !e.startTime || !e.endTime) continue;
-    specialEvents.push({ ...e, termIndex: source.termIndex });
+    specialEvents.push({
+      ...e,
+      eventType: e.eventType ? e.eventType.trim().toUpperCase() : null,
+      eventId: e.eventId || null,
+      scope: e.scope ?? null,
+      termIndex: source.termIndex,
+    });
   }
 
   const entries: AtlasPublishedScheduleEntry[] = [];

@@ -106,6 +106,7 @@ export interface Sf9SchoolSettings {
   schoolName: string;
   division: string;
   region: string;
+  district: string;
   schoolHeadName: string;
 }
 
@@ -680,6 +681,7 @@ export async function composeSf9Section(options: ComposeSf9SectionOptions): Prom
     schoolName: schoolIdentity.schoolName,
     division: schoolIdentity.division,
     region: schoolIdentity.region,
+    district: schoolIdentity.district,
     schoolHeadName: schoolIdentity.schoolHeadName,
   };
 

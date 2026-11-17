@@ -195,6 +195,7 @@ describe("rotation parity — Advisory, SF9, SF10", () => {
     if (!advisory.ok) return;
     const advisoryScience = advisory.payload.subjectGrades.find((row) => row.subjectCode === "SCIENCE");
     expect(advisoryScience).toBeDefined();
+    expect(advisoryScience!.subjectName).toBe("Science 7");
     expect(advisoryScience!.grades.T1?.quarterlyGrade).toBe(80);
     expect(advisoryScience!.grades.T2?.quarterlyGrade).toBe(82);
     expect(advisoryScience!.grades.T3?.quarterlyGrade).toBe(93);

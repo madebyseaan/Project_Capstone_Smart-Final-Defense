@@ -48,6 +48,12 @@ export function formatDivisionLabel(division?: string | null, fallback = "Divisi
   return /^division\s+of\b/i.test(value) ? value : `Division of ${value}`;
 }
 
+export function formatDistrictLabel(district?: string | null, fallback = "District: _____________"): string {
+  const value = district?.trim();
+  if (!value) return fallback;
+  return /^district\b/i.test(value) ? value : `District: ${value}`;
+}
+
 /**
  * P1-13: allow only well-formed CSS color values (from settings/branding)
  * before interpolating them into style blocks. Anything else falls back to a

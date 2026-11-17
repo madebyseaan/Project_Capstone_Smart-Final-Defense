@@ -262,7 +262,7 @@ model AtlasScheduleMeta {
   schoolYear      String    @unique
   source          Json?     // full `source` block minus per-term arrays
   terms           Json?     // [{termIndex, order, identity, displayLabel, revisionMarker, revisionId, entries}]
-  specialEvents   Json?     // [{eventName, startTime, endTime, dayOfWeek, days, termIndex}]
+  specialEvents   Json?     // [{eventName, startTime, endTime, dayOfWeek, days, eventType, eventId, scope, termIndex}]
   timeSlots       Json?     // [{startTime, endTime}]
   activeTermIndex Int?
   conflict        String?   // e.g. 'ACTIVE_SCHOOL_YEAR_AMBIGUOUS' — ask a human, never retry
@@ -602,6 +602,7 @@ model SystemSettings {
   schoolId           String    @default("123456")
   division           String    @default("Division of Sample City")
   region             String    @default("Region IV-A CALABARZON")
+  district           String    @default("")
   schoolHeadName     String?
   address            String?
   contactNumber      String?

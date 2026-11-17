@@ -64,3 +64,31 @@ export function computeDisplayName(code: string, name: string): string {
   // Fallback: strip trailing grade from name ("Filipino 7" → "Filipino")
   return name.replace(/\s*\d+$/, '').trim();
 }
+
+// True when the code resolves to a mapped DepEd learning area (not the fallback path).
+export function isDepedAreaCode(code: string): boolean {
+  const base = baseSubjectCode(code);
+  if (DEPED_AREA_NAMES[base]) return true;
+  const group = SF10_GROUP_MAP[base];
+  return Boolean(group && DEPED_AREA_NAMES[group]);
+}
+
+// Grade-qualified canonical name for internal lists (remedial tracker, certificates):
+// "Science" + GRADE_7 → "Science 7", "TLE" + GRADE_8 → "TLE 8".
+export function computeGradeQualifiedName(
+  displayName: string,
+  gradeLevel: string | null | undefined,
+): string {
+  const grade = (gradeLevel ?? '').replace(/^GRADE_/, '').trim();
+  if (!grade || /\d$/.test(displayName)) return displayName;
+  return `${displayName} ${grade}`;
+}
+
+// Remedial rows always use the grade-qualified canonical DepEd area name.
+export function computeRemedialSubjectName(
+  code: string,
+  name: string,
+  gradeLevel: string | null | undefined,
+): string {
+  return computeGradeQualifiedName(computeDisplayName(code, name), gradeLevel);
+}

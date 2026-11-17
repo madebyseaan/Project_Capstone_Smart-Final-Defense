@@ -587,6 +587,7 @@ export async function syncAtlasPublishedSchedule(
       termScope: source.termScope,
       termIndex: source.termIndex,
       activeTermVerified: source.activeTermVerified,
+      shiftWindows: source.shiftWindows,
     };
     if (activePayload.invalidEntries > 0) {
       logger.warn(`[AtlasSync] Published schedule active term: ${activePayload.invalidEntries} malformed entr(ies) skipped`);

@@ -1,6 +1,6 @@
 import React from "react";
 import type { FullSf9Payload, Sf9ValueRow } from "@/lib/api";
-import { formatDivisionLabel, formatGradeLevel, formatRegionLabel } from "@/lib/utils";
+import { formatDistrictLabel, formatDivisionLabel, formatGradeLevel, formatRegionLabel } from "@/lib/utils";
 
 interface SF9FormProps {
   data: FullSf9Payload;
@@ -38,7 +38,7 @@ export default function SF9Form({ data, fullLogoUrl, highlightSubject }: SF9Form
           <h3 className="font-bold text-sm text-gray-900">Department of Education</h3>
           <p className="text-sm text-gray-800 mt-1">{formatRegionLabel(data.schoolSettings?.region)}</p>
           <p className="text-sm text-gray-800">{formatDivisionLabel(data.schoolSettings?.division)}</p>
-          <p className="text-sm text-gray-800 mt-1">District: _____________</p>
+          <p className="text-sm text-gray-800">{formatDistrictLabel(data.schoolSettings?.district)}</p>
           <p className="text-sm text-gray-800">{data.schoolSettings?.schoolName ? `School: ${data.schoolSettings.schoolName}` : "School: _____________"}</p>
         </div>
         <div className="w-20 flex items-center justify-center">

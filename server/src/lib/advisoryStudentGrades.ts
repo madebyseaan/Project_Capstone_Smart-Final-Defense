@@ -1,5 +1,6 @@
 import type { ClassAssignment, Grade, Subject } from "@prisma/client";
 import { prisma } from "./prisma";
+import { computeGradeQualifiedName } from "./subjectDisplay";
 
 /**
  * Core builder for the teacher advisory student-grade profile
@@ -365,6 +366,7 @@ export async function buildAdvisoryStudentGrades(options: {
   const mergedRotationRows: typeof subjectGrades = [];
   for (const [, groupRows] of Object.entries(rotationGroups)) {
     const sorted = [...groupRows].sort((a, b) => (a.rotationTermRank ?? 0) - (b.rotationTermRank ?? 0));
+    const mergedBaseName = toTitleCase(sorted[0].rotationOutputLabel ?? sorted[0].subjectName);
 
     // Build merged grades: each sub-subject occupies its rotation term slot
     const mergedGrades: Record<string, AdvisoryGradeTerm | null> = { T1: null, T2: null, T3: null };
@@ -390,7 +392,7 @@ export async function buildAdvisoryStudentGrades(options: {
     mergedRotationRows.push({
       subjectId: sorted[0].subjectId,
       subjectCode: sorted[0].rotationOutputLabel ?? sorted[0].subjectCode,
-      subjectName: toTitleCase(sorted[0].rotationOutputLabel ?? sorted[0].subjectName),
+      subjectName: computeGradeQualifiedName(mergedBaseName, currentEnrollment.section.gradeLevel),
       subjectType: sorted[0].subjectType,
       teacher: [...new Set(sorted.map((r) => r.teacher).filter(Boolean))].join(" / "),
       grades: mergedGrades,

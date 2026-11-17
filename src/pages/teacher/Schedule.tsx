@@ -23,6 +23,7 @@ import {
   getDayKey,
   getGradeColors,
   getTimeSlots,
+  eventIdentity,
   roomDisplay,
   shortenSubject,
   stripGradeSuffix,
@@ -64,7 +65,12 @@ export default function TeacherSchedule() {
 
   const todayKey = getDayKey();
   const todayClasses = schedule?.byDay[todayKey] ?? [];
-  const gridRows = getTimeSlots(schedule?.entries ?? [], schedule?.specialEvents ?? [], schedule?.timeSlots ?? []);
+  const gridRows = getTimeSlots(
+    schedule?.entries ?? [],
+    schedule?.specialEvents ?? [],
+    schedule?.timeSlots ?? [],
+    schedule?.meta?.shiftWindows ?? [],
+  );
   const gradeLevels = [...new Set((schedule?.entries ?? []).map(e => e.section.gradeLevel))].sort();
   const terms: ScheduleTermInfo[] = schedule?.terms ?? [];
   const meta = schedule?.meta ?? null;
@@ -402,23 +408,27 @@ export default function TeacherSchedule() {
                       {DAYS.map((day) => {
                         const entry = slot.entries[day];
                         if (!entry) {
-                          // A class row's window may still carry a school-wide
-                          // event (§4.4 union) — show it where no class sits.
-                          const eventApplies =
-                            slot.event && (slot.event.days.length === 0 || slot.event.days.includes(day));
+                          const applicableEvents = (slot.events ?? []).filter(
+                            (event) => event.days.length === 0 || event.days.includes(day),
+                          );
                           return (
                             <td key={day} className="px-2 py-2 align-middle">
                               <div className={`min-h-[88px] rounded-2xl flex flex-col items-center justify-center gap-1 ${
-                                eventApplies
+                                applicableEvents.length > 0
                                   ? "border border-dashed border-amber-200/60 bg-amber-50/30"
                                   : day === todayKey ? "bg-primary/[0.03]" : "bg-muted/40"
                               }`}>
-                                {eventApplies && (
+                                {applicableEvents.length > 0 && (
                                   <>
                                     <Coffee className="w-4 h-4 text-amber-400" />
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
-                                      {slot.event!.eventName}
-                                    </span>
+                                    {applicableEvents.map((event) => (
+                                      <span
+                                        key={eventIdentity(event)}
+                                        className="text-[10px] font-bold uppercase tracking-wider text-amber-400"
+                                      >
+                                        {event.eventName}
+                                      </span>
+                                    ))}
                                   </>
                                 )}
                               </div>

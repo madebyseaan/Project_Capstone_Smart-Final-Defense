@@ -17,7 +17,8 @@ import https from "https";
 import http from "http";
 import { createHash } from "crypto";
 import { prisma } from "./prisma";
-import { getEnrollProPublicSettings, getIntegrationV1ActiveTerm, getIntegrationV1ActiveSchoolYear, getEnrollProSchoolYearWithTerms, getEnrollProEffectiveBaseUrl } from "./enrollproClient";
+import { getEnrollProPublicSettings, getEnrollProPublicConfig, getIntegrationV1ActiveTerm, getIntegrationV1ActiveSchoolYear, getEnrollProSchoolYearWithTerms, getEnrollProEffectiveBaseUrl } from "./enrollproClient";
+import { resolveDistrictFallback } from "./schoolIdentityText";
 import { ensureSchoolYearFromEnrollPro, invalidateSchoolYearCache } from "./schoolYearResolver";
 import { broadcastSettingsUpdate } from "./sseManager";
 import { syncActiveYearSnapshot } from "./schoolSettingsSnapshot";
@@ -57,14 +58,17 @@ export function buildSchoolIdentityUpdate(epSettings: {
   depedSchoolId?: string | null;
   region?: string | null;
   division?: string | null;
-}): { schoolId?: string; region?: string; division?: string } {
-  const update: { schoolId?: string; region?: string; division?: string } = {};
+  district?: string | null;
+}): { schoolId?: string; region?: string; division?: string; district?: string } {
+  const update: { schoolId?: string; region?: string; division?: string; district?: string } = {};
   const schoolId = epSettings.depedSchoolId?.trim();
   const region = epSettings.region?.trim();
   const division = epSettings.division?.trim();
+  const district = epSettings.district?.trim();
   if (schoolId) update.schoolId = schoolId;
   if (region) update.region = region;
   if (division) update.division = division;
+  if (district) update.district = district;
   return update;
 }
 
@@ -171,6 +175,24 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
     ? await downloadLogoFromEnrollPro(epSettings.logoUrl as string, resolvedUploadDir)
     : null;
 
+  // District is part of EnrollPro-owned institutional identity. Newer
+  // deployments expose it on /settings/public; fall back to the lightweight
+  // public-config endpoint, then to the documented per-school default.
+  const identityUpdate = buildSchoolIdentityUpdate(epSettings);
+  if (!identityUpdate.district) {
+    try {
+      const publicConfig = await getEnrollProPublicConfig();
+      const district = publicConfig.district?.trim();
+      if (district) identityUpdate.district = district;
+    } catch (err: any) {
+      logger.warn(`[BrandingSync] Failed to fetch district from /system/public-config: ${err.message}`);
+    }
+  }
+  if (!identityUpdate.district) {
+    const fallbackDistrict = resolveDistrictFallback(epSettings.depedSchoolId, epSettings.schoolName);
+    if (fallbackDistrict) identityUpdate.district = fallbackDistrict;
+  }
+
   const updateData: Record<string, any> = {
     primaryColor: colors.primary,
     secondaryColor: colors.secondary,
@@ -178,7 +200,7 @@ export async function syncEnrollProBranding(uploadDir?: string): Promise<object>
     lastEnrollProSync: new Date(),
     // School identity mirrors EnrollPro exactly — including clearing fields
     // that were emptied there (previously stale values survived forever).
-    ...buildSchoolIdentityUpdate(epSettings),
+    ...identityUpdate,
     schoolHeadName: epSettings.schoolHeadName?.trim() || null,
     email: epSettings.depedEmail?.trim() || null,
   };
