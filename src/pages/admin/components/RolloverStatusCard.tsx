@@ -14,6 +14,8 @@ interface RolloverStatus {
   unfinalizedSections: Array<{ sectionId: string; sectionName: string; gradeLevel: string; draftBlockerCount: number }>;
   snapshotGapCount?: number;
   snapshotGapSections?: Array<{ sectionId: string; sectionName: string; finalizedCount: number; snapshotCount: number }>;
+  remedialBlockCount?: number;
+  remedialBlockStudents?: Array<{ lrn: string; name: string; grade: string; section: string; pendingSubjects: string[] }>;
   canArchive: boolean;
 }
 
@@ -105,7 +107,7 @@ export default function RolloverStatusCard() {
             </div>
 
             {status.previousYear && status.previousYear.status !== "ARCHIVED" && (
-              <div className={`p-3 rounded-xl border-2 ${status.unfinalizedCount > 0 || (status.snapshotGapCount ?? 0) > 0 ? "bg-amber-50 border-amber-200" : "bg-primary/5 border-primary/20"}`}>
+              <div className={`p-3 rounded-xl border-2 ${status.unfinalizedCount > 0 || (status.snapshotGapCount ?? 0) > 0 || (status.remedialBlockCount ?? 0) > 0 ? "bg-amber-50 border-amber-200" : "bg-primary/5 border-primary/20"}`}>
                 {status.unfinalizedCount > 0 ? (
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
@@ -135,6 +137,30 @@ export default function RolloverStatusCard() {
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  </div>
+                ) : (status.remedialBlockCount ?? 0) > 0 ? (
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">
+                        {status.remedialBlockCount} learner(s) in {status.previousYear.label} still have pending remedial classes
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Rollover is blocked until these are completed. Open <strong>Registrar → Remedial Tracker</strong>, enter the remedial mark (RCM) and conducted dates, then Save &amp; Complete.
+                      </p>
+                      <ul className="text-xs text-amber-700 mt-1 space-y-0.5">
+                        {status.remedialBlockStudents?.slice(0, 5).map((s) => (
+                          <li key={s.lrn}>
+                            {s.name} ({s.lrn}) — {s.grade} {s.section}: {s.pendingSubjects.join(", ")}
+                          </li>
+                        ))}
+                      </ul>
+                      {(status.remedialBlockStudents?.length ?? 0) > 5 && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          and {(status.remedialBlockStudents?.length ?? 0) - 5} more
+                        </p>
+                      )}
                     </div>
                   </div>
                 ) : (

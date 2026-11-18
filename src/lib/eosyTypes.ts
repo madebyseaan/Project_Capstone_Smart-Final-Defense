@@ -28,6 +28,7 @@ export interface EosyFinalizationSummary {
   learnersWithStoredStatus: number;
   totalDraftBlockers: number;
   snapshotGapSections: number;
+  pendingRemedialStudents: number;
   allPromotionsFinalized: boolean;
   readyForRollover: boolean;
 }

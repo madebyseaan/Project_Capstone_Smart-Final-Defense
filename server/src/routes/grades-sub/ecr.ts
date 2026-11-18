@@ -14,7 +14,8 @@ import { prisma } from "../../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../../middleware/auth";
 import { logger } from "../../lib/logger";
 import { resolveCurrentTerm, isHomeroomGuidanceSubjectCode } from "./helpers";
-import { checkGradeEditLocks } from "../../lib/gradeLocks";
+import { checkGradeEditLocks, hasApprovedEditRequest } from "../../lib/gradeLocks";
+import { getWriteBlock } from "../../lib/gradeFinalization";
 import { parseEcrWorkbook, EcrParseError, type EcrTerm } from "../../lib/ecrParser";
 import { importEcrToGrades } from "../../lib/ecrImport";
 import { exportEcrWorkbook } from "../../lib/ecrExport";
@@ -82,6 +83,7 @@ export default function registerEcr(router: Router): void {
           schoolYearLabel: classAssignment.schoolYear,
           term,
           isArchived: sampleGrade?.isArchived ?? false,
+          classAssignmentId,
         });
         if (lockBlock) { res.status(403).json({ code: lockBlock.code, message: lockBlock.message }); return; }
 
@@ -90,15 +92,26 @@ export default function registerEcr(router: Router): void {
         const currentTermNum = termOrder[currentTerm] ?? 1;
         const requestTermNum = termOrder[term] ?? 0;
         if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
-          const editRequest = await prisma.gradeEditRequest.findFirst({
-            where: { teacherId: teacher.userId, term, status: "APPROVED", expiresAt: { gt: new Date() } },
-          });
-          if (!editRequest) {
+          const hasEditAccess = await hasApprovedEditRequest(
+            teacher.userId,
+            term,
+            classAssignment.schoolYear,
+            classAssignmentId,
+          );
+          if (!hasEditAccess) {
             const relation = requestTermNum < currentTermNum ? "past" : "future";
             res.status(403).json({ message: `Cannot edit grades for ${term} (${relation} term).` });
             return;
           }
         }
+
+        const finalizationBlock = await getWriteBlock({
+          teacherUserId: teacher.userId,
+          classAssignmentId,
+          term,
+          schoolYear: classAssignment.schoolYear,
+        });
+        if (finalizationBlock) { res.status(403).json(finalizationBlock); return; }
 
         const file = req.file;
         if (!file) { res.status(400).json({ message: "No file uploaded." }); return; }

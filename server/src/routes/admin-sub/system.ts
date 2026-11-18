@@ -25,6 +25,7 @@ import { validate } from "../../middleware/validate";
 import { setYearLock, setTermLock } from "../../lib/gradeLocks";
 import { listUnfinalizedSections } from "../../lib/promotion";
 import { archiveSchoolYear, handleYearChangeRollover, findSnapshotGapSections } from "../../lib/rollover";
+import { getRemedialRolloverBlock } from "../../lib/remedial";
 import {
   settingsUpdateSchema,
   colorSettingsSchema,
@@ -522,13 +523,16 @@ export default function (router: Router) {
 
       let unfinalized: any[] = [];
       let snapshotGaps: any[] = [];
+      let remedialBlock = { blocked: false, count: 0, students: [] as any[] };
       if (previousYear) {
-        const [unfinalizedRes, gapsRes] = await Promise.all([
+        const [unfinalizedRes, gapsRes, remedialRes] = await Promise.all([
           listUnfinalizedSections(previousYear.label),
           findSnapshotGapSections(previousYear.label),
+          getRemedialRolloverBlock(previousYear.label),
         ]);
         unfinalized = unfinalizedRes;
         snapshotGaps = gapsRes;
+        remedialBlock = remedialRes;
       }
 
       res.json({
@@ -538,7 +542,13 @@ export default function (router: Router) {
         unfinalizedSections: unfinalized.map((s) => ({ sectionId: s.sectionId, sectionName: s.sectionName, gradeLevel: s.gradeLevel, draftBlockerCount: s.draftBlockerCount })),
         snapshotGapCount: snapshotGaps.length,
         snapshotGapSections: snapshotGaps,
-        canArchive: unfinalized.length === 0 && snapshotGaps.length === 0 && !!previousYear,
+        remedialBlockCount: remedialBlock.count,
+        remedialBlockStudents: remedialBlock.students,
+        canArchive:
+          unfinalized.length === 0 &&
+          snapshotGaps.length === 0 &&
+          remedialBlock.count === 0 &&
+          !!previousYear,
         pendingYearsCount: pendingYearsCount > 1 ? pendingYearsCount : undefined,
       });
     } catch (error) {
@@ -549,7 +559,8 @@ export default function (router: Router) {
 
   // Dev-only demo seeding tool. Runs the seed-teacher-scores script for the
   // active school year so admins can test with realistic data. Finalized seeds
-  // auto-run the EOSY finalize inside the script, so rollover stays safe.
+  // auto-run the EOSY finalize and complete the seeded remedial rows inside the
+  // script, so rollover stays safe.
   router.post("/dev/seed-scores", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { action, finalized, clearFirst } = req.body as {
@@ -604,14 +615,16 @@ export default function (router: Router) {
 
         const serverRoot = path.resolve(__dirname, "..", "..", "..");
         const bin = path.join(serverRoot, "node_modules", "ts-node", "dist", "bin.js");
-        // Demo profile: 1 retained (G9), 1 remedial (G8), 1 special-program
-        // failure (G7-G9, exactly 1 subject). Script defaults stay 2/2/0 for
-        // manual runs; only this dev tool pins the controlled profile.
+        // Demo profile: 1 retained (G9), 1 remedial (G8), 1 STE
+        // program-failure learner (G7-G9, exactly 1 in-program subject) who
+        // rolls into a BEC/Regular section next school year. The script's own
+        // defaults stay 2/2/0 for manual runs; only this dev tool pins the
+        // controlled profile.
         const scriptArgs = [
           "--transpile-only", "prisma/seed-teacher-scores.ts", "--all", "--complete-transferees",
           "--retained", "1", "--remedial", "1",
           "--retained-grade", "9", "--remedial-grade", "8",
-          "--program-fail", "1",
+          "--program-fail", "1", "--program-fail-program", "STE",
         ];
         if (finalized) scriptArgs.push("--finalized");
         if (clearFirst) scriptArgs.push("--clear");

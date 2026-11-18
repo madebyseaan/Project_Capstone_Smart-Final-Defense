@@ -1,7 +1,7 @@
 # Term Finalization — Rotation UX Fix & Anti-Regression Plan
 
 **Date:** 2026-11-18
-**Status:** READY FOR EXECUTION
+**Status:** EXECUTED — all gates green (see `artifacts/term-finalization-rotation/final/EXECUTION-REPORT.md`)
 **Defense:** Thursday — freeze all changes after the FINAL gate passes.
 **Scope owner:** Registrar Term Finalization (`/registrar/term-finalization`)
 **Related docs:** `docs/GRADE_PIPELINE_ALIGNMENT_FIX_PLAN_2026-11-16.md`, `docs/DEPLOYMENT_RUNBOOK.md`
@@ -62,7 +62,7 @@ Term Finalization shows rotation components (`Science - Biology`, `Science - Che
 | ID | Decision | Rationale |
 |---|---|---|
 | D1 | Term Finalization selects **only the term-ranked rotation component** (`rotationTermRank === termIndex`). | Matches ATLAS metadata, the preview endpoint, advisory, promotion, SF9/SF10 rules. |
-| D2 | Registrar sees **one learning-area row** (`Science 7`) and **no branch codes**. | Registrar thinks in learning areas, not ATLAS strands. The term selector already implies the strand. |
+| D2 | Registrar sees **one learning-area row** (`Science 7`) with the **human-readable term branch** (`Science - Biology 7`) and its **selected component code** (`SCI_BIO7`). | Registrar needs both the strand name and the exact code; only the selected term's component is shown. |
 | D3 | If a rotation group has no component for the selected term, fall back exactly like the preview: first component with grades, else the first sorted component. | Prevents "No grades" phantom rows on legacy/incomplete metadata. |
 | D4 | Finalize/Unfinalize filters rotation assignments by the selected term **server-side**, even when `subjectIds` comes from a stale tab. | Old UI payloads must not flip out-of-term strands. |
 | D5 | Do **not** repair or delete the existing out-of-term grades in this change. | Data cleanup is separate; changing grades before defense adds risk. |
@@ -75,7 +75,7 @@ Term Finalization shows rotation components (`Science - Biology`, `Science - Che
 | Surface | Before | After |
 |---|---|---|
 | Subject row name | `Science 7` | `Science 7` (unchanged) |
-| Subject subtitle | `Science 7 · SCI_BIO7, SCI_CHEM7, SCI_ES7` | `Science 7` only — no rotation codes |
+| Subject subtitle | `Science 7 · SCI_BIO7, SCI_CHEM7, SCI_ES7` | `Science 7` plus the term branch and its code (`Science - Biology 7 · SCI_BIO7`, etc.) |
 | T1 Science drafts | 15 | 5 (SCI_BIO only) |
 | T2 Science drafts | 15 | 5 (SCI_CHEM only) |
 | T3 Science drafts | 15 | 5 (SCI_ES only) |
@@ -188,7 +188,7 @@ Science row:        T1 = SCI_BIO7 (5), T2 = SCI_CHEM7 (5), T3 = SCI_ES7 (5)
 
 ---
 
-### Step 3 — Frontend: hide rotation branch codes
+### Step 3 — Frontend: show term branch, hide rotation codes
 
 **Files:**
 - `src/lib/termFinalizationTypes.ts`
@@ -196,19 +196,19 @@ Science row:        T1 = SCI_BIO7 (5), T2 = SCI_CHEM7 (5), T3 = SCI_ES7 (5)
 
 **Changes:**
 
-1. Add `rotationGroupId: string | null` to `TermFinalizationSubject`.
+1. Add `rotationGroupId: string | null` and `rotationSubjectName: string | null` to `TermFinalizationSubject`.
 2. In the desktop and mobile subject subtitle:
    - Render the `subjectCodes` suffix only when `!subject.rotationGroupId`.
-   - Rotation group row shows only `Science 7` (or `TLE Exploratory 7` for a TLE rotation).
-   - Do not show a branch tooltip, chip, or secondary code for rotation groups.
+   - Rotation group row shows the human-readable term branch and the selected component code (`Science - Biology 7 · SCI_BIO7`).
 3. Do not change row grouping, actions, status badges, or counts.
 4. Add stable test attributes for the E2E gate:
    - Row: `data-subject-name={subject.subjectName}`, `data-rotation-group={subject.rotationGroupId ?? ""}`.
+   - Branch: `data-testid="term-finalization-subject-branch"`.
    - Codes line: `data-testid="term-finalization-subject-codes"` (render only when codes are shown).
    - Draft cell: `data-testid="term-finalization-subject-draft"`.
    - Mirror required attributes on the mobile row.
 
-**Expected visible result:** `Science 7` with no `SCI_*` text; counts 5 per term.
+**Expected visible result:** `Science 7` with `Science - Biology 7` / `Science - Chemistry 7` / `Science - Earth Science 7` per term; no `SCI_*` text; counts 5 per term.
 
 **Gate:** G2 + G3 + G4 after Step 3.
 
@@ -265,7 +265,7 @@ Science row:        T1 = SCI_BIO7 (5), T2 = SCI_CHEM7 (5), T3 = SCI_ES7 (5)
 4. Run defense smoke on the deployed build:
    - Health 200.
    - Term Finalization T1/T2/T3 shows Science 5 for Aguinaldo and Bonifacio.
-   - No branch codes visible.
+   - Term-specific branch name and code visible (`Science - Biology 7 · SCI_BIO7`, etc.).
    - View grades preview unchanged.
    - PM2 logs clean.
 5. Freeze. No further code changes.
@@ -279,7 +279,7 @@ Science row:        T1 = SCI_BIO7 (5), T2 = SCI_CHEM7 (5), T3 = SCI_ES7 (5)
 | Area | Allowed |
 |---|---|
 | Term Finalization subject rows | Rotation group rows (`Science`, `TLE Exploratory`) select one component per term; counts decrease by out-of-term components. |
-| Term Finalization subtitle | Rotation group branch codes hidden. |
+| Term Finalization subtitle | Rotation group shows only the term branch and selected code. |
 | Finalize/Unfinalize | Rotation groups only flip the selected term's component. |
 | API shape | `TermFinalizationSubject.rotationGroupId` added; existing fields retained. |
 | Tests | New rotation overview/finalize tests and new Playwright assertions. |
@@ -571,7 +571,7 @@ Do not restore the DB: this plan performs no data writes.
 - [ ] Baseline captured (`G0`) with PM2 log and screenshots/counts.
 - [ ] Backend selects only the term-ranked rotation component in overview.
 - [ ] Finalize/Unfinalize use the same term filter (stale-payload safe).
-- [ ] UI hides rotation branch codes; one `Science 7` row only.
+- [ ] UI shows the term-specific branch name and selected code; one `Science 7` row only.
 - [ ] New backend rotation tests pass.
 - [ ] Updated Playwright spec passes (`collectProblems` empty).
 - [ ] Aguinaldo T1/T2/T3 = 40 drafts; Science 5.

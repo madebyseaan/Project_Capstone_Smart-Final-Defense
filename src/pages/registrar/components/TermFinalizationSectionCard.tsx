@@ -337,6 +337,9 @@ export default function TermFinalizationSectionCard({
                           key={`${section.sectionId}-${subject.subjectName}`}
                           className="border-border/60"
                           data-testid="term-finalization-subject"
+                          data-subject-name={subject.subjectName}
+                          data-rotation-group={subject.rotationGroupId ?? ""}
+                          data-draft={subject.draft}
                         >
                           <TableCell>
                             <p className="text-sm font-medium text-foreground">
@@ -346,10 +349,27 @@ export default function TermFinalizationSectionCard({
                               className="text-[11px] text-muted-foreground"
                               title={subject.subjectName}
                             >
-                              {subject.subjectName}
-                              {subject.subjectCodes.length > 0
-                                ? ` · ${subject.subjectCodes.join(", ")}`
-                                : ""}
+                              {subject.rotationGroupId && subject.rotationSubjectName ? (
+                                <>
+                                  <span data-testid="term-finalization-subject-branch">
+                                    {subject.rotationSubjectName}
+                                  </span>
+                                  {subject.subjectCodes.length > 0 && (
+                                    <span data-testid="term-finalization-subject-codes">
+                                      {` · ${subject.subjectCodes.join(", ")}`}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <span>{subject.subjectName}</span>
+                                  {subject.subjectCodes.length > 0 && (
+                                    <span data-testid="term-finalization-subject-codes">
+                                      {` · ${subject.subjectCodes.join(", ")}`}
+                                    </span>
+                                  )}
+                                </>
+                              )}
                             </p>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
@@ -390,6 +410,9 @@ export default function TermFinalizationSectionCard({
                       key={`${section.sectionId}-${subject.subjectName}-mobile`}
                       className="space-y-2 px-4 py-3"
                       data-testid="term-finalization-subject-mobile"
+                      data-subject-name={subject.subjectName}
+                      data-rotation-group={subject.rotationGroupId ?? ""}
+                      data-draft={subject.draft}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -400,15 +423,30 @@ export default function TermFinalizationSectionCard({
                             className="truncate text-[11px] text-muted-foreground"
                             title={subject.subjectName}
                           >
-                            {subject.subjectName}
+                            {subject.rotationGroupId && subject.rotationSubjectName ? (
+                              <>
+                                <span data-testid="term-finalization-subject-branch">
+                                  {subject.rotationSubjectName}
+                                </span>
+                                {subject.subjectCodes.length > 0 && (
+                                  <span data-testid="term-finalization-subject-codes">
+                                    {` · ${subject.subjectCodes.join(", ")}`}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              subject.subjectName
+                            )}
                           </p>
                           <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                             {subject.teacherNames.length > 0
                               ? subject.teacherNames.join(", ")
                               : "No teacher"}
-                            {subject.subjectCodes.length > 0
-                              ? ` · ${subject.subjectCodes.join(", ")}`
-                              : ""}
+                            {!subject.rotationGroupId && subject.subjectCodes.length > 0 && (
+                              <span data-testid="term-finalization-subject-codes">
+                                {` · ${subject.subjectCodes.join(", ")}`}
+                              </span>
+                            )}
                           </p>
                         </div>
                         <Badge

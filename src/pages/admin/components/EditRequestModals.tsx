@@ -17,7 +17,8 @@ interface EditRequest {
   section?: string;
   subject?: string;
   reason: string;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "WINDOW_OPEN" | "REFINALIZED" | "DECLINED";
+  windowRequired?: boolean;
   approvedByName?: string;
   expiresAt?: string;
   createdAt: string;
@@ -63,7 +64,19 @@ export function ApproveModal({ open, onOpenChange, request, onApproved }: Approv
       size="sm"
       icon={<ShieldCheck className="w-6 h-6" />}
       title="Approve Edit Access"
-      description={<>Grant <strong>{request?.teacherName}</strong> temporary edit access for <strong>{termLabel(request?.term || "")}</strong> grades.</>}
+      description={
+        request?.windowRequired ? (
+          <>
+            Approve a <strong>correction window</strong> for <strong>{request.teacherName}</strong> ·{" "}
+            <strong>{termLabel(request.term)}</strong>. The registrar will open the timed window.
+          </>
+        ) : (
+          <>
+            Grant <strong>{request?.teacherName}</strong> temporary edit access for{" "}
+            <strong>{termLabel(request?.term || "")}</strong> grades.
+          </>
+        )
+      }
       confirmLabel="Grant Access"
       onConfirm={handleApprove}
       confirmDisabled={!hours || parseInt(hours) < 1}
@@ -85,7 +98,11 @@ export function ApproveModal({ open, onOpenChange, request, onApproved }: Approv
             onChange={(e) => setHours(e.target.value)}
             placeholder="24"
           />
-          <p className="text-xs text-muted-foreground">Access expires automatically after this duration. Maximum: 168 hours (1 week).</p>
+          <p className="text-xs text-muted-foreground">
+            {request?.windowRequired
+              ? "The timer starts when the registrar opens the correction window. Maximum: 168 hours (1 week)."
+              : "Access expires automatically after this duration. Maximum: 168 hours (1 week)."}
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-2">

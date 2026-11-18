@@ -1,5 +1,54 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { collectProblems, login } from "./fixtures";
+
+const TERMS = ["T1", "T2", "T3"] as const;
+
+async function selectTerm(page: Page, term: (typeof TERMS)[number]): Promise<void> {
+  await page.getByLabel("Term").click();
+  await page.getByRole("option", { name: new RegExp(`^${term}`) }).click();
+  await expect(page.getByLabel("Term")).toContainText(term);
+  await expect(page.getByText("Loading term finalization status...")).toBeHidden({
+    timeout: 30_000,
+  });
+}
+
+async function assertRotationRow(
+  page: Page,
+  sectionName: string,
+  expectedSectionDrafts: number,
+  expectedBranchName: string,
+  expectedCode: string,
+): Promise<void> {
+  const panel = page.getByTestId("term-finalization-page");
+  await expect(panel).toBeVisible({ timeout: 30_000 });
+
+  const section = page
+    .getByTestId("term-finalization-section")
+    .filter({ hasText: sectionName })
+    .first();
+  const hasSection = await section
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => true)
+    .catch(() => false);
+  test.skip(!hasSection, `${sectionName} is not available in this environment`);
+
+  const subjectRow = section.locator(
+    '[data-testid="term-finalization-subject"][data-subject-name="Science 7"]',
+  );
+  if ((await subjectRow.count()) === 0) {
+    await section.getByTestId("term-finalization-section-toggle").click();
+  }
+
+  await expect(subjectRow).toHaveCount(1);
+  await expect(subjectRow).toHaveAttribute("data-draft", "5");
+  await expect(subjectRow.getByTestId("term-finalization-subject-branch")).toHaveText(
+    expectedBranchName,
+  );
+  await expect(subjectRow.getByTestId("term-finalization-subject-codes")).toContainText(
+    expectedCode,
+  );
+  await expect(section).toContainText(`${expectedSectionDrafts} draft grades`);
+}
 
 /**
  * Read-only guard for the registrar Term Finalization page.
@@ -62,6 +111,32 @@ test.describe("registrar term finalization (read-only)", () => {
     }
 
     expect(page.url()).toContain("/registrar/term-finalization");
+    expect(problems, problems.join("\n")).toEqual([]);
+  });
+
+  test("shows one Science row per term with the correct branch name and code", async ({ page }) => {
+    const problems = collectProblems(page);
+    await login(page, "registrar");
+    await page.goto("/registrar/term-finalization", { waitUntil: "domcontentloaded" });
+
+    await expect(page.getByTestId("term-finalization-page")).toBeVisible({ timeout: 30_000 });
+
+    for (const term of TERMS) {
+      await selectTerm(page, term);
+
+      const expectedBranchName =
+        term === "T1"
+          ? "Science - Biology 7"
+          : term === "T2"
+            ? "Science - Chemistry 7"
+            : "Science - Earth Science 7";
+      const expectedCode =
+        term === "T1" ? "SCI_BIO7" : term === "T2" ? "SCI_CHEM7" : "SCI_ES7";
+
+      await assertRotationRow(page, "Aguinaldo", 40, expectedBranchName, expectedCode);
+      await assertRotationRow(page, "Bonifacio", 50, expectedBranchName, expectedCode);
+    }
+
     expect(problems, problems.join("\n")).toEqual([]);
   });
 });

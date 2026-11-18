@@ -22,6 +22,7 @@ export function pickProgramFailureStudents(
   sectionsWithActiveCa: Set<string>,
   count: number,
   gradeFilter: string | null,
+  programFilter: string | null,
   transfereeIds: Set<string>,
   rotationGroupByCode: Map<string, string>,
 ): SpecialStudent[] {
@@ -29,6 +30,7 @@ export function pickProgramFailureStudents(
 
   const allowedGrades = new Set(["GRADE_7", "GRADE_8", "GRADE_9"]);
   const gradeFilterValue = gradeFilter ? `GRADE_${gradeFilter}` : null;
+  const programFilterValue = programFilter ? normalizeProgramCode(programFilter) : null;
 
   const eligible: Array<{
     section: { id: string; name: string; gradeLevel: string; program: string };
@@ -43,6 +45,7 @@ export function pickProgramFailureStudents(
 
     const program = normalizeProgramCode(section.program);
     if (program === "REGULAR" || program === "SPED") continue;
+    if (programFilterValue && program !== programFilterValue) continue;
 
     for (const studentId of sectionStudentIds.get(section.id) ?? []) {
       const student = studentsById.get(studentId);
@@ -70,10 +73,13 @@ export function pickProgramFailureStudents(
     if (usedIds.has(entry.student.id)) continue;
 
     const allSubjects = studentSubjects.get(entry.student.id) ?? [];
-    // Prefer a standalone subject so the failure stays visibly ONE subject;
-    // rotation strands expand to their whole group later.
+    // Prefer the program's own subjects (e.g. STE_RESEARCH7, SPA_SPEC7) so the
+    // failure is unambiguously in-program; then a standalone subject so the
+    // failure stays visibly ONE subject (rotation strands expand to their group).
+    const programPrefix = `${normalizeProgramCode(entry.section.program)}_`;
+    const programSubjects = allSubjects.filter((code) => code.toUpperCase().startsWith(programPrefix));
     const nonRotation = allSubjects.filter((code) => !rotationGroupByCode.has(code));
-    const pool = nonRotation.length > 0 ? nonRotation : allSubjects;
+    const pool = programSubjects.length > 0 ? programSubjects : nonRotation.length > 0 ? nonRotation : allSubjects;
     if (pool.length === 0) continue;
 
     const rand = seededRandom(hashStr(entry.student.id + "-programfail"));

@@ -294,6 +294,8 @@ export interface Grade {
   quarterlyGrade: number | null;
   qualitativeDescriptor?: string | null;
   remarks?: string;
+  status?: "DRAFT" | "FINALIZED" | "LOCKED";
+  isArchived?: boolean;
 }
 
 export interface ClassRecord {
@@ -303,6 +305,7 @@ export interface ClassRecord {
 
 export interface GradeDeadlineInfo {
   termEndDate: string | null;
+  effectiveNow?: string | null;
   daysRemaining: number | null;
   urgencyLevel: 'none' | 'warn' | 'urgent' | 'critical' | 'overdue';
   currentTerm: string;
@@ -361,6 +364,31 @@ export interface RotationSibling {
   isMine: boolean;
   teacherName: string;
 }
+
+// EnrollPro media photos (signed URLs via SMART server proxy)
+export type MediaEntityType = "learner" | "teacher";
+
+export interface MediaSignedUrl {
+  signedUrl: string | null;
+  expiresAt: string | null;
+  expiresInSeconds: number | null;
+}
+
+export interface MediaBatchItem {
+  entityType: MediaEntityType;
+  id: string;
+  signedUrl: string | null;
+  expiresAt: string | null;
+}
+
+export const mediaApi = {
+  getPhotoUrl: (entityType: MediaEntityType, id: string | number) =>
+    api.get<MediaSignedUrl>(
+      `/integration/media/photo-url/${entityType}/${encodeURIComponent(String(id))}`,
+    ),
+  getPhotoUrls: (items: Array<{ entityType: MediaEntityType; id: string | number }>) =>
+    api.post<{ items: MediaBatchItem[] }>("/integration/media/photo-urls", { items }),
+};
 
 // Auth API
 export const authApi = {
@@ -438,6 +466,7 @@ export const gradesApi = {
       classRecord: ClassRecord[];
       gradingMode: GradingMode;
       currentTerm?: "T1" | "T2" | "T3";
+      effectiveNow?: string | null;
       effectiveWeights?: {
         ww: number;
         pt: number;
@@ -550,6 +579,9 @@ export const gradesApi = {
   getMyEditRequests: () =>
     api.get<{ requests: any[] }>("/grades/edit-requests"),
 
+  endEditWindow: (id: string) =>
+    api.post<{ message: string; request: any }>(`/grades/edit-window/${id}/end`),
+
   getAdminEditRequests: (status?: string) =>
     api.get<{ requests: any[] }>("/grades/admin/edit-requests", { params: status ? { status } : {} }),
 
@@ -588,6 +620,16 @@ export const gradesApi = {
     api.post<{ status: 'ok' | 'offline'; scoresUpserted: number; unmatchedCount: number }>(
       `/grades/aims-sync/${classAssignmentId}`,
     ),
+
+  getAimsChanges: (classAssignmentId: string, term: string) =>
+    api.get<AimsChangesResponse>(`/grades/aims-changes/${classAssignmentId}`, { params: { term } }),
+
+  resyncAims: (
+    classAssignmentId: string,
+    term: string,
+    changes: Array<{ studentId: string; assessmentId: string }>,
+  ) =>
+    api.post<AimsResyncResult>(`/grades/aims-resync/${classAssignmentId}`, { term, changes }),
 
   // E-Class-Record Excel exchange
   ecrImport: (classAssignmentId: string, term: string, file: File, dryRun: boolean) => {
@@ -659,6 +701,45 @@ export interface AimsScoresResponse {
     scores: AimsRowScore[];
   }[];
   warnings: string[];
+  pendingUpdates: number;
+}
+
+export interface AimsScoreDiffSide {
+  pointsEarned: number;
+  maxPoints: number;
+  attemptNumber: number;
+  gradedAt: string | null;
+}
+
+export interface AimsDriftChange {
+  studentId: string;
+  studentName: string;
+  assessmentId: string;
+  assessmentTitle: string;
+  category: string;
+  type: string;
+  term: string;
+  importedTerm: string | null;
+  kind: "changed" | "term_moved";
+  previous: AimsScoreDiffSide | null;
+  current: AimsScoreDiffSide;
+  ledgerValue: number | null;
+  teacherEdited: boolean;
+  blockReason: string | null;
+}
+
+export interface AimsChangesResponse {
+  linked: boolean;
+  term: string;
+  checkedAt: string;
+  lastSyncedAt: string | null;
+  changes: AimsDriftChange[];
+}
+
+export interface AimsResyncResult {
+  appliedCount: number;
+  updatedStudents: number;
+  skipped: Array<{ studentId: string; assessmentId: string; reason: string }>;
 }
 
 export interface AimsCourseMatchInfo {
@@ -1676,8 +1757,120 @@ export interface SF1Data {
   source: string;
 }
 
+export type GradeEditRequestStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "EXPIRED"
+  | "WINDOW_OPEN"
+  | "REFINALIZED"
+  | "DECLINED";
+
+export type CorrectionDisplayStatus =
+  | "APPROVED"
+  | "WINDOW_OPEN"
+  | "EXPIRED"
+  | "REFINALIZED"
+  | "DECLINED";
+
+export interface CorrectionWindowItem {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  schoolYear: string;
+  term: string;
+  classAssignmentId: string | null;
+  section: string | null;
+  subject: string | null;
+  gradeLevel: string | null;
+  reason: string;
+  status: GradeEditRequestStatus;
+  displayStatus: CorrectionDisplayStatus;
+  approvedByName: string | null;
+  approvedHours: number | null;
+  expiresAt: string | null;
+  windowOpenedAt: string | null;
+  windowClosedAt: string | null;
+  refinalizedAt: string | null;
+  refinalizedByName: string | null;
+  declineReason: string | null;
+  unfinalizedGradeCount: number;
+  minutesRemaining: number | null;
+  createdAt: string;
+}
+
+export interface CorrectionSummary {
+  awaitingWindow: number;
+  windowOpen: number;
+  needsRefinalization: number;
+  total: number;
+}
+
+export interface CorrectionReviewChange {
+  field: string;
+  label: string;
+  category: string | null;
+  kind: "input" | "computed" | "record";
+  details: string[];
+}
+
+export interface CorrectionReviewStudent {
+  studentId: string;
+  studentName: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  changedFields: string[];
+  changes: CorrectionReviewChange[];
+}
+
+export interface CorrectionReviewResponse {
+  request: CorrectionWindowItem;
+  students: CorrectionReviewStudent[];
+  changedCount: number;
+  unchangedCount: number;
+  changedCategories: string[];
+  reasonCategories: string[];
+  outsideReasonCategories: string[];
+}
+
 export const registrarApi = {
   getDashboard: () => api.get<RegistrarDashboard>("/registrar/dashboard"),
+
+  getEditRequests: (params?: { schoolYear?: string; includeClosed?: boolean }) =>
+    api.get<{ schoolYear: string; items: CorrectionWindowItem[]; summary: CorrectionSummary }>(
+      "/registrar/edit-requests",
+      { params },
+    ),
+
+  getEditRequestSummary: (schoolYear?: string) =>
+    api.get<{ schoolYear: string } & CorrectionSummary>("/registrar/edit-requests/summary", {
+      params: schoolYear ? { schoolYear } : {},
+    }),
+
+  openEditWindow: (id: string) =>
+    api.post<{ message: string; request: CorrectionWindowItem }>(
+      `/registrar/edit-requests/${id}/open-window`,
+    ),
+
+  closeEditWindow: (id: string) =>
+    api.post<{ message: string; request: CorrectionWindowItem }>(
+      `/registrar/edit-requests/${id}/close-window`,
+    ),
+
+  declineEditWindow: (id: string, reason?: string) =>
+    api.post<{ message: string; request: CorrectionWindowItem }>(
+      `/registrar/edit-requests/${id}/decline`,
+      { reason },
+    ),
+
+  refinalizeEditWindow: (id: string) =>
+    api.post<{ message: string; request: CorrectionWindowItem }>(
+      `/registrar/edit-requests/${id}/refinalize`,
+    ),
+
+  reviewEditWindow: (id: string) =>
+    api.get<CorrectionReviewResponse>(`/registrar/edit-requests/${id}/review`),
+
 
   getRolloverStatus: () =>
     api.get<{
@@ -1687,6 +1880,8 @@ export const registrarApi = {
       unfinalizedSections: Array<{ sectionId: string; sectionName: string; gradeLevel: string; draftBlockerCount: number }>;
       snapshotGapCount: number;
       snapshotGapSections: Array<{ sectionId: string; sectionName: string; finalizedCount: number; snapshotCount: number }>;
+      remedialBlockCount: number;
+      remedialBlockStudents: Array<{ lrn: string; name: string; grade: string; section: string; pendingSubjects: string[] }>;
       canArchive: boolean;
     }>("/registrar/rollover-status"),
 
@@ -2538,6 +2733,8 @@ export const adminApi = {
       previousYear: { id: string; label: string; status: string } | null;
       unfinalizedCount: number;
       unfinalizedSections: Array<{ sectionId: string; sectionName: string; gradeLevel: string; draftBlockerCount: number }>;
+      remedialBlockCount: number;
+      remedialBlockStudents: Array<{ lrn: string; name: string; grade: string; section: string; pendingSubjects: string[] }>;
       canArchive: boolean;
     }>("/admin/rollover-status"),
 

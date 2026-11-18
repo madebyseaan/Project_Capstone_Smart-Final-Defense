@@ -5,7 +5,7 @@ import { getTransmutationTable } from "../../lib/transmutationCache";
 import { computeTermGrade } from "../../lib/gradingMode";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
 import { logger } from "../../lib/logger";
-import { getIntegrationV1ActiveTerm } from "../../lib/enrollproClient";
+import { getIntegrationV1ActiveTerm, getEnrollProNow } from "../../lib/enrollproClient";
 import { isDemoTermMode } from "../../lib/demoTermMode";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -40,6 +40,7 @@ export interface EffectiveWeights {
   pt: number;
   qa: number;
   source: "subject-override" | "subject-type" | "generic-fallback";
+  updatedAt?: Date | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -101,14 +102,28 @@ export async function resolveCurrentTerm(): Promise<string> {
 
 // ─── Grade Deadline Utilities ─────────────────────────────────────────────────
 
+/**
+ * Effective "now" for deadline math. Follows EnrollPro's clock (including its
+ * time machine) when available; falls back to the SMART server clock.
+ * DEMO-only: local clock is authoritative when DEMO_TERM_MODE is on.
+ */
+export async function resolveEffectiveNow(): Promise<Date> {
+  if (isDemoTermMode()) return new Date();
+  return (await getEnrollProNow()) ?? new Date();
+}
+
 export interface GradeDeadlineInfo {
   termEndDate: string | null;
+  effectiveNow: string | null;
   daysRemaining: number | null;
   urgencyLevel: 'none' | 'warn' | 'urgent' | 'critical' | 'overdue';
   currentTerm: string;
   hasIncompleteClasses: boolean;
   incompleteCount: number;
   incompleteClasses: { subjectName: string; sectionName: string; gradedCount: number; totalStudents: number }[];
+  t1EndDate: string | null;
+  t2EndDate: string | null;
+  t3EndDate: string | null;
 }
 
 export async function resolveTermDeadline(
@@ -127,7 +142,8 @@ export async function resolveTermDeadline(
 
   if (!termEndDate) return null;
 
-  const now = new Date();
+  const effectiveNow = await resolveEffectiveNow();
+  const now = new Date(effectiveNow);
   now.setHours(0, 0, 0, 0);
   termEndDate.setHours(0, 0, 0, 0);
   const msRemaining = termEndDate.getTime() - now.getTime();
@@ -196,12 +212,16 @@ export async function resolveTermDeadline(
 
   return {
     termEndDate: termEndDate.toISOString(),
+    effectiveNow: effectiveNow.toISOString(),
     daysRemaining,
     urgencyLevel,
     currentTerm,
     hasIncompleteClasses,
     incompleteCount,
     incompleteClasses,
+    t1EndDate: settings.t1EndDate ? settings.t1EndDate.toISOString() : null,
+    t2EndDate: settings.t2EndDate ? settings.t2EndDate.toISOString() : null,
+    t3EndDate: settings.t3EndDate ? settings.t3EndDate.toISOString() : null,
   };
 }
 
@@ -222,6 +242,7 @@ export async function resolveEffectiveWeightsForClassAssignment(classAssignmentI
   const classAssignment = await prisma.classAssignment.findUnique({
     where: { id: classAssignmentId },
     select: {
+      updatedAt: true,
       subject: {
         select: {
           name: true,
@@ -229,6 +250,7 @@ export async function resolveEffectiveWeightsForClassAssignment(classAssignmentI
           writtenWorkWeight: true,
           perfTaskWeight: true,
           quarterlyAssessWeight: true,
+          updatedAt: true,
         },
       },
     },
@@ -240,6 +262,7 @@ export async function resolveEffectiveWeightsForClassAssignment(classAssignmentI
       pt: GENERIC_FALLBACK_WEIGHTS.pt,
       qa: GENERIC_FALLBACK_WEIGHTS.qa,
       source: "generic-fallback",
+      updatedAt: null,
     };
   }
 
@@ -256,6 +279,7 @@ export async function resolveEffectiveWeightsForClassAssignment(classAssignmentI
       pt: classAssignment.subject.perfTaskWeight,
       qa: classAssignment.subject.quarterlyAssessWeight,
       source: "subject-override",
+      updatedAt: classAssignment.subject.updatedAt,
     };
   }
 
@@ -269,6 +293,7 @@ export async function resolveEffectiveWeightsForClassAssignment(classAssignmentI
       pt: gradingConfig.performanceTaskWeight,
       qa: gradingConfig.quarterlyAssessWeight,
       source: "subject-type",
+      updatedAt: gradingConfig.updatedAt,
     };
   }
 
@@ -277,6 +302,7 @@ export async function resolveEffectiveWeightsForClassAssignment(classAssignmentI
     pt: GENERIC_FALLBACK_WEIGHTS.pt,
     qa: GENERIC_FALLBACK_WEIGHTS.qa,
     source: "generic-fallback",
+    updatedAt: classAssignment.updatedAt,
   };
 }
 

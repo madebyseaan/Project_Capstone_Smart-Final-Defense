@@ -14,7 +14,7 @@ import {
   ArrowLeftRight,
   ClipboardCheck,
 } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EntityAvatar } from "@/components/EntityAvatar";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { SERVER_URL } from "@/lib/api";
@@ -309,11 +309,15 @@ export default function RegistrarLayout() {
             sidebarCollapsed ? "flex-col gap-1 justify-center" : "w-full"
           )}>
             <div className="w-9 h-9 flex flex-shrink-0 items-center justify-center">
-              <Avatar className="w-9 h-9 border border-white shadow-sm transition-transform duration-200" style={{ transform: sidebarCollapsed ? 'scale(0.9)' : 'scale(1)' }}>
-                <AvatarFallback className="bg-slate-100 text-slate-700 font-bold text-xs uppercase">
-                  {user.firstName ? user.firstName.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+              <EntityAvatar
+                entityType="teacher"
+                id={user.username}
+                alt={user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : user.username}
+                className="w-9 h-9 border border-white shadow-sm transition-transform duration-200"
+                style={{ transform: sidebarCollapsed ? 'scale(0.9)' : 'scale(1)' }}
+                fallback={user.firstName ? user.firstName.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase()}
+                fallbackClassName="bg-slate-100 text-slate-700 font-bold text-xs uppercase"
+              />
             </div>
             <div className={cn(
               "min-w-0 flex-1 items-center justify-between transition-[opacity,transform,margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-left",
@@ -402,11 +406,14 @@ export default function RegistrarLayout() {
                     Registrar
                   </span>
                 </div>
-                <Avatar className="w-9 h-9 ring-2 ring-slate-100 ring-offset-2">
-                  <AvatarFallback className="bg-slate-200 text-slate-700 text-sm font-bold">
-                    {user.firstName ? user.firstName.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <EntityAvatar
+                  entityType="teacher"
+                  id={user.username}
+                  alt={user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : user.username}
+                  className="w-9 h-9 ring-2 ring-slate-100 ring-offset-2"
+                  fallback={user.firstName ? user.firstName.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase()}
+                  fallbackClassName="bg-slate-200 text-slate-700 text-sm font-bold"
+                />
               </div>
             </div>
           </div>

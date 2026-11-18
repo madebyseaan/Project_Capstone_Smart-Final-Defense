@@ -375,6 +375,8 @@ model Grade {
   quarterlyAssessMax    Float?          @default(100)
   qaDescription         String?
   qaDate                String?
+  qaSource              String?
+  qaAssessmentId        String?
   writtenWorkPS         Float?
   perfTaskPS            Float?
   quarterlyAssessPS     Float?
@@ -825,6 +827,10 @@ model AimsScore {
   gradedAt          DateTime?
   syncedAt          DateTime  @default(now())
   importedAt        DateTime? // set when this row has been imported into the ledger
+  importedPointsEarned  Float?  // snapshot of pointsEarned at last ledger import
+  importedMaxPoints     Float?  // snapshot of maxPoints at last ledger import
+  importedAttemptNumber Int?    // snapshot of attemptNumber at last ledger import
+  importedTerm          Term?   // term at last ledger import (detects term moves)
 
   classAssignment ClassAssignment @relation(fields: [classAssignmentId], references: [id], onDelete: Cascade)
   student         Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -895,28 +901,43 @@ model StudentObservedValue {
 }
 
 model GradeEditRequest {
-  id           String            @id @default(cuid())
-  teacherId    String
-  teacherName  String
-  term         String
-  schoolYear   String
-  gradeLevel   String?
-  section      String?
-  subject      String?
-  classAssignmentId String?
-  reason       String
-  status       EditRequestStatus @default(PENDING)
-  approvedById String?
-  approvedByName String?
-  expiresAt    DateTime?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  teacher      User?             @relation("EditRequestTeacher", fields: [teacherId], references: [id])
-  approver     User?             @relation("EditRequestApprover", fields: [approvedById], references: [id])
+  id                     String            @id @default(cuid())
+  teacherId              String
+  teacherName            String
+  term                   String
+  schoolYear             String
+  gradeLevel             String?
+  section                String?
+  subject                String?
+  classAssignmentId      String?
+  reason                 String
+  status                 EditRequestStatus @default(PENDING)
+  approvedById           String?
+  approvedByName         String?
+  expiresAt              DateTime?
+  windowRequired         Boolean           @default(false)
+  approvedHours          Int?
+  windowOpenedAt         DateTime?
+  windowOpenedById       String?
+  windowOpenedByName     String?
+  windowClosedAt         DateTime?
+  refinalizedAt          DateTime?
+  refinalizedById        String?
+  refinalizedByName      String?
+  declineReason          String?
+  unfinalizedGradeCount  Int               @default(0)
+  baseline               Json?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  teacher                User?             @relation("EditRequestTeacher", fields: [teacherId], references: [id])
+  approver               User?             @relation("EditRequestApprover", fields: [approvedById], references: [id])
 
   @@index([status])
   @@index([teacherId])
   @@index([createdAt])
+  @@index([status, schoolYear])
+  @@index([windowRequired, status])
+  @@index([classAssignmentId, term])
 }
 
 enum EditRequestStatus {
@@ -924,4 +945,7 @@ enum EditRequestStatus {
   APPROVED
   REJECTED
   EXPIRED
+  WINDOW_OPEN
+  REFINALIZED
+  DECLINED
 }

@@ -3,6 +3,7 @@ import { PrismaClient, Term, GradeStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { resolveCanonicalWeights } from "./canonicalGrade";
 import { finalizeSectionEosy } from "../src/lib/promotion";
+import { completeRemedial } from "../src/lib/remedial";
 import { normalizeProgramCode } from "../src/lib/programCode";
 import { pickProgramFailureStudents } from "./seedProgramFailure";
 import {
@@ -250,8 +251,10 @@ interface ParsedArgs {
   remedialGrade: string | null;
   programFailCount: number;
   programFailGrade: string | null;
+  programFailProgram: string | null;
   completeTransferees: boolean;
   clearTransfereeDetails: boolean;
+  keepRemedialPending: boolean;
 }
 
 function parseArgs(): ParsedArgs {
@@ -271,7 +274,9 @@ function parseArgs(): ParsedArgs {
     console.error("  --remedial-grade G     Restrict remedial picks to this grade (e.g. 8)");
     console.error("  --program-fail N       Special-program learners failing exactly 1 subject (default: 0, G7-G9 only)");
     console.error("  --program-fail-grade G Restrict program-failure picks to this grade (e.g. 7)");
+    console.error("  --program-fail-program P Restrict program-failure picks to this program (e.g. STE)");
     console.error("  --complete-transferees Fill in missing birth date/sex for existing transferees");
+    console.error("  --keep-remedial-pending  Leave seeded remedial rows PENDING (blocks rollover)");
     console.error("  --clear-transferee-details  Standalone mode: remove seed-fabricated previous-school");
     console.error("                              details so the EnrollPro sync can fill the real values");
     process.exit(1);
@@ -298,6 +303,7 @@ function parseArgs(): ParsedArgs {
   const remedialGradeIdx = remaining.indexOf("--remedial-grade");
   const programFailIdx = remaining.indexOf("--program-fail");
   const programFailGradeIdx = remaining.indexOf("--program-fail-grade");
+  const programFailProgramIdx = remaining.indexOf("--program-fail-program");
 
   return {
     terms,
@@ -310,8 +316,10 @@ function parseArgs(): ParsedArgs {
     remedialGrade: remedialGradeIdx >= 0 ? (remaining[remedialGradeIdx + 1] ?? null) : null,
     programFailCount: programFailIdx >= 0 ? parseInt(remaining[programFailIdx + 1] ?? "0", 10) : 0,
     programFailGrade: programFailGradeIdx >= 0 ? (remaining[programFailGradeIdx + 1] ?? null) : null,
+    programFailProgram: programFailProgramIdx >= 0 ? (remaining[programFailProgramIdx + 1] ?? null) : null,
     completeTransferees: remaining.includes("--complete-transferees"),
     clearTransfereeDetails,
+    keepRemedialPending: remaining.includes("--keep-remedial-pending"),
   };
 }
 
@@ -375,7 +383,7 @@ async function main() {
   } else {
     console.log(`Terms: ${args.terms.join(", ")} | Finalized: ${args.finalized} | Clear: ${args.clear} | Dry-run: ${args.dryRun}`);
     console.log(`Retained: ${args.retainedCount}${args.retainedGrade ? ` (Grade ${args.retainedGrade})` : ""} (REGULAR only, fails 4 subjects) | Remedial: ${args.remedialCount}${args.remedialGrade ? ` (Grade ${args.remedialGrade})` : ""} (REGULAR only, fails 1-2 subjects, final 70-71)`);
-    console.log(`Program failures: ${args.programFailCount}${args.programFailGrade ? ` (Grade ${args.programFailGrade})` : ""} (special programs only, G7-G9, fails exactly 1 subject)`);
+    console.log(`Program failures: ${args.programFailCount}${args.programFailGrade ? ` (Grade ${args.programFailGrade})` : ""}${args.programFailProgram ? ` (${args.programFailProgram} only)` : ""} (special programs only, G7-G9, fails exactly 1 subject)`);
     if (args.completeTransferees) console.log(`Transferee completion: ENABLED`);
   }
 
@@ -528,6 +536,7 @@ async function main() {
       sectionsWithActiveCa,
       args.programFailCount,
       args.programFailGrade,
+      args.programFailProgram,
       transfereeIds,
       rotationGroupByCode,
     ),
@@ -557,7 +566,7 @@ async function main() {
     const program = normalizeProgramCode(studentPrograms.get(sp.studentId));
     const isProgramFailure = sp.type === "REMEDIAL" && program !== "REGULAR";
     const label = isProgramFailure
-      ? "PROGRAM FAIL (special program, fails 1 subject, exits to BEC/Regular on rollover)"
+      ? `PROGRAM FAIL [${program}] (fails 1 subject, exits to BEC/Regular on rollover)`
       : sp.type === "RETAINED"
         ? "RETAINED (fails 4 subjects, 3+ rule)"
         : "REMEDIAL (fails 1-2 subjects, final 70-71)";
@@ -895,6 +904,67 @@ async function main() {
       }
     }
     console.log(`EOSY finalize: ${eosyOk} section(s) OK, ${eosySkipped} skipped`);
+  }
+
+  // ─── Complete seeded remedial (rollover safety) ─────────────────────────────
+  // EOSY finalize creates a PENDING RemedialClass row for every conditionally
+  // promoted learner. The rollover guard blocks the whole year until each row is
+  // completed, so the demo profile must not leave them behind. Pass
+  // --keep-remedial-pending only when intentionally testing the Pending tab.
+  if (args.finalized && !args.dryRun && !args.keepRemedialPending) {
+    const remedialStudentIds = specialStudents
+      .filter((sp) => sp.type === "REMEDIAL")
+      .map((sp) => sp.studentId);
+
+    if (remedialStudentIds.length > 0) {
+      const yearRecord = await prisma.schoolYear.findUnique({
+        where: { label: schoolYearLabel },
+        select: { startDate: true, endDate: true },
+      });
+      const conductedFrom = (yearRecord?.startDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+        .toISOString()
+        .slice(0, 10);
+      const conductedTo = (yearRecord?.endDate ?? new Date()).toISOString().slice(0, 10);
+
+      const pendingRows = await prisma.remedialClass.findMany({
+        where: {
+          schoolYear: schoolYearLabel,
+          status: "PENDING",
+          enrollment: { studentId: { in: remedialStudentIds } },
+        },
+        select: { enrollmentId: true },
+      });
+      const enrollmentIds = [...new Set(pendingRows.map((row) => row.enrollmentId))];
+
+      console.log(`\n${"=".repeat(60)}`);
+      console.log(`REMEDIAL COMPLETION (rollover safety)`);
+      console.log(`${"=".repeat(60)}`);
+
+      for (const enrollmentId of enrollmentIds) {
+        // completeRemedial derives the RFG from the stored RCM; seed a passing
+        // mark first so the learner finishes PASSED instead of PENDING.
+        await prisma.remedialClass.updateMany({
+          where: { enrollmentId, status: "PENDING" },
+          data: { remedialMark: 88 },
+        });
+        try {
+          const res = await completeRemedial(
+            enrollmentId,
+            { id: "seed", name: "Teacher Score Seed", role: "REGISTRAR" },
+            { conductedFrom, conductedTo },
+          );
+          console.log(`  ${enrollmentId}: ${res.previousStatus ?? "null"} → ${res.newStatus}`);
+        } catch (err: any) {
+          console.warn(`  ${enrollmentId}: remedial completion failed (${err.message})`);
+        }
+      }
+
+      console.log(
+        enrollmentIds.length > 0
+          ? `Completed remedial for ${enrollmentIds.length} learner(s).`
+          : `No pending remedial rows for seeded learners.`,
+      );
+    }
   }
 
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);

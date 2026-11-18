@@ -18,6 +18,7 @@ import { GradeLevel, PromotionStatus, Term, AuditAction, AuditSeverity } from "@
 import { prisma } from "./prisma";
 import { createAuditLog } from "./audit";
 import { DEPED_AREA_NAMES, computeRemedialSubjectName } from "./subjectDisplay";
+import { isBlockingDraftGrade } from "./rotationMetadata";
 
 export const PASSING_GRADE = 75;
 
@@ -275,7 +276,9 @@ export async function computeSectionPromotions(sectionId: string, schoolYear: st
   const draftBlockers: DraftBlocker[] = [];
   for (const grade of grades) {
     if (grade.status !== "DRAFT") continue;
-    if ((grade.classAssignment.subject.code ?? '').toUpperCase().startsWith('HG')) continue;
+    // Rotation components only require their own rank term; out-of-term rows
+    // are stray data and never reach a final grade (mergeRotationSubjects).
+    if (!isBlockingDraftGrade({ term: grade.term, subject: grade.classAssignment.subject })) continue;
     const enrollment = enrollments.find((e) => e.studentId === grade.studentId);
     if (!enrollment) continue;
     draftBlockers.push({
@@ -433,11 +436,21 @@ export async function listSectionEosyStatuses(
     }),
     prisma.classAssignment.findMany({
       where: { schoolYear },
-      select: { id: true, sectionId: true, subject: { select: { code: true } } },
+      select: {
+        id: true,
+        sectionId: true,
+        subject: {
+          select: {
+            code: true,
+            rotationTermGroupId: true,
+            rotationTermRank: true,
+          },
+        },
+      },
     }),
     prisma.grade.findMany({
       where: { classAssignment: { schoolYear }, status: "DRAFT" },
-      select: { studentId: true, classAssignmentId: true },
+      select: { studentId: true, classAssignmentId: true, term: true },
     }),
   ]);
 
@@ -456,23 +469,32 @@ export async function listSectionEosyStatuses(
     enrolledStudentIdsBySection.set(enrollment.sectionId, ids);
   }
 
-  const classAssignmentSection = new Map<string, string>();
-  const classAssignmentCode = new Map<string, string>();
+  const classAssignmentMeta = new Map<
+    string,
+    {
+      sectionId: string;
+      subject: {
+        code: string | null;
+        rotationTermGroupId: string | null;
+        rotationTermRank: number | null;
+      };
+    }
+  >();
   for (const assignment of classAssignments) {
-    classAssignmentSection.set(assignment.id, assignment.sectionId);
-    classAssignmentCode.set(assignment.id, assignment.subject.code ?? "");
+    classAssignmentMeta.set(assignment.id, {
+      sectionId: assignment.sectionId,
+      subject: assignment.subject,
+    });
   }
 
   const draftBlockersBySection = new Map<string, number>();
   for (const grade of draftGrades) {
-    const sectionId = classAssignmentSection.get(grade.classAssignmentId);
-    if (!sectionId) continue;
-    // Homeroom Guidance is non-promotional and never blocks EOSY finalization.
-    if ((classAssignmentCode.get(grade.classAssignmentId) ?? "").toUpperCase().startsWith("HG")) {
-      continue;
-    }
-    if (!enrolledStudentIdsBySection.get(sectionId)?.has(grade.studentId)) continue;
-    draftBlockersBySection.set(sectionId, (draftBlockersBySection.get(sectionId) ?? 0) + 1);
+    const meta = classAssignmentMeta.get(grade.classAssignmentId);
+    if (!meta) continue;
+    // HG never blocks; rotation components only block in their rank term.
+    if (!isBlockingDraftGrade({ term: grade.term, subject: meta.subject })) continue;
+    if (!enrolledStudentIdsBySection.get(meta.sectionId)?.has(grade.studentId)) continue;
+    draftBlockersBySection.set(meta.sectionId, (draftBlockersBySection.get(meta.sectionId) ?? 0) + 1);
   }
 
   return sections.map((section) => {

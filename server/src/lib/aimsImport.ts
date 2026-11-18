@@ -338,7 +338,8 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
       let finalQADesc = seedGrade?.qaDescription ?? null;
       let finalQADate = seedGrade?.qaDate ?? null;
       let qaApplied = false;
-      const rowsToMark: string[] = [];
+      let qaAppliedAssessmentId: string | null = null;
+      const rowsToMark: typeof aimsScores = [];
 
       if (qaScores.length > 0) {
         const occupied = (seedGrade?.quarterlyAssessScore ?? 0) > 0;
@@ -351,17 +352,18 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
           finalQADesc = latest.assessmentTitle;
           finalQADate = latest.gradedAt?.toISOString().slice(0, 10) ?? null;
           qaApplied = true;
-          rowsToMark.push(latest.id);
+          qaAppliedAssessmentId = latest.assessmentId;
+          rowsToMark.push(latest);
           importedAssessmentIds.add(latest.assessmentId);
         }
       }
 
       // Collect rows to mark for WW/PT
       for (const s of wwScores) {
-        if (wwAllocation.has(s.assessmentId)) rowsToMark.push(s.id);
+        if (wwAllocation.has(s.assessmentId)) rowsToMark.push(s);
       }
       for (const s of ptScores) {
-        if (ptAllocation.has(s.assessmentId)) rowsToMark.push(s.id);
+        if (ptAllocation.has(s.assessmentId)) rowsToMark.push(s);
       }
 
       // Recompute grades (never trust AIMS-computed grades)
@@ -383,6 +385,8 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
         quarterlyAssessMax: finalQAMax,
         qaDescription: finalQADesc,
         qaDate: finalQADate,
+        qaSource: qaApplied ? "AIMS" : undefined,
+        qaAssessmentId: qaApplied ? qaAppliedAssessmentId : undefined,
         writtenWorkPS: calculated.writtenWorkPS,
         perfTaskPS: calculated.perfTaskPS,
         quarterlyAssessPS: calculated.quarterlyAssessPS,
@@ -397,12 +401,21 @@ export async function importAimsScoresToGrades(input: ImportInput): Promise<Impo
         create: { studentId, classAssignmentId, term, ...gradePayload },
       });
 
-      // Selective importedAt stamping — only mark rows actually written
+      // Selective importedAt + provenance stamping — only mark rows actually written
       if (rowsToMark.length > 0) {
-        await tx.aimsScore.updateMany({
-          where: { id: { in: rowsToMark } },
-          data: { importedAt: new Date() },
-        });
+        const stampedAt = new Date();
+        for (const row of rowsToMark) {
+          await tx.aimsScore.update({
+            where: { id: row.id },
+            data: {
+              importedAt: stampedAt,
+              importedPointsEarned: row.pointsEarned,
+              importedMaxPoints: row.maxPoints,
+              importedAttemptNumber: row.attemptNumber,
+              importedTerm: row.term,
+            },
+          });
+        }
       }
 
       for (const s of [...wwScores, ...ptScores]) {

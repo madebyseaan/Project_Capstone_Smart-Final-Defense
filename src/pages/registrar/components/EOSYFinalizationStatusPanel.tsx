@@ -320,6 +320,18 @@ export default function EOSYFinalizationStatusPanel({
                   {summary.snapshotGapSections === 0 ? " · snapshots complete" : ""}
                 </p>
               </div>
+            ) : summary.allPromotionsFinalized && summary.snapshotGapSections === 0 && summary.pendingRemedialStudents > 0 ? (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs font-semibold text-amber-800">
+                  {summary.pendingRemedialStudents} learner
+                  {summary.pendingRemedialStudents === 1 ? "" : "s"} still{" "}
+                  {summary.pendingRemedialStudents === 1 ? "has" : "have"} pending remedial classes.
+                </p>
+                <p className="text-xs text-amber-700">
+                  Rollover stays blocked until remedial is completed in the Remedial Tracker.
+                </p>
+              </div>
             ) : summary.allPromotionsFinalized ? (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                 <FileWarning className="h-4 w-4 shrink-0 text-amber-600" />

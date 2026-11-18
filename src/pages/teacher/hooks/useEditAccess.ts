@@ -6,6 +6,8 @@ interface EditRequest {
   term: string;
   status: string;
   expiresAt: string | null;
+  windowRequired?: boolean;
+  classAssignmentId?: string | null;
 }
 
 interface LockState {
@@ -14,57 +16,88 @@ interface LockState {
   termLocks: { T1: boolean; T2: boolean; T3: boolean };
 }
 
-type RequestStatus = "idle" | "pending" | "approved";
+type RequestStatus =
+  | "idle"
+  | "pending"
+  | "approved"
+  | "awaiting_window"
+  | "window_open"
+  | "awaiting_refinalize";
 
 interface RequestInfo {
   term: string;
   status: RequestStatus;
   expiresAt: Date | null;
+  requestId: string | null;
+}
+
+function matchesScope(request: EditRequest, opts: { selectedTerm: string; classAssignmentId?: string }): boolean {
+  if (request.term !== opts.selectedTerm) return false;
+  if (!opts.classAssignmentId) return true;
+  return !request.classAssignmentId || request.classAssignmentId === opts.classAssignmentId;
 }
 
 /**
  * Computes whether a teacher may edit the selected term.
  *
- * Rules (mirror server `checkGradeEditLocks`):
- *  - system-wide (emergency) lock and year lock are NOT bypassable.
- *  - a past term or a TERM lock IS bypassable with an approved edit request.
+ * Rules (mirror server `getGradeEditLocks` + `getWriteBlock`):
+ *  - system-wide and year locks are NOT bypassable.
+ *  - a past term or a TERM lock is bypassable with an approved request.
+ *  - a finalized term is bypassable only by an open correction window.
+ *  - an expired correction window is read-only until the registrar re-finalizes.
  */
 export function useEditAccess(opts: {
   isPastTerm: boolean;
   locks: LockState | null;
   selectedTerm: string;
+  isTermFinalized: boolean;
+  classAssignmentId?: string;
 }) {
+  const { selectedTerm, classAssignmentId } = opts;
   const [editRequestModalOpen, setEditRequestModalOpen] = useState(false);
-  const [requestInfo, setRequestInfo] = useState<RequestInfo>({ term: "", status: "idle", expiresAt: null });
+  const [requestInfo, setRequestInfo] = useState<RequestInfo>({ term: "", status: "idle", expiresAt: null, requestId: null });
   const [editTimeRemaining, setEditTimeRemaining] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const termLocked = !!opts.locks?.termLocks?.[opts.selectedTerm as "T1" | "T2" | "T3"];
   const hardLocked = !!opts.locks?.systemLocked || !!opts.locks?.yearLocked;
-  // Needs an approved request: viewing a past term, or the term is locked.
-  const needsAccess = opts.isPastTerm || termLocked;
-  // Only request-bypassable situations; year/system locks can't be edited at all.
+  const sealed = opts.isTermFinalized;
+  const needsAccess = opts.isPastTerm || termLocked || sealed;
   const accessRequired = needsAccess && !hardLocked;
 
-  // Only trust status that belongs to the currently selected term.
+  // Only trust status that belongs to the currently selected term/class.
   const scoped: RequestInfo =
-    accessRequired && requestInfo.term === opts.selectedTerm
+    !hardLocked && requestInfo.term === opts.selectedTerm
       ? requestInfo
-      : { term: opts.selectedTerm, status: "idle", expiresAt: null };
+      : { term: selectedTerm, status: "idle", expiresAt: null, requestId: null };
 
   const editRequestStatus = scoped.status;
   const editRequestExpiresAt = scoped.expiresAt;
 
-  const isViewOnly = hardLocked || (needsAccess && editRequestStatus !== "approved");
+  const windowOpen = editRequestStatus === "window_open";
+  const awaitingRefinalize = editRequestStatus === "awaiting_refinalize";
+  const approvedForLock = editRequestStatus === "approved";
+
+  const isViewOnly =
+    hardLocked ||
+    awaitingRefinalize ||
+    (sealed && !windowOpen) ||
+    (needsAccess && !windowOpen && !approvedForLock);
+
   const canRequestEdit = accessRequired && editRequestStatus === "idle";
 
-  // Countdown for approved edit access
+  // Countdown for approved legacy access and open correction windows.
   useEffect(() => {
-    if (editRequestStatus !== "approved" || !editRequestExpiresAt) return;
+    if (!editRequestExpiresAt || !(editRequestStatus === "approved" || editRequestStatus === "window_open")) return;
+
     const updateRemaining = () => {
       const diff = editRequestExpiresAt.getTime() - Date.now();
       if (diff <= 0) {
         setEditTimeRemaining("Expired");
-        setRequestInfo((prev) => ({ ...prev, status: "idle" }));
+        setRequestInfo((prev) => ({
+          ...prev,
+          status: prev.status === "window_open" ? "awaiting_refinalize" : "idle",
+        }));
         return;
       }
       const hours = Math.floor(diff / 3600000);
@@ -78,32 +111,59 @@ export function useEditAccess(opts: {
     return () => clearInterval(interval);
   }, [editRequestStatus, editRequestExpiresAt]);
 
-  // Check for existing edit requests. Polls so an approval takes effect without
-  // a manual reload. Never gated on the coarse lock flag — a term lock is
-  // exactly the case an approved request is meant to open.
+  // Check for existing requests. Polls so approval/window changes take effect
+  // without a manual reload. Never gated on the coarse lock flag.
   useEffect(() => {
-    if (!accessRequired) return;
+    if (hardLocked) return;
 
     let cancelled = false;
     const check = () => {
       gradesApi.getMyEditRequests().then((res) => {
         if (cancelled) return;
-        const requests = res.data.requests ?? [];
-        const approved = requests.find(
-          (r: EditRequest) =>
-            r.term === opts.selectedTerm &&
+        const requests = (res.data.requests ?? []) as EditRequest[];
+        const scopedRequests = requests.filter((r) => matchesScope(r, { selectedTerm, classAssignmentId }));
+        const now = Date.now();
+
+        const windowOpen = scopedRequests.find(
+          (r) => r.status === "WINDOW_OPEN" && new Date(r.expiresAt ?? 0).getTime() > now,
+        );
+        const awaitingRefinalize = scopedRequests.find(
+          (r) =>
+            r.windowRequired &&
+            (r.status === "EXPIRED" ||
+              (r.status === "WINDOW_OPEN" && new Date(r.expiresAt ?? 0).getTime() <= now)),
+        );
+        const awaitingWindow = scopedRequests.find(
+          (r) => r.status === "APPROVED" && r.windowRequired,
+        );
+        const approved = scopedRequests.find(
+          (r) =>
             r.status === "APPROVED" &&
-            new Date(r.expiresAt ?? 0) > new Date()
+            !r.windowRequired &&
+            new Date(r.expiresAt ?? 0).getTime() > now,
         );
-        const pending = requests.find(
-          (r: EditRequest) => r.term === opts.selectedTerm && r.status === "PENDING"
-        );
-        if (approved) {
-          setRequestInfo({ term: opts.selectedTerm, status: "approved", expiresAt: new Date(approved.expiresAt) });
+        const pending = scopedRequests.find((r) => r.status === "PENDING");
+
+        if (windowOpen?.expiresAt) {
+          setRequestInfo({
+            term: selectedTerm,
+            status: "window_open",
+            expiresAt: new Date(windowOpen.expiresAt), requestId: windowOpen.id,
+          });
+        } else if (awaitingRefinalize) {
+          setRequestInfo({ term: selectedTerm, status: "awaiting_refinalize", expiresAt: null, requestId: null });
+        } else if (awaitingWindow) {
+          setRequestInfo({ term: selectedTerm, status: "awaiting_window", expiresAt: null, requestId: null });
+        } else if (approved?.expiresAt) {
+          setRequestInfo({
+            term: selectedTerm,
+            status: "approved",
+            expiresAt: new Date(approved.expiresAt), requestId: approved.id,
+          });
         } else if (pending) {
-          setRequestInfo({ term: opts.selectedTerm, status: "pending", expiresAt: null });
+          setRequestInfo({ term: selectedTerm, status: "pending", expiresAt: null, requestId: null });
         } else {
-          setRequestInfo({ term: opts.selectedTerm, status: "idle", expiresAt: null });
+          setRequestInfo({ term: selectedTerm, status: "idle", expiresAt: null, requestId: null });
         }
       }).catch(() => {});
     };
@@ -114,9 +174,10 @@ export function useEditAccess(opts: {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [accessRequired, opts.selectedTerm]);
+  }, [hardLocked, selectedTerm, classAssignmentId, refreshKey]);
 
   const openEditRequestModal = useCallback(() => setEditRequestModalOpen(true), []);
+  const refreshEditRequests = useCallback(() => setRefreshKey((value) => value + 1), []);
 
   return {
     editRequestModalOpen,
@@ -124,10 +185,12 @@ export function useEditAccess(opts: {
     editRequestStatus,
     editRequestExpiresAt,
     editTimeRemaining,
+    windowRequestId: scoped.requestId,
     isViewOnly,
     canRequestEdit,
     openEditRequestModal,
+    refreshEditRequests,
     onEditRequestSuccess: () =>
-      setRequestInfo({ term: opts.selectedTerm, status: "pending", expiresAt: null }),
+      setRequestInfo({ term: selectedTerm, status: "pending", expiresAt: null, requestId: null }),
   };
 }

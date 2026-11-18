@@ -94,6 +94,15 @@ export function useNotifications({
   });
 
   // ── Registrar: pending remedial (REGISTRAR-only) ───────────────────────────
+  const correctionQuery = useQuery({
+    queryKey: ["notifications", "registrar-corrections", userId],
+    queryFn: async () => (await registrarApi.getEditRequestSummary()).data,
+    enabled: enabled && portal === "registrar",
+    retry: 0,
+    staleTime: POLL_MS,
+    refetchInterval: POLL_MS,
+  });
+
   const remedialQuery = useQuery({
     queryKey: ["notifications", "registrar-remedial", userId],
     queryFn: async () => (await registrarApi.getRemedialPending({ page: 1, limit: 1 })).data,
@@ -182,6 +191,26 @@ export function useNotifications({
     }
 
     if (portal === "registrar") {
+      const corrections = correctionQuery.data;
+      if (corrections?.awaitingWindow) {
+        push({
+          id: `corrections-awaiting:${corrections.awaitingWindow}`,
+          severity: "warning",
+          title: `${corrections.awaitingWindow} correction request${corrections.awaitingWindow !== 1 ? "s" : ""} awaiting a window`,
+          description: "Admin approved — open the edit window or decline",
+          href: "/registrar/term-finalization?filter=corrections",
+        });
+      }
+      if (corrections?.needsRefinalization) {
+        push({
+          id: `corrections-refinalize:${corrections.needsRefinalization}`,
+          severity: "critical",
+          title: `${corrections.needsRefinalization} correction window${corrections.needsRefinalization !== 1 ? "s" : ""} need re-finalization`,
+          description: "Review the teacher's edits and finalize the grades again",
+          href: "/registrar/term-finalization?filter=corrections",
+        });
+      }
+
       const remedial = remedialQuery.data as
         | { items?: unknown[]; meta?: { total?: number } }
         | undefined;
@@ -219,6 +248,7 @@ export function useNotifications({
     enrollproOffline,
     deadlineQuery.data,
     editRequestsQuery.data,
+    correctionQuery.data,
     remedialQuery.data,
     syncQuery.data,
   ]);
@@ -250,6 +280,7 @@ export function useNotifications({
   const isLoading =
     deadlineQuery.isLoading ||
     editRequestsQuery.isLoading ||
+    correctionQuery.isLoading ||
     remedialQuery.isLoading ||
     syncQuery.isLoading;
 

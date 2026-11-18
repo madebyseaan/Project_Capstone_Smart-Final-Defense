@@ -23,6 +23,7 @@ import type { SchoolYear } from '@prisma/client';
 import { readLiveSnapshot } from './schoolSettingsSnapshot';
 import { createAuditLog } from './audit';
 import { invalidateGradingModeCache } from './gradingMode';
+import { setYearLock } from './gradeLocks';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -162,7 +163,19 @@ export async function ensureSchoolYearFromEnrollPro(
       const prevYear = await prisma.schoolYear.findUnique({ where: { id: prevSettings.schoolYearId } });
       prevYearLabel = prevYear?.label ?? null;
       if (prevYear) {
-        await handleYearChangeRollover(prevYear.id, prevYear.label, year.id, yearLabel);
+        const rollover = await handleYearChangeRollover(prevYear.id, prevYear.label, year.id, yearLabel);
+        // A deferred rollover (unfinalized sections) must NOT activate the new
+        // year. The settings upsert above already moved the active year, so
+        // without this guard the sync proceeds to write next-year sections and
+        // enrollments while the outgoing year is still unarchived. Fail closed
+        // and leave the previous year usable, exactly like the manual switch.
+        if (rollover.action === 'locked_not_archived') {
+          await setYearLock(prevYear.id, false, { id: 'system', name: 'School Year Resolver' });
+          throw new Error(
+            `Rollover blocked: ${prevYear.label} has ${rollover.unfinalizedCount ?? 0} unfinalized section(s). ` +
+            `Year locked but NOT archived — finalize EOSY before activating ${yearLabel}.`
+          );
+        }
       }
     } catch (err: any) {
       logger.error(`[SchoolYearResolver] Rollover handling failed: ${err.message}`);

@@ -96,10 +96,10 @@ export default function DemoDataToolsCard() {
 
         <p className="text-xs text-muted-foreground mt-1">
           Seeds scores for every active class (3 WW, 2 PT, ST1/ST2/TE), then attendance for every section
-          and enrolled learner. Controlled profile: 1 retained (G9), 1 remedial (G8), 1 special-program
-          failure (G7-G9, exactly 1 subject). All other SPA/SPS/STE learners stay at 85+ so only the
-          intentional learner exits the program on rollover. Requires EnrollPro enrollments and ATLAS
-          teaching loads, synced first.
+          and enrolled learner. Controlled profile: 1 retained (G9), 1 remedial (G8, auto-completed after
+          EOSY so it can't block rollover), 1 special-program failure (G7-G9, exactly 1 subject). All other
+          SPA/SPS/STE learners stay at 85+ so only the intentional learner exits the program on rollover.
+          Requires EnrollPro enrollments and ATLAS teaching loads, synced first.
         </p>
 
         <div className="flex items-center gap-2 mt-3">

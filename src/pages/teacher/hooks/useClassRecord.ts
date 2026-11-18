@@ -7,6 +7,7 @@ interface ClassRecordResponse {
   classRecord: ClassRecord[];
   gradingMode: GradingMode;
   currentTerm?: "T1" | "T2" | "T3";
+  effectiveNow?: string | null;
   effectiveWeights?: {
     ww: number;
     pt: number;

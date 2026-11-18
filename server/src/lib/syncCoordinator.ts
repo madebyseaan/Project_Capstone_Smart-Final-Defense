@@ -310,6 +310,12 @@ export async function runUnifiedSync(options?: {
     // on the active year. Fail closed: skip every dependent step for this cycle.
     const rolloverBlocked = Boolean(enrollproResult?.rolloverBlocked);
     if (rolloverBlocked) {
+      // Surface the blocked rollover as a failed cycle (not SUCCESS). Otherwise
+      // System Health/dashboards show green while SMART silently stays on the
+      // outgoing year — exactly how a pending remedial went unnoticed.
+      error =
+        enrollproResult?.errors.find((e) => /rollover/i.test(e)) ??
+        'School-year rollover blocked — active year reverted. Resolve the blocker shown in Rollover Status.';
       logger.warn(
         '[SyncCoordinator] School-year rollover blocked — skipping prune, transferees, Atlas, branding and student-profile sync this cycle',
       );

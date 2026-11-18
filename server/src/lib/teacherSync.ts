@@ -19,8 +19,6 @@ import { isExternalDown } from './externalState';
 import {
   findEnrollProTeacherByEmployeeId,
   findIntegrationV1FacultyByEmployeeId,
-  getEnrollProSectionRoster,
-  getEnrollProSections,
   getAllIntegrationV1SectionLearners,
 } from './enrollproClient';
 import {
@@ -39,16 +37,43 @@ import {
   normalizeSubjectLabel,
 } from './atlasUtils';
 import { atlasGet, ATLAS_SCHOOL_ID, resolveAtlasSchoolYear, DEFAULT_ATLAS_SCHOOL_YEAR_ID, invalidateAtlasSchoolYearCache, ATLAS_REQUEST_TIMEOUT_MS, ATLAS_REQUEST_RETRIES } from './sync/httpClient';
-import {
-  upsertLearner,
-  dropStaleEnrollments,
-  upsertSection,
-} from './sync/utils';
+import { upsertLearner, dropStaleEnrollments, upsertSection } from './sync/utils';
 
 import { getActiveSchoolYearLabel } from './schoolYearResolver';
+import { isOfficiallyEnrolled } from './transfereeValidation';
 import { maskId, maskEmail } from './redact';
 import { getEnrollProSchoolYearId } from '../config/schoolEnv';
 const DEFAULT_ENROLLPRO_SCHOOL_YEAR_ID = getEnrollProSchoolYearId();
+
+// ---------------------------------------------------------------------------
+// Section-roster enrollment filter
+// ---------------------------------------------------------------------------
+// EnrollPro's section roster includes learners whose enrollment application is
+// still pending (PENDING_CONFIRMATION). SMART only mirrors OFFICIALLY_ENROLLED
+// learners — the same rule the year-level integration feed applies. Without
+// this filter, a teacher login materializes pending applications from the next
+// school year as enrolled students (post-rollover phantom rosters).
+function isOfficiallyEnrolledRosterRow(rec: any): boolean {
+  const status =
+    rec?.status ??
+    rec?.enrollmentStatus ??
+    rec?.learner?.status ??
+    rec?.learner?.enrollmentStatus;
+  // Legacy payloads may omit status; keep them (the main sync still validates).
+  if (status == null || String(status).trim() === '') return true;
+  return isOfficiallyEnrolled(status);
+}
+
+async function getAllOfficiallyEnrolledSectionLearners(sectionId: number): Promise<any[]> {
+  const rows = await getAllIntegrationV1SectionLearners(sectionId);
+  const enrolled = rows.filter(isOfficiallyEnrolledRosterRow);
+  if (enrolled.length !== rows.length) {
+    logger.debug(
+      `[TeacherSync] Section ${sectionId}: skipped ${rows.length - enrolled.length} not-yet-enrolled roster row(s)`,
+    );
+  }
+  return enrolled;
+}
 
 // ---------------------------------------------------------------------------
 // Upsert a learner (student + enrollment) into SMART
@@ -187,7 +212,7 @@ export async function syncTeacherOnLogin(
       advisorySectionSmartId = section.id;
       advisorySectionGradeLevel = gradeLevel;
 
-      const learners = await getAllIntegrationV1SectionLearners(Number(mySection.id));
+      const learners = await getAllOfficiallyEnrolledSectionLearners(Number(mySection.id));
       totalLearners.push(...learners);
       logger.debug(`[TeacherSync] Advisory "${mySection.name}" (EP id=${mySection.id}): ${learners.length} learners`);
 
@@ -248,7 +273,7 @@ export async function syncTeacherOnLogin(
             advisorySectionSmartId = section.id;
             advisorySectionGradeLevel = gradeLevel;
 
-            const learners = await getAllIntegrationV1SectionLearners(epFaculty.advisorySectionId);
+            const learners = await getAllOfficiallyEnrolledSectionLearners(epFaculty.advisorySectionId);
             result.studentsFound = learners.length;
             logger.debug(`[TeacherSync] Advisory "${section.name}": ${learners.length} learners`);
 
@@ -315,7 +340,7 @@ export async function syncTeacherOnLogin(
               advisorySectionSmartId = section.id;
               advisorySectionGradeLevel = gradeLevel;
 
-              const learners = await getAllIntegrationV1SectionLearners(Number(mySection.id));
+              const learners = await getAllOfficiallyEnrolledSectionLearners(Number(mySection.id));
               totalLearners.push(...learners);
               console.log(
                 `[TeacherSync] Advisory fallback via sections: ${mySection.name} ` +
@@ -653,7 +678,7 @@ export async function syncTeacherOnLogin(
                 (s: any) => s.name?.trim() === sectionName.trim(),
               );
               if (matchingEpSection) {
-                const learners = await getAllIntegrationV1SectionLearners(Number(matchingEpSection.id));
+                const learners = await getAllOfficiallyEnrolledSectionLearners(Number(matchingEpSection.id));
                 result.studentsFound = learners.length;
                 console.log(
                   `[TeacherSync] ATLAS advisory "${sectionName}": ${learners.length} learners from EnrollPro`,
@@ -732,7 +757,7 @@ export async function syncTeacherOnLogin(
 
       const getRoster = async (sectionId: number): Promise<any[]> => {
         if (rosterCache.has(sectionId)) return rosterCache.get(sectionId) ?? [];
-        const learners = await getEnrollProSectionRoster(sectionId);
+        const learners = await getAllOfficiallyEnrolledSectionLearners(sectionId);
         rosterCache.set(sectionId, learners);
         return learners;
       };

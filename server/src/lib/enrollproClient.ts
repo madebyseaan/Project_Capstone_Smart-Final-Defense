@@ -1146,6 +1146,10 @@ export interface EnrollProPublicSettings {
   schoolWebsite: string | null;
   enrollmentPhase: string | null;
   systemStatus: string | null;
+  // EnrollPro's effective clock (reflects its time machine when enabled)
+  currentSystemDate?: string | null;
+  isTimeMachineEnabled?: boolean;
+  systemDateOverride?: { mockedTimestamp: number; anchoredAt: number } | null;
   // School year boundaries (used to derive term dates as fallback)
   classOpeningDate?: string | null;
   classEndDate?: string | null;
@@ -1163,6 +1167,40 @@ export interface EnrollProPublicSettings {
  */
 export async function getEnrollProPublicSettings(): Promise<EnrollProPublicSettings> {
   return fetchJSON(`${await getEnrollProBase()}/settings/public`) as Promise<EnrollProPublicSettings>;
+}
+
+/**
+ * Returns EnrollPro's effective "now" from /settings/public.
+ * When EnrollPro's time machine is enabled, currentSystemDate is the simulated
+ * date and advances in real time from the configured anchor. Returns null when
+ * the field is missing/unparseable or EnrollPro is unreachable.
+ *
+ * The clock offset is cached briefly so request-path callers do not hit
+ * EnrollPro on every deadline check; the cached value still advances with the
+ * local clock. Pass `{ force: true }` for the authoritative scheduler run.
+ */
+let epClockOffsetMs: number | null = null;
+let epClockFetchedAt = 0;
+const EP_CLOCK_CACHE_MS = 60_000;
+
+export async function getEnrollProNow(opts?: { force?: boolean }): Promise<Date | null> {
+  const localNow = Date.now();
+  if (!opts?.force && epClockOffsetMs !== null && localNow - epClockFetchedAt < EP_CLOCK_CACHE_MS) {
+    return new Date(localNow + epClockOffsetMs);
+  }
+
+  try {
+    const settings = await getEnrollProPublicSettings();
+    if (!settings?.currentSystemDate) return null;
+    const parsed = new Date(settings.currentSystemDate);
+    if (Number.isNaN(parsed.getTime())) return null;
+    epClockOffsetMs = parsed.getTime() - localNow;
+    epClockFetchedAt = localNow;
+    return parsed;
+  } catch {
+    // Keep advancing from the last known offset during an EnrollPro outage.
+    return epClockOffsetMs !== null ? new Date(localNow + epClockOffsetMs) : null;
+  }
 }
 
 export interface EnrollProPublicConfig {
@@ -1465,4 +1503,141 @@ export async function fetchBackSubjects(
     logger.warn(`[EnrollProClient] fetchBackSubjects failed: ${err.message}`);
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// Media photos — time-limited HMAC signed URLs
+// GET  /api/v1/media/signed-url/:entityType/:id
+// POST /api/v1/media/signed-urls
+// Auth: X-Integration-Key. The signed file URL itself needs no auth header.
+// ---------------------------------------------------------------------------
+
+export type EnrollProMediaEntityType = 'learner' | 'teacher';
+
+export interface EnrollProSignedMediaUrl {
+  signedUrl: string | null;
+  expiresAt: string | null;
+  expiresInSeconds: number | null;
+}
+
+export interface EnrollProMediaItem {
+  entityType: string;
+  id: string | number;
+}
+
+export interface EnrollProBatchSignedMediaUrl {
+  entityType: EnrollProMediaEntityType;
+  id: string;
+  signedUrl: string | null;
+  expiresAt: string | null;
+}
+
+/**
+ * Maps both canonical and alias entity types onto the two supported kinds.
+ * Returns null for anything else so callers can reject unsupported input.
+ */
+export function normalizeMediaEntityType(entityType: string): EnrollProMediaEntityType | null {
+  const value = String(entityType).trim().toLowerCase();
+  if (value === 'learner' || value === 'student') return 'learner';
+  if (value === 'teacher' || value === 'personnel') return 'teacher';
+  return null;
+}
+
+function stripApiSuffix(base: string): string {
+  return base.replace(/\/+$/, '').replace(/\/api$/i, '');
+}
+
+async function getMediaBase(): Promise<string> {
+  return `${stripApiSuffix(await getEnrollProBase())}/api/v1/media`;
+}
+
+function isNotFoundError(err: unknown): boolean {
+  return /HTTP 404\b/.test(String((err as { message?: string } | null)?.message ?? ''));
+}
+
+async function absolutizeMediaUrl(signedUrl: string): Promise<string> {
+  if (/^https?:\/\//i.test(signedUrl)) return signedUrl;
+  const origin = stripApiSuffix(await getEnrollProBase());
+  return `${origin}${signedUrl.startsWith('/') ? '' : '/'}${signedUrl}`;
+}
+
+/**
+ * Returns a signed URL for one learner/teacher photo.
+ * A 404 (entity exists but has no uploaded photo) resolves to `signedUrl: null`.
+ */
+export async function getEnrollProMediaSignedUrl(
+  entityType: string,
+  id: string | number,
+): Promise<EnrollProSignedMediaUrl> {
+  const normalized = normalizeMediaEntityType(entityType);
+  if (!normalized) throw new Error(`Unsupported media entityType: ${entityType}`);
+
+  const url = `${await getMediaBase()}/signed-url/${normalized}/${encodeURIComponent(String(id))}`;
+  try {
+    const result = await fetchJSON(url, { headers: await getIntegrationHeaders() });
+    if (!result?.signedUrl) {
+      return { signedUrl: null, expiresAt: null, expiresInSeconds: null };
+    }
+    return {
+      signedUrl: await absolutizeMediaUrl(result.signedUrl),
+      expiresAt: result.expiresAt ?? null,
+      expiresInSeconds: result.expiresInSeconds ?? null,
+    };
+  } catch (err) {
+    if (isNotFoundError(err)) {
+      return { signedUrl: null, expiresAt: null, expiresInSeconds: null };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Batch variant for rosters. EnrollPro accepts up to 200 items per call;
+ * larger inputs are chunked here. Missing photos resolve to `signedUrl: null`.
+ */
+export async function getEnrollProMediaSignedUrls(
+  items: EnrollProMediaItem[],
+): Promise<EnrollProBatchSignedMediaUrl[]> {
+  if (items.length === 0) return [];
+
+  const normalized = items.map((item) => {
+    const entityType = normalizeMediaEntityType(item.entityType);
+    if (!entityType) throw new Error(`Unsupported media entityType: ${item.entityType}`);
+    return { entityType, id: String(item.id) };
+  });
+
+  const headers = { ...(await getIntegrationHeaders()), 'Content-Type': 'application/json' };
+  const base = await getMediaBase();
+  const results: EnrollProBatchSignedMediaUrl[] = [];
+
+  for (let offset = 0; offset < normalized.length; offset += 200) {
+    const chunk = normalized.slice(offset, offset + 200);
+    const result = await fetchJSON(`${base}/signed-urls`, {
+      method: 'POST',
+      body: JSON.stringify({ items: chunk }),
+      headers,
+    });
+    const returned = Array.isArray(result?.items) ? result.items : [];
+
+    for (let i = 0; i < chunk.length; i++) {
+      const requested = chunk[i];
+      // Match by identity first — EnrollPro does not guarantee response order.
+      const match =
+        returned.find(
+          (row: any) =>
+            String(row?.id) === requested.id &&
+            normalizeMediaEntityType(String(row?.entityType)) === requested.entityType,
+        ) ??
+        (String(returned[i]?.id) === requested.id ? returned[i] : undefined);
+
+      results.push({
+        entityType: requested.entityType,
+        id: requested.id,
+        signedUrl: match?.signedUrl ? await absolutizeMediaUrl(match.signedUrl) : null,
+        expiresAt: match?.expiresAt ?? null,
+      });
+    }
+  }
+
+  return results;
 }

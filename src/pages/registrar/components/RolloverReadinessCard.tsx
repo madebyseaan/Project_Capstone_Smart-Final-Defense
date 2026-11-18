@@ -12,6 +12,8 @@ interface RolloverStatus {
   unfinalizedSections: Array<{ sectionId: string; sectionName: string; gradeLevel: string; draftBlockerCount: number }>;
   snapshotGapCount: number;
   snapshotGapSections: Array<{ sectionId: string; sectionName: string; finalizedCount: number; snapshotCount: number }>;
+  remedialBlockCount: number;
+  remedialBlockStudents: Array<{ lrn: string; name: string; grade: string; section: string; pendingSubjects: string[] }>;
   canArchive: boolean;
 }
 
@@ -35,7 +37,10 @@ export default function RolloverReadinessCard() {
 
   const prev = status?.previousYear;
 
-  const hasBlockers = (status?.unfinalizedCount ?? 0) > 0 || (status?.snapshotGapCount ?? 0) > 0;
+  const hasBlockers =
+    (status?.unfinalizedCount ?? 0) > 0 ||
+    (status?.snapshotGapCount ?? 0) > 0 ||
+    (status?.remedialBlockCount ?? 0) > 0;
 
   return (
     <Card className="border border-border shadow-sm rounded-2xl bg-card/70 backdrop-blur-xl p-0 overflow-hidden">
@@ -92,6 +97,28 @@ export default function RolloverReadinessCard() {
                     <p className="text-xs text-amber-700 mt-1">
                       {status.snapshotGapCount} section(s) missing EOSY promotion snapshots.
                     </p>
+                  )}
+                  {(status.remedialBlockCount ?? 0) > 0 && (
+                    <div className="mt-1">
+                      <p className="text-xs text-amber-700">
+                        {status.remedialBlockCount} learner(s) still have pending remedial classes.
+                      </p>
+                      <ul className="text-xs text-amber-700 mt-1 space-y-0.5">
+                        {status.remedialBlockStudents?.slice(0, 5).map((s) => (
+                          <li key={s.lrn}>
+                            {s.name} ({s.lrn}) — {s.grade} {s.section}: {s.pendingSubjects.join(", ")}
+                          </li>
+                        ))}
+                      </ul>
+                      {(status.remedialBlockStudents?.length ?? 0) > 5 && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          and {(status.remedialBlockStudents?.length ?? 0) - 5} more
+                        </p>
+                      )}
+                      <Link to="/registrar/remedial" className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 mt-2 hover:underline">
+                        Complete remedial classes <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    </div>
                   )}
                   <Link to="/registrar/eosy" className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 mt-2 hover:underline">
                     Finish EOSY finalization <ArrowRight className="w-3 h-3" />

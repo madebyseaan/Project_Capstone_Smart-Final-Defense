@@ -3,7 +3,7 @@
  */
 
 import { Router, Response } from "express";
-import { AuditAction, AuditSeverity, Term } from "@prisma/client";
+import { AuditAction, AuditSeverity, Prisma, Term } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../../middleware/auth";
 import { createAuditLog } from "../../lib/audit";
@@ -17,16 +17,100 @@ import {
   AimsError,
   type AimsCourseSummary,
 } from "../../lib/aimsClient";
-import { aimsLinkSchema, aimsImportSchema } from "../../schemas/aims";
+import { aimsLinkSchema, aimsImportSchema, aimsResyncSchema } from "../../schemas/aims";
 import {
   resolveCurrentTerm,
   isHomeroomGuidanceSubjectCode,
 } from "./helpers";
-import { checkGradeEditLocks } from "../../lib/gradeLocks";
+import { checkGradeEditLocks, hasApprovedEditRequest } from "../../lib/gradeLocks";
+import { getWriteBlock } from "../../lib/gradeFinalization";
 import { importAimsScoresToGrades } from "../../lib/aimsImport";
+import { applyAimsUpdates, computeAimsDrift, countPendingAimsUpdates } from "../../lib/aimsResync";
 import { computeCourseWarnings, rankCoursesForAssignment } from "../../lib/aimsCourseMatch";
 
 const VALID_TERMS = ["T1", "T2", "T3"] as const;
+
+type AimsWriteAssignment = Prisma.ClassAssignmentGetPayload<{
+  include: { subject: true; section: true };
+}>;
+
+async function resolveAimsWriteContext(
+  req: AuthRequest,
+  classAssignmentId: string,
+  term: Term,
+): Promise<
+  | { teacher: { id: string; userId: string }; classAssignment: AimsWriteAssignment }
+  | { error: { status: number; body: Record<string, unknown> } }
+> {
+  const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
+  if (!teacher) return { error: { status: 404, body: { message: "Teacher profile not found" } } };
+
+  const classAssignment = await prisma.classAssignment.findFirst({
+    where: { id: classAssignmentId, teacherId: teacher.id },
+    include: { subject: true, section: true },
+  });
+  if (!classAssignment) return { error: { status: 403, body: { message: "Not authorized for this class" } } };
+
+  if (classAssignment.isActive === false) {
+    return {
+      error: {
+        status: 403,
+        body: {
+          code: "ASSIGNMENT_ARCHIVED",
+          message: classAssignment.archivedReason === "ATLAS_REASSIGNED"
+            ? "This class was transferred to another teacher."
+            : "This class assignment is no longer active.",
+        },
+      },
+    };
+  }
+
+  if (isHomeroomGuidanceSubjectCode(classAssignment.subject.code)) {
+    return { error: { status: 400, body: { message: "Cannot import grades for HG." } } };
+  }
+
+  const sampleGrade = await prisma.grade.findFirst({
+    where: { classAssignmentId, term },
+    select: { isArchived: true },
+  });
+  const lockBlock = await checkGradeEditLocks({
+    teacherUserId: teacher.userId,
+    schoolYearLabel: classAssignment.schoolYear,
+    term,
+    isArchived: sampleGrade?.isArchived ?? false,
+    classAssignmentId,
+  });
+  if (lockBlock) {
+    return { error: { status: 403, body: { code: lockBlock.code, message: lockBlock.message } } };
+  }
+
+  const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+  const currentTerm = await resolveCurrentTerm();
+  const currentTermNum = termOrder[currentTerm] ?? 1;
+  const requestTermNum = termOrder[term] ?? 0;
+  if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
+    const hasEditAccess = await hasApprovedEditRequest(
+      teacher.userId,
+      term,
+      classAssignment.schoolYear,
+      classAssignmentId,
+    );
+    if (!hasEditAccess) {
+      const relation = requestTermNum < currentTermNum ? "past" : "future";
+      return { error: { status: 403, body: { message: `Cannot edit grades for ${term} (${relation} term).` } } };
+    }
+  }
+
+  const finalizationBlock = await getWriteBlock({
+    teacherUserId: teacher.userId,
+    classAssignmentId,
+    term,
+    schoolYear: classAssignment.schoolYear,
+  });
+  if (finalizationBlock) return { error: { status: 403, body: finalizationBlock as any } };
+
+  return { teacher: { id: teacher.id, userId: teacher.userId }, classAssignment };
+}
 
 export default function registerAims(router: Router): void {
 
@@ -64,6 +148,7 @@ export default function registerAims(router: Router): void {
           res.json({
             linked: false, course: null, weights: null, lastSyncedAt: null,
             aimsOffline: !isAimsConfigured(), unmatchedStudents: [], assessments: [], rows: [], warnings: [],
+            pendingUpdates: 0,
           });
           return;
         }
@@ -134,6 +219,7 @@ export default function registerAims(router: Router): void {
           _max: { syncedAt: true },
         });
         const lastSyncedAt = lastSyncAgg._max?.syncedAt?.toISOString() ?? null;
+        const pendingUpdates = await countPendingAimsUpdates(classAssignmentId, term);
 
         const { getLastUnifiedSyncResult } = await import("../../lib/syncCoordinator");
         const lastResult = getLastUnifiedSyncResult();
@@ -154,7 +240,7 @@ export default function registerAims(router: Router): void {
           course: courseMeta ?? { id: courseId, name: "Unknown", code: "", subject: "", gradeLevel: "", sectionName: "", schoolYear: "" },
           weights: courseWeights, lastSyncedAt,
           aimsOffline: !isAimsConfigured() || (lastResult?.aims?.status === "offline"),
-          unmatchedStudents, assessments, rows, warnings,
+          unmatchedStudents, assessments, rows, warnings, pendingUpdates,
         });
       } catch (error) {
         logger.error("Error fetching AIMS scores:", error);
@@ -371,64 +457,92 @@ export default function registerAims(router: Router): void {
         const classAssignmentId = String(req.params.classAssignmentId);
         const { term, assessmentIds } = req.body as { term: Term; assessmentIds?: string[] };
 
-        const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
-        if (!teacher) { res.status(404).json({ message: "Teacher profile not found" }); return; }
-
-        const classAssignment = await prisma.classAssignment.findFirst({
-          where: { id: classAssignmentId, teacherId: teacher.id },
-          include: { subject: true, section: true },
-        });
-        if (!classAssignment) { res.status(403).json({ message: "Not authorized for this class" }); return; }
-
-        if (classAssignment.isActive === false) {
-          res.status(403).json({
-            code: 'ASSIGNMENT_ARCHIVED',
-            message: classAssignment.archivedReason === 'ATLAS_REASSIGNED'
-              ? 'This class was transferred to another teacher.'
-              : 'This class assignment is no longer active.',
-          });
-          return;
-        }
-
-        if (isHomeroomGuidanceSubjectCode(classAssignment.subject.code)) {
-          res.status(400).json({ message: "Cannot import grades for HG." }); return;
-        }
-
-        const sampleGrade = await prisma.grade.findFirst({
-          where: { classAssignmentId, term }, select: { isArchived: true },
-        });
-        const lockBlock = await checkGradeEditLocks({
-          teacherUserId: teacher.userId, schoolYearLabel: classAssignment.schoolYear,
-          term, isArchived: sampleGrade?.isArchived ?? false,
-        });
-        if (lockBlock) { res.status(403).json({ code: lockBlock.code, message: lockBlock.message }); return; }
-
-        const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
-        const currentTerm = await resolveCurrentTerm();
-        const currentTermNum = termOrder[currentTerm] ?? 1;
-        const requestTermNum = termOrder[term] ?? 0;
-        if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
-          const editRequest = await prisma.gradeEditRequest.findFirst({
-            where: { teacherId: teacher.userId, term, status: "APPROVED", expiresAt: { gt: new Date() } },
-          });
-          if (!editRequest) {
-            const relation = requestTermNum < currentTermNum ? "past" : "future";
-            res.status(403).json({ message: `Cannot edit grades for ${term} (${relation} term).` }); return;
-          }
-        }
+        const ctx = await resolveAimsWriteContext(req, classAssignmentId, term);
+        if ("error" in ctx) { res.status(ctx.error.status).json(ctx.error.body); return; }
 
         // Delegate to lib (guards above, data work below)
         const result = await importAimsScoresToGrades({
           classAssignmentId,
           term,
           assessmentIds,
-          teacherId: teacher.id,
-          teacherUserId: teacher.userId,
+          teacherId: ctx.teacher.id,
+          teacherUserId: ctx.teacher.userId,
         });
 
         res.json(result);
       } catch (error) {
         logger.error("Error importing AIMS scores:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  );
+
+  // GET /aims-changes/:classAssignmentId?term=T1 — diff imported ledger vs current AIMS
+  router.get(
+    "/aims-changes/:classAssignmentId",
+    authenticateToken,
+    authorizeRoles("TEACHER"),
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        const classAssignmentId = String(req.params.classAssignmentId);
+        const termRaw = String(req.query.term ?? "T1");
+        if (!VALID_TERMS.includes(termRaw as any)) {
+          res.status(400).json({ message: "Invalid term. Must be T1, T2, or T3." });
+          return;
+        }
+        const term = termRaw as Term;
+
+        const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
+        if (!teacher) { res.status(404).json({ message: "Teacher profile not found" }); return; }
+
+        const classAssignment = await prisma.classAssignment.findFirst({
+          where: { id: classAssignmentId, teacherId: teacher.id },
+          select: { aimsCourseId: true },
+        });
+        if (!classAssignment) { res.status(403).json({ message: "Not authorized for this class" }); return; }
+
+        if (!classAssignment.aimsCourseId) {
+          res.json({ linked: false, term, checkedAt: new Date().toISOString(), lastSyncedAt: null, changes: [] });
+          return;
+        }
+
+        const report = await computeAimsDrift(classAssignmentId, term);
+        res.json({ linked: true, term, ...report });
+      } catch (error) {
+        logger.error("Error computing AIMS changes:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  );
+
+  // POST /aims-resync/:classAssignmentId — apply reviewed AIMS score updates
+  router.post(
+    "/aims-resync/:classAssignmentId",
+    authenticateToken,
+    authorizeRoles("TEACHER"),
+    validate(aimsResyncSchema),
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        const classAssignmentId = String(req.params.classAssignmentId);
+        const { term, changes } = req.body as {
+          term: Term;
+          changes: Array<{ studentId: string; assessmentId: string }>;
+        };
+
+        const ctx = await resolveAimsWriteContext(req, classAssignmentId, term);
+        if ("error" in ctx) { res.status(ctx.error.status).json(ctx.error.body); return; }
+
+        const result = await applyAimsUpdates({
+          classAssignmentId,
+          term,
+          changes,
+          teacherId: ctx.teacher.id,
+          teacherUserId: ctx.teacher.userId,
+        });
+
+        res.json(result);
+      } catch (error) {
+        logger.error("Error resyncing AIMS scores:", error);
         res.status(500).json({ message: "Internal server error" });
       }
     }

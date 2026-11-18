@@ -63,3 +63,16 @@ export function shouldLockYear(
   // The year is over only when EnrollPro also reports T3.
   return active === "T3";
 }
+
+/**
+ * True when a scheduler-owned year lock is stale because EnrollPro's clock
+ * still says T3 is running. The caller is responsible for checking that the
+ * existing lock was created by the scheduler (never auto-reopen manual locks).
+ */
+export function shouldBeUnlockedYear(
+  t3EndDate: Date | null | undefined,
+  now: Date,
+): boolean {
+  if (!t3EndDate) return false;
+  return now <= t3EndDate;
+}

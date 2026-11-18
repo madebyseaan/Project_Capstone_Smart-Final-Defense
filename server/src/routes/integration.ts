@@ -17,12 +17,17 @@ import {
   getEnrollProSectionStudents,
   checkEnrollProHealth,
   resolveEnrollProSchoolYear,
+  getEnrollProMediaSignedUrl,
+  getEnrollProMediaSignedUrls,
 } from '../lib/enrollproClient';
+import { validate } from '../middleware/validate';
+import { mediaSingleParamsSchema, mediaBatchBodySchema } from '../schemas/media';
 import { checkAimsHealth } from '../lib/aimsClient';
 import { triggerImmediateSync } from '../lib/syncCoordinator';
 import { addSyncSseClient, removeSyncSseClient } from '../lib/sseManager';
 import { getActiveSchoolYearLabel } from '../lib/schoolYearResolver';
 import { resolveCurrentTerm } from './grades-sub/helpers';
+import registerAimsGradingWeights from './integration-sub/aimsGradingWeights';
 import { serviceAuth } from '../middleware/serviceAuth';
 import { maskId } from '../lib/redact';
 import { buildSf10Records } from '../lib/sf10';
@@ -64,6 +69,73 @@ router.get('/sync/stream', authenticateToken, (req: AuthRequest, res: Response):
     removeSyncSseClient(res);
   });
 });
+
+// ---------------------------------------------------------------------------
+// EnrollPro media photos — proxy signed URLs to authenticated SMART users.
+// The integration key never leaves the server; browsers receive only the
+// short-lived HMAC-signed URL.
+// ---------------------------------------------------------------------------
+
+function mediaErrorResponse(res: Response, err: unknown): void {
+  const message = String((err as { message?: string } | null)?.message ?? '');
+  if (message.includes('ENROLLPRO_INTEGRATION_KEY')) {
+    res.status(503).json({
+      code: 'MEDIA_NOT_CONFIGURED',
+      message: 'EnrollPro media integration is not configured.',
+    });
+    return;
+  }
+  logger.warn('[Media] EnrollPro media signed URL request failed');
+  res.status(502).json({
+    code: 'MEDIA_UNAVAILABLE',
+    message: 'EnrollPro media service is unavailable.',
+  });
+}
+
+/**
+ * GET /api/integration/media/photo-url/:entityType/:id
+ * `entityType`: learner | student | teacher | personnel
+ * `id`: student LRN, teacher employee ID, or EnrollPro internal ID.
+ * Response: { signedUrl, expiresAt, expiresInSeconds }.
+ * `signedUrl` is null when the entity has no uploaded photo.
+ */
+router.get(
+  '/media/photo-url/:entityType/:id',
+  authenticateToken,
+  authorizeRoles('TEACHER', 'ADMIN', 'REGISTRAR'),
+  validate(mediaSingleParamsSchema),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const { entityType, id } = req.params as { entityType: string; id: string };
+    try {
+      res.json(await getEnrollProMediaSignedUrl(entityType, id));
+    } catch (err) {
+      mediaErrorResponse(res, err);
+    }
+  },
+);
+
+/**
+ * POST /api/integration/media/photo-urls
+ * Body: { items: [{ entityType, id }] } — max 200.
+ * Response: { items: [{ entityType, id, signedUrl, expiresAt }] }.
+ * Missing photos return `signedUrl: null` without failing the batch.
+ */
+router.post(
+  '/media/photo-urls',
+  authenticateToken,
+  authorizeRoles('TEACHER', 'ADMIN', 'REGISTRAR'),
+  validate(mediaBatchBodySchema),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { items } = req.body as {
+        items: Array<{ entityType: string; id: string | number }>;
+      };
+      res.json({ items: await getEnrollProMediaSignedUrls(items) });
+    } catch (err) {
+      mediaErrorResponse(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Grade Outcomes (called by EnrollPro during EOSY)
@@ -839,5 +911,7 @@ router.get(
     }
   }
 );
+
+registerAimsGradingWeights(router);
 
 export default router;

@@ -17,7 +17,9 @@ import { withSectionLock } from "../../lib/sectionLock";
 import { validate } from "../../middleware/validate";
 import { enrollmentStatusSchema, finalizeGradesSchema } from "../../schemas/registrar";
 import { listUnfinalizedSections, canonicalSubjectKey, PASSING_GRADE } from "../../lib/promotion";
+import { isBlockingDraftGrade } from "../../lib/rotationMetadata";
 import { findSnapshotGapSections } from "../../lib/rollover";
+import { getRemedialRolloverBlock } from "../../lib/remedial";
 import {
   resolveCurrentSchoolYearLabel,
   getSyncFreshness,
@@ -503,13 +505,16 @@ router.get("/rollover-status", authenticateToken, async (req: AuthRequest, res: 
 
     let unfinalized: any[] = [];
     let snapshotGaps: any[] = [];
+    let remedialBlock = { blocked: false, count: 0, students: [] as any[] };
     if (previousYear) {
-      const [unfinalizedRes, gapsRes] = await Promise.all([
+      const [unfinalizedRes, gapsRes, remedialRes] = await Promise.all([
         listUnfinalizedSections(previousYear.label),
         findSnapshotGapSections(previousYear.label),
+        getRemedialRolloverBlock(previousYear.label),
       ]);
       unfinalized = unfinalizedRes;
       snapshotGaps = gapsRes;
+      remedialBlock = remedialRes;
     }
 
     res.json({
@@ -526,7 +531,13 @@ router.get("/rollover-status", authenticateToken, async (req: AuthRequest, res: 
       })),
       snapshotGapCount: snapshotGaps.length,
       snapshotGapSections: snapshotGaps,
-      canArchive: unfinalized.length === 0 && snapshotGaps.length === 0 && !!previousYear,
+      remedialBlockCount: remedialBlock.count,
+      remedialBlockStudents: remedialBlock.students,
+      canArchive:
+        unfinalized.length === 0 &&
+        snapshotGaps.length === 0 &&
+        remedialBlock.count === 0 &&
+        !!previousYear,
     });
   } catch (error) {
     logger.error("Error fetching rollover status:", error);
@@ -1515,7 +1526,7 @@ router.get("/finalize-status/:sectionId/:term", authenticateToken, async (req: A
     });
 
     const status = classAssignments
-      .filter((ca: any) => !(ca.subject?.code ?? '').toUpperCase().startsWith('HG'))
+      .filter((ca: any) => isBlockingDraftGrade({ term, subject: ca.subject }))
       .map((ca: any) => {
       const grades = ca.grades || [];
       const draftCount = grades.filter((g: any) => g.status === "DRAFT").length;
@@ -1593,7 +1604,12 @@ router.get("/finalize-status-all/:sectionId", authenticateToken, async (req: Aut
       const termStatus: Record<string, { draft: number; finalized: number; locked: number; total: number; isComplete: boolean }> = {} as any;
 
       for (const t of terms) {
-        const termGrades = allGrades.filter((g: any) => g.term === t);
+        // Rotation components only offer their own rank term. Counting stray
+        // out-of-term rows here is what made EOSY disagree with Term
+        // Finalization after the rotation fix.
+        const termGrades = isBlockingDraftGrade({ term: t, subject: ca.subject })
+          ? allGrades.filter((g: any) => g.term === t)
+          : [];
         const draftCount = termGrades.filter((g: any) => g.status === "DRAFT").length;
         const finalizedCount = termGrades.filter((g: any) => g.status === "FINALIZED").length;
         const lockedCount = termGrades.filter((g: any) => g.status === "LOCKED").length;

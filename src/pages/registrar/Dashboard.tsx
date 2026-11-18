@@ -22,6 +22,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SyncProgressModal } from "@/components/common/SyncProgressModal";
 import RolloverReadinessCard from "./components/RolloverReadinessCard";
+import { CorrectionWindowsCard } from "./components/CorrectionWindowsCard";
 import {
   BarChart,
   Bar,
@@ -458,6 +459,8 @@ export default function RegistrarDashboardPage() {
 
       {/* School Year Readiness */}
       <RolloverReadinessCard />
+
+      <CorrectionWindowsCard schoolYear={dashboard.currentSchoolYear} />
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">

@@ -5,13 +5,19 @@ interface GradeStatusBannerProps {
   currentTerm: string;
   selectedTerm?: string;
   termEndDate?: string | null;
+  /** EnrollPro's effective clock (ISO). Falls back to the device clock. */
+  effectiveNow?: string | null;
   gradeLock: boolean;
   colors: { primary: string };
-  editRequestStatus?: "idle" | "pending" | "approved" | "rejected";
+  editRequestStatus?: "idle" | "pending" | "approved" | "rejected" | "awaiting_window" | "window_open" | "awaiting_refinalize";
   editTimeRemaining?: string;
   onRequestEdit?: () => void;
+  onEndWindow?: () => void;
   termLabels?: { T1: string; T2: string; T3: string };
   termDatesDerived?: boolean;
+  termFinalized?: boolean;
+  editWindowOpen?: boolean;
+  awaitingRefinalize?: boolean;
   locks?: {
     systemLocked: boolean;
     yearLocked: boolean;
@@ -41,12 +47,17 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
   currentTerm,
   selectedTerm,
   termEndDate,
+  effectiveNow,
   gradeLock,
   editRequestStatus = "idle",
   editTimeRemaining,
   onRequestEdit,
+  onEndWindow,
   termLabels,
   termDatesDerived,
+  termFinalized = false,
+  editWindowOpen = false,
+  awaitingRefinalize = false,
   locks,
   variant = "card",
 }: GradeStatusBannerProps) {
@@ -106,6 +117,100 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
           {reason}
           <span className="font-normal text-red-500"> {hint}</span>
         </span>
+      </div>
+    );
+  }
+
+  // --- Correction window states (registrar-owned) ---
+  if (awaitingRefinalize) {
+    return (
+      <div
+        className={frame("border-amber-200", "bg-amber-50")}
+        data-testid="grade-awaiting-refinalize-banner"
+      >
+        <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+        <span className="font-medium text-amber-800">
+          The correction window for {getTermLabel(selectedTerm ?? currentTerm, termLabels)} has ended.
+          <span className="font-normal text-amber-700"> Waiting for the registrar to re-finalize.</span>
+        </span>
+      </div>
+    );
+  }
+
+  if (editWindowOpen) {
+    return (
+      <div
+        className={frame("border-emerald-200", "bg-emerald-50", true)}
+        data-testid="grade-edit-window-banner"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          </span>
+          <span className="font-semibold text-emerald-800 truncate">
+            Correction window open — editing allowed
+          </span>
+          <span className="hidden sm:inline text-emerald-600">
+            · {getTermLabel(selectedTerm ?? currentTerm, termLabels)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-emerald-700 font-semibold shrink-0">
+          <Clock className="w-3.5 h-3.5" />
+          <span>{editTimeRemaining || "active"}</span>
+          {onEndWindow && (
+            <button
+              type="button"
+              onClick={onEndWindow}
+              data-testid="end-correction-window"
+              className="ml-1 rounded-md border border-emerald-300 bg-white px-2 py-0.5 text-[11px] font-medium text-emerald-800 transition-colors hover:bg-emerald-100"
+            >
+              End editing
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (termFinalized) {
+    const pending = editRequestStatus === "pending";
+    const awaitingWindow = editRequestStatus === "awaiting_window";
+    return (
+      <div
+        className={frame(
+          pending || awaitingWindow ? "border-amber-200" : "border-amber-200",
+          pending || awaitingWindow ? "bg-amber-50" : "bg-amber-50",
+          !pending && !awaitingWindow,
+        )}
+        data-testid="grade-finalized-banner"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          {pending || awaitingWindow ? (
+            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          ) : (
+            <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          )}
+          <span className="font-medium text-amber-800">
+            {pending
+              ? `Correction request pending admin approval for ${getTermLabel(selectedTerm ?? currentTerm, termLabels)}.`
+              : awaitingWindow
+                ? `Correction approved — waiting for the registrar to open the edit window.`
+                : `${getTermLabel(selectedTerm ?? currentTerm, termLabels)} is finalized — read-only.`}
+            {!pending && !awaitingWindow && (
+              <span className="font-normal text-amber-700"> Ask the registrar to unfinalize or request a correction.</span>
+            )}
+          </span>
+        </div>
+        {onRequestEdit && !pending && !awaitingWindow && (
+          <button
+            onClick={onRequestEdit}
+            className="flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100 transition-colors shrink-0"
+          >
+            <Pencil className="w-3 h-3" />
+            Request Correction
+          </button>
+        )}
       </div>
     );
   }
@@ -185,7 +290,10 @@ export const GradeStatusBanner = React.memo(function GradeStatusBanner({
   // --- Current term: deadline warnings ---
   if (!termEndDate) return null;
 
-  const now = new Date();
+  const now = (() => {
+    const parsed = effectiveNow ? new Date(effectiveNow) : null;
+    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+  })();
   const endDate = new Date(termEndDate);
   const daysRemaining = daysBetween(endDate, now);
 

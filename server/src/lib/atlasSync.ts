@@ -52,6 +52,7 @@ function normalizeAtlasSubjectCode(code: string | null | undefined): string {
 // -- State ------------------------------------------------------------------
 let syncRunning = false;
 let lastSyncAt: Date | null = null;
+let lastRotationRejectionSignature: string | null = null;
 let lastSyncResult: {
   matched: number; created: number; deleted: number;
   teachersWithLoads: number; errors: string[];
@@ -332,6 +333,7 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
       };
       for (const atlasSubj of atlasSubjects) {
         if (!atlasSubj.code || !atlasSubj.name) continue;
+        if (atlasSubj.isActive === false) continue;
         const code = normalizeAtlasSubjectCode(atlasSubj.code);
 
         // Extract rotation metadata from Atlas subject
@@ -390,16 +392,24 @@ export async function runAtlasSync(): Promise<typeof lastSyncResult> {
         subjectsCreated++;
       }
       if (rotationRejected.length > 0) {
-        logger.warn(`[AtlasSync] Rejected ${rotationRejected.length} invalid rotation metadata entr${rotationRejected.length === 1 ? "y" : "ies"}: ${rotationRejected.join("; ")}`);
-        await createAuditLog(
-          AuditAction.UPDATE,
-          { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
-          'Subject',
-          'SYNC',
-          `Atlas rotation metadata rejected (inconsistent subject family): ${rotationRejected.join("; ")}`,
-          undefined,
-          AuditSeverity.WARNING,
-        ).catch(() => {});
+        const signature = rotationRejected.slice().sort().join("; ");
+        if (signature !== lastRotationRejectionSignature) {
+          lastRotationRejectionSignature = signature;
+          logger.warn(`[AtlasSync] Rejected ${rotationRejected.length} invalid rotation metadata entr${rotationRejected.length === 1 ? "y" : "ies"}: ${signature}`);
+          await createAuditLog(
+            AuditAction.UPDATE,
+            { id: null, role: 'SYSTEM', firstName: 'Atlas', lastName: 'Sync' },
+            'Subject',
+            'SYNC',
+            `Atlas rotation metadata rejected (inconsistent subject family): ${signature}`,
+            undefined,
+            AuditSeverity.WARNING,
+          ).catch(() => {});
+        } else {
+          logger.debug(`[AtlasSync] Rotation metadata still rejected: ${signature}`);
+        }
+      } else {
+        lastRotationRejectionSignature = null;
       }
       logger.debug(`[AtlasSync] Processed ${atlasSubjects.length} Atlas subjects, created ${subjectsCreated} new, rotation-updated ${rotationUpdated}`);
     } catch (err: any) {

@@ -15,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EntityAvatar } from "@/components/EntityAvatar";
 import {
   Table,
   TableBody,
@@ -245,11 +245,14 @@ export default function MyAdvisory() {
         className="flex min-h-16 items-center gap-3 px-4 py-3 transition-colors active:bg-muted"
       >
         <span className="w-5 shrink-0 text-center text-[11px] font-medium text-muted-foreground">{idx + 1}</span>
-        <Avatar className="h-10 w-10 shrink-0 border border-border shadow-sm">
-          <AvatarFallback className={cn("text-xs font-semibold text-white", isMale ? "bg-blue-500" : "bg-pink-500")}>
-            {student.lastName.charAt(0)}
-          </AvatarFallback>
-        </Avatar>
+        <EntityAvatar
+          entityType="learner"
+          id={student.lrn}
+          alt={`${student.firstName} ${student.lastName}`}
+          className="h-10 w-10 shrink-0 border border-border shadow-sm"
+          fallback={student.lastName.charAt(0)}
+          fallbackClassName={cn("text-xs font-semibold text-white", isMale ? "bg-blue-500" : "bg-pink-500")}
+        />
         <div className="min-w-0 flex-1">
           <p className="line-clamp-2 text-sm font-semibold text-foreground">
             {student.lastName}, {student.firstName}
@@ -370,14 +373,15 @@ export default function MyAdvisory() {
           
           <div className="flex flex-col items-stretch gap-2 md:items-end">
             <div className="flex items-center gap-2.5 rounded-2xl border border-border bg-muted/40 px-3.5 py-2.5 shadow-sm">
-               <Avatar className="h-9 w-9 border-2 border-white shadow-md">
-                 <AvatarFallback 
-                    className="text-white font-bold text-sm"
-                    style={{ backgroundColor: colors.primary }}
-                 >
-                   {data.teacher.name.charAt(0)}
-                 </AvatarFallback>
-               </Avatar>
+               <EntityAvatar
+                 entityType="teacher"
+                 id={data.teacher.employeeId}
+                 alt={data.teacher.name}
+                 className="h-9 w-9 border-2 border-white shadow-md"
+                 fallback={data.teacher.name.charAt(0)}
+                 fallbackClassName="text-white font-bold text-sm"
+                 fallbackStyle={{ backgroundColor: colors.primary }}
+               />
                <div>
                  <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Assigned Teacher</p>
                  <p className="text-sm font-bold text-foreground tracking-tight">{data.teacher.name}</p>
@@ -555,14 +559,17 @@ export default function MyAdvisory() {
                       <TableCell className="font-mono text-xs text-muted-foreground font-bold tracking-tighter group-hover:text-foreground transition-colors">{student.lrn}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-4">
-                          <Avatar className="w-9 h-9 border-2 border-white shadow-sm ring-1 ring-slate-100">
-                            <AvatarFallback className={cn(
+                          <EntityAvatar
+                            entityType="learner"
+                            id={student.lrn}
+                            alt={`${student.firstName} ${student.lastName}`}
+                            className="w-9 h-9 border-2 border-white shadow-sm ring-1 ring-slate-100"
+                            fallback={student.lastName.charAt(0)}
+                            fallbackClassName={cn(
                               "text-white font-bold text-xs",
                               student.gender?.toLowerCase() === "male" ? "bg-blue-500" : "bg-pink-500"
-                            )}>
-                              {student.lastName.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
+                            )}
+                          />
                           <div>
                             <p className="font-bold text-foreground text-sm tracking-tight">{student.lastName}, {student.firstName}</p>
                             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">{student.middleName || ""}</p>

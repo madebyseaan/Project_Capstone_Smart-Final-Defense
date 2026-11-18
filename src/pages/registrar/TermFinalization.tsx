@@ -38,6 +38,7 @@ import type {
 import { toast } from "@/lib/toast";
 import TermFinalizationSectionCard from "./components/TermFinalizationSectionCard";
 import TermGradesPreviewModal from "./components/TermGradesPreviewModal";
+import { CorrectionWindowsCard } from "./components/CorrectionWindowsCard";
 
 const TERM_OPTIONS: TermName[] = ["T1", "T2", "T3"];
 const GRADE_OPTIONS = ["GRADE_7", "GRADE_8", "GRADE_9", "GRADE_10"] as const;
@@ -568,6 +569,13 @@ export default function TermFinalization() {
           </div>
         )}
       </Card>
+
+      {selectedSchoolYear && (
+        <CorrectionWindowsCard
+          schoolYear={selectedSchoolYear}
+          onChanged={() => setRefreshKey((value) => value + 1)}
+        />
+      )}
 
       <Card className="overflow-hidden rounded-xl border border-border bg-card p-0 shadow-sm">
         <div className="p-4 lg:p-5">

@@ -91,6 +91,33 @@ export const aimsImportSchema = z.object({
   }),
 });
 
+export const aimsResyncSchema = z.object({
+  body: z.object({
+    term: z.enum(['T1', 'T2', 'T3']),
+    changes: z
+      .array(
+        z.object({
+          studentId: z.string().min(1),
+          assessmentId: z.string().min(1),
+        }),
+      )
+      .min(1)
+      .max(1000),
+  }),
+});
+
+export const aimsGradingWeightsQuerySchema = z
+  .object({
+    aimsCourseId: z.string().uuid('Invalid AIMS course ID format').optional(),
+    aimsCourseIds: z.string().trim().min(1).optional(),
+    courseCode: z.string().trim().min(1).max(200).optional(),
+    schoolYear: z.string().trim().regex(/^\d{4}-\d{4}$/, 'schoolYear must be YYYY-YYYY').optional(),
+    term: z.string().trim().min(1).max(2).optional(),
+  })
+  .refine((value) => !!value.aimsCourseId || !!value.aimsCourseIds || !!value.courseCode, {
+    message: 'aimsCourseId, aimsCourseIds, or courseCode is required',
+  });
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

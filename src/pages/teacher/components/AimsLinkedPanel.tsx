@@ -3,7 +3,8 @@ import { AlertTriangle, ArrowLeft, Check, CloudDownload, Info, Loader2, RefreshC
 import { Button } from "@/components/ui/button";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/lib/toast";
-import { gradesApi, type AimsScoresResponse } from "@/lib/api";
+import { gradesApi, type AimsDriftChange, type AimsScoresResponse } from "@/lib/api";
+import { AimsUpdateDiff } from "./AimsUpdateDiff";
 
 interface AimsLinkedPanelProps {
   classAssignmentId: string;
@@ -15,9 +16,12 @@ interface AimsLinkedPanelProps {
 }
 
 export function AimsLinkedPanel({ classAssignmentId, selectedTerm, aimsData, isViewOnly, onChanged, onClose }: AimsLinkedPanelProps) {
-  const [view, setView] = useState<"manage" | "import">("manage");
+  const [view, setView] = useState<"manage" | "import" | "changes">("manage");
   const [importing, setImporting] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [changes, setChanges] = useState<AimsDriftChange[]>([]);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [applyingChanges, setApplyingChanges] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [selectedAssessments, setSelectedAssessments] = useState<Set<string>>(new Set());
 
@@ -66,22 +70,55 @@ export function AimsLinkedPanel({ classAssignmentId, selectedTerm, aimsData, isV
   };
 
   const handleRefresh = async () => {
-    setRefreshing(true);
+    setChecking(true);
+    setView("changes");
     try {
-      const res = await gradesApi.syncAims(classAssignmentId);
-      const { status, scoresUpserted } = res.data;
-      if (status === "ok" && scoresUpserted > 0) {
-        toast.success(`Synced ${scoresUpserted} new score(s)`);
-      } else if (status === "ok") {
-        toast.info("No new scores");
-      } else {
-        toast.info("AIMS offline — try again later");
+      try {
+        await gradesApi.syncAims(classAssignmentId);
+      } catch {
+        // AIMS offline or cooldown — still diff the last successful pull.
       }
+      const res = await gradesApi.getAimsChanges(classAssignmentId, selectedTerm);
+      setChanges(res.data.changes ?? []);
+      setCheckedAt(res.data.checkedAt ?? null);
+      if ((res.data.changes ?? []).length === 0) toast.info("No AIMS score changes");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to check AIMS for changes");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleReviewPending = async () => {
+    setChecking(true);
+    setView("changes");
+    try {
+      const res = await gradesApi.getAimsChanges(classAssignmentId, selectedTerm);
+      setChanges(res.data.changes ?? []);
+      setCheckedAt(res.data.checkedAt ?? null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to load AIMS changes");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleApplyChanges = async (selected: Array<{ studentId: string; assessmentId: string }>) => {
+    setApplyingChanges(true);
+    try {
+      const res = await gradesApi.resyncAims(classAssignmentId, selectedTerm, selected);
+      const { appliedCount, updatedStudents, skipped } = res.data;
+      const parts = [`${appliedCount} score update(s) applied to ${updatedStudents} student(s)`];
+      if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
+      toast.success(parts.join(", "));
+      const refreshed = await gradesApi.getAimsChanges(classAssignmentId, selectedTerm);
+      setChanges(refreshed.data.changes ?? []);
+      setCheckedAt(refreshed.data.checkedAt ?? null);
       onChanged();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to sync from AIMS");
+      toast.error(err?.response?.data?.message || "Failed to apply AIMS updates");
     } finally {
-      setRefreshing(false);
+      setApplyingChanges(false);
     }
   };
 
@@ -180,6 +217,23 @@ export function AimsLinkedPanel({ classAssignmentId, selectedTerm, aimsData, isV
     );
   }
 
+  // ── Changes view ───────────────────────────────────────────────────
+  if (view === "changes") {
+    return (
+      <AimsUpdateDiff
+        changes={changes}
+        checkedAt={checkedAt}
+        lastSyncedAt={lastSyncedAt}
+        loading={checking}
+        applying={applyingChanges}
+        isViewOnly={isViewOnly}
+        onCheckAgain={handleRefresh}
+        onApply={handleApplyChanges}
+        onBack={() => setView("manage")}
+      />
+    );
+  }
+
   // ── Manage view ────────────────────────────────────────────────────
   return (
     <>
@@ -200,9 +254,9 @@ export function AimsLinkedPanel({ classAssignmentId, selectedTerm, aimsData, isV
       </DialogHeader>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing} className="gap-1.5">
-          {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Refresh
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={checking} className="gap-1.5">
+          {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Check for updates
         </Button>
         {assessments.length > 0 && (
           <Button variant="outline" size="sm" onClick={openImportView} className="gap-1.5" disabled={isViewOnly}>
@@ -215,6 +269,23 @@ export function AimsLinkedPanel({ classAssignmentId, selectedTerm, aimsData, isV
           Disconnect
         </Button>
       </div>
+
+      {(aimsData.pendingUpdates ?? 0) > 0 && (
+        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-[var(--ledger-aims-bg)] border border-[var(--ledger-aims)]/40">
+          <AlertTriangle className="w-4 h-4 text-[var(--ledger-aims)] shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-foreground">
+              {aimsData.pendingUpdates} imported score(s) changed in AIMS
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Review the previous and new score for each student before applying.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleReviewPending} disabled={checking} className="shrink-0">
+            Review
+          </Button>
+        </div>
+      )}
 
       {warnings.length > 0 && (
         <div className="flex items-start gap-2.5 p-3 rounded-xl bg-muted/50 border border-border">

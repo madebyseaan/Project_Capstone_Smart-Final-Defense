@@ -355,6 +355,143 @@ describe("term finalization", () => {
     }
   });
 
+  it("selects only the term-ranked rotation component for the overview and finalize", async () => {
+    const suffix = Date.now();
+    const rotationGroupId = `TEST_TERMSCI_${suffix}`;
+    const baseName = `TermFin Rotation 7 ${suffix}`;
+    const rotationA = await prisma.subject.create({
+      data: {
+        code: `TERMFIN-TSCI-A-${suffix}`,
+        name: `${baseName} - Alpha`,
+        rotationTermGroupId: rotationGroupId,
+        rotationTermRank: 1,
+        rotationOutputLabel: "TERMSCI",
+      },
+    });
+    const rotationB = await prisma.subject.create({
+      data: {
+        code: `TERMFIN-TSCI-B-${suffix}`,
+        name: `${baseName} - Beta`,
+        rotationTermGroupId: rotationGroupId,
+        rotationTermRank: 2,
+        rotationOutputLabel: "TERMSCI",
+      },
+    });
+    const rotationC = await prisma.subject.create({
+      data: {
+        code: `TERMFIN-TSCI-C-${suffix}`,
+        name: `${baseName} - Gamma`,
+        rotationTermGroupId: rotationGroupId,
+        rotationTermRank: 3,
+        rotationOutputLabel: "TERMSCI",
+      },
+    });
+
+    const caA = await prisma.classAssignment.create({
+      data: { sectionId, schoolYear: YEAR, subjectId: rotationA.id, teacherId, isActive: true },
+    });
+    const caB = await prisma.classAssignment.create({
+      data: { sectionId, schoolYear: YEAR, subjectId: rotationB.id, teacherId, isActive: true },
+    });
+    const caC = await prisma.classAssignment.create({
+      data: { sectionId, schoolYear: YEAR, subjectId: rotationC.id, teacherId, isActive: true },
+    });
+
+    await prisma.grade.createMany({
+      data: [caA, caB, caC].flatMap((ca) =>
+        (["T1", "T2", "T3"] as const).map((term) => ({
+          studentId,
+          classAssignmentId: ca.id,
+          term,
+          status: "DRAFT" as const,
+          writtenWorkScores: [],
+          perfTaskScores: [],
+        })),
+      ),
+    });
+
+    const overviewFor = async (term: "T1" | "T2" | "T3") => {
+      const res = await request(app)
+        .get("/api/registrar/term-finalization")
+        .query({ schoolYear: YEAR, term })
+        .set(auth());
+      expect(res.status).toBe(200);
+      const section = res.body.sections.find((row: any) => row.sectionId === sectionId);
+      return section.subjects.find((row: any) => row.rotationGroupId === rotationGroupId);
+    };
+
+    try {
+      const t1 = await overviewFor("T1");
+      expect(t1.subjectIds).toEqual([caA.subjectId]);
+      expect(t1.subjectCodes).toEqual([rotationA.code]);
+      expect(t1.rotationSubjectName).toBe(rotationA.name);
+      expect(t1.draft).toBe(1);
+
+      const t2 = await overviewFor("T2");
+      expect(t2.subjectIds).toEqual([caB.subjectId]);
+      expect(t2.subjectCodes).toEqual([rotationB.code]);
+      expect(t2.rotationSubjectName).toBe(rotationB.name);
+      expect(t2.draft).toBe(1);
+
+      const t3 = await overviewFor("T3");
+      expect(t3.subjectIds).toEqual([caC.subjectId]);
+      expect(t3.subjectCodes).toEqual([rotationC.code]);
+      expect(t3.rotationSubjectName).toBe(rotationC.name);
+      expect(t3.draft).toBe(1);
+
+      const finalize = await request(app)
+        .post("/api/registrar/term-finalization/finalize")
+        .set(auth())
+        .send({ sectionId, term: "T1", schoolYear: YEAR });
+      expect(finalize.status).toBe(200);
+
+      let statuses = await prisma.grade.findMany({
+        where: { classAssignmentId: { in: [caA.id, caB.id, caC.id] }, term: "T1" },
+        select: { classAssignmentId: true, status: true },
+      });
+      expect(statuses.find((row) => row.classAssignmentId === caA.id)?.status).toBe("FINALIZED");
+      expect(statuses.find((row) => row.classAssignmentId === caB.id)?.status).toBe("DRAFT");
+      expect(statuses.find((row) => row.classAssignmentId === caC.id)?.status).toBe("DRAFT");
+
+      const unfinalize = await request(app)
+        .post("/api/registrar/term-finalization/unfinalize")
+        .set(auth())
+        .send({ sectionId, term: "T1", schoolYear: YEAR });
+      expect(unfinalize.status).toBe(200);
+
+      // Stale clients may still send all three component IDs. They must not
+      // finalize out-of-term strands.
+      const stale = await request(app)
+        .post("/api/registrar/term-finalization/finalize")
+        .set(auth())
+        .send({
+          sectionId,
+          term: "T1",
+          schoolYear: YEAR,
+          subjectIds: [rotationA.id, rotationB.id, rotationC.id],
+        });
+      expect(stale.status).toBe(200);
+
+      statuses = await prisma.grade.findMany({
+        where: { classAssignmentId: { in: [caA.id, caB.id, caC.id] }, term: "T1" },
+        select: { classAssignmentId: true, status: true },
+      });
+      expect(statuses.find((row) => row.classAssignmentId === caA.id)?.status).toBe("FINALIZED");
+      expect(statuses.find((row) => row.classAssignmentId === caB.id)?.status).toBe("DRAFT");
+      expect(statuses.find((row) => row.classAssignmentId === caC.id)?.status).toBe("DRAFT");
+    } finally {
+      await prisma.grade.deleteMany({
+        where: { classAssignmentId: { in: [caA.id, caB.id, caC.id] } },
+      }).catch(() => {});
+      await prisma.classAssignment.deleteMany({
+        where: { id: { in: [caA.id, caB.id, caC.id] } },
+      }).catch(() => {});
+      await prisma.subject.deleteMany({
+        where: { id: { in: [rotationA.id, rotationB.id, rotationC.id] } },
+      }).catch(() => {});
+    }
+  });
+
   it("finalizes a single subject without touching the other subject", async () => {
     const res = await request(app)
       .post("/api/registrar/term-finalization/finalize")

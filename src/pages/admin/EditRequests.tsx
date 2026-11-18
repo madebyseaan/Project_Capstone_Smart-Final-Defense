@@ -23,7 +23,8 @@ interface EditRequest {
   section?: string;
   subject?: string;
   reason: string;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "WINDOW_OPEN" | "REFINALIZED" | "DECLINED";
+  windowRequired?: boolean;
   approvedByName?: string;
   expiresAt?: string;
   createdAt: string;
@@ -48,6 +49,12 @@ const StatusBadge = function StatusBadge({ status }: { status: EditRequest["stat
       return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
     case "EXPIRED":
       return <Badge variant="outline" className="bg-muted text-muted-foreground border-border"><Timer className="w-3 h-3 mr-1" />Expired</Badge>;
+    case "WINDOW_OPEN":
+      return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200"><Clock className="w-3 h-3 mr-1" />Window open</Badge>;
+    case "REFINALIZED":
+      return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200"><CheckCircle className="w-3 h-3 mr-1" />Re-finalized</Badge>;
+    case "DECLINED":
+      return <Badge variant="outline" className="bg-muted text-muted-foreground border-border"><XCircle className="w-3 h-3 mr-1" />Declined</Badge>;
     default:
       return <Badge>{status}</Badge>;
   }
@@ -213,7 +220,7 @@ export default function EditRequests() {
               </Button>
             </>
           )}
-          {req.status === "APPROVED" && (
+          {req.status === "APPROVED" && !req.windowRequired && (
             <Button
               variant="outline"
               size="sm"
@@ -351,7 +358,7 @@ export default function EditRequests() {
                   </Button>
                 </>
               )}
-              {detailReq.status === "APPROVED" && (
+              {detailReq.status === "APPROVED" && !detailReq.windowRequired && (
                 <Button
                   variant="outline"
                   className="rounded-xl text-destructive border-destructive/30 hover:bg-destructive/10"

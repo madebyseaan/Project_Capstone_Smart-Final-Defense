@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { LoadingSkeleton, EmptyState } from "@/components/data-table";
 import { Dash } from "@/components/data-table/Dash";
+import { EntityAvatar } from "@/components/EntityAvatar";
 import type { VaultTab } from "./records/types";
 
 interface StudentWithEnrollment {
@@ -121,13 +122,15 @@ export function StudentRecordsTable({
                   </TableCell>
                   <TableCell className="py-3.5 px-4 text-left align-middle">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs shrink-0"
-                        style={{ backgroundColor: primaryColor }}
-                        aria-hidden="true"
-                      >
-                        {(student.lastName || "?").charAt(0)}
-                      </div>
+                      <EntityAvatar
+                        entityType="learner"
+                        id={student.lrn}
+                        alt={`${student.firstName} ${student.lastName}`.trim()}
+                        className="w-8 h-8 shrink-0"
+                        fallback={(student.lastName || "?").charAt(0)}
+                        fallbackClassName="text-white font-semibold text-xs"
+                        fallbackStyle={{ backgroundColor: primaryColor }}
+                      />
                       <div className="min-w-0">
                         <p className="font-semibold text-foreground text-sm truncate">
                           {student.lastName}, {student.firstName}{" "}

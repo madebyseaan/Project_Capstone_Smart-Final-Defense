@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EntityAvatar } from "@/components/EntityAvatar";
 import { adminApi } from "@/lib/api";
 import type { AdminUser } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -135,11 +135,15 @@ export default function UserManagement() {
       skeleton: "avatar",
       cell: (user) => (
         <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10 ring-2 ring-offset-2 ring-border">
-            <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: colors.primary }}>
-              {(user.firstName?.[0] || "U")}{(user.lastName?.[0] || "")}
-            </AvatarFallback>
-          </Avatar>
+          <EntityAvatar
+            entityType="teacher"
+            id={user.enrollpro?.employeeId || user.teacher?.employeeId || user.username}
+            alt={`${user.firstName || ""} ${user.lastName || ""}`.trim()}
+            className="h-10 w-10 ring-2 ring-offset-2 ring-border"
+            fallback={`${user.firstName?.[0] || "U"}${user.lastName?.[0] || ""}`}
+            fallbackClassName="text-white font-semibold"
+            fallbackStyle={{ backgroundColor: colors.primary }}
+          />
           <div>
             <p className="font-semibold text-foreground">
               {user.firstName || ""} {user.lastName || ""}
@@ -342,11 +346,15 @@ export default function UserManagement() {
           <div className="space-y-4">
             {/* Identity */}
             <div className="flex items-start gap-4">
-              <Avatar className="h-16 w-16">
-                <AvatarFallback className="text-white text-xl font-semibold" style={{ backgroundColor: colors.primary }}>
-                  {(selectedUser.firstName?.[0] || "U")}{(selectedUser.lastName?.[0] || "")}
-                </AvatarFallback>
-              </Avatar>
+              <EntityAvatar
+                entityType="teacher"
+                id={selectedUser.enrollpro?.employeeId || selectedUser.teacher?.employeeId || selectedUser.username}
+                alt={displayName || selectedUser.username}
+                className="h-16 w-16"
+                fallback={`${selectedUser.firstName?.[0] || "U"}${selectedUser.lastName?.[0] || ""}`}
+                fallbackClassName="text-white text-xl font-semibold"
+                fallbackStyle={{ backgroundColor: colors.primary }}
+              />
               <div className="min-w-0 flex-1">
                 <h3 className="text-xl font-bold text-foreground truncate">{displayName || selectedUser.username}</h3>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">

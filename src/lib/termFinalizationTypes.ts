@@ -4,6 +4,8 @@ export interface TermFinalizationSubject {
   subjectIds: string[];
   subjectName: string;
   subjectCodes: string[];
+  rotationGroupId: string | null;
+  rotationSubjectName: string | null;
   teacherNames: string[];
   draft: number;
   finalized: number;

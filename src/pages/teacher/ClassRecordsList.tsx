@@ -384,6 +384,7 @@ export default function ClassRecordsList() {
       <GradeStatusBanner
         currentTerm={gradeDeadline?.currentTerm ?? "T1"}
         termEndDate={gradeDeadline?.currentTerm === "T1" ? gradeDeadline?.t1EndDate : gradeDeadline?.currentTerm === "T2" ? gradeDeadline?.t2EndDate : gradeDeadline?.t3EndDate}
+        effectiveNow={gradeDeadline?.effectiveNow ?? null}
         gradeLock={gradeDeadline?.gradeLock ?? false}
         colors={colors}
         termLabels={termLabels}

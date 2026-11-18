@@ -62,6 +62,28 @@ export const termFinalizationQuerySchema = z.object({
   }),
 });
 
+export const correctionWindowQuerySchema = z.object({
+  query: z.object({
+    schoolYear: z.string().min(1).optional(),
+    includeClosed: z.enum(["true", "false"]).optional(),
+  }),
+});
+
+export const correctionWindowIdSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, 'id is required'),
+  }),
+});
+
+export const correctionWindowDeclineSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, 'id is required'),
+  }),
+  body: z.object({
+    reason: z.string().max(500).optional(),
+  }),
+});
+
 export const termFinalizeSchema = z.object({
   body: z.object({
     sectionId: z.string().min(1, 'sectionId is required'),

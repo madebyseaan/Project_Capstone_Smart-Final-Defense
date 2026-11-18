@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { AuditAction, AuditSeverity } from "@prisma/client";
+import { AuditAction, AuditSeverity, Term } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { authenticateToken, AuthRequest, authorizeRoles } from "../../middleware/auth";
 import { createAuditLog } from "../../lib/audit";
@@ -9,9 +9,11 @@ import {
   editRequestSchema,
   editRequestApproveSchema,
   editRequestRejectSchema,
+  editWindowEndSchema,
 } from "../../schemas/grades";
 import { resolveCurrentTerm } from "./helpers";
 import { getActiveSchoolYearLabel } from "../../lib/schoolYearResolver";
+import { isClassTermFinalized } from "../../lib/gradeFinalization";
 
 export default function registerEditRequests(router: Router): void {
   // Teacher: Create edit request for past term
@@ -45,18 +47,55 @@ export default function registerEditRequests(router: Router): void {
           res.status(503).json({ message: "School year not resolved; try again shortly" });
           return;
         }
+
+        // Finalized corrections are scoped to one class assignment. Legacy
+        // past-term requests keep their existing term-wide behaviour.
+        const classAssignment = classAssignmentId
+          ? await prisma.classAssignment.findFirst({
+              where: { id: classAssignmentId, teacherId: teacher.id },
+              include: { subject: { select: { name: true } }, section: { select: { name: true } } },
+            })
+          : null;
+
+        if (classAssignmentId && !classAssignment) {
+          res.status(403).json({ message: "Not authorized for this class" });
+          return;
+        }
+        if (classAssignment?.schoolYear) {
+          schoolYearLabel = classAssignment.schoolYear;
+        }
+
+        const windowRequired = classAssignment
+          ? await isClassTermFinalized(classAssignment.id, term as Term)
+          : false;
+
         const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
-        if (termOrder[term] >= termOrder[currentTerm]) {
-          res.status(400).json({ message: "Can only request edit access for past terms" });
+        const isPastTerm = termOrder[term] < termOrder[currentTerm];
+        if (!isPastTerm && !windowRequired) {
+          res.status(400).json({
+            message: "Can only request edit access for past terms or finalized classes",
+          });
+          return;
+        }
+        if (windowRequired && !classAssignment) {
+          res.status(400).json({ message: "A class assignment is required for finalized corrections" });
           return;
         }
 
-        // Check for existing pending request
+        // Check for existing active request for the same scope.
         const existing = await prisma.gradeEditRequest.findFirst({
-          where: { teacherId: teacher.userId, term, status: "PENDING" },
+          where: {
+            teacherId: teacher.userId,
+            term,
+            schoolYear: schoolYearLabel,
+            status: { in: ["PENDING", "APPROVED", "WINDOW_OPEN"] },
+            ...(classAssignmentId
+              ? { classAssignmentId }
+              : { classAssignmentId: null }),
+          },
         });
         if (existing) {
-          res.status(409).json({ message: "You already have a pending request for this term" });
+          res.status(409).json({ message: "You already have an active request for this scope" });
           return;
         }
 
@@ -68,10 +107,11 @@ export default function registerEditRequests(router: Router): void {
             term,
             schoolYear: schoolYearLabel,
             gradeLevel: gradeLevel || null,
-            section: section || null,
-            subject: subject || null,
+            section: section || classAssignment?.section?.name || null,
+            subject: subject || classAssignment?.subject?.name || null,
             classAssignmentId: classAssignmentId || null,
             reason,
+            windowRequired,
           },
         });
 
@@ -122,6 +162,62 @@ export default function registerEditRequests(router: Router): void {
       } catch (err: any) {
         logger.error("Error fetching edit requests:", err);
         res.status(500).json({ message: "Failed to fetch edit requests" });
+      }
+    }
+  );
+
+  // Teacher: End an open correction window early
+  router.post(
+    "/edit-window/:id/end",
+    authenticateToken,
+    authorizeRoles("TEACHER"),
+    validate(editWindowEndSchema),
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
+        if (!teacher) {
+          res.status(404).json({ message: "Teacher profile not found" });
+          return;
+        }
+
+        const request = await prisma.gradeEditRequest.findUnique({
+          where: { id: String(req.params.id) },
+        });
+        if (!request || request.teacherId !== teacher.userId) {
+          res.status(403).json({ message: "Not authorized for this correction window" });
+          return;
+        }
+        if (!request.windowRequired || request.status !== "WINDOW_OPEN") {
+          res.status(400).json({ message: "This correction window is not open" });
+          return;
+        }
+
+        const now = new Date();
+        const updated = await prisma.gradeEditRequest.update({
+          where: { id: request.id },
+          data: {
+            status: "EXPIRED",
+            windowClosedAt: now,
+            expiresAt: now,
+          },
+        });
+
+        const user = req.user!;
+        await createAuditLog(
+          AuditAction.UPDATE,
+          { id: user.id, firstName: user.username, lastName: "", role: user.role },
+          `Correction session ended by teacher: ${request.teacherName} — ${request.term}`,
+          "Grade Edit Request",
+          `Teacher ended the ${request.term} correction window early. Grades remain DRAFT until the registrar re-finalizes.`,
+          (req.ip as string) || req.socket?.remoteAddress,
+          AuditSeverity.INFO,
+          request.id,
+        );
+
+        res.json({ message: "Correction session ended. Waiting for the registrar to re-finalize.", request: updated });
+      } catch (err: any) {
+        logger.error("Error ending correction window:", err);
+        res.status(500).json({ message: "Failed to end the correction session" });
       }
     }
   );
@@ -180,7 +276,10 @@ export default function registerEditRequests(router: Router): void {
             status: "APPROVED",
             approvedById: user.id,
             approvedByName: `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() || user.username,
-            expiresAt,
+            // Correction windows start their timer only when the registrar
+            // opens the window. Legacy past-term requests start immediately.
+            expiresAt: request.windowRequired ? null : expiresAt,
+            approvedHours: request.windowRequired ? durationHours : null,
           },
         });
 
@@ -189,7 +288,9 @@ export default function registerEditRequests(router: Router): void {
           user,
           `Approved grade edit request for ${request.teacherName} - ${request.term}`,
           "Grade Edit Request",
-          `Approved edit access for ${durationHours}h. Expires: ${expiresAt.toISOString()}`,
+          request.windowRequired
+            ? `Approved correction window for ${durationHours}h. Waiting for registrar to open the window.`
+            : `Approved edit access for ${durationHours}h. Expires: ${expiresAt.toISOString()}`,
           (req.ip as string) || req.socket?.remoteAddress,
           AuditSeverity.INFO
         );
@@ -263,6 +364,10 @@ export default function registerEditRequests(router: Router): void {
         }
         if (request.status !== "APPROVED") {
           res.status(400).json({ message: `Cannot revoke a request with status ${request.status.toLowerCase()}` });
+          return;
+        }
+        if (request.windowRequired) {
+          res.status(400).json({ message: "Correction windows are closed by the registrar, not revoked by admin" });
           return;
         }
 

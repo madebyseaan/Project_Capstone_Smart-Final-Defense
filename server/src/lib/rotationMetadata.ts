@@ -72,3 +72,44 @@ export function clearedRotationFields() {
     rotationOutputLabel: null,
   } as const;
 }
+
+export type RotationTerm = "T1" | "T2" | "T3";
+
+/**
+ * The only term a rotation component can hold grades in (rank 1 -> T1, etc.).
+ * Returns null for non-rotation subjects and for invalid metadata, so callers
+ * treat those grades in every term.
+ */
+export function rotationTermOf(fields: {
+  rotationTermGroupId: string | null;
+  rotationTermRank: number | null;
+}): RotationTerm | null {
+  if (!fields.rotationTermGroupId) return null;
+  const rank = fields.rotationTermRank;
+  if (rank === null || !Number.isInteger(rank) || rank < 1 || rank > 3) return null;
+  return `T${rank}` as RotationTerm;
+}
+
+/**
+ * Whether a DRAFT grade belongs to the finalization requirement set.
+ *
+ * - HG (homeroom guidance) never blocks.
+ * - Rotation components block only in their own rank term; a DRAFT in any
+ *   other term is stray data that `mergeRotationSubjects` already ignores.
+ * - Non-rotation subjects and invalid rotation metadata block in every term.
+ *
+ * EOSY blockers, the year status board, and the post-EOSY term guard all use
+ * this rule so they cannot disagree with Term Finalization.
+ */
+export function isBlockingDraftGrade(input: {
+  term: string;
+  subject: {
+    code: string | null;
+    rotationTermGroupId: string | null;
+    rotationTermRank: number | null;
+  };
+}): boolean {
+  if ((input.subject.code ?? "").toUpperCase().startsWith("HG")) return false;
+  const rotationTerm = rotationTermOf(input.subject);
+  return rotationTerm === null || rotationTerm === input.term;
+}

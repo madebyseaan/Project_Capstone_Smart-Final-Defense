@@ -74,6 +74,12 @@ export const editRequestRejectSchema = z.object({
   }),
 });
 
+export const editWindowEndSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, 'id is required'),
+  }),
+});
+
 export const classAssignmentDeleteSchema = z.object({
   params: z.object({
     id: z.string().min(1, 'id is required'),

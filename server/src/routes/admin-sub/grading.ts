@@ -656,7 +656,16 @@ export default function (router: Router) {
 
   router.get("/subject-weights", authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
     try {
+      // Operational view: only subjects actually taught in the active school year.
+      // The Subject table accumulates every code ever seen by Atlas sync and has no
+      // isActive flag, so unfiltered reads resurface archived/stale subjects.
+      const activeSchoolYear = await getActiveSchoolYear();
       const subjects = await prisma.subject.findMany({
+        where: {
+          classAssignments: {
+            some: { schoolYear: activeSchoolYear.label, isActive: true },
+          },
+        },
         select: {
           id: true,
           code: true,

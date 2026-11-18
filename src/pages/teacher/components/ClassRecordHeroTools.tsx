@@ -41,6 +41,7 @@ export function ClassRecordHeroTools({
 
   const linked = aimsData?.linked ?? false;
   const courseCode = aimsData?.course?.code;
+  const pendingUpdates = aimsData?.pendingUpdates ?? 0;
 
   // Auto-open the AIMS dialog when signalled from outside
   useEffect(() => {
@@ -68,10 +69,16 @@ export function ClassRecordHeroTools({
         variant="outline"
         size="sm"
         onClick={openAims}
-        title={linked ? "Manage AIMS LMS connection" : "Connect an AIMS LMS course"}
+        title={
+          linked
+            ? pendingUpdates > 0
+              ? `${pendingUpdates} AIMS score update(s) ready for review`
+              : "Manage AIMS LMS connection"
+            : "Connect an AIMS LMS course"
+        }
         aria-label={linked ? "Manage AIMS connection" : "Connect AIMS"}
         className={cn(
-          "h-12 gap-1.5 rounded-xl border text-[0.8rem] font-semibold shadow-xs lg:h-8 lg:rounded-lg lg:text-[11px]",
+          "relative h-12 gap-1.5 rounded-xl border text-[0.8rem] font-semibold shadow-xs lg:h-8 lg:rounded-lg lg:text-[11px]",
           linked
             ? "bg-[var(--ledger-aims-bg)] text-[var(--ledger-aims)] border-[var(--ledger-aims)] hover:bg-[var(--ledger-aims-bg)]"
             : "border-border bg-background text-muted-foreground hover:bg-muted"
@@ -80,6 +87,11 @@ export function ClassRecordHeroTools({
         {linked ? <Check className="w-3.5 h-3.5" /> : <Link2 className="w-3.5 h-3.5 text-[var(--ledger-aims)]" />}
         <span className="sm:hidden">AIMS</span>
         <span className="hidden sm:inline">{linked ? `AIMS${courseCode ? `: ${courseCode}` : " Connected"}` : "Connect AIMS"}</span>
+        {linked && pendingUpdates > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-[var(--ledger-aims)] text-white text-[10px] font-bold flex items-center justify-center">
+            {pendingUpdates > 9 ? "9+" : pendingUpdates}
+          </span>
+        )}
       </Button>
 
       <Button

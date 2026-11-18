@@ -311,7 +311,7 @@ function startAutoTermScheduler() {
       const settings = await prisma.systemSettings.findUnique({ where: { id: "main" } });
       if (!settings) return;
 
-      const now = new Date();
+      let now = new Date();
       const { t1EndDate, t2EndDate, t3EndDate } = settings;
 
       // NOTE: Term advancement is handled exclusively by resolveCurrentTerm()
@@ -325,7 +325,7 @@ function startAutoTermScheduler() {
       try {
         const { getActiveSchoolYear } = await import("./lib/schoolYearResolver");
         const { setTermLock, setYearLock } = await import("./lib/gradeLocks");
-        const { getIntegrationV1ActiveTerm } = await import("./lib/enrollproClient");
+        const { getIntegrationV1ActiveTerm, getEnrollProNow } = await import("./lib/enrollproClient");
         const { createAuditLog } = await import("./lib/audit");
         const { isDemoTermMode } = await import("./lib/demoTermMode");
         const { AuditAction, AuditSeverity } = await import("@prisma/client");
@@ -333,10 +333,19 @@ function startAutoTermScheduler() {
         const actor = { id: "scheduler", name: "Auto-Term Scheduler" };
         const auditActor = { id: "scheduler", firstName: "Auto-Term", lastName: "Scheduler", role: "ADMIN" };
 
-        // Fetch live active term from EnrollPro — this is the source of truth
-        // DEMO-only: skipped when DEMO_TERM_MODE is on (date-based locking).
+        // EnrollPro's effective clock is the source of truth when available —
+        // this follows its time machine during testing. Falls back to SMART's clock.
+        // DEMO-only: skipped when DEMO_TERM_MODE is on (local date-based locking).
+        let enrollProNow: Date | null = null;
         let enrollProActiveTerm: string | null = null;
         if (!isDemoTermMode()) {
+          enrollProNow = await getEnrollProNow({ force: true });
+          if (enrollProNow) {
+            now = enrollProNow;
+            console.log(`[Scheduler] Using EnrollPro clock: ${enrollProNow.toISOString()}`);
+          }
+
+          // Fetch live active term from EnrollPro — this is the source of truth
           try {
             const epTerm = await getIntegrationV1ActiveTerm();
             if (epTerm?.activeTerm && ['T1', 'T2', 'T3'].includes(epTerm.activeTerm.toUpperCase())) {
@@ -360,7 +369,7 @@ function startAutoTermScheduler() {
         // RL-3a: stale term dates right after rollover must not lock the new
         // year's future terms. The policy only locks terms strictly before
         // EnrollPro's active term (falling back to dates when EP is unknown).
-        const { shouldLockTerm, shouldBeUnlockedTerm, shouldLockYear } = await import("./lib/termLockPolicy");
+        const { shouldLockTerm, shouldBeUnlockedTerm, shouldLockYear, shouldBeUnlockedYear } = await import("./lib/termLockPolicy");
 
         for (const term of ["T1", "T2", "T3"] as const) {
           const endDate = termEndDates[term];
@@ -376,9 +385,12 @@ function startAutoTermScheduler() {
                 undefined, AuditSeverity.WARNING,
               );
             }
-          } else if (endDate && now > endDate) {
-            console.log(`[Scheduler] Skipping lock for ${term} — not before EnrollPro active term ${enrollProActiveTerm ?? "unknown"} (local endDate=${endDate.toISOString()})`);
-            // Auto-unlock terms that must not be locked (active or future terms)
+          } else {
+            if (endDate && now > endDate) {
+              console.log(`[Scheduler] Skipping lock for ${term} — not before EnrollPro active term ${enrollProActiveTerm ?? "unknown"} (term endDate=${endDate.toISOString()})`);
+            }
+            // Auto-unlock terms that must not be locked (active or future terms,
+            // or a stale lock after EnrollPro's clock moves backwards).
             if (shouldBeUnlockedTerm(term, enrollProActiveTerm) && lockState.termLocks[term]) {
               await setTermLock(activeYear.id, term, false, actor);
               await createAuditLog(
@@ -403,6 +415,23 @@ function startAutoTermScheduler() {
               undefined, AuditSeverity.WARNING,
             );
           }
+        } else if (
+          enrollProNow &&
+          lockState.yearLocked &&
+          lockState.yearLockedBy === "scheduler" &&
+          shouldBeUnlockedYear(t3EndDate, now)
+        ) {
+          // Reconcile a stale scheduler lock after EnrollPro's clock moves back
+          // (e.g. its time machine is set before T3 ends). Manual locks stay.
+          await setYearLock(activeYear.id, false, actor);
+          await createAuditLog(
+            AuditAction.CONFIG, auditActor,
+            `Year Grade Lock: ${activeYear.label}`,
+            "Config",
+            `Auto-unlocked school year ${activeYear.label} — EnrollPro's current date ${now.toISOString()} is before T3 end ${t3EndDate!.toISOString()}.`,
+            undefined, AuditSeverity.WARNING,
+          );
+          console.log(`[Scheduler] Auto-unlocked school year ${activeYear.label} — EnrollPro clock ${now.toISOString()} is before T3 end`);
         }
       } catch (err: any) {
         console.error("[Scheduler] Failed to apply per-term/year grade locks:", err.message);
@@ -418,6 +447,19 @@ function startAutoTermScheduler() {
       });
       if (expiredRequests.count > 0) {
         console.log(`[Scheduler] Auto-expired ${expiredRequests.count} grade edit request(s)`);
+      }
+
+      // Auto-expire correction windows. Grades deliberately stay DRAFT so the
+      // registrar reviews and re-finalizes them.
+      const expiredWindows = await prisma.gradeEditRequest.updateMany({
+        where: {
+          status: "WINDOW_OPEN",
+          expiresAt: { lt: now },
+        },
+        data: { status: "EXPIRED", windowClosedAt: now },
+      });
+      if (expiredWindows.count > 0) {
+        console.log(`[Scheduler] Closed ${expiredWindows.count} correction window(s); re-finalization required`);
       }
     } catch (err: any) {
       console.error("[Scheduler] Auto-term check failed:", err.message);

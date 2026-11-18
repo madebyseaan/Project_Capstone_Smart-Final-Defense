@@ -2,7 +2,7 @@
  * termLockPolicy.test.ts — RL-3a pure tests for the auto-lock policy.
  */
 import { describe, it, expect } from "vitest";
-import { shouldLockTerm, shouldBeUnlockedTerm, shouldLockYear } from "../lib/termLockPolicy";
+import { shouldLockTerm, shouldBeUnlockedTerm, shouldLockYear, shouldBeUnlockedYear } from "../lib/termLockPolicy";
 
 const NOW = new Date("2031-03-01T00:00:00Z");
 const PAST = new Date("2030-01-01T00:00:00Z");
@@ -65,5 +65,23 @@ describe("RL-3a — shouldLockYear", () => {
   it("does not lock when the T3 end date has not passed", () => {
     expect(shouldLockYear(FUTURE, NOW, "T3")).toBe(false);
     expect(shouldLockYear(null, NOW, "T3")).toBe(false);
+  });
+});
+
+describe("RL-3a — shouldBeUnlockedYear", () => {
+  it("unlocks a scheduler year lock when EnrollPro's clock is before T3 end", () => {
+    expect(shouldBeUnlockedYear(FUTURE, NOW)).toBe(true);
+  });
+
+  it("keeps the year locked once T3 has ended", () => {
+    expect(shouldBeUnlockedYear(PAST, NOW)).toBe(false);
+  });
+
+  it("treats the exact T3 end instant as still open", () => {
+    expect(shouldBeUnlockedYear(PAST, PAST)).toBe(true);
+  });
+
+  it("does nothing when the T3 end date is unknown", () => {
+    expect(shouldBeUnlockedYear(null, NOW)).toBe(false);
   });
 });

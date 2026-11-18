@@ -12,6 +12,7 @@
 
 import { Term } from "@prisma/client";
 import { prisma } from "./prisma";
+import { isBlockingDraftGrade } from "./rotationMetadata";
 
 export const TERMS = ["T1", "T2", "T3"] as const;
 export type TermName = (typeof TERMS)[number];
@@ -20,6 +21,8 @@ export interface TermFinalizationSubject {
   subjectIds: string[];
   subjectName: string;
   subjectCodes: string[];
+  rotationGroupId: string | null;
+  rotationSubjectName: string | null;
   teacherNames: string[];
   draft: number;
   finalized: number;
@@ -107,6 +110,77 @@ export function getBaseSubjectName(name: string): string {
   const gradeMatch = name.match(/\s+(\d+)\s*$/);
   const gradeSuffix = gradeMatch ? ` ${gradeMatch[1]}` : "";
   return `${prefix}${gradeSuffix}`;
+}
+
+function termIndexNumber(term: TermName): number {
+  return Number(term.slice(1));
+}
+
+interface RotationAwareAssignment {
+  sectionId: string;
+  subjectId: string;
+  subject: {
+    rotationTermGroupId: string | null;
+    rotationTermRank: number | null;
+  };
+}
+
+/**
+ * Rotation subjects (SCIENCE, TLE_EXPLORATORY) only offer one component per
+ * term. Mirrors the student-grades preview selection:
+ *   1. component whose rotationTermRank matches the term
+ *   2. else the first component with a grade in this term
+ *   3. else the first component by rank
+ *
+ * Non-rotation assignments always pass through. Multiple class assignments for
+ * the same subject (different teachers) are kept together so counts stay
+ * complete.
+ */
+function selectTermRotationAssignments<T extends RotationAwareAssignment>(
+  assignments: T[],
+  term: TermName,
+  hasTermGrade: (assignment: T) => boolean,
+): T[] {
+  const termRank = termIndexNumber(term);
+  const rotationGroups = new Map<string, T[]>();
+  const standalone: T[] = [];
+
+  for (const assignment of assignments) {
+    const groupId = assignment.subject.rotationTermGroupId;
+    if (!groupId) {
+      standalone.push(assignment);
+      continue;
+    }
+    const key = `${assignment.sectionId}::${groupId}`;
+    const list = rotationGroups.get(key) ?? [];
+    list.push(assignment);
+    rotationGroups.set(key, list);
+  }
+
+  const selected: T[] = [];
+  for (const group of rotationGroups.values()) {
+    const sorted = [...group].sort(
+      (a, b) =>
+        (a.subject.rotationTermRank ?? Number.MAX_SAFE_INTEGER) -
+        (b.subject.rotationTermRank ?? Number.MAX_SAFE_INTEGER),
+    );
+
+    const rankMatched = sorted.filter(
+      (assignment) => assignment.subject.rotationTermRank === termRank,
+    );
+    if (rankMatched.length > 0) {
+      selected.push(...rankMatched);
+      continue;
+    }
+
+    const graded = sorted.find(hasTermGrade);
+    const fallbackSubjectId = (graded ?? sorted[0])?.subjectId;
+    if (fallbackSubjectId) {
+      selected.push(...sorted.filter((assignment) => assignment.subjectId === fallbackSubjectId));
+    }
+  }
+
+  return [...standalone, ...selected];
 }
 
 function teacherDisplayName(user: {
@@ -221,7 +295,14 @@ export async function buildTermFinalizationOverview(
             sectionId: true,
             subjectId: true,
             isActive: true,
-            subject: { select: { code: true, name: true } },
+            subject: {
+              select: {
+                code: true,
+                name: true,
+                rotationTermGroupId: true,
+                rotationTermRank: true,
+              },
+            },
             teacher: {
               select: {
                 user: { select: { firstName: true, lastName: true, username: true } },
@@ -249,8 +330,18 @@ export async function buildTermFinalizationOverview(
           },
           select: {
             studentId: true,
+            term: true,
             classAssignment: {
-              select: { sectionId: true, subject: { select: { code: true } } },
+              select: {
+                sectionId: true,
+                subject: {
+                  select: {
+                    code: true,
+                    rotationTermGroupId: true,
+                    rotationTermRank: true,
+                  },
+                },
+              },
             },
           },
         }),
@@ -268,7 +359,7 @@ export async function buildTermFinalizationOverview(
   const allTermDraftsBySection = new Map<string, number>();
   for (const draft of allTermDrafts) {
     const sectionId = draft.classAssignment.sectionId;
-    if ((draft.classAssignment.subject.code ?? "").toUpperCase().startsWith("HG")) continue;
+    if (!isBlockingDraftGrade({ term: draft.term, subject: draft.classAssignment.subject })) continue;
     const enrolled = enrolledStudentsBySection.get(sectionId);
     if (!enrolled?.has(draft.studentId)) continue;
     allTermDraftsBySection.set(sectionId, (allTermDraftsBySection.get(sectionId) ?? 0) + 1);
@@ -292,6 +383,8 @@ export async function buildTermFinalizationOverview(
       baseName: string;
       subjectIds: Set<string>;
       subjectCodes: Set<string>;
+      rotationGroupId: string | null;
+      rotationSubjectName: string | null;
       teacherNames: Set<string>;
       draft: number;
       finalized: number;
@@ -300,12 +393,24 @@ export async function buildTermFinalizationOverview(
     }
   >();
 
-  for (const ca of classAssignments) {
-    if ((ca.subject?.code ?? "").toUpperCase().startsWith("HG")) continue;
+  const eligibleAssignments = classAssignments.filter((ca) => {
+    if ((ca.subject?.code ?? "").toUpperCase().startsWith("HG")) return false;
     // Archived assignments that never held any grade are stale subject/teacher
     // rows (e.g. retired TLE Exploratory after an ATLAS remap). They cannot be
     // finalized and only create phantom "No grades" rows.
-    if (!ca.isActive && ca._count.grades === 0) continue;
+    if (!ca.isActive && ca._count.grades === 0) return false;
+    return true;
+  });
+
+  // Rotation subjects offer only one component per term. Selecting here keeps
+  // the overview consistent with the term selector and the grade preview.
+  const termScopedAssignments = selectTermRotationAssignments(
+    eligibleAssignments,
+    term,
+    (ca) => ca.grades.length > 0,
+  );
+
+  for (const ca of termScopedAssignments) {
     const baseName = getBaseSubjectName(ca.subject?.name ?? "");
     if (!baseName) continue;
     const key = `${ca.sectionId}::${baseName}`;
@@ -316,6 +421,8 @@ export async function buildTermFinalizationOverview(
         baseName,
         subjectIds: new Set<string>(),
         subjectCodes: new Set<string>(),
+        rotationGroupId: null,
+        rotationSubjectName: null,
         teacherNames: new Set<string>(),
         draft: 0,
         finalized: 0,
@@ -325,6 +432,10 @@ export async function buildTermFinalizationOverview(
 
     row.subjectIds.add(ca.subjectId);
     if (ca.subject?.code) row.subjectCodes.add(ca.subject.code);
+    if (ca.subject?.rotationTermGroupId) {
+      row.rotationGroupId = ca.subject.rotationTermGroupId;
+      row.rotationSubjectName = ca.subject.name;
+    }
     row.teacherNames.add(teacherDisplayName(ca.teacher.user));
 
     for (const grade of ca.grades) {
@@ -343,6 +454,8 @@ export async function buildTermFinalizationOverview(
       subjectIds: [...row.subjectIds],
       subjectName: row.baseName,
       subjectCodes: [...row.subjectCodes],
+      rotationGroupId: row.rotationGroupId,
+      rotationSubjectName: row.rotationSubjectName,
       teacherNames: [...row.teacherNames],
       draft: row.draft,
       finalized: row.finalized,
@@ -517,7 +630,18 @@ async function isSectionEosyFinalized(sectionId: string, schoolYear: string): Pr
       },
       select: {
         studentId: true,
-        classAssignment: { select: { subject: { select: { code: true } } } },
+        term: true,
+        classAssignment: {
+          select: {
+            subject: {
+              select: {
+                code: true,
+                rotationTermGroupId: true,
+                rotationTermRank: true,
+              },
+            },
+          },
+        },
       },
     }),
   ]);
@@ -529,7 +653,9 @@ async function isSectionEosyFinalized(sectionId: string, schoolYear: string): Pr
   // (re-run EOSY after term finalization).
   const enrolledStudentIds = new Set(enrollments.map((enrollment) => enrollment.studentId));
   const blockers = draftGrades.filter((grade) => {
-    if ((grade.classAssignment.subject.code ?? "").toUpperCase().startsWith("HG")) return false;
+    if (!isBlockingDraftGrade({ term: grade.term, subject: grade.classAssignment.subject })) {
+      return false;
+    }
     return enrolledStudentIds.has(grade.studentId);
   });
 
@@ -559,14 +685,36 @@ export async function finalizeSectionTerm(opts: {
     return { ok: false, error: "EOSY_FINALIZED", eosyFinalized: true };
   }
 
-  const classAssignments = await prisma.classAssignment.findMany({
-    where: {
-      sectionId,
-      schoolYear,
-      ...(subjectIds && subjectIds.length > 0 ? { subjectId: { in: subjectIds } } : {}),
+  const sectionAssignments = await prisma.classAssignment.findMany({
+    where: { sectionId, schoolYear },
+    select: {
+      id: true,
+      sectionId: true,
+      subjectId: true,
+      subject: {
+        select: {
+          rotationTermGroupId: true,
+          rotationTermRank: true,
+        },
+      },
+      grades: {
+        where: { term: term as Term },
+        select: { id: true },
+      },
     },
-    select: { id: true, subjectId: true },
   });
+
+  // Never finalize a rotation component that is not offered in this term, even
+  // when a stale client sends every component's subjectId.
+  const termScopedAssignments = selectTermRotationAssignments(
+    sectionAssignments,
+    term,
+    (ca) => ca.grades.length > 0,
+  );
+  const classAssignments =
+    subjectIds && subjectIds.length > 0
+      ? termScopedAssignments.filter((ca) => subjectIds.includes(ca.subjectId))
+      : termScopedAssignments;
 
   if (classAssignments.length === 0) return { ok: false, error: "NO_ASSIGNMENTS" };
 
@@ -645,14 +793,35 @@ export async function unfinalizeSectionTerm(opts: {
     return { ok: false, error: "EOSY_FINALIZED", eosyFinalized: true };
   }
 
-  const classAssignments = await prisma.classAssignment.findMany({
-    where: {
-      sectionId,
-      schoolYear,
-      ...(subjectIds && subjectIds.length > 0 ? { subjectId: { in: subjectIds } } : {}),
+  const sectionAssignments = await prisma.classAssignment.findMany({
+    where: { sectionId, schoolYear },
+    select: {
+      id: true,
+      sectionId: true,
+      subjectId: true,
+      subject: {
+        select: {
+          rotationTermGroupId: true,
+          rotationTermRank: true,
+        },
+      },
+      grades: {
+        where: { term: term as Term },
+        select: { id: true },
+      },
     },
-    select: { id: true, subjectId: true },
   });
+
+  // Unfinalize follows the same rule: only the component offered this term.
+  const termScopedAssignments = selectTermRotationAssignments(
+    sectionAssignments,
+    term,
+    (ca) => ca.grades.length > 0,
+  );
+  const classAssignments =
+    subjectIds && subjectIds.length > 0
+      ? termScopedAssignments.filter((ca) => subjectIds.includes(ca.subjectId))
+      : termScopedAssignments;
 
   if (classAssignments.length === 0) return { ok: false, error: "NO_ASSIGNMENTS" };
 

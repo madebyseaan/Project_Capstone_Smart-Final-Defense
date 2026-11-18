@@ -220,7 +220,7 @@ export function SubjectWeightsPanel({ configs }: SubjectWeightsPanelProps) {
                   <TableHead className={headClass}>Type</TableHead>
                   <TableHead className={`${headClass} text-center`}>WW %</TableHead>
                   <TableHead className={`${headClass} text-center`}>PT %</TableHead>
-                  <TableHead className={`${headClass} text-center`}>TA %</TableHead>
+                  <TableHead className={`${headClass} text-center`}>TE %</TableHead>
                   <TableHead className={`${headClass} text-center`}>Override</TableHead>
                   <TableHead className={`${headClass} text-right`}>Action</TableHead>
                 </TableRow>

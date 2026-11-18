@@ -67,14 +67,22 @@ export async function getGradeLockState(schoolYearLabel: string): Promise<GradeL
   };
 }
 
-export async function hasApprovedEditRequest(teacherUserId: string, term: Term, schoolYear: string): Promise<boolean> {
+export async function hasApprovedEditRequest(
+  teacherUserId: string,
+  term: Term,
+  schoolYear: string,
+  classAssignmentId?: string,
+): Promise<boolean> {
   const req = await prisma.gradeEditRequest.findFirst({
     where: {
       teacherId: teacherUserId,
       term,
       schoolYear,
-      status: "APPROVED",
+      status: { in: ["APPROVED", "WINDOW_OPEN"] },
       expiresAt: { gt: new Date() },
+      ...(classAssignmentId
+        ? { OR: [{ classAssignmentId }, { classAssignmentId: null }] }
+        : {}),
     },
     select: { id: true },
   });
@@ -86,6 +94,7 @@ export async function checkGradeEditLocks(opts: {
   schoolYearLabel: string;
   term: Term;
   isArchived?: boolean;
+  classAssignmentId?: string;
 }): Promise<LockBlock | null> {
   if (opts.isArchived) {
     return {
@@ -104,7 +113,12 @@ export async function checkGradeEditLocks(opts: {
   }
 
   if (state.termLocks[opts.term]) {
-    const approved = await hasApprovedEditRequest(opts.teacherUserId, opts.term, opts.schoolYearLabel);
+    const approved = await hasApprovedEditRequest(
+      opts.teacherUserId,
+      opts.term,
+      opts.schoolYearLabel,
+      opts.classAssignmentId,
+    );
     if (!approved) {
       return {
         code: "TERM_LOCKED",

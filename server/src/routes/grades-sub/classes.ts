@@ -17,13 +17,15 @@ import {
   EnrollmentWithStudent,
   GradeRecord,
   resolveCurrentTerm,
+  resolveEffectiveNow,
   resolveEffectiveWeightsForClassAssignment,
   isHomeroomGuidanceSubjectCode,
   calculateGrades,
   createGradeSnapshot,
   getPredecessorGradeBase,
 } from "./helpers";
-import { checkGradeEditLocks, getGradeLockState } from "../../lib/gradeLocks";
+import { checkGradeEditLocks, getGradeLockState, hasApprovedEditRequest } from "../../lib/gradeLocks";
+import { getWriteBlock } from "../../lib/gradeFinalization";
 import { computeExamPS } from "../../lib/examMath";
 import { getGradingModeForSchoolYear } from "../../lib/gradingMode";
 import { MAX_PT_COLUMNS, MAX_WW_COLUMNS } from "../../lib/assessmentColumns";
@@ -314,6 +316,7 @@ export default function registerClasses(router: Router): void {
           effectiveWeights,
           gradingMode,
           currentTerm,
+          effectiveNow: (await resolveEffectiveNow()).toISOString(),
           termDates: {
             t1StartDate: systemSettings?.t1StartDate,
             t1EndDate: systemSettings?.t1EndDate,
@@ -412,6 +415,7 @@ export default function registerClasses(router: Router): void {
           schoolYearLabel: classAssignment.schoolYear,
           term: term as any,
           isArchived: existingGrade?.isArchived ?? false,
+          classAssignmentId,
         });
         if (lockBlock) {
           res.status(403).json({ code: lockBlock.code, message: lockBlock.message });
@@ -423,18 +427,12 @@ export default function registerClasses(router: Router): void {
         const currentTermNum = termOrder[currentTerm] ?? 1;
         const requestTermNum = termOrder[term as string] ?? 0;
         if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
-          let hasEditAccess = false;
-          if (teacher) {
-            const editRequest = await prisma.gradeEditRequest.findFirst({
-              where: {
-                teacherId: teacher.userId,
-                term: term as string,
-                status: "APPROVED",
-                expiresAt: { gt: new Date() },
-              },
-            });
-            hasEditAccess = !!editRequest;
-          }
+          const hasEditAccess = await hasApprovedEditRequest(
+            teacher.userId,
+            term as any,
+            classAssignment.schoolYear,
+            classAssignmentId,
+          );
           if (!hasEditAccess) {
             const relation = requestTermNum < currentTermNum ? "past" : "future";
             res.status(403).json({
@@ -442,6 +440,17 @@ export default function registerClasses(router: Router): void {
             });
             return;
           }
+        }
+
+        const finalizationBlock = await getWriteBlock({
+          teacherUserId: teacher.userId,
+          classAssignmentId,
+          term: term as any,
+          schoolYear: classAssignment.schoolYear,
+        });
+        if (finalizationBlock) {
+          res.status(403).json(finalizationBlock);
+          return;
         }
 
         const isHG = isHomeroomGuidanceSubjectCode(classAssignment.subject.code);
@@ -661,28 +670,25 @@ export default function registerClasses(router: Router): void {
           schoolYearLabel: classAssignment.schoolYear,
           term: term as any,
           isArchived: sampleGrade?.isArchived ?? false,
+          classAssignmentId,
         });
         if (lockBlock) {
           res.status(403).json({ code: lockBlock.code, message: lockBlock.message });
           return;
         }
 
-        // Current-term check with APPROVED edit-request bypass
+        // Current-term check with edit-request/window bypass
         const termOrder: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
         const currentTerm = await resolveCurrentTerm();
         const currentTermNum = termOrder[currentTerm] ?? 1;
         const requestTermNum = termOrder[term as string] ?? 0;
         if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
-          let hasEditAccess = false;
-          const editRequest = await prisma.gradeEditRequest.findFirst({
-            where: {
-              teacherId: teacher.userId,
-              term: term as string,
-              status: "APPROVED",
-              expiresAt: { gt: new Date() },
-            },
-          });
-          hasEditAccess = !!editRequest;
+          const hasEditAccess = await hasApprovedEditRequest(
+            teacher.userId,
+            term as any,
+            classAssignment.schoolYear,
+            classAssignmentId,
+          );
           if (!hasEditAccess) {
             const relation = requestTermNum < currentTermNum ? "past" : "future";
             res.status(403).json({
@@ -690,6 +696,17 @@ export default function registerClasses(router: Router): void {
             });
             return;
           }
+        }
+
+        const finalizationBlock = await getWriteBlock({
+          teacherUserId: teacher.userId,
+          classAssignmentId,
+          term: term as any,
+          schoolYear: classAssignment.schoolYear,
+        });
+        if (finalizationBlock) {
+          res.status(403).json(finalizationBlock);
+          return;
         }
 
         const effectiveWeights = await resolveEffectiveWeightsForClassAssignment(classAssignmentId);
@@ -924,13 +941,30 @@ export default function registerClasses(router: Router): void {
           return;
         }
 
+        if (grade.status === "FINALIZED") {
+          res.status(403).json({ code: "TERM_FINALIZED", message: "Grade is finalized. Request a correction or contact the registrar." });
+          return;
+        }
+
         const lockBlock = await checkGradeEditLocks({
           teacherUserId: teacher.userId,
           schoolYearLabel: grade.classAssignment.schoolYear,
           term: grade.term,
+          classAssignmentId: grade.classAssignmentId,
         });
         if (lockBlock) {
           res.status(403).json({ code: lockBlock.code, message: lockBlock.message });
+          return;
+        }
+
+        const finalizationBlock = await getWriteBlock({
+          teacherUserId: teacher.userId,
+          classAssignmentId: grade.classAssignmentId,
+          term: grade.term,
+          schoolYear: grade.classAssignment.schoolYear,
+        });
+        if (finalizationBlock) {
+          res.status(403).json(finalizationBlock);
           return;
         }
 
@@ -1052,6 +1086,7 @@ export default function registerClasses(router: Router): void {
           teacherUserId: teacher.userId,
           schoolYearLabel: classAssignment.schoolYear,
           term: term as any,
+          classAssignmentId,
         });
         if (lockBlock) {
           res.status(403).json({ code: lockBlock.code, message: lockBlock.message });
@@ -1063,18 +1098,12 @@ export default function registerClasses(router: Router): void {
         const currentTermNum = termOrder[currentTerm] ?? 1;
         const requestTermNum = termOrder[term as string] ?? 0;
         if (requestTermNum > 0 && requestTermNum !== currentTermNum) {
-          let hasEditAccess = false;
-          if (teacher) {
-            const editRequest = await prisma.gradeEditRequest.findFirst({
-              where: {
-                teacherId: teacher.userId,
-                term: term as string,
-                status: "APPROVED",
-                expiresAt: { gt: new Date() },
-              },
-            });
-            hasEditAccess = !!editRequest;
-          }
+          const hasEditAccess = await hasApprovedEditRequest(
+            teacher.userId,
+            term as any,
+            classAssignment.schoolYear,
+            classAssignmentId,
+          );
           if (!hasEditAccess) {
             const relation = requestTermNum < currentTermNum ? "past" : "future";
             res.status(403).json({
@@ -1082,6 +1111,17 @@ export default function registerClasses(router: Router): void {
             });
             return;
           }
+        }
+
+        const finalizationBlock = await getWriteBlock({
+          teacherUserId: teacher.userId,
+          classAssignmentId,
+          term: term as any,
+          schoolYear: classAssignment.schoolYear,
+        });
+        if (finalizationBlock) {
+          res.status(403).json(finalizationBlock);
+          return;
         }
 
         const finalizedCount = await prisma.grade.count({

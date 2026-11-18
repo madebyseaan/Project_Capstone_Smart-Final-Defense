@@ -11,6 +11,7 @@ interface EditRequestModalProps {
   selectedTerm: string;
   classAssignment: ClassAssignment | null;
   userName: string;
+  isFinalized?: boolean;
 }
 
 function termLabel(t: string) {
@@ -24,6 +25,7 @@ export function EditRequestModal({
   selectedTerm,
   classAssignment,
   userName,
+  isFinalized = false,
 }: EditRequestModalProps) {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -61,10 +63,12 @@ export function EditRequestModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-blue-600" />
-            Edit Access Request
+            {isFinalized ? "Request Grade Correction" : "Edit Access Request"}
           </DialogTitle>
           <DialogDescription>
-            Submit a request to admin for temporary edit access to past-term grades.
+            {isFinalized
+              ? "Submit a correction request to admin. If approved, the registrar will open a timed edit window for this class and term."
+              : "Submit a request to admin for temporary edit access to past-term grades."}
           </DialogDescription>
         </DialogHeader>
 

@@ -34,28 +34,28 @@ const subjectTypeInfo: Record<string, { label: string; subjects: string[]; icon:
     label: "Core Academic Subjects",
     subjects: ["English", "Filipino", "Araling Panlipunan", "Edukasyon sa Pagpapakatao", "Mathematics", "Science", "GMRC", "Values Education"],
     icon: BookOpen,
-    defaultWeights: "20% WW · 50% PT · 30% TA",
+    defaultWeights: "20% WW · 50% PT · 30% TE",
     followsNote: "STE (Science Technology Engineering) subjects also follow this group's weights.",
   },
   MATH_SCIENCE: {
     label: "Core Academic Subjects",
     subjects: ["Mathematics", "Science"],
     icon: Calculator,
-    defaultWeights: "20% WW · 50% PT · 30% TA",
+    defaultWeights: "20% WW · 50% PT · 30% TE",
     groupWith: "CORE",
   },
   MAPEH: {
     label: "MAPEH & TLE (EPP)",
     subjects: ["Music", "Arts", "Physical Education", "Health", "TLE", "Home Economics", "Industrial Arts", "Computer Education"],
     icon: Music,
-    defaultWeights: "20% WW · 60% PT · 20% TA",
+    defaultWeights: "20% WW · 60% PT · 20% TE",
     followsNote: "SPA (Special Program in the Arts) and SPS (Special Program in Sports) subjects also follow this group's weights.",
   },
   TLE: {
     label: "MAPEH & TLE (EPP)",
     subjects: ["TLE", "Home Economics", "Industrial Arts", "Computer Education"],
     icon: Wrench,
-    defaultWeights: "20% WW · 60% PT · 20% TA",
+    defaultWeights: "20% WW · 60% PT · 20% TE",
     groupWith: "MAPEH",
   },
 };
@@ -317,11 +317,11 @@ export default function GradingConfig() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="bg-card rounded-lg px-3 py-2 border border-border">
                   <span className="text-xs text-muted-foreground font-medium block">Core, Math &amp; Science</span>
-                  <span className="text-xs font-semibold text-foreground">WW 20% · PT 50% · TA 30%</span>
+                  <span className="text-xs font-semibold text-foreground">WW 20% · PT 50% · TE 30%</span>
                 </div>
                 <div className="bg-card rounded-lg px-3 py-2 border border-border">
                   <span className="text-xs text-muted-foreground font-medium block">MAPEH &amp; TLE</span>
-                  <span className="text-xs font-semibold text-foreground">WW 20% · PT 60% · TA 20%</span>
+                  <span className="text-xs font-semibold text-foreground">WW 20% · PT 60% · TE 20%</span>
                 </div>
               </div>
             </div>
@@ -492,12 +492,12 @@ export default function GradingConfig() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor={`${config.id}-TA`} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Term Assessment (TA)
+                    <Label htmlFor={`${config.id}-TE`} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Term Examination (TE)
                     </Label>
                     <div className="relative">
                       <Input
-                        id={`${config.id}-TA`}
+                        id={`${config.id}-TE`}
                         type="number"
                         min="0"
                         max="100"
@@ -507,7 +507,7 @@ export default function GradingConfig() {
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-sm">%</span>
                     </div>
-                    <p className="text-xs text-muted-foreground">Term examination</p>
+                    <p className="text-xs text-muted-foreground">ST1 30% · ST2 30% · TE 40%</p>
                   </div>
                 </div>
 
@@ -544,7 +544,7 @@ export default function GradingConfig() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.accent }} />
-                      <span className="text-xs text-muted-foreground">TA {config.quarterlyAssessWeight}%</span>
+                      <span className="text-xs text-muted-foreground">TE {config.quarterlyAssessWeight}%</span>
                     </div>
                   </div>
                 </div>

@@ -32,6 +32,7 @@ import { ClassDescriptorFooter } from "./components/ClassDescriptorFooter";
 import MobileClassDescriptor from "./components/MobileClassDescriptor";
 import { InheritedGradesNotice } from "./components/InheritedGradesNotice";
 import { MobileWarningDialog } from "./components/MobileWarningDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
 export default function ClassRecordView() {
   const { classAssignmentId } = useParams();
@@ -58,6 +59,8 @@ export default function ClassRecordView() {
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [showMobileWarning, setShowMobileWarning] = useState(false);
   const [separateByGender, setSeparateByGender] = useState(false);
+  const [endWindowOpen, setEndWindowOpen] = useState(false);
+  const [endingWindow, setEndingWindow] = useState(false);
 
   // Toast wrappers for hooks that expect setError/setSuccess
   const setError = useCallback((msg: string | null) => { if (msg) toast.error(msg); }, []) as React.Dispatch<React.SetStateAction<string | null>>;
@@ -156,11 +159,47 @@ export default function ClassRecordView() {
     if (settingsQuery.data?.termLabels) setTermLabels(settingsQuery.data.termLabels);
   }, [settingsQuery.data]);
 
+  // Active correction windows unfinalize rows to DRAFT. A finalized term is
+  // therefore derived from the raw current assignment rows, not inherited ones.
+  const isTermFinalized = useMemo(
+    () =>
+      (classRecordQuery.data?.classRecord ?? []).some((record) =>
+        record.grades.some((grade) => grade.term === selectedTerm && grade.status === "FINALIZED"),
+      ),
+    [classRecordQuery.data, selectedTerm],
+  );
+
   // Edit access hook — archived assignments are always read-only
-  const editAccessRaw = useEditAccess({ isPastTerm: !!isPastTerm, locks: classRecordQuery.data?.locks ?? null, selectedTerm });
+  const editAccessRaw = useEditAccess({
+    isPastTerm: !!isPastTerm,
+    locks: classRecordQuery.data?.locks ?? null,
+    selectedTerm,
+    isTermFinalized,
+    classAssignmentId,
+  });
   const editAccess = isArchivedAssignment
     ? { ...editAccessRaw, isViewOnly: true }
     : editAccessRaw;
+
+  const handleEndCorrectionWindow = useCallback(async () => {
+    if (!editAccess.windowRequestId) return;
+    setEndingWindow(true);
+    try {
+      const res = await gradesApi.endEditWindow(editAccess.windowRequestId);
+      toast.success(res.data.message);
+      setEndWindowOpen(false);
+      editAccess.refreshEditRequests();
+      await fetchClassRecord();
+    } catch (err: unknown) {
+      const message =
+        typeof err === "object" && err !== null && "response" in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(message || "Failed to end the correction session.");
+    } finally {
+      setEndingWindow(false);
+    }
+  }, [editAccess.windowRequestId, editAccess.refreshEditRequests, fetchClassRecord]);
 
   // Assessment meta hook
   const metaHook = useAssessmentMeta({
@@ -455,7 +494,7 @@ export default function ClassRecordView() {
         />
       )}
 
-      <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} gradeLock={gradeLock} colors={colors} editRequestStatus={isPastTerm ? editAccess.editRequestStatus : "idle"} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={!isArchivedAssignment && editAccess.canRequestEdit ? editAccess.openEditRequestModal : undefined} termLabels={termLabels} termDatesDerived={termDates?.derived} locks={classRecordQuery.data?.locks ?? null} variant="flush" />
+      <GradeStatusBanner currentTerm={currentTerm} selectedTerm={selectedTerm} termEndDate={currentTerm === "T1" ? termDates?.t1EndDate : currentTerm === "T2" ? termDates?.t2EndDate : termDates?.t3EndDate} effectiveNow={classRecordQuery.data?.effectiveNow ?? null} gradeLock={gradeLock} colors={colors} editRequestStatus={editAccess.editRequestStatus} editTimeRemaining={editAccess.editTimeRemaining} onRequestEdit={!isArchivedAssignment && editAccess.canRequestEdit ? editAccess.openEditRequestModal : undefined} onEndWindow={editAccess.windowRequestId ? () => setEndWindowOpen(true) : undefined} termLabels={termLabels} termDatesDerived={termDates?.derived} locks={classRecordQuery.data?.locks ?? null} termFinalized={isTermFinalized} editWindowOpen={editAccess.editRequestStatus === "window_open"} awaitingRefinalize={editAccess.editRequestStatus === "awaiting_refinalize"} variant="flush" />
 
       {/* Inherited Grades Notice */}
       {inheritedFromTeachers.length > 0 && (
@@ -526,7 +565,20 @@ export default function ClassRecordView() {
 
       <MobileWarningDialog open={showMobileWarning} onOpenChange={setShowMobileWarning} />
 
-      <EditRequestModal open={editAccess.editRequestModalOpen} onOpenChange={editAccess.setEditRequestModalOpen} onSuccess={editAccess.onEditRequestSuccess} selectedTerm={selectedTerm} classAssignment={classAssignment} userName={userName} />
+      <EditRequestModal open={editAccess.editRequestModalOpen} onOpenChange={editAccess.setEditRequestModalOpen} onSuccess={editAccess.onEditRequestSuccess} selectedTerm={selectedTerm} classAssignment={classAssignment} userName={userName} isFinalized={isTermFinalized} />
+
+      <ConfirmDialog
+        open={endWindowOpen}
+        onOpenChange={(open) => {
+          if (!open && !endingWindow) setEndWindowOpen(false);
+        }}
+        title="End correction session?"
+        description="Your changes are saved. Editing will stop immediately and the registrar will review and re-finalize the grades."
+        confirmLabel="End editing"
+        destructive
+        loading={endingWindow}
+        onConfirm={() => void handleEndCorrectionWindow()}
+      />
         </>
       )}
       </div>

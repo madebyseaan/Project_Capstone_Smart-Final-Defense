@@ -15,6 +15,7 @@ import {
   type SectionEosyFinalizationStatus,
 } from "./promotion";
 import { findSnapshotGapSections } from "./rollover";
+import { getRemedialRolloverBlock } from "./remedial";
 
 export interface EosyFinalizationSectionStatus extends SectionEosyFinalizationStatus {
   snapshotGap: boolean;
@@ -33,6 +34,7 @@ export interface EosyFinalizationSummary {
   learnersWithStoredStatus: number;
   totalDraftBlockers: number;
   snapshotGapSections: number;
+  pendingRemedialStudents: number;
   allPromotionsFinalized: boolean;
   readyForRollover: boolean;
 }
@@ -49,13 +51,14 @@ export interface EosyFinalizationOverview {
 export async function buildEosyFinalizationOverview(
   schoolYear: string,
 ): Promise<EosyFinalizationOverview> {
-  const [year, sectionStatuses, snapshotGaps] = await Promise.all([
+  const [year, sectionStatuses, snapshotGaps, remedialBlock] = await Promise.all([
     prisma.schoolYear.findUnique({
       where: { label: schoolYear },
       select: { status: true },
     }),
     listSectionEosyStatuses(schoolYear),
     findSnapshotGapSections(schoolYear),
+    getRemedialRolloverBlock(schoolYear),
   ]);
 
   const gapBySection = new Map(snapshotGaps.map((gap) => [gap.sectionId, gap]));
@@ -93,6 +96,7 @@ export async function buildEosyFinalizationOverview(
       learnersWithStoredStatus: 0,
       totalDraftBlockers: 0,
       snapshotGapSections: snapshotGaps.length,
+      pendingRemedialStudents: remedialBlock.count,
       allPromotionsFinalized: false,
       readyForRollover: false,
     },
@@ -101,7 +105,9 @@ export async function buildEosyFinalizationOverview(
   summary.allPromotionsFinalized =
     sections.length > 0 && sections.every((section) => section.finalized);
   summary.readyForRollover =
-    summary.allPromotionsFinalized && summary.snapshotGapSections === 0;
+    summary.allPromotionsFinalized &&
+    summary.snapshotGapSections === 0 &&
+    summary.pendingRemedialStudents === 0;
 
   return {
     schoolYear,
